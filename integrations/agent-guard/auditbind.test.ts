@@ -117,10 +117,12 @@ test("an explicit discriminator that is not a prefix of the data is refused", ()
   // LABEL for an instruction rather than the instruction: declaring an unknown
   // discriminator over a real SetAuthority payload took the unknown-instruction
   // soft pass and the known-risky table never fired. This path was shielded
-  // from that, but only by accident — `executeSwap` passes no discriminator,
+  // from that, but only by accident — `executeSwap` passed no discriminator,
   // so the projection was rebuilt from the bytes and the recomputed hash
   // diverged. A caller that DID pass a mismatched discriminator got a
-  // projection built around the label.
+  // projection built around the label. (Round 29, L1: `executeSwap` now
+  // passes the decoded selector it sent to the Core; this rule is what keeps
+  // that from being a label.)
   const SPL_TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
   const setAuthority = new Uint8Array([0x06, 0x02, 0x01, ...new Array(32).fill(0xaa)]);
   assert.throws(

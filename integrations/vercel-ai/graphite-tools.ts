@@ -6,7 +6,9 @@
  *   const result = await generateText({
  *     model,
  *     tools: graphiteTools(guard),
- *     toolApproval: GRAPHITE_TOOL_APPROVAL,   // a person approves every fund movement
+ *     // Fund-moving tools need approval by default (needsApproval); a secret
+ *     // lets the SDK reject approvals a client forged in replayed history.
+ *     experimental_toolApprovalSecret: process.env.TOOL_APPROVAL_SECRET,
  *     prompt: "Send 0.05 SOL to <address>",
  *   });
  *
@@ -22,10 +24,17 @@
  *   - a per-transfer cap is REQUIRED (`graphiteTools` refuses a guard without
  *     one): the operator's statement of the most any single tool call may
  *     move, enforced before anything is built;
- *   - `GRAPHITE_TOOL_APPROVAL` marks every fund-moving tool `user-approval`,
- *     so the AI SDK asks a person before the tool runs. The SDK enforces it
- *     where the application passes it to `generateText`/`streamText`; a tool
- *     cannot force its caller to, which is why the cap does not depend on it.
+ *   - every fund-moving tool carries `needsApproval: true`, so the AI SDK asks
+ *     a person before it runs by default. Round 29 (audit 2026-10-20, M7):
+ *     approval used to be opt-in — only an application that passed
+ *     `GRAPHITE_TOOL_APPROVAL` as `toolApproval` got it. The SDK lets an
+ *     application's own `toolApproval` override a tool's setting (a generic
+ *     approval function decides every tool; a per-tool entry decides that
+ *     tool), so an application can still switch it off, explicitly, for a
+ *     tool it names. `GRAPHITE_TOOL_APPROVAL` stays exported for applications
+ *     that configure approval centrally. Approvals travel back in the message
+ *     history the client sends; pass `experimental_toolApprovalSecret` so the
+ *     SDK can tell an approval it issued from one a client forged (README).
  *
  * Tool results are structured outcomes, never exceptions the model has to
  * interpret: a refusal says who refused (the spend policy, the grounding of
@@ -83,6 +92,8 @@ export function graphiteTools(guard: GraphiteGuard) {
     }),
 
     graphite_transfer_sol: tool({
+      // Round 29 (M7): a person approves by default.
+      needsApproval: true,
       description:
         "Transfer SOL from the agent wallet. Pass the user's own request, e.g. 'Transfer 0.05 SOL to <address>'. " +
         "Graphite re-derives the amount and destination from that text, verifies the exact transaction, and " +
@@ -104,6 +115,7 @@ export function graphiteTools(guard: GraphiteGuard) {
     }),
 
     graphite_swap: tool({
+      needsApproval: true,
       description:
         "Swap tokens through a swap program, given the user's request and the EXACT route instruction (from a " +
         "route API): program, accounts with signer/writable flags, instruction data, and any lookup tables. " +

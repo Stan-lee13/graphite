@@ -18,7 +18,9 @@ import { Keypair, SystemProgram, Transaction, TransactionInstruction } from "@so
 import { BoundTransaction, firstSignatureOf } from "./artifact.js";
 import { ResidualPolicy } from "./residual-policy.js";
 import {
+  ConfirmationDeclined,
   executeBoundTransaction,
+  SubmissionOutcomeUnknown,
   type LifecycleReporter,
   type SubmitConnection,
 } from "./execution-lifecycle.js";
@@ -470,4 +472,73 @@ test("a server without residual codes is refused before signing", async () => {
   delete (v.scope as { unobserved_codes?: unknown }).unobserved_codes;
   await assert.rejects(run(fakes, bound, v), /prose only/);
   assert.deepEqual(fakes.calls, []);
+});
+
+// ---------------------------------------------------------------------------
+// Round 29 (audit 2026-10-20).
+
+test("M7: the confirmation runs after the policy and before signing; declined, nothing is signed, recorded or sent", async () => {
+  const fakes = new Fakes();
+  const bound = build();
+  const order: string[] = [];
+  const params = {
+    bound,
+    verification: verdict(bound),
+    signers: [payer],
+    connection: fakes,
+    graphite: fakes,
+    policy: new ResidualPolicy(),
+    reportedBy: "test-bridge",
+    label: "t",
+    log: () => {},
+  };
+  await assert.rejects(
+    executeBoundTransaction({
+      ...params,
+      confirm: async ({ acceptedUnobserved }) => {
+        order.push(`confirm:${acceptedUnobserved.length}`);
+        return false;
+      },
+    }),
+    ConfirmationDeclined,
+  );
+  assert.deepEqual(order, ["confirm:0"]);
+  assert.deepEqual(fakes.calls, [], "nothing signed, recorded or sent");
+  // The same transaction can still be signed: declining consumed nothing.
+  const lc = await executeBoundTransaction({ ...params, confirm: async () => true });
+  assert.equal(lc.signingRecorded, true);
+  // A residual the policy refuses never reaches the person.
+  const asked: string[] = [];
+  const b2 = build();
+  await assert.rejects(
+    executeBoundTransaction({
+      ...params,
+      bound: b2,
+      verification: verdict(b2, [...INHERENT, "not_simulated"]),
+      confirm: async () => (asked.push("asked"), true),
+    }),
+    /not_simulated/,
+  );
+  assert.deepEqual(asked, []);
+});
+
+test("L2: an ambiguous send keeps the signature it computed before sending, and records the attempt", async () => {
+  const fakes = new Fakes();
+  fakes.sendRawTransaction = async (raw: Uint8Array) => {
+    fakes.calls.push("send");
+    fakes.submitted.push(raw);
+    throw new Error("socket hang up");
+  };
+  const bound = build();
+  await assert.rejects(run(fakes, bound, verdict(bound)), (e: unknown) => {
+    assert.ok(e instanceof SubmissionOutcomeUnknown);
+    assert.equal(e.signature, firstSignatureOf(fakes.submitted[0]));
+    assert.equal(e.lastValidBlockHeight, 42);
+    assert.equal(e.attemptRecorded, true);
+    assert.match(e.message, /socket hang up/);
+    return true;
+  });
+  assert.deepEqual(fakes.calls, ["record:signing", "send", "record:submission"]);
+  assert.match(fakes.events[1].detail ?? "", /^submission ATTEMPT, outcome unknown/);
+  assert.equal(fakes.events[1].transaction_signature, firstSignatureOf(fakes.submitted[0]));
 });

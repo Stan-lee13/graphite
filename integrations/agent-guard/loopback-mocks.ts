@@ -10,11 +10,13 @@
  * the observable the Round 19 F-19-C1 tests are about: a signed transaction
  * reaching an RPC before a verdict exists.
  */
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import bs58 from "bs58";
 import { Keypair, VersionedTransaction } from "@solana/web3.js";
+import { AuditBind } from "./auditbind.js";
 
 export interface RecordedCall {
   /** JSON-RPC method, or `METHOD /path` for the REST stand-ins. */
@@ -153,8 +155,15 @@ export async function mockRpc(
     afterSimulation?: Record<string, MockAccount | null>;
     /** Decimals the simulation reports per mint (default 6). */
     decimals?: Record<string, number>;
+    /** What getBlockHeight answers (default 1; blockhashes are valid to 1,000). */
+    blockHeight?: number;
+    /**
+     * sendTransaction fails without saying whether the bytes went anywhere
+     * (an HTTP 502), and — when "landed" — they did land anyway.
+     */
+    sendFails?: false | "lost" | "landed";
   } = {},
-): Promise<Loopback> {
+): Promise<MockRpc> {
   const encode = (a: MockAccount | null | undefined) =>
     a
       ? {
@@ -166,6 +175,10 @@ export async function mockRpc(
         }
       : null;
   const calls: RecordedCall[] = [];
+  /** Signatures the stand-in reports as landed (confirmed). */
+  const landed = new Set<string>();
+  /** Mutable after start, so a test can change the RPC's behaviour mid-way. */
+  const behaviour = { sendFails: opts.sendFails ?? false, blockHeight: opts.blockHeight };
   const { server, url } = await listen(
     (_m, _p, body) => {
       const req = body as { id?: unknown; method?: string };
@@ -239,8 +252,25 @@ export async function mockRpc(
         case "sendTransaction": {
           // A real RPC answers with the id the bytes carry.
           const wire = (req as { params?: unknown[] }).params?.[0];
-          return ok(typeof wire === "string" ? wireTransactionId(wire) : null);
+          const id = typeof wire === "string" ? wireTransactionId(wire) : null;
+          if (behaviour.sendFails) {
+            if (behaviour.sendFails === "landed" && id) landed.add(id);
+            return { status: 502, body: { error: "bad gateway" } };
+          }
+          if (id) landed.add(id);
+          return ok(id);
         }
+        case "getSignatureStatuses": {
+          const sigs = ((req as { params?: unknown[] }).params?.[0] ?? []) as string[];
+          return ok({
+            context: { slot: 2 },
+            value: sigs.map((s) =>
+              landed.has(s) ? { slot: 2, confirmations: null, err: null, confirmationStatus: "confirmed" } : null,
+            ),
+          });
+        }
+        case "getBlockHeight":
+          return ok(behaviour.blockHeight ?? 1);
         default:
           return {
             status: 200,
@@ -259,26 +289,138 @@ export async function mockRpc(
       return { params: b };
     },
   );
-  return { url, calls, close: closer(server) };
+  return { url, calls, landed, behaviour, close: closer(server) };
+}
+
+export interface MockRpc extends Loopback {
+  /** Signatures reported as landed. */
+  landed: Set<string>;
+  /** Change what sendTransaction and getBlockHeight do from here on. */
+  behaviour: { sendFails: false | "lost" | "landed"; blockHeight?: number };
 }
 
 export interface MockService extends Loopback {
   /** Replace the JSON answer for a route, e.g. `POST /parse`. */
   answer: Map<string, { status: number; body: unknown }>;
+  /**
+   * Answers computed from the request, by `METHOD /path`; consulted before
+   * `answer`. Round 29: an approving Core must hash what it was sent.
+   */
+  respond: Map<string, (body: unknown) => { status: number; body: unknown }>;
 }
 
-/** A REST stand-in answering from `answer` by `METHOD /path`; 404 otherwise. */
+/** A REST stand-in answering from `respond` / `answer` by `METHOD /path`; 404 otherwise. */
 export async function mockService(initial: Record<string, unknown> = {}): Promise<MockService> {
   const calls: RecordedCall[] = [];
   const answer = new Map<string, { status: number; body: unknown }>(
     Object.entries(initial).map(([k, v]) => [k, { status: 200, body: v }]),
   );
+  const respond = new Map<string, (body: unknown) => { status: number; body: unknown }>();
   const { server, url } = await listen(
-    (method, path) => answer.get(`${method} ${path}`) ?? { status: 404, body: { error: "not mocked" } },
+    (method, path, body) =>
+      respond.get(`${method} ${path}`)?.(body) ??
+      answer.get(`${method} ${path}`) ?? { status: 404, body: { error: "not mocked" } },
     (c) => calls.push(c),
     (method, path) => `${method} ${path}`,
   );
-  return { url, calls, answer, close: closer(server) };
+  return { url, calls, answer, respond, close: closer(server) };
+}
+
+/**
+ * An APPROVED, artifact-bound verdict for exactly the request the Core was
+ * sent, as the Core would compute it (Round 29, audit 2026-10-20: no guard
+ * test drove an approval through `executeTransfer` / `executeSwap`; the
+ * stand-in only ever blocked). `transaction_sha256` is the SHA-256 of the
+ * `signed_transaction` bytes and `content_hash` is the framed hash over
+ * program, discriminator, accounts, data and CPI targets — the real digests,
+ * so the guard's own checks (AuditBind, `signApproved`) run for real.
+ */
+export function approvedVerdictFor(
+  request: unknown,
+  opts: { auditTrailId?: string; unobservedCodes?: string[] } = {},
+): Record<string, unknown> {
+  const r = request as {
+    program_id: string;
+    instruction_discriminator: string;
+    account_addresses: string[];
+    instruction_data?: number[];
+    cpi_targets?: string[];
+    signed_transaction: number[];
+  };
+  const bytes = Uint8Array.from(r.signed_transaction);
+  const codes = opts.unobservedCodes ?? ["program_semantics", "inner_instructions"];
+  return {
+    ...BLOCKED_VERDICT,
+    approved: true,
+    confidence: 0.64,
+    risk_verdict: { status: "Clear", findings: [] },
+    policy_verdict: "Approved",
+    audit_trail_id: opts.auditTrailId ?? "gr-loopback-00000001",
+    content_hash: AuditBind.computeHash({
+      programId: r.program_id,
+      instructionDiscriminator: r.instruction_discriminator,
+      accountAddresses: r.account_addresses,
+      instructionData: r.instruction_data,
+      cpiTargets: r.cpi_targets ?? [],
+    }),
+    summary: "APPROVED (loopback stand-in)",
+    scope: {
+      kind: "artifact_bound",
+      transaction_sha256: createHash("sha256").update(bytes).digest("hex"),
+      transaction_bytes: bytes.length,
+      simulated: true,
+      unobserved: codes.map((c) => `loopback: ${c}`),
+      unobserved_codes: codes,
+    },
+  };
+}
+
+/**
+ * A Graphite Core stand-in that APPROVES what it is sent (artifact-bound,
+ * real digests), records the lifecycle (`/audit/event` answers "approved" by
+ * the exact audit_trail_id) and reconciles L8 as `ApprovedAndExecuted`.
+ */
+export async function mockApprovingCore(): Promise<MockService> {
+  const core = await mockService({ "GET /health": { status: "ok", service: "graphite", version: "test" } });
+  let n = 0;
+  core.respond.set("POST /verify", (body) => ({
+    status: 200,
+    body: approvedVerdictFor(body, { auditTrailId: `gr-loopback-${String(++n).padStart(8, "0")}` }),
+  }));
+  core.respond.set("POST /audit/event", (body) => {
+    const e = body as { event_type: string; content_hash: string };
+    return {
+      status: 200,
+      body: {
+        recorded: true,
+        event_type: e.event_type,
+        content_hash: e.content_hash,
+        verdict_on_record: "approved",
+        verdict_on_record_key: "audit_trail_id",
+        sequence_anomalies: [],
+      },
+    };
+  });
+  core.respond.set("POST /verify/execution", (body) => {
+    const e = body as { signature: string; transaction_sha256?: string; audit_trail_id?: string };
+    return {
+      status: 200,
+      body: {
+        signature: e.signature,
+        chain_status: { Confirmed: { slot: 1 } },
+        recorded_approved: true,
+        recorded_audit_trail_id: e.audit_trail_id ?? null,
+        reconciliation: "ApprovedAndExecuted",
+        discrepancy: false,
+        recorded_transaction_sha256: e.transaction_sha256 ?? null,
+        attribution: "chain_bytes",
+        chain_transaction_sha256: e.transaction_sha256 ?? null,
+        caller_keys_disagree: [],
+        audit_recorded: true,
+      },
+    };
+  });
+  return core;
 }
 
 /**

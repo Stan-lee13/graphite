@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import { generateText } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { GraphiteGuard } from "../agent-guard/guard.js";
-import { BLOCKED_VERDICT, mockRpc, mockService, throwawayWallet } from "../agent-guard/loopback-mocks.js";
+import { BLOCKED_VERDICT, mockApprovingCore, mockRpc, mockService, throwawayWallet } from "../agent-guard/loopback-mocks.js";
 import { GRAPHITE_TOOL_APPROVAL, graphiteTools, type GraphiteToolResult } from "./graphite-tools.js";
 
 const DEST = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
@@ -63,7 +63,8 @@ async function services(aiAnswer: Record<string, unknown> = {}) {
       graphiteCoreUrl: core.url,
       aiLayerUrl: ai.url,
       reporter: "vercel-ai",
-      spendPolicy: maxTransferLamports === undefined ? {} : { maxTransferLamports },
+      // Round 29 (M6): the guard itself needs a cap or an explicit allowUncapped.
+      spendPolicy: maxTransferLamports === undefined ? { allowUncapped: true } : { maxTransferLamports },
     });
   return { rpc, core, ai, guard, close: () => Promise.all([rpc.close(), core.close(), ai.close()]) };
 }
@@ -83,6 +84,12 @@ test("graphiteTools refuses a guard without a per-transfer cap", async () => {
   }
 });
 
+/**
+ * The application approving explicitly: the tools need approval by default
+ * (Round 29, M7), and these tests are about what happens once it is given.
+ */
+const APPROVED = { graphite_transfer_sol: "approved", graphite_swap: "approved" } as const;
+
 test("a model's transfer call runs through the guard: Graphite is shown the bytes; its block is the result", async () => {
   const s = await services();
   try {
@@ -90,6 +97,7 @@ test("a model's transfer call runs through the guard: Graphite is shown the byte
     const result = await generateText({
       model: modelCalling("graphite_transfer_sol", { request: REQUEST }),
       tools: graphiteTools(guard),
+      toolApproval: APPROVED,
       prompt: REQUEST,
     });
     const out = toolResult(result);
@@ -135,6 +143,7 @@ test("a model-written transfer over the operator's cap is refused before the RPC
     const result = await generateText({
       model: modelCalling("graphite_transfer_sol", { request: REQUEST }),
       tools: graphiteTools(guard),
+      toolApproval: APPROVED,
       prompt: REQUEST,
     });
     const out = toolResult(result);
@@ -156,6 +165,7 @@ test("a destination the request does not contain is refused by the guard's groun
     const result = await generateText({
       model: modelCalling("graphite_transfer_sol", { request: REQUEST }),
       tools: graphiteTools(guard),
+      toolApproval: APPROVED,
       prompt: REQUEST,
     });
     const out = toolResult(result);
@@ -174,6 +184,7 @@ test("a malformed tool input never reaches the guard: the SDK's schema refuses i
     const result = await generateText({
       model: modelCalling("graphite_transfer_sol", { request: "" }),
       tools: graphiteTools(guard),
+      toolApproval: APPROVED,
       prompt: REQUEST,
     });
     assert.equal(result.toolResults.length, 0);
@@ -197,6 +208,67 @@ test("graphite_wallet reports the address and limits and moves nothing", async (
     assert.equal(out.maxTransferLamports, "2000000000");
     assert.equal(s.rpc.calls.length, 0);
   } finally {
+    await s.close();
+  }
+});
+
+// Round 29 (audit 2026-10-20, M7): approval was opt-in — an application that
+// did not pass GRAPHITE_TOOL_APPROVAL ran every fund movement unasked.
+test("M7: with no approval configuration at all, a fund-moving tool waits for a person", async () => {
+  const s = await services();
+  try {
+    const guard = await s.guard(2_000_000_000n);
+    const tools = graphiteTools(guard);
+    assert.equal(tools.graphite_transfer_sol.needsApproval, true);
+    assert.equal(tools.graphite_swap.needsApproval, true);
+    assert.equal((tools.graphite_wallet as { needsApproval?: unknown }).needsApproval, undefined, "reading moves nothing");
+    const result = await generateText({
+      model: modelCalling("graphite_transfer_sol", { request: REQUEST }),
+      tools,
+      prompt: REQUEST,
+    });
+    assert.equal(result.toolResults.length, 0, "the tool did not run");
+    assert.equal(result.content.filter((p) => p.type === "tool-approval-request").length, 1);
+    assert.equal(s.core.calls.filter((c) => c.method === "POST /verify").length, 0);
+    assert.equal(s.rpc.calls.length, 0);
+    // An application's own approval configuration for OTHER tools leaves ours in place.
+    const other = await generateText({
+      model: modelCalling("graphite_transfer_sol", { request: REQUEST }),
+      tools,
+      toolApproval: { graphite_wallet: "not-applicable" },
+      prompt: REQUEST,
+    });
+    assert.equal(other.toolResults.length, 0);
+  } finally {
+    await s.close();
+  }
+});
+
+test("coverage: approved by the application and by Graphite, the transfer executes and reports its signature", async () => {
+  const s = await services();
+  const core = await mockApprovingCore();
+  try {
+    const guard = await GraphiteGuard.create({
+      privateKey: throwawayWallet().secretKeyBase58,
+      rpcUrl: s.rpc.url,
+      graphiteCoreUrl: core.url,
+      aiLayerUrl: s.ai.url,
+      reporter: "vercel-ai",
+      spendPolicy: { maxTransferLamports: 2_000_000_000n },
+    });
+    const result = await generateText({
+      model: modelCalling("graphite_transfer_sol", { request: REQUEST }),
+      tools: graphiteTools(guard),
+      toolApproval: APPROVED,
+      prompt: REQUEST,
+    });
+    const out = toolResult(result);
+    assert.equal(out.executed, true, JSON.stringify(out));
+    assert.match(out.signature ?? "", /^[1-9A-HJ-NP-Za-km-z]{64,88}$/);
+    assert.equal(out.verdict?.scope, "artifact_bound");
+    assert.equal(s.rpc.calls.filter((c) => c.method === "sendTransaction").length, 1);
+  } finally {
+    await core.close();
     await s.close();
   }
 });

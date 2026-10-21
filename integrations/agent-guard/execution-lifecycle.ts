@@ -111,6 +111,51 @@ export interface ExecuteParams {
    */
   submissionRecordAttempts?: number;
   submissionRecordBackoffMs?: number;
+  /**
+   * A last say, after the verdict and the residual policy and immediately
+   * before anything is signed (Round 29, audit 2026-10-20, M7). Anything but
+   * `true` — false, a throw — aborts with `ConfirmationDeclined` and nothing
+   * signed. The guard passes a summary of the resolved transaction to the
+   * caller's hook through this.
+   */
+  confirm?: (decided: { acceptedUnobserved: UnobservedCode[] }) => Promise<boolean>;
+}
+
+/** The person (or the caller's hook) did not confirm: nothing was signed or sent. */
+export class ConfirmationDeclined extends Error {
+  constructor(label: string, why: string) {
+    super(`[Graphite] ${label}: not confirmed (${why}). Nothing was signed or sent.`);
+    this.name = "ConfirmationDeclined";
+  }
+}
+
+/**
+ * `sendRawTransaction` failed in a way that does not say whether the bytes
+ * reached the network (Round 29, audit 2026-10-20, L2). The bytes were signed
+ * and handed to the RPC; a timeout or a dropped connection can come after the
+ * RPC forwarded them. The signature is known — it is in the signed bytes — and
+ * is carried here, and was recorded on the trail as a submission attempt.
+ * A caller MUST check this signature's status (or wait until
+ * `lastValidBlockHeight` has passed) before building the same request again:
+ * a rebuild is a new transaction, and both can land. The guard enforces this
+ * for a repeat of the same request (`GraphiteGuard`).
+ */
+export class SubmissionOutcomeUnknown extends Error {
+  readonly signature: string;
+  readonly lastValidBlockHeight: number;
+  readonly attemptRecorded: boolean;
+  constructor(label: string, signature: string, lastValidBlockHeight: number, cause: string, attemptRecorded: boolean) {
+    super(
+      `[Graphite] ${label}: submitting ${signature} failed (${cause}), and the failure does not say whether ` +
+        `the transaction reached the network. It may still land until block height ${lastValidBlockHeight}. ` +
+        "Check this signature's status before retrying: a rebuilt transaction is a second transaction." +
+        (attemptRecorded ? "" : " (The attempt could not be recorded on the audit trail either.)"),
+    );
+    this.name = "SubmissionOutcomeUnknown";
+    this.signature = signature;
+    this.lastValidBlockHeight = lastValidBlockHeight;
+    this.attemptRecorded = attemptRecorded;
+  }
 }
 
 function message(e: unknown): string {
@@ -146,6 +191,18 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
       `[Graphite] ${label}: executing under ${decision.accepted.length} accepted residual(s): ` +
         decision.accepted.join(", "),
     );
+  }
+
+  // 1b. The caller's last say (Round 29, M7): after everything that can
+  //     refuse has run, before the one irreversible local step.
+  if (p.confirm) {
+    let confirmed: boolean;
+    try {
+      confirmed = (await p.confirm({ acceptedUnobserved: [...decision.accepted] })) === true;
+    } catch (e) {
+      throw new ConfirmationDeclined(label, `the confirmation failed: ${message(e)}`);
+    }
+    if (!confirmed) throw new ConfirmationDeclined(label, "declined");
   }
 
   // 2. The one signing path: digest and signer set re-derived over this
@@ -204,8 +261,32 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
   //    RPC. An RPC that answered with some other id would otherwise steer the
   //    audit trail and L8 to a transaction of its choosing; its answer is
   //    compared and a disagreement is recorded, but the id used is ours.
+  //
+  //    Round 29 (L2): the id is computed BEFORE sending, so a send that fails
+  //    ambiguously still leaves the caller holding it. It used to be thrown
+  //    away with the error, and a retry built and signed a second transfer.
   const signature = firstSignatureOf(raw);
-  const reported = await p.connection.sendRawTransaction(raw);
+  let reported: string;
+  try {
+    reported = await p.connection.sendRawTransaction(raw);
+  } catch (e) {
+    let attemptRecorded = false;
+    try {
+      await p.graphite.recordLifecycleEvent({
+        event_type: "submission",
+        content_hash: verification.content_hash,
+        audit_trail_id: verification.audit_trail_id,
+        transaction_sha256: scope.transaction_sha256,
+        transaction_signature: signature,
+        reported_by: p.reportedBy,
+        detail: `submission ATTEMPT, outcome unknown: sendRawTransaction failed: ${message(e)}`.slice(0, 1024),
+      });
+      attemptRecorded = true;
+    } catch (recordError) {
+      log(`[Graphite] ${label}: the submission attempt of ${signature} could not be recorded: ${message(recordError)}`);
+    }
+    throw new SubmissionOutcomeUnknown(label, signature, p.bound.lastValidBlockHeight, message(e), attemptRecorded);
+  }
   log(`[Graphite] ${label}: submitted ${signature}`);
   if (reported !== signature) {
     log(

@@ -8,16 +8,32 @@
  * its own words, a person who declined, or Graphite) and why.
  */
 import type { ExecutionOutcome } from "./guard.js";
+import { ConfirmationDeclined, SubmissionOutcomeUnknown } from "./execution-lifecycle.js";
 import { IntentGroundingError } from "./intent-grounding.js";
 import { ResidualPolicyRefusal } from "./residual-policy.js";
 import { SpendPolicyRefusal } from "./spend-policy.js";
+import { SwapRouteRefusal } from "./swap-instructions.js";
 
 export interface GraphiteToolResult {
   executed: boolean;
-  /** Who stopped it, when it did not execute. */
-  refusedBy?: "spend-policy" | "request-grounding" | "residual-policy" | "person" | "graphite" | "error";
+  /**
+   * Who stopped it, when it did not execute. `swap-route`: the route's own
+   * data (exact-out, unreadable, or a minimum output below what was
+   * simulated, the slippage allowed or the price floor — Round 29, H2).
+   * `submission-unknown`: signed and handed to the RPC, outcome unknown —
+   * `signature` is set and must be checked before any retry (Round 29, L2).
+   */
+  refusedBy?:
+    | "spend-policy"
+    | "request-grounding"
+    | "swap-route"
+    | "residual-policy"
+    | "person"
+    | "graphite"
+    | "submission-unknown"
+    | "error";
   reason?: string;
-  /** The transaction id, when it executed. */
+  /** The transaction id, when it executed — or when its submission's outcome is unknown. */
   signature?: string;
   /** Whether the RPC confirmed it inside its blockhash window. */
   confirmed?: boolean;
@@ -69,11 +85,43 @@ export function toolResultOf(outcome: ExecutionOutcome): GraphiteToolResult {
   };
 }
 
+/** The most of a refusal's text a tool result carries. */
+export const MAX_REASON_CHARS = 600;
+
+/**
+ * A refusal's text as the model may see it (audit 2026-10-20, Info). The
+ * guard's own refusals say which form is accepted and why this request was
+ * not — that is meant for the model and the person. But an `error` can carry
+ * text from anywhere (a fetch failure naming an RPC URL with its `api-key`,
+ * a header echoed by a proxy), and the model reading it is the party a
+ * secret must not reach. URLs lose their userinfo, path and query, bearer
+ * tokens and key-like assignments are masked, and the length is bounded.
+ */
+export function redactReason(text: string): string {
+  const out = text
+    .replace(/\b([a-z][a-z0-9+.-]*):\/\/[^\s"'<>)]+/gi, (m) => {
+      try {
+        const u = new URL(m);
+        return `${u.protocol}//${u.host}`;
+      } catch {
+        return "<url>";
+      }
+    })
+    .replace(/\b(bearer)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 <redacted>")
+    .replace(/\b(api[-_]?key|apikey|token|secret|password|private[-_]?key|authorization)\b(\s*[:=]\s*)("?)[^\s"',;&]+/gi, "$1$2$3<redacted>");
+  return out.length > MAX_REASON_CHARS ? `${out.slice(0, MAX_REASON_CHARS)}…` : out;
+}
+
 /** A refusal raised before or instead of an execution, as a tool result. */
 export function toolRefusalOf(e: unknown): GraphiteToolResult {
-  const reason = e instanceof Error ? e.message : String(e);
+  const reason = redactReason(e instanceof Error ? e.message : String(e));
   if (e instanceof SpendPolicyRefusal) return { executed: false, refusedBy: "spend-policy", reason };
   if (e instanceof IntentGroundingError) return { executed: false, refusedBy: "request-grounding", reason };
+  if (e instanceof SwapRouteRefusal) return { executed: false, refusedBy: "swap-route", reason };
   if (e instanceof ResidualPolicyRefusal) return { executed: false, refusedBy: "residual-policy", reason };
+  if (e instanceof ConfirmationDeclined) return { executed: false, refusedBy: "person", reason };
+  if (e instanceof SubmissionOutcomeUnknown) {
+    return { executed: false, refusedBy: "submission-unknown", reason, signature: e.signature };
+  }
   return { executed: false, refusedBy: "error", reason };
 }

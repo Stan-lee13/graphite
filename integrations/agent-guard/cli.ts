@@ -10,7 +10,9 @@
  * the environment `GraphiteGuard.create()` reads (SOLANA_PRIVATE_KEY,
  * SOLANA_RPC_URL, GRAPHITE_CORE_URL, GRAPHITE_API_KEY, GRAPHITE_AI_LAYER_URL,
  * GRAPHITE_WALLET_PROFILE, GRAPHITE_TRANSACTION_VERSION,
- * GRAPHITE_ACCEPT_UNOBSERVED).
+ * GRAPHITE_ACCEPT_UNOBSERVED, the spend limits — GRAPHITE_MAX_TRANSFER_LAMPORTS
+ * is required since Round 29 — and the swap settings; the full list is
+ * ../solana-agent-kit/.env.example).
  *
  * A swap needs the exact route instruction (`BoundInstructionPayload`: program,
  * accounts with their signer/writable flags, data, optional lookup tables) in a

@@ -13,14 +13,24 @@
  *   - a per-transfer cap is REQUIRED (`createGraphiteMcpServer` refuses a
  *     guard without one);
  *   - confirmation `"elicit"` (the default) asks a PERSON through MCP
- *     elicitation before every fund-moving call, showing the request the
- *     guard will act on. A client that cannot elicit is refused rather than
- *     executed for: the operator must choose `"none"` explicitly to run
- *     without a person in the loop.
+ *     elicitation before every fund-moving call. A client that cannot elicit
+ *     is refused rather than executed for: the operator must choose `"none"`
+ *     explicitly to run without a person in the loop.
+ *
+ * Round 29 (audit 2026-10-20, M7): the person used to be asked FIRST, shown
+ * the model's raw text before anything had been parsed, grounded, capped,
+ * built, simulated or verified — so they approved words, never the
+ * destination, amount or effect the guard then resolved, and were asked to
+ * approve requests the cap refused a moment later. The question is now the
+ * guard's confirmation hook: asked after grounding, the spend policy, the
+ * build, the simulation, Graphite's verdict and the residual policy,
+ * immediately before signing, and it shows the resolved destination and
+ * amount, the program, the measured wallet effect and the verdict. A decline
+ * aborts with nothing signed or sent.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { GraphiteGuard, type BoundInstructionPayload } from "../agent-guard/guard.js";
+import { GraphiteGuard, type BoundInstructionPayload, type ConfirmationSummary } from "../agent-guard/guard.js";
 import { toolRefusalOf, toolResultOf, type GraphiteToolResult } from "../agent-guard/tool-results.js";
 
 export type Confirmation = "elicit" | "none";
@@ -32,6 +42,41 @@ export function parseConfirmation(value: string | undefined): Confirmation {
   throw new Error(
     `[Graphite] GRAPHITE_MCP_CONFIRMATION=${JSON.stringify(value)} is not "elicit" or "none". REFUSING TO START.`,
   );
+}
+
+/**
+ * What the person reads before the guard signs (Round 29, M7): the resolved
+ * transaction, not the model's words alone. Every value comes from the guard
+ * — grounded, built, simulated and verified — and the request is quoted last,
+ * as what it is.
+ */
+export function describeForPerson(s: ConfirmationSummary): string {
+  const lines: string[] = [`Graphite: sign and send this ${s.kind} from the agent's wallet ${s.wallet}?`, ""];
+  if (s.kind === "transfer") {
+    lines.push(`Send ${s.sol} SOL (${s.lamports} lamports)`, `to ${s.destination}`);
+  } else if (s.swap) {
+    const w = s.swap;
+    lines.push(
+      `Swap ${w.input.amountIn} base units of ${w.input.token} (${w.input.mint})`,
+      `for at least ${w.output.minimumOut} base units of ${w.output.token} (${w.output.mint})`,
+      `  simulated: ${w.output.simulatedOut}; allowed slippage ${w.maxSlippageBps} bps; price floor ${w.priceFloor}`,
+      `  route: ${w.route}`,
+    );
+  }
+  lines.push(`Program: ${s.programId}`, "", "Simulated effect on the wallet (these exact bytes):");
+  lines.push(`  SOL out: ${s.walletEffect.solOutLamports} lamports (fee and rent included; negative = received)`);
+  for (const t of s.walletEffect.tokens) lines.push(`  ${t.mint}: ${t.delta} base units`);
+  const v = s.verdict;
+  lines.push(
+    "",
+    `Graphite: ${v.approved ? "APPROVED" : "NOT APPROVED"}, risk ${v.risk}, confidence ${v.confidence}`,
+    `  audit trail ${v.auditTrailId}${v.transactionSha256 ? `, transaction ${v.transactionSha256}` : ""}`,
+    `  not observed: ${v.unobservedCodes.join(", ") || "none"}` +
+      (v.acceptedUnobserved.length > 0 ? `; accepted by this deployment: ${v.acceptedUnobserved.join(", ")}` : ""),
+    "",
+    `Request (as written by the agent): ${s.request}`,
+  );
+  return lines.join("\n");
 }
 
 function asContent(result: GraphiteToolResult) {
@@ -61,8 +106,12 @@ export function createGraphiteMcpServer(guard: GraphiteGuard, options: { confirm
   }
   const server = new McpServer({ name: "graphite", version: "0.1.0" });
 
-  /** Ask a person, or say why the call is not run. Returns null when confirmed. */
-  async function confirm(summary: string): Promise<GraphiteToolResult | null> {
+  /**
+   * Whether this call can be confirmed at all: with confirmation required, a
+   * client that cannot elicit is refused before anything is built. Returns
+   * null when the call may proceed.
+   */
+  function confirmable(): GraphiteToolResult | null {
     if (options.confirmation === "none") return null;
     if (!server.server.getClientCapabilities()?.elicitation) {
       return {
@@ -73,16 +122,25 @@ export function createGraphiteMcpServer(guard: GraphiteGuard, options: { confirm
           "configured to require confirmation (GRAPHITE_MCP_CONFIRMATION=elicit). Not executed.",
       };
     }
-    const answer = await server.server.elicitInput({
-      message: `Graphite: approve this request from the agent's wallet ${guard.publicKey}?\n\n${summary}`,
-      requestedSchema: {
-        type: "object",
-        properties: { approve: { type: "boolean", title: "Approve", description: "Approve this request" } },
-        required: ["approve"],
+    return null;
+  }
+
+  /** The guard's confirmation hook: ask the person about the resolved transaction. */
+  function hook(): { confirm?: (summary: ConfirmationSummary) => Promise<boolean> } {
+    if (options.confirmation === "none") return {};
+    return {
+      confirm: async (summary) => {
+        const answer = await server.server.elicitInput({
+          message: describeForPerson(summary),
+          requestedSchema: {
+            type: "object",
+            properties: { approve: { type: "boolean", title: "Approve", description: "Sign and send this transaction" } },
+            required: ["approve"],
+          },
+        });
+        return answer.action === "accept" && answer.content?.approve === true;
       },
-    });
-    if (answer.action === "accept" && answer.content?.approve === true) return null;
-    return { executed: false, refusedBy: "person", reason: `the person did not approve (${answer.action}). Not executed.` };
+    };
   }
 
   server.registerTool(
@@ -116,10 +174,10 @@ export function createGraphiteMcpServer(guard: GraphiteGuard, options: { confirm
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     },
     async ({ request }) => {
-      const refused = await confirm(`Transfer: ${request}`);
+      const refused = confirmable();
       if (refused) return asContent(refused);
       try {
-        return asContent(toolResultOf(await guard.executeTransfer(request)));
+        return asContent(toolResultOf(await guard.executeTransfer(request, hook())));
       } catch (e) {
         return asContent(toolRefusalOf(e));
       }
@@ -146,10 +204,10 @@ export function createGraphiteMcpServer(guard: GraphiteGuard, options: { confirm
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     },
     async ({ request, route }) => {
-      const refused = await confirm(`Swap: ${request}\nprogram ${route.programId}`);
+      const refused = confirmable();
       if (refused) return asContent(refused);
       try {
-        return asContent(toolResultOf(await guard.executeSwap(request, route satisfies BoundInstructionPayload)));
+        return asContent(toolResultOf(await guard.executeSwap(request, route satisfies BoundInstructionPayload, hook())));
       } catch (e) {
         return asContent(toolRefusalOf(e));
       }
