@@ -46,6 +46,8 @@ fn prefill(dir: &std::path::Path) {
             protocol_name: "System Program".to_string(),
             manifest_version: Some("1.0.0".to_string()),
             approved: i % 3 != 0,
+            decision: None,
+            executable: None,
             confidence: 0.61,
             risk_status: "Clear".to_string(),
             policy_verdict: "Approved".to_string(),

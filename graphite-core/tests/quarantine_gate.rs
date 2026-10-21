@@ -179,7 +179,7 @@ fn quarantine_survives_a_restart() {
     std::fs::create_dir_all(&dir).unwrap();
 
     {
-        let mut core = GraphiteCore::with_data_dir(dir.clone());
+        let mut core = GraphiteCore::try_with_data_dir(dir.clone()).expect("data dir");
         core.seed_behavior(behavior("1.0.0")).unwrap();
         assert!(
             core.verify(&transfer()).unwrap().approved,
@@ -188,7 +188,7 @@ fn quarantine_survives_a_restart() {
         core.quarantine_program(SYSTEM_PROGRAM, "incident").unwrap();
     }
 
-    let reloaded = GraphiteCore::with_data_dir(dir.clone());
+    let reloaded = GraphiteCore::try_with_data_dir(dir.clone()).expect("data dir");
     assert_eq!(
         reloaded.quarantined_programs(),
         vec![(SYSTEM_PROGRAM.to_string(), "incident".to_string())]
@@ -200,7 +200,7 @@ fn quarantine_survives_a_restart() {
 
     // And a lift persists too, or recovery would need a hand-edited snapshot.
     reloaded.lift_program_quarantine(SYSTEM_PROGRAM).unwrap();
-    let after_lift = GraphiteCore::with_data_dir(dir.clone());
+    let after_lift = GraphiteCore::try_with_data_dir(dir.clone()).expect("data dir");
     assert!(after_lift.quarantined_programs().is_empty());
     assert!(after_lift.verify(&transfer()).unwrap().approved);
 

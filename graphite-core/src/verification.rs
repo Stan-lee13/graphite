@@ -20,7 +20,7 @@ use crate::rpc_client::SolanaRpcClient;
 use crate::semantic_graph_store::{Behavior, BehaviorEvidence, SemanticGraphStore};
 #[cfg(feature = "rpc")]
 use crate::state_diff::{AccountDelta, AccountSnapshot, DiffProvenance, StateDiff};
-use crate::transaction_builder::{build_transaction, BuiltTransaction, TransactionPlan};
+use crate::transaction_builder::{summarize_instruction, InstructionPlan, InstructionSummary};
 use crate::unknown_protocol_mode::apply_unknown_protocol_ceiling;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -2372,9 +2372,113 @@ fn verification_scope(
     }
 }
 
+/// What a verdict permits a caller to DO with the transaction (Round 30,
+/// G-01). `approved` answers "did the pipeline refuse it"; it never answered
+/// "may this be signed": without an RPC nothing is simulated and an approval
+/// rests on static analysis and earned evidence (`not_simulated`), and a
+/// descriptive verdict binds to no bytes at all. Every consumer that gated on
+/// `approved` alone had to re-derive the difference from `scope`, and one that
+/// did not signed a transaction nothing had executed. This is that
+/// derivation, done once, by the Core.
+///
+/// Only `ExecutableApproved` permits signing. The rule is
+/// [`execution_decision`]; the SDKs recompute it from the same fields and
+/// refuse when they disagree with the server.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionDecision {
+    /// Approved, bound to the exact bytes, simulated by Graphite, nothing
+    /// unobserved beyond the two inherent residuals, no layer failed.
+    ExecutableApproved,
+    /// Approved by the pipeline, but on less than the evidence execution
+    /// needs: descriptive scope, not simulated, no state diff, unresolved
+    /// lookup tables, caller-supplied privileges, or a failed layer report.
+    /// Useful as analysis; never a reason to sign.
+    AnalysisOnly,
+    /// Refused because required evidence could not be obtained (every risk
+    /// finding is `VerificationIncomplete`): the RPC was unavailable, timed
+    /// out or answered incompletely. A retry may succeed — or be refused.
+    Inconclusive,
+    /// Refused on what the pipeline found. The default, so a record with no
+    /// decision is never read as permission.
+    #[default]
+    Blocked,
+}
+
+impl ExecutionDecision {
+    /// The snake_case name on the wire.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ExecutionDecision::ExecutableApproved => "executable_approved",
+            ExecutionDecision::AnalysisOnly => "analysis_only",
+            ExecutionDecision::Inconclusive => "inconclusive",
+            ExecutionDecision::Blocked => "blocked",
+        }
+    }
+}
+
+/// The one rule that decides whether a verdict permits signing (Round 30,
+/// G-01). Read only from fields the verdict carries, so a consumer holding
+/// the JSON can recompute it — the TypeScript and Go SDKs do, and refuse when
+/// the server's `decision` disagrees.
+///
+/// Executable iff ALL of: `approved`; `risk_verdict.status == "Clear"`;
+/// `policy_verdict == "Approved"`; scope `artifact_bound` with
+/// `simulated == true`; every `unobserved_codes` entry inherent
+/// (`program_semantics`, `inner_instructions`) and the codes naming every
+/// `unobserved` entry; no layer `Failed`. Otherwise an approval is
+/// `AnalysisOnly`; a refusal whose risk findings are all
+/// `VerificationIncomplete` is `Inconclusive`; every other refusal is
+/// `Blocked`.
+pub fn execution_decision(result: &VerificationResult) -> ExecutionDecision {
+    if !result.approved {
+        let findings = &result.risk_verdict.findings;
+        return if !findings.is_empty()
+            && findings
+                .iter()
+                .all(|f| f.pattern == "VerificationIncomplete")
+        {
+            ExecutionDecision::Inconclusive
+        } else {
+            ExecutionDecision::Blocked
+        };
+    }
+    let simulated = matches!(
+        result.scope,
+        VerificationScope::ArtifactBound {
+            simulated: true,
+            ..
+        }
+    );
+    let codes = result.scope.unobserved_codes();
+    let executable = result.risk_verdict.status == "Clear"
+        && result.policy_verdict == "Approved"
+        && simulated
+        && codes.len() == result.scope.unobserved().len()
+        && codes.iter().all(UnobservedCode::inherent)
+        && !result
+            .layers
+            .iter()
+            .any(|l| l.status == LayerStatus::Failed);
+    if executable {
+        ExecutionDecision::ExecutableApproved
+    } else {
+        ExecutionDecision::AnalysisOnly
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct VerificationResult {
     pub approved: bool,
+    /// What the caller may do with this verdict (Round 30, G-01). Only
+    /// `executable_approved` permits signing; see [`execution_decision`].
+    /// Absent from a record written before Round 30, and then `blocked`.
+    #[serde(default)]
+    pub decision: ExecutionDecision,
+    /// `decision == executable_approved`, as a boolean for the gate a
+    /// consumer writes. The field to gate signing on — not `approved`.
+    #[serde(default)]
+    pub executable: bool,
     pub confidence: f64,
     pub breakdown: Vec<VerificationBreakdownItem>,
     pub trust_tier: String,
@@ -2388,8 +2492,18 @@ pub struct VerificationResult {
     /// `scope.transaction_sha256` is the full digest of the artifact. Unlike
     /// audit_trail_id (which includes a per-call sequence counter),
     /// content_hash is fully reproducible and satisfies Constitution P2.
+    ///
+    /// Deprecated name (Round 30, R-M10): the value identifies the described
+    /// INSTRUCTION, and a field called "content hash" was read as the
+    /// transaction's identity. `instruction_bind_key` carries the same
+    /// value; this field stays for one minor version.
     pub content_hash: String,
-    pub transaction: BuiltTransaction,
+    /// The same value as `content_hash`, under a name that says what it is:
+    /// the 64-bit key binding audit and lifecycle records to the described
+    /// instruction. The transaction's identity is `scope.transaction_sha256`.
+    #[serde(default)]
+    pub instruction_bind_key: String,
+    pub transaction: InstructionSummary,
     /// What this verdict is bound to, and what it did not observe. See
     /// `VerificationScope` — this is the field that makes Graphite's central
     /// promise checkable by a consumer instead of assumed.
@@ -2420,6 +2534,19 @@ pub struct VerificationResult {
     /// attached.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub program_upgrades: Vec<ProgramUpgrade>,
+}
+
+impl VerificationResult {
+    /// Whether this verdict permits signing: the recorded `decision` is
+    /// `executable_approved`, `executable` says so, and recomputing
+    /// [`execution_decision`] from the verdict's own fields agrees. A verdict
+    /// deserialized from elsewhere and edited — `executable: true` beside a
+    /// `not_simulated` residual — is not executable.
+    pub fn is_executable(&self) -> bool {
+        self.decision == ExecutionDecision::ExecutableApproved
+            && self.executable
+            && execution_decision(self) == ExecutionDecision::ExecutableApproved
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -3111,6 +3238,14 @@ impl GraphiteCore {
     /// snapshot holds without a word and lets the next snapshot overwrite the
     /// evidence — the outcome `open_data_dir` has refused since Round 19
     /// (F-19-12), while this doc called starting fresh "fail-closed".
+    ///
+    /// Deprecated (Round 30): a panic is the wrong answer to a bad data
+    /// directory in anything but a test. No server or CLI path calls this;
+    /// they use `open_data_dir`, which also takes the directory lock.
+    #[deprecated(
+        since = "0.3.0-beta",
+        note = "panics on a corrupt or unreadable snapshot; use try_with_data_dir (or open_data_dir, which also locks the directory)"
+    )]
     pub fn with_data_dir(data_dir: PathBuf) -> Self {
         Self::try_with_data_dir(data_dir).unwrap_or_else(|e| panic!("{e}"))
     }
@@ -3479,6 +3614,20 @@ impl GraphiteCore {
     #[cfg(feature = "rpc")]
     pub fn requires_independent_witness(&self) -> bool {
         self.require_independent_witness
+    }
+
+    /// Whether an RPC client is attached — whether any verdict can be
+    /// `executable_approved` (Round 30, G-01). Without one nothing is
+    /// simulated, so every approval is `analysis_only`.
+    #[cfg(feature = "rpc")]
+    pub fn has_rpc_client(&self) -> bool {
+        self.rpc_client.is_some()
+    }
+
+    /// Without the `rpc` feature there is never a client.
+    #[cfg(not(feature = "rpc"))]
+    pub fn has_rpc_client(&self) -> bool {
+        false
     }
 
     /// Permit durable-nonce transactions (operator decision, P14).
@@ -6699,7 +6848,7 @@ impl GraphiteCore {
                 .fold_verifier(LayerId::L2InstructionVerification, l2_result, &ctx);
 
         // Step 2: Transaction Construction
-        let transaction = build_transaction(&TransactionPlan {
+        let transaction = summarize_instruction(&InstructionPlan {
             program_id: input.program_id.clone(),
             protocol_version: input.protocol_version.clone(),
             instruction_discriminator: input.instruction_discriminator.clone(),
@@ -9810,14 +9959,18 @@ impl GraphiteCore {
             self.plugins
                 .fold_verifier(LayerId::L8ExecutionVerification, l8_layer_result, &ctx);
 
-        let result = VerificationResult {
+        let mut result = VerificationResult {
             approved,
+            // Set below from the finished verdict, by the one rule.
+            decision: ExecutionDecision::Blocked,
+            executable: false,
             confidence,
             breakdown,
             trust_tier: format!("{:?}", trust_tier),
             risk_verdict: risk_summary.clone(),
             policy_verdict: policy_str.to_string(),
             audit_trail_id: audit_id,
+            instruction_bind_key: content_hash.clone(),
             content_hash,
             transaction,
             // What this verdict is bound to. `rpc_sim_ok` is the honest test for
@@ -9995,6 +10148,11 @@ impl GraphiteCore {
                 ),
             ],
         };
+
+        // Round 30 (G-01): what this verdict permits, decided once, here,
+        // from the finished verdict — never by the caller.
+        result.decision = execution_decision(&result);
+        result.executable = result.decision == ExecutionDecision::ExecutableApproved;
 
         // Analytics observers (read-only, P8): record the completed result to
         // every registered sink. Sink failures are logged, never fatal — the

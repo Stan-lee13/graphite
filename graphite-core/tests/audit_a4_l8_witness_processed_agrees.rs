@@ -143,6 +143,8 @@ async fn a_witness_at_processed_is_not_a_second_source_of_inclusion() {
         protocol_name: "System Program".to_string(),
         manifest_version: Some("1.0.0".to_string()),
         approved: true,
+        decision: None,
+        executable: None,
         confidence: 0.9,
         risk_status: "Clear".to_string(),
         policy_verdict: "Approved".to_string(),

@@ -1415,6 +1415,16 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         );
     }
 
+    // Round 30 (G-01): without an RPC nothing is simulated, so no verdict
+    // this node returns can permit signing. Said once, loudly, at start —
+    // and on /health as `verification_mode` — so an operator who forgot
+    // GRAPHITE_RPC_URL learns it from the log rather than from a caller.
+    if !core.has_rpc_client() {
+        tracing_server_error(
+            "ANALYSIS-ONLY MODE: GRAPHITE_RPC_URL is not set, so no transaction is simulated and EVERY verdict is `decision: analysis_only` (`executable: false`) — approvals here are analysis, never permission to sign. Set GRAPHITE_RPC_URL for executable verdicts.",
+        );
+    }
+
     let api_key = match &posture {
         AuthPosture::ApiKey(key) => Some(key.clone()),
         AuthPosture::DevModeLoopback => None,
@@ -2383,8 +2393,8 @@ fn classify_error(e: &VerificationError) -> VerificationHttpError {
                 program, disc
             ))
         }
-        // Every way `build_transaction` can fail is caused by the caller's own
-        // input — `TransactionBuilderError` is exactly {EmptyProgramId,
+        // Every way `summarize_instruction` can fail is caused by the caller's own
+        // input — `InstructionPlanError` is exactly {EmptyProgramId,
         // MissingAccounts, InvalidDiscriminator, InvalidPubkey,
         // InvalidProgramId}, and the builder is a pure function of the plan it
         // is handed. There is no server-side failure mode to report, so the
@@ -2566,13 +2576,14 @@ async fn verify_handler(
     match state.core.verify_async(&input).await {
         Ok(result) => {
             tracing_log(&format!(
-                "verify: {} | {} | confidence={:.2} | {}",
+                "verify: {} | {} ({}) | confidence={:.2} | {}",
                 input.program_id,
                 if result.approved {
                     "APPROVED"
                 } else {
                     "BLOCKED"
                 },
+                result.decision.as_str(),
                 result.confidence,
                 result.audit_trail_id
             ));
@@ -2627,6 +2638,8 @@ async fn verify_handler(
                         protocol_name: result.protocol_name.clone(),
                         manifest_version: result.manifest_version.clone(),
                         approved: result.approved,
+                        decision: Some(result.decision.as_str().to_string()),
+                        executable: Some(result.executable),
                         confidence: result.confidence,
                         risk_status: result.risk_verdict.status.clone(),
                         policy_verdict: result.policy_verdict.clone(),
@@ -2832,6 +2845,16 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
         "degraded_reasons": reasons,
         "service": "graphite-core",
         "version": env!("CARGO_PKG_VERSION"),
+        // Round 30 (G-01): `analysis_only` when no RPC is attached — every
+        // verdict from this node is then `executable: false`. Not a
+        // degradation (it is how the node was configured), but the first
+        // thing an integrator needs to know.
+        "verification_mode": if state.core.has_rpc_client() {
+            "executable"
+        } else {
+            "analysis_only"
+        },
+        "rpc_attached": state.core.has_rpc_client(),
         "audit": match audit {
             Some(h) => serde_json::json!({
                 "enabled": true,
@@ -4514,6 +4537,10 @@ async fn confidence_history_handler(State(state): State<AppState>) -> Json<serde
                 "timestamp": r.timestamp,
                 "confidence": r.confidence,
                 "approved": r.approved,
+                // Round 30: null on rows written before the decision existed
+                // ("not reported", never read as either answer).
+                "decision": r.decision,
+                "executable": r.executable,
                 "program_id": r.program_id,
                 "audit_trail_id": r.audit_trail_id,
                 "transaction_sha256": r.transaction_sha256,
@@ -4548,6 +4575,8 @@ async fn policy_violations_handler(State(state): State<AppState>) -> Json<serde_
                 "confidence": r.confidence,
                 "policy_verdict": r.policy_verdict,
                 "risk_status": r.risk_status,
+                "decision": r.decision,
+                "executable": r.executable,
                 "audit_trail_id": r.audit_trail_id,
                 "transaction_sha256": r.transaction_sha256,
                 "manifest_version": r.manifest_version,
@@ -5201,7 +5230,8 @@ mod tests {
         ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let mut core = crate::verification::GraphiteCore::with_data_dir(dir.clone());
+        let mut core =
+            crate::verification::GraphiteCore::try_with_data_dir(dir.clone()).expect("data dir");
         // Earned evidence for the System Program (battle-tested tier + baseline).
         use crate::semantic_graph_store::{Behavior, BehaviorEvidence};
         use crate::simulation_integrity::ComputeBaseline;
@@ -5482,6 +5512,78 @@ mod tests {
         );
     }
 
+    /// Round 30 (G-01): a node without an RPC says on /health that every
+    /// verdict it gives is analysis only, each /verify answer carries its
+    /// decision, and the decision is on the trail and the dashboard series
+    /// — null for a row written before it existed ("not reported").
+    #[tokio::test]
+    async fn the_decision_reaches_health_the_response_and_the_trail() {
+        let (state, dir) = test_state();
+        assert!(!state.core.has_rpc_client(), "test_state attaches no RPC");
+        let log = state.audit.clone().unwrap();
+        assert!(log.append(&AuditRecord {
+            event_type: LifecycleEvent::Verification,
+            timestamp: crate::durable::now_utc_rfc3339(),
+            audit_trail_id: "gr-old".to_string(),
+            content_hash: "h-old".to_string(),
+            transaction_sha256: None,
+            program_id: "11111111111111111111111111111111".to_string(),
+            instruction_name: "transfer".to_string(),
+            protocol_name: "System Program".to_string(),
+            manifest_version: None,
+            approved: true,
+            decision: None,
+            executable: None,
+            confidence: 0.9,
+            risk_status: "Clear".to_string(),
+            policy_verdict: "Approved".to_string(),
+            l3_status: "inconclusive".to_string(),
+            l8_status: "inconclusive".to_string(),
+            wallet_profile: None,
+        }));
+        let app = build_app(state, vec![]);
+        let (_, health) = get_json(&app, "/health").await;
+        assert_eq!(health["verification_mode"], "analysis_only");
+        assert_eq!(health["rpc_attached"], false);
+
+        let input: serde_json::Value =
+            serde_json::from_str(include_str!("../../examples/verify-input.json"))
+                .expect("the committed example parses");
+        let (status, body) = post_json(&app, "/verify", None, input).await;
+        assert_eq!(status, axum::http::StatusCode::OK, "{body}");
+        assert_eq!(body["executable"], false, "no RPC: nothing is executable");
+        let decision = body["decision"].as_str().expect("a decision").to_string();
+        assert_ne!(decision, "executable_approved");
+        assert_eq!(body["instruction_bind_key"], body["content_hash"]);
+
+        let rows = log.read_tail_filtered(10, AuditSelector::All).0;
+        let row = rows
+            .iter()
+            .find(|r| r.audit_trail_id == body["audit_trail_id"].as_str().unwrap())
+            .expect("the verdict is on the trail");
+        assert_eq!(row.decision.as_deref(), Some(decision.as_str()));
+        assert_eq!(row.executable, Some(false));
+
+        let (_, history) = get_json(&app, "/api/confidence-history").await;
+        let series = history["series"].as_array().unwrap();
+        assert_eq!(
+            series[0]["decision"],
+            decision.as_str(),
+            "most recent first"
+        );
+        assert_eq!(series[0]["executable"], false);
+        assert!(
+            series[1]["decision"].is_null() && series[1]["executable"].is_null(),
+            "a row from before Round 30 is not reported, never read as an answer: {}",
+            series[1]
+        );
+        if decision == "blocked" {
+            let (_, violations) = get_json(&app, "/api/policy-violations").await;
+            assert_eq!(violations["violations"][0]["decision"], "blocked");
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     async fn get_text(app: &Router, path: &str) -> (axum::http::StatusCode, String) {
         use axum::body::Body;
         use tower::ServiceExt;
@@ -5612,7 +5714,8 @@ mod tests {
             vec![(SYSTEM.to_string(), "GHSA-2026-0001".to_string())]
         );
         // ...and on disk, so a restart does not silently restore the program.
-        let reloaded = crate::verification::GraphiteCore::with_data_dir(dir.clone());
+        let reloaded =
+            crate::verification::GraphiteCore::try_with_data_dir(dir.clone()).expect("data dir");
         assert_eq!(reloaded.quarantined_programs().len(), 1);
 
         // Visible through the listing.
@@ -5696,7 +5799,8 @@ mod tests {
             vec![(SYSTEM.to_string(), "GHSA-2026-0002".to_string())],
             "the lift was not applied"
         );
-        let reloaded = crate::verification::GraphiteCore::with_data_dir(dir.clone());
+        let reloaded =
+            crate::verification::GraphiteCore::try_with_data_dir(dir.clone()).expect("data dir");
         assert_eq!(
             reloaded.quarantined_programs().len(),
             1,
@@ -6115,6 +6219,8 @@ mod tests {
             protocol_name: "System Program".to_string(),
             manifest_version: Some("1.0.0".to_string()),
             approved: true,
+            decision: None,
+            executable: None,
             confidence: 0.9,
             risk_status: "Clear".to_string(),
             policy_verdict: "Approved".to_string(),
@@ -6133,6 +6239,8 @@ mod tests {
             protocol_name: "System Program".to_string(),
             manifest_version: Some("1.0.0".to_string()),
             approved: false,
+            decision: None,
+            executable: None,
             confidence: 0.3,
             risk_status: "Blocked".to_string(),
             policy_verdict: "RejectedBelowThreshold".to_string(),
@@ -6170,6 +6278,8 @@ mod tests {
             protocol_name: "Jupiter DCA".to_string(),
             manifest_version: None,
             approved: false,
+            decision: None,
+            executable: None,
             confidence: 0.4,
             risk_status: "Blocked".to_string(),
             policy_verdict: "RejectedRiskEngineBlock".to_string(),
@@ -6222,6 +6332,8 @@ mod tests {
                 protocol_name: "System Program".to_string(),
                 manifest_version: None,
                 approved: true,
+                decision: None,
+                executable: None,
                 confidence: 0.9,
                 risk_status: "Clear".to_string(),
                 policy_verdict: "Approved".to_string(),
@@ -6356,8 +6468,8 @@ mod tests {
     // "invalid discriminator" while `transaction_builder` emitted "instruction
     // discriminator is invalid hex".
 
-    /// Every `TransactionBuilderError` variant, driven through the real
-    /// `build_transaction` and the real classifier.
+    /// Every `InstructionPlanError` variant, driven through the real
+    /// `summarize_instruction` and the real classifier.
     ///
     /// This is the guard against the same drift returning. The builder consumes
     /// only the caller's plan, so each of these is a client error; if a future
@@ -6365,7 +6477,7 @@ mod tests {
     /// forces that to be a decision rather than an accident.
     #[test]
     fn every_transaction_builder_failure_is_a_client_error() {
-        use crate::transaction_builder::{build_transaction, TransactionPlan};
+        use crate::transaction_builder::{summarize_instruction, InstructionPlan};
         use crate::verification::VerificationError;
 
         let account = |a: &str| crate::account_resolution::ResolvedAccount {
@@ -6384,10 +6496,10 @@ mod tests {
         let ok_account = account("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU");
         let system = "11111111111111111111111111111111";
 
-        let cases: Vec<(&str, TransactionPlan)> = vec![
+        let cases: Vec<(&str, InstructionPlan)> = vec![
             (
                 "EmptyProgramId",
-                TransactionPlan {
+                InstructionPlan {
                     program_id: String::new(),
                     instruction_discriminator: "02000000".to_string(),
                     resolved_accounts: vec![ok_account.clone()],
@@ -6400,7 +6512,7 @@ mod tests {
             ),
             (
                 "MissingAccounts",
-                TransactionPlan {
+                InstructionPlan {
                     program_id: system.to_string(),
                     instruction_discriminator: "02000000".to_string(),
                     resolved_accounts: vec![],
@@ -6413,7 +6525,7 @@ mod tests {
             ),
             (
                 "InvalidDiscriminator (non-hex)",
-                TransactionPlan {
+                InstructionPlan {
                     program_id: system.to_string(),
                     instruction_discriminator: "zzzz".to_string(),
                     resolved_accounts: vec![ok_account.clone()],
@@ -6426,7 +6538,7 @@ mod tests {
             ),
             (
                 "InvalidDiscriminator (odd length)",
-                TransactionPlan {
+                InstructionPlan {
                     program_id: system.to_string(),
                     instruction_discriminator: "abc".to_string(),
                     resolved_accounts: vec![ok_account.clone()],
@@ -6439,7 +6551,7 @@ mod tests {
             ),
             (
                 "InvalidPubkey",
-                TransactionPlan {
+                InstructionPlan {
                     program_id: system.to_string(),
                     instruction_discriminator: "02000000".to_string(),
                     resolved_accounts: vec![account("not-a-valid-base58-pubkey!!")],
@@ -6452,7 +6564,7 @@ mod tests {
             ),
             (
                 "InvalidProgramId",
-                TransactionPlan {
+                InstructionPlan {
                     program_id: "OOO-not-base58".to_string(),
                     instruction_discriminator: "02000000".to_string(),
                     resolved_accounts: vec![ok_account.clone()],
@@ -6466,8 +6578,8 @@ mod tests {
         ];
 
         for (label, plan) in cases {
-            let err =
-                build_transaction(&plan).expect_err(&format!("{label}: the plan must not build"));
+            let err = summarize_instruction(&plan)
+                .expect_err(&format!("{label}: the plan must not build"));
             let classified = classify_error(&VerificationError::TransactionBuild(err.to_string()));
             assert_eq!(
                 classified.status_code(),
@@ -6818,6 +6930,8 @@ mod tests {
             protocol_name: "System Program".to_string(),
             manifest_version: Some("1.0.0".to_string()),
             approved,
+            decision: None,
+            executable: None,
             confidence: if approved { 0.9 } else { 0.3 },
             risk_status: "Clear".to_string(),
             policy_verdict: if approved { "Approved" } else { "Rejected" }.to_string(),

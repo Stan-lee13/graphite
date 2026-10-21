@@ -307,6 +307,12 @@ mod tests {
         VerificationResult {
             program_upgrades: Vec::new(),
             approved,
+            decision: if approved {
+                crate::verification::ExecutionDecision::AnalysisOnly
+            } else {
+                crate::verification::ExecutionDecision::Blocked
+            },
+            executable: false,
             confidence: 0.7,
             breakdown: vec![],
             trust_tier: "OfficialManifest".to_string(),
@@ -329,7 +335,8 @@ mod tests {
             },
             audit_trail_id: "gr-abc".to_string(),
             content_hash: "hash-abc".to_string(),
-            transaction: crate::transaction_builder::BuiltTransaction {
+            instruction_bind_key: "hash-abc".to_string(),
+            transaction: crate::transaction_builder::InstructionSummary {
                 program_id: "11111111111111111111111111111111".to_string(),
                 protocol_version: "1.0.0".to_string(),
                 instruction_name: "Transfer".to_string(),
@@ -338,7 +345,7 @@ mod tests {
                 account_count: 2,
                 signer_count: 1,
                 writable_count: 1,
-                compute_budget_units: 0,
+                compute_units_estimate: 0,
                 accounts: vec![],
                 data_hex: "".to_string(),
                 data_len: 0,

@@ -47,6 +47,16 @@ func approvedMap(t *testing.T) map[string]any {
 		"unobserved":         []any{"program semantics", "inner instructions"},
 		"unobserved_codes":   []any{"program_semantics", "inner_instructions"},
 	}
+	// Round 30: an approval that is simulated, bound and with nothing but the
+	// inherent residuals is executable — once no layer reports failed (the
+	// sample is a policy refusal, so its L6 did).
+	for _, l := range m["layers"].([]any) {
+		layer := l.(map[string]any)
+		if layer["status"] == "failed" {
+			layer["status"], layer["passed"] = "passed", true
+		}
+	}
+	m["decision"], m["executable"] = "executable_approved", true
 	return m
 }
 

@@ -26,28 +26,26 @@
 //	    return fmt.Errorf("graphite verification unavailable: %w", err)
 //	}
 //
-//	// Approved is the only field carrying a DECISION — Confidence,
-//	// PolicyVerdict and RiskVerdict are evidence for audit and explanation,
-//	// never a gate.
-//	if !result.Approved {
-//	    return fmt.Errorf("blocked by Graphite: %s", result.Summary)
+//	// IsExecutable is the gate (Round 30, G-01). Approved says the pipeline
+//	// did not refuse; it never said the transaction may be signed — a Core
+//	// without an RPC simulates nothing and its approvals carry
+//	// not_simulated. IsExecutable recomputes the Core's rule from the
+//	// verdict (approved, artifact-bound, simulated, nothing unobserved but
+//	// the two inherent residuals, no failed layer) and requires the
+//	// server's Decision to agree. Confidence, PolicyVerdict and RiskVerdict
+//	// are evidence for audit and explanation, never a gate.
+//	if !result.IsExecutable() {
+//	    return fmt.Errorf("not executable (%s): %s", result.Decision, result.Summary)
 //	}
 //
-//	// Refuse every residual you have not accepted BY NAME (Round 17). An
-//	// artifact-bound approval still lists what Graphite could have observed
-//	// and did not — a simulation that never ran, a lookup table it could
-//	// not resolve. Two codes are inherent to every such verdict and pass;
-//	// everything else is an observation that did not happen. `accepted` is
-//	// the deployment's own list (the bridge reads GRAPHITE_ACCEPT_UNOBSERVED).
-//	codes, ok := result.NonInherentUnobserved()
-//	if !ok {
-//	    return fmt.Errorf("server reported residuals without codes; refusing")
-//	}
-//	for _, c := range codes {
-//	    if !accepted[c] {
-//	        return fmt.Errorf("residual %q not accepted by this deployment; refusing to sign", c)
-//	    }
-//	}
+//	// A deployment that has deliberately accepted a residual BY NAME (the
+//	// bridge reads GRAPHITE_ACCEPT_UNOBSERVED) makes that decision in its
+//	// own code, on an analysis_only approval, and logs it — IsExecutable
+//	// never does:
+//	//
+//	//   codes, ok := result.NonInherentUnobserved()
+//	//   if !ok { return errors.New("residuals without codes; refusing") }
+//	//   for _, c := range codes { if !accepted[c] { return ... } }
 //
 //	// Bind the verdict to the exact transaction. VerifyTransactionDigest
 //	// refuses anything but an approved, artifact-bound verdict (a nil or
@@ -464,20 +462,38 @@ type CpiTraceNode struct {
 
 // VerificationResult is the output of the verification pipeline.
 type VerificationResult struct {
-	Approved         bool                        `json:"approved"`
-	Confidence       float64                     `json:"confidence"`
-	Breakdown        []VerificationBreakdownItem `json:"breakdown"`
-	TrustTier        string                      `json:"trust_tier"`
-	RiskVerdict      RiskVerdictSummary          `json:"risk_verdict"`
-	PolicyVerdict    string                      `json:"policy_verdict"`
-	AuditTrailID     string                      `json:"audit_trail_id"`
-	ContentHash      string                      `json:"content_hash"`
-	Transaction      BuiltTransaction            `json:"transaction"`
-	ResolvedAccounts []ResolvedAccount           `json:"resolved_accounts"`
-	ProtocolName     string                      `json:"protocol_name"`
-	InstructionName  string                      `json:"instruction_name"`
-	ManifestFound    bool                        `json:"manifest_found"`
-	UnknownProtocol  bool                        `json:"unknown_protocol"`
+	// Approved says whether the pipeline refused the transaction. It is NOT
+	// permission to sign: an approval from a node without an RPC was never
+	// simulated, and a descriptive approval binds to no bytes. Gate signing
+	// on IsExecutable.
+	Approved bool `json:"approved"`
+	// Decision is what this verdict permits (Round 30, G-01): one of the
+	// Decision* constants. Only DecisionExecutableApproved permits signing.
+	// Empty from a server older than Round 30.
+	Decision string `json:"decision,omitempty"`
+	// Executable is Decision == DecisionExecutableApproved (Round 30). Nil
+	// from a server older than Round 30.
+	Executable    *bool                       `json:"executable,omitempty"`
+	Confidence    float64                     `json:"confidence"`
+	Breakdown     []VerificationBreakdownItem `json:"breakdown"`
+	TrustTier     string                      `json:"trust_tier"`
+	RiskVerdict   RiskVerdictSummary          `json:"risk_verdict"`
+	PolicyVerdict string                      `json:"policy_verdict"`
+	AuditTrailID  string                      `json:"audit_trail_id"`
+	// ContentHash is deprecated (Round 30, R-M10): read InstructionBindKey
+	// (or BindKey), which carries the same value — a 64-bit key for the
+	// described instruction, not the transaction's identity (that is
+	// Scope.TransactionSHA256).
+	ContentHash string `json:"content_hash"`
+	// InstructionBindKey is ContentHash under the name that says what it is
+	// (Round 30). Empty from a server older than Round 30.
+	InstructionBindKey string            `json:"instruction_bind_key,omitempty"`
+	Transaction        BuiltTransaction  `json:"transaction"`
+	ResolvedAccounts   []ResolvedAccount `json:"resolved_accounts"`
+	ProtocolName       string            `json:"protocol_name"`
+	InstructionName    string            `json:"instruction_name"`
+	ManifestFound      bool              `json:"manifest_found"`
+	UnknownProtocol    bool              `json:"unknown_protocol"`
 	// ManifestVersion is the version label of the protocol manifest this result
 	// was checked against (nil for unknown protocols). Constitution G7 — lets a
 	// consumer confirm which manifest version produced the verification.
@@ -625,6 +641,100 @@ func (r *VerificationResult) NonInherentUnobserved() (codes []string, ok bool) {
 func (r *VerificationResult) IsArtifactBound() bool {
 	return r != nil && r.Scope != nil && r.Scope.Kind == "artifact_bound" &&
 		isLowerHex64(r.Scope.TransactionSHA256)
+}
+
+// The execution decisions (Round 30, G-01). Mirrors ExecutionDecision in
+// graphite-core/src/verification.rs and the schema's enum.
+const (
+	DecisionExecutableApproved = "executable_approved"
+	DecisionAnalysisOnly       = "analysis_only"
+	DecisionInconclusive       = "inconclusive"
+	DecisionBlocked            = "blocked"
+)
+
+// ExecutionDecisions lists every decision, in the Core's declaration order.
+var ExecutionDecisions = []string{
+	DecisionExecutableApproved, DecisionAnalysisOnly, DecisionInconclusive, DecisionBlocked,
+}
+
+// ComputeExecutionDecision recomputes the Core's execution-decision rule from
+// the verdict's own fields (Round 30, G-01; execution_decision in
+// graphite-core/src/verification.rs). Executable only when ALL hold:
+// approved; risk Clear; policy "Approved"; scope artifact_bound with a digest
+// and Simulated; UnobservedCodes present, naming every Unobserved entry, and
+// all inherent; layers reported and none "failed". Otherwise an approval is
+// analysis_only; a refusal whose findings are all VerificationIncomplete is
+// inconclusive; every other refusal is blocked. Missing fields never make a
+// verdict executable.
+func (r *VerificationResult) ComputeExecutionDecision() string {
+	if r == nil {
+		return DecisionBlocked
+	}
+	if !r.Approved {
+		f := r.RiskVerdict.Findings
+		if len(f) == 0 {
+			return DecisionBlocked
+		}
+		for _, x := range f {
+			if x.Pattern != "VerificationIncomplete" {
+				return DecisionBlocked
+			}
+		}
+		return DecisionInconclusive
+	}
+	executable := r.RiskVerdict.Status == "Clear" && r.PolicyVerdict == "Approved" &&
+		r.IsArtifactBound() && r.Scope.Simulated &&
+		r.Scope.UnobservedCodes != nil && len(r.Scope.UnobservedCodes) == len(r.Scope.Unobserved) &&
+		r.Layers != nil
+	if executable {
+		for _, c := range r.Scope.UnobservedCodes {
+			if !IsInherentUnobserved(c) {
+				executable = false
+			}
+		}
+		for _, l := range r.Layers {
+			if l.Status == "failed" {
+				executable = false
+			}
+		}
+	}
+	if executable {
+		return DecisionExecutableApproved
+	}
+	return DecisionAnalysisOnly
+}
+
+// IsExecutable reports whether this verdict permits signing — the ONE gate an
+// execution path should use (Round 30, G-01), not Approved.
+//
+// It recomputes the Core's rule and requires the server to agree: a server
+// that sent a decision must say executable_approved with executable true AND
+// the recomputation must agree; a decision this SDK does not know is not
+// executable; a verdict with neither field (a server older than Round 30) is
+// judged by the recomputation alone, which is never looser than the server.
+func (r *VerificationResult) IsExecutable() bool {
+	if r == nil {
+		return false
+	}
+	local := r.ComputeExecutionDecision()
+	if r.Decision == "" && r.Executable == nil {
+		return local == DecisionExecutableApproved
+	}
+	return r.Decision == DecisionExecutableApproved && r.Executable != nil && *r.Executable &&
+		local == DecisionExecutableApproved
+}
+
+// BindKey is the key binding audit and lifecycle records to the described
+// instruction (Round 30, R-M10): InstructionBindKey, or the deprecated
+// ContentHash from an older server.
+func (r *VerificationResult) BindKey() string {
+	if r == nil {
+		return ""
+	}
+	if r.InstructionBindKey != "" {
+		return r.InstructionBindKey
+	}
+	return r.ContentHash
 }
 
 // Unobserved returns everything Graphite did not independently observe. Empty
@@ -876,6 +986,10 @@ type HealthResponse struct {
 	Version         string   `json:"version"`
 	Degraded        bool     `json:"degraded"`
 	DegradedReasons []string `json:"degraded_reasons,omitempty"`
+	// VerificationMode is "analysis_only" when the Core has no RPC — every
+	// verdict from it is then not executable — and "executable" otherwise
+	// (Round 30). Empty from an older server.
+	VerificationMode string `json:"verification_mode,omitempty"`
 }
 
 // Health checks if the Core server is running.

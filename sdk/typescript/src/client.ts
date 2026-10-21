@@ -8,7 +8,13 @@ import type {
   VerificationInput,
   VerificationResult,
 } from "./types.js";
-import { ACCOUNT_IDENTITIES, INCLUSION_ASSURANCES, UNOBSERVED_CODES } from "./types.js";
+import {
+  ACCOUNT_IDENTITIES,
+  computeExecutionDecision,
+  EXECUTION_DECISIONS,
+  INCLUSION_ASSURANCES,
+  UNOBSERVED_CODES,
+} from "./types.js";
 
 export interface GraphiteClientOptions {
   baseUrl: string;
@@ -41,6 +47,56 @@ export interface GraphiteClientOptions {
 
 /** The largest delay a Node timer honours; above it the timer fires at once. */
 export const MAX_TIMEOUT_MS = 2_147_483_647;
+
+/**
+ * The largest 2xx body this client reads (Round 30, K-03): 16 MiB, the Go
+ * SDK's bound. `response.json()` read whatever the server — or anything
+ * between it and the client — sent, into memory, before a single check ran;
+ * the agent guard bounded its reads (32 MiB) and this client did not.
+ */
+export const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
+
+/** Error bodies are read only for their `error` text. */
+const MAX_ERROR_BODY_BYTES = 64 * 1024;
+
+/** A response body larger than the bound; the read was cancelled. */
+export class ResponseTooLargeError extends Error {}
+
+/**
+ * Read a response body as JSON, refusing more than `maxBytes`: a declared
+ * `content-length` over the bound is refused before reading, and the stream
+ * is cancelled the moment the running count passes it, so an endless or
+ * lying body never accumulates past the bound.
+ */
+export async function readJsonBounded(response: Response, maxBytes: number): Promise<unknown> {
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    await response.body?.cancel().catch(() => {});
+    throw new ResponseTooLargeError(`Graphite's response declares ${declared} bytes, over the ${maxBytes}-byte bound`);
+  }
+  const body = response.body;
+  if (body === null) return JSON.parse("");
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw new ResponseTooLargeError(`Graphite's response exceeded the ${maxBytes}-byte bound; the read was cancelled`);
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    all.set(c, offset);
+    offset += c.byteLength;
+  }
+  return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(all));
+}
 
 /**
  * The configured timeout, or a thrown error for one that is not a timeout.
@@ -364,7 +420,46 @@ export function validateVerificationResult(value: unknown): string | null {
   if (v.scope === undefined) {
     return "`scope` is missing: the verdict does not say what it is bound to";
   }
-  return scopeViolation(v.scope);
+  const scope = scopeViolation(v.scope);
+  if (scope !== null) return scope;
+  return decisionViolation(v);
+}
+
+/**
+ * Round 30 (G-01): `decision`, `executable` and `instruction_bind_key`.
+ * Optional, so a server older than Round 30 still validates (and is then
+ * judged by `isExecutable`'s local recomputation alone); when present they
+ * must be known, consistent with each other and with `approved`, and a
+ * server that claims `executable` must agree with the rule recomputed from
+ * the verdict's own fields. A server that is stricter than the rule (says
+ * `analysis_only` where the fields would allow more) is accepted: that is
+ * never the dangerous direction.
+ */
+function decisionViolation(v: Record<string, unknown>): string | null {
+  if (v.instruction_bind_key !== undefined) {
+    if (!isString(v.instruction_bind_key) || v.instruction_bind_key !== v.content_hash) {
+      return "`instruction_bind_key` must be a string equal to `content_hash`";
+    }
+  }
+  if (v.decision === undefined && v.executable === undefined) return null;
+  if (!(EXECUTION_DECISIONS as readonly unknown[]).includes(v.decision)) {
+    return `\`decision\` must be one of ${EXECUTION_DECISIONS.join(", ")}`;
+  }
+  if (!isBoolean(v.executable)) return "`executable` must be a boolean beside `decision`";
+  if (v.executable !== (v.decision === "executable_approved")) {
+    return "`executable` must be true exactly when `decision` is \"executable_approved\"";
+  }
+  const approvals: readonly unknown[] = ["executable_approved", "analysis_only"];
+  if (v.approved !== approvals.includes(v.decision)) {
+    return "`decision` contradicts `approved`";
+  }
+  if (
+    v.executable === true &&
+    computeExecutionDecision(v as unknown as VerificationResult) !== "executable_approved"
+  ) {
+    return "`executable` is true but the verdict's own fields do not permit execution (not artifact-bound and simulated, a non-inherent residual, or a failed layer)";
+  }
+  return null;
 }
 
 const CALLER_LIFECYCLE_EVENTS: readonly string[] = ["signing", "submission", "confirmation", "finalization"];
@@ -652,8 +747,9 @@ export class GraphiteClient {
   private async accept<T>(response: Response, what: string, check: (v: unknown) => string | null): Promise<T> {
     let raw: unknown;
     try {
-      raw = await response.json();
-    } catch {
+      raw = await readJsonBounded(response, MAX_RESPONSE_BYTES);
+    } catch (e) {
+      if (e instanceof ResponseTooLargeError) throw e;
       throw new Error(`Graphite ${what} returned ${response.status} with a body that is not JSON`);
     }
     const violation = check(raw);
@@ -671,7 +767,7 @@ export class GraphiteClient {
     });
 
     if (!response.ok) {
-      const errorBody = (await response.json().catch(() => ({}))) as { error?: unknown };
+      const errorBody = (await readJsonBounded(response, MAX_ERROR_BODY_BYTES).catch(() => ({}))) as { error?: unknown };
       throw new Error(
         `Graphite verification failed: ${response.status} ${response.statusText} — ${
           typeof errorBody?.error === "string" ? errorBody.error : ""
@@ -700,7 +796,7 @@ export class GraphiteClient {
       body: JSON.stringify(event),
     });
     if (!response.ok) {
-      const raw = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      const raw = (await readJsonBounded(response, MAX_ERROR_BODY_BYTES).catch(() => ({}))) as Record<string, unknown>;
       throw new Error(
         `Graphite did not record the ${event.event_type} event: ${response.status} ${response.statusText} — ${
           typeof raw?.error === "string" ? raw.error : "no detail"
@@ -728,7 +824,7 @@ export class GraphiteClient {
       body: JSON.stringify(input),
     });
     if (!response.ok) {
-      const raw = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      const raw = (await readJsonBounded(response, MAX_ERROR_BODY_BYTES).catch(() => ({}))) as Record<string, unknown>;
       throw new Error(
         `Graphite execution check failed: ${response.status} ${response.statusText} — ${
           typeof raw?.error === "string" ? raw.error : "no detail"

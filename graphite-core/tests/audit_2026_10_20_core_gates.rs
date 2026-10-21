@@ -202,6 +202,7 @@ fn temp_dir(tag: &str) -> std::path::PathBuf {
 /// while its doc called that fail-closed. It refuses now, like
 /// `open_data_dir`.
 #[test]
+#[allow(deprecated)] // the panicking constructor is what this pins
 fn a_corrupt_snapshot_is_refused_not_replaced() {
     let dir = temp_dir("corrupt");
     std::fs::write(dir.join("semantic_graph.json"), "{ not json").unwrap();

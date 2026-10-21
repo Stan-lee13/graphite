@@ -14,7 +14,13 @@ Breaking for a caller (`schemas/proposed-intent-v1.json`, which the caller write
 
 - The request parser refuses unknown fields in every nested request object, not only at the top level (Round 29, audit 2026-10-20): `proposed_intent`, `wallet_profile`, each of `transaction_instructions`, `cpi_trace` nodes, `real_account_metas`, `behavior_evidence`, and a supplied `state_diff` with its account deltas and snapshots. A misspelt field used to be dropped silently — a typo'd `extractedParameters` switched the FakeSwap output check off.
 
-Not breaking for a consumer (`schemas/verification-result-v1.json`, which Graphite writes): every change since the tag adds a field, narrows a type (`policy_verdict` is always a string) or requires a field that was always present. Nothing was removed or widened.
+Breaking for a consumer that validates closed objects (`schemas/verification-result-v1.json`, which Graphite writes; Round 30):
+
+- `verification-result-v1.json:decision` and `verification-result-v1.json:executable` are added to the closed result object (G-01). `decision` is `executable_approved`, `analysis_only`, `inconclusive` or `blocked`; only `executable_approved` (`executable: true`) permits signing. `approved` keeps its meaning — the pipeline did not refuse — and was never permission to sign: without an RPC nothing is simulated.
+- `verification-result-v1.json:instruction_bind_key` is added beside `content_hash`, with the same value (R-M10). `content_hash` is deprecated and stays for one minor version.
+- `graphite verify` and `graphite explain` exit 3, not 0, on an approval that is `analysis_only` (they attach no RPC, so that is every approval they give); 0 now means `executable_approved`.
+
+Otherwise not breaking for a consumer (`schemas/verification-result-v1.json`, which Graphite writes): every change since the tag adds a field, narrows a type (`policy_verdict` is always a string) or requires a field that was always present. Nothing was removed or widened.
 
 ## [Round 29 — the audit of 2026-10-20, remediated] — 2026-10-21
 

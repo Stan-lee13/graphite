@@ -73,13 +73,19 @@ pub use state_diff::{
     check_state_diff, AccountDelta, AccountSnapshot, DeclaredEffects, DiffProvenance, DiffSeverity,
     StateDiff, StateDiffCheck, StateDiffFinding, StateDiffReport,
 };
+#[allow(deprecated)]
 pub use transaction_builder::{build_transaction, BuiltTransaction, TransactionPlan};
+pub use transaction_builder::{
+    summarize_instruction, InstructionPlan, InstructionPlanError, InstructionSummary,
+    InstructionSummaryAccount,
+};
 pub use tx_pattern_analysis::{
     analyze_cpi_trace, analyze_multi_instruction, CpiTraceNode, PatternFinding, PatternSeverity,
     TransactionInstruction,
 };
 pub use verification::{
-    GraphiteCore, ProposedIntent, VerificationError, VerificationInput, VerificationResult,
+    execution_decision, ExecutionDecision, GraphiteCore, ProposedIntent, VerificationError,
+    VerificationInput, VerificationResult,
 };
 
 #[cfg(feature = "server")]

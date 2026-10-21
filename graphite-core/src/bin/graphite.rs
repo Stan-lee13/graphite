@@ -19,7 +19,10 @@ enum Commands {
     /// Reads the server's data directory, registry state and boundary
     /// settings (GRAPHITE_WALLET_PROFILE, GRAPHITE_ALLOW_PERMISSIVE_PROFILES,
     /// GRAPHITE_PLUGINS_DIR, GRAPHITE_ALLOW_DURABLE_NONCE,
-    /// GRAPHITE_QUARANTINE_ON_UPGRADE). Exits 1 when the transaction is blocked.
+    /// GRAPHITE_QUARANTINE_ON_UPGRADE). Exits 0 only when the verdict is
+    /// `executable_approved`, 1 when it is refused, 3 when it is approved
+    /// but `analysis_only` (this command attaches no RPC, so nothing it
+    /// verifies is simulated).
     Verify {
         /// Path to JSON verification input
         #[arg(short, long)]
@@ -97,7 +100,7 @@ enum Commands {
     /// Verify a transaction and print WHY, layer by layer, instead of JSON
     ///
     /// Same pipeline and same verdict as `verify` — a renderer, not a second
-    /// decision path. Exits 1 when the transaction is blocked.
+    /// decision path. Exits as `verify` does: 0 executable, 1 refused, 3 analysis_only.
     Explain {
         /// Path to a VerificationInput JSON file
         #[arg(long)]
