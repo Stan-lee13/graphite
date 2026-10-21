@@ -205,16 +205,17 @@ pub struct Environment {
     pub arch: String,
     pub debug_assertions: bool,
     pub features: Vec<String>,
-    /// `rustc --version` of the toolchain on PATH when the report ran, which
-    /// is not necessarily the one that built this binary.
-    pub rustc_on_path: Option<String>,
 }
 
+/// Which code produced the numbers.
+///
+/// Read from the repository's files, never by running `git`: the Core spawns
+/// no process (`tests/ai_layer_isolation.rs`). Whether the working tree
+/// differs from HEAD is therefore not reported — a release evaluation is run
+/// from a clean checkout of the tag, which is what CI does.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct CodeIdentity {
     pub git_head: Option<String>,
-    /// Tracked files differ from HEAD: the numbers are for uncommitted code.
-    pub git_dirty: Option<bool>,
 }
 
 /// The whole report.
@@ -640,37 +641,63 @@ fn environment() -> Environment {
             features.push(name.to_string());
         }
     }
-    let rustc_on_path = std::process::Command::new("rustc")
-        .arg("--version")
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
     Environment {
         crate_version: env!("CARGO_PKG_VERSION").to_string(),
         os: std::env::consts::OS.to_string(),
         arch: std::env::consts::ARCH.to_string(),
         debug_assertions: cfg!(debug_assertions),
         features,
-        rustc_on_path,
     }
 }
 
 fn code_identity(root: &Path) -> CodeIdentity {
-    let git = |args: &[&str]| {
-        std::process::Command::new("git")
-            .arg("-C")
-            .arg(root)
-            .args(args)
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-    };
     CodeIdentity {
-        git_head: git(&["rev-parse", "HEAD"]),
-        git_dirty: git(&["status", "--porcelain", "--untracked-files=no"]).map(|s| !s.is_empty()),
+        git_head: git_head(root),
     }
+}
+
+/// The commit `HEAD` names, read from the `.git` directory (or the `.git`
+/// file of a worktree) at or above `root`. `None` when there is none.
+fn git_head(root: &Path) -> Option<String> {
+    let read = |p: &Path| std::fs::read_to_string(p).ok();
+    let dot_git = root
+        .ancestors()
+        .map(|d| d.join(".git"))
+        .find(|p| p.exists())?;
+    let git_dir = if dot_git.is_dir() {
+        dot_git
+    } else {
+        // A worktree: `.git` is a file `gitdir: <path>`.
+        let text = read(&dot_git)?;
+        let target = PathBuf::from(text.strip_prefix("gitdir:")?.trim());
+        if target.is_absolute() {
+            target
+        } else {
+            dot_git.parent()?.join(target)
+        }
+    };
+    // A worktree's refs live in the common directory it names.
+    let common = read(&git_dir.join("commondir"))
+        .map(|c| git_dir.join(c.trim()))
+        .unwrap_or_else(|| git_dir.clone());
+    let head = read(&git_dir.join("HEAD"))?;
+    let head = head.trim();
+    let is_sha = |s: &str| s.len() == 40 && s.chars().all(|c| c.is_ascii_hexdigit());
+    let Some(reference) = head.strip_prefix("ref:").map(str::trim) else {
+        return is_sha(head).then(|| head.to_string());
+    };
+    for dir in [&git_dir, &common] {
+        if let Some(sha) = read(&dir.join(reference)) {
+            let sha = sha.trim();
+            if is_sha(sha) {
+                return Some(sha.to_string());
+            }
+        }
+    }
+    read(&common.join("packed-refs"))?.lines().find_map(|line| {
+        let (sha, name) = line.split_once(' ')?;
+        (name == reference && is_sha(sha)).then(|| sha.to_string())
+    })
 }
 
 #[cfg(test)]

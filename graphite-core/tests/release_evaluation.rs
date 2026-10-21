@@ -265,5 +265,15 @@ fn the_release_evaluation_is_pinned_for_the_committed_inputs() {
     assert!(paths.contains(&"fixtures/corpus"));
     assert!(report.registry.manifests > 0 && report.registry.instructions > 0);
     assert_eq!(report.deterministic_sha256.len(), 64);
+    // The code is named by its commit, read from the checkout's own files.
+    assert!(
+        report
+            .code
+            .git_head
+            .as_deref()
+            .is_some_and(|h| h.len() == 40 && h.chars().all(|c| c.is_ascii_hexdigit())),
+        "{:?}",
+        report.code
+    );
     assert!(!report.sample_bias.is_empty());
 }
