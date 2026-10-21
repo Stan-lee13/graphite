@@ -1,4 +1,5 @@
 {
+ "note": "Record of scripts/onboard_from_inventory.py runs: the manifests THIS tool wrote from programs' own on-chain IDLs (columns: file, program id, name, instructions when written, sampled successful transactions), and the census candidates it skipped with the reason. 55 of the 137 manifests in protocols/ were written by it; the others come from build_manifests.py, build_new_manifests.py, the rebuild_* scripts and hand curation. Instruction counts are as written; merge_onchain_idl.py may have added more since. Refresh without network: python3 graphite-core/scripts/onboard_from_inventory.py --refresh-report",
  "written": [
   [
    "brrr-lend-g3v8wx.json",
@@ -190,13 +191,6 @@
    1
   ],
   [
-   "hylo-router-hyrout.json",
-   "hyRouTRDAgn65xyyJ3L5c4k5SFmSdr3NxDV8Euzjy3f",
-   "Hylo Router (hyRouTRD)",
-   1,
-   1
-  ],
-  [
    "hylo-earn-pool-hystab.json",
    "HysTabVUfmQBFcmzu1ctRd1Y1fxd66RBpboy1bmtDSQQ",
    "Hylo Earn Pool (HysTabVU)",
@@ -292,13 +286,6 @@
    "FUTARELBfJfQ8RDGhg1wdhddq1odMAJUePHFuBYfUxKq",
    "Futarchy (FUTARELB)",
    23,
-   1
-  ],
-  [
-   "burn-and-claim-abrn44.json",
-   "abrn446KXzKZxSowJdHN9XumbGfQi4DdAfWHBT7X81r",
-   "Burn And Claim (abrn446K)",
-   1,
    1
   ],
   [
@@ -398,6 +385,22 @@
    "Locker (LocpQguc)",
    11,
    0
+  ]
+ ],
+ "removed_since_onboarding": [
+  [
+   "hylo-router-hyrout.json",
+   "hyRouTRDAgn65xyyJ3L5c4k5SFmSdr3NxDV8Euzjy3f",
+   "Hylo Router (hyRouTRD)",
+   1,
+   1
+  ],
+  [
+   "burn-and-claim-abrn44.json",
+   "abrn446KXzKZxSowJdHN9XumbGfQi4DdAfWHBT7X81r",
+   "Burn And Claim (abrn446K)",
+   1,
+   1
   ]
  ],
  "skipped": [

@@ -20,12 +20,13 @@ __pycache__/
 # Misc
 .DS_Store
 *.log
+# Every .env variant (.env, .env.local, ...) except the committed template.
 .env*
 !.env.example
 devnet-keypair.json
-.env
-.env.local
 
+# Local tool scratch directories. Neither exists in the tree; the entries
+# stay so a local copy can never be committed by accident.
 # Freebuff app scratch + local build toolchains (never commit)
 .freebuff/
 

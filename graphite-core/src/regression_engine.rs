@@ -70,16 +70,35 @@ pub struct RegressionFixture {
     pub deprecated: bool,
     /// The full verification input so the fixture replays deterministically.
     pub input: VerificationInput,
+    /// Where `expected_approved` came from, when it is not an independent
+    /// label (Round 29, audit 2026-10-20, LC-1). A fixture recorded from the
+    /// pipeline's own verdict on a live transaction carries
+    /// [`LABEL_SELF_RECORDED`]: replaying it checks that the pipeline still
+    /// agrees with itself, not that the verdict was right. `None` for a
+    /// fixture whose label was set by whoever recorded it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_source: Option<String>,
+    /// SHA-256 over everything the fixture asserts — see
+    /// [`RegressionFixture::integrity_hash_of`] (Round 29, audit 2026-10-20,
+    /// RG-1). `None` on a fixture written before the field existed; such a
+    /// fixture is accepted and sealed on load (migrated).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub integrity_hash: Option<String>,
 }
+
+/// The `label_source` of a fixture whose expected outcome is the pipeline's
+/// own verdict at recording time (LC-1).
+pub const LABEL_SELF_RECORDED: &str =
+    "self-recorded: the pipeline's own verdict when the transaction was recorded, not an independent label";
 
 impl RegressionFixture {
     /// Build a fixture, computing `content_hash` deterministically from the
     /// input plus its provenance (sha256 of the canonical JSON serialization
-    /// of input and source).
+    /// of input and source), and sealing it (`integrity_hash`).
     pub fn new(input: VerificationInput, expected_approved: bool, source: &str) -> Self {
         let program_id = input.program_id.clone();
         let content_hash = Self::content_hash(&input, source);
-        Self {
+        let mut fixture = Self {
             program_id,
             version: input.protocol_version.clone(),
             content_hash,
@@ -87,6 +106,80 @@ impl RegressionFixture {
             source: source.to_string(),
             deprecated: false,
             input,
+            label_source: None,
+            integrity_hash: None,
+        };
+        fixture.seal();
+        fixture
+    }
+
+    /// The integrity hash of what this fixture ASSERTS (RG-1): its identity
+    /// (`content_hash`, which covers the input and the provenance) together
+    /// with the program it is filed under, its version, the recorded outcome,
+    /// whether it is deprecated, and where its label came from.
+    ///
+    /// The identity hash alone left the outcome free: `expected_approved`
+    /// (and `deprecated`, which removes a fixture from the pass rate) could
+    /// be edited in a fixture file and it still loaded as the program's
+    /// evidence. The hash is unkeyed, so it makes an edit EVIDENT, not
+    /// impossible — anyone rewriting the file can rewrite the hash too. The
+    /// registry's own corpus is the boundary against a submitter
+    /// (`manifest_registry`, MR-1); this catches corruption and careless
+    /// edits.
+    pub fn integrity_hash_of(&self) -> String {
+        use sha2::{Digest, Sha256};
+        let mut h = Sha256::new();
+        h.update(b"graphite-regression-fixture-integrity-v1\0");
+        for part in [
+            self.program_id.as_str(),
+            self.version.as_str(),
+            self.content_hash.as_str(),
+            if self.expected_approved {
+                "approved"
+            } else {
+                "refused"
+            },
+            if self.deprecated {
+                "deprecated"
+            } else {
+                "active"
+            },
+            self.label_source.as_deref().unwrap_or(""),
+        ] {
+            h.update(part.as_bytes());
+            h.update(b"\0");
+        }
+        hex::encode(h.finalize())
+    }
+
+    /// Record the integrity hash of the fixture as it now stands. Called by
+    /// [`RegressionFixture::new`] and [`RegressionCorpus::add_fixture`], so a
+    /// fixture built or adjusted in code (deprecated before adding, given a
+    /// `label_source`) is sealed with what it says.
+    pub fn seal(&mut self) {
+        self.integrity_hash = Some(self.integrity_hash_of());
+    }
+
+    /// Whether this fixture is what it says it is: filed under its input's
+    /// program, its identity hash recomputes from its input and provenance,
+    /// and — when sealed — its integrity hash recomputes from what it asserts.
+    /// An unsealed fixture (written before RG-1) passes the first two and is
+    /// sealed when added to a corpus.
+    pub fn verify_integrity(&self) -> Result<(), String> {
+        if self.program_id != self.input.program_id
+            || self.content_hash != Self::content_hash(&self.input, &self.source)
+        {
+            return Err(format!(
+                "fixture {} is not what its input says it is: its program_id or its content hash does not match the input it carries",
+                self.content_hash
+            ));
+        }
+        match &self.integrity_hash {
+            Some(recorded) if *recorded != self.integrity_hash_of() => Err(format!(
+                "fixture {} has been altered since it was recorded: its integrity hash does not cover its expected outcome, deprecation or label source as they now stand",
+                self.content_hash
+            )),
+            _ => Ok(()),
         }
     }
 
@@ -129,20 +222,48 @@ impl RegressionCorpus {
     /// both are deliberate silent no-ops (dedupe is the normal corpus
     /// operation; a poison key can never be replayed, so recording it would
     /// just bloat the corpus).
-    pub fn add_fixture(&mut self, fixture: RegressionFixture) {
+    pub fn add_fixture(&mut self, mut fixture: RegressionFixture) {
         // A fixture for a malformed program ID would poison the corpus
         // (same poison-key class as empty/whitespace baselines).
         if fixture.program_id.trim().is_empty() || fixture.input.program_id.trim().is_empty() {
             return;
         }
-        if self
-            .fixtures
-            .iter()
-            .any(|f| f.content_hash == fixture.content_hash)
-        {
+        if self.contains(&fixture.content_hash) {
             return;
         }
+        fixture.seal();
         self.fixtures.push(fixture);
+    }
+
+    /// Whether a fixture with this identity (`content_hash`) is recorded.
+    pub fn contains(&self, content_hash: &str) -> bool {
+        self.fixtures.iter().any(|f| f.content_hash == content_hash)
+    }
+
+    /// Mark the fixture with this identity deprecated, and reseal it — an
+    /// explicit, named act (it leaves the pass-rate denominator), never a
+    /// side effect. Returns whether a fixture was found.
+    pub fn deprecate(&mut self, content_hash: &str) -> bool {
+        match self
+            .fixtures
+            .iter_mut()
+            .find(|f| f.content_hash == content_hash)
+        {
+            Some(f) => {
+                f.deprecated = true;
+                f.seal();
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Check every fixture with [`RegressionFixture::verify_integrity`].
+    pub fn verify_integrity(&self) -> Result<(), RegressionError> {
+        self.fixtures.iter().try_for_each(|f| {
+            f.verify_integrity()
+                .map_err(RegressionError::InvalidFixture)
+        })
     }
 
     /// All fixtures for a program (append-only history for that program).
@@ -223,16 +344,13 @@ impl RegressionCorpus {
                 // program and identity were taken on trust. A file edited
                 // to file a fixture under another program, or to change its
                 // input under the old hash, replayed as the program's own
-                // evidence. Both are recomputed from the input.
-                if f.program_id != f.input.program_id
-                    || f.content_hash != RegressionFixture::content_hash(&f.input, &f.source)
-                {
+                // evidence. Both are recomputed from the input. RG-1 (Round
+                // 29): and so is what it asserts — its outcome, deprecation
+                // and label source — when the fixture is sealed.
+                if let Err(err) = f.verify_integrity() {
                     return Err(RegressionError::CorruptFixture {
                         file: path.display().to_string(),
-                        err: format!(
-                            "fixture {} is not what its input says it is: its program_id or its content hash does not match the input it carries",
-                            f.content_hash
-                        ),
+                        err,
                     });
                 }
                 corpus.add_fixture(f);
@@ -583,6 +701,79 @@ mod tests {
         }
     }
 
+    /// Round 29 (RG-1): the outcome a fixture asserts is covered too. An
+    /// edited `expected_approved` or `deprecated` is refused at load; a
+    /// fixture written before the integrity hash existed still loads and is
+    /// sealed (migrated).
+    #[test]
+    fn an_edited_outcome_or_deprecation_is_refused_and_old_fixtures_migrate() {
+        for (tag, tamper) in [
+            (
+                "outcome",
+                (|f: &mut RegressionFixture| f.expected_approved = !f.expected_approved)
+                    as fn(&mut RegressionFixture),
+            ),
+            ("deprecated", |f: &mut RegressionFixture| {
+                f.deprecated = true
+            }),
+            ("label", |f: &mut RegressionFixture| {
+                f.label_source = Some("independent".into())
+            }),
+        ] {
+            let dir = temp_dir(&format!("rg1-{tag}"));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            let mut fixture = RegressionFixture::new(safe_system_transfer(), true, "recorded");
+            tamper(&mut fixture);
+            std::fs::write(
+                dir.join(format!("{SYSTEM}.json")),
+                serde_json::to_string(&vec![fixture]).unwrap(),
+            )
+            .unwrap();
+            assert!(
+                matches!(
+                    RegressionCorpus::load_from_dir(&dir),
+                    Err(RegressionError::CorruptFixture { .. })
+                ),
+                "{tag}"
+            );
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+
+        // A pre-RG-1 fixture: no integrity hash on disk.
+        let dir = temp_dir("rg1-legacy");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut legacy = serde_json::to_value(RegressionFixture::new(
+            safe_system_transfer(),
+            true,
+            "recorded",
+        ))
+        .unwrap();
+        legacy.as_object_mut().unwrap().remove("integrity_hash");
+        std::fs::write(
+            dir.join(format!("{SYSTEM}.json")),
+            serde_json::to_string(&vec![legacy]).unwrap(),
+        )
+        .unwrap();
+        let loaded = RegressionCorpus::load_from_dir(&dir).expect("old fixtures still load");
+        let f = &loaded.all()[0];
+        assert_eq!(
+            f.integrity_hash.as_deref(),
+            Some(f.integrity_hash_of().as_str())
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // Deprecation in code is explicit and resealed.
+        let mut corpus = RegressionCorpus::new();
+        let fixture = RegressionFixture::new(safe_system_transfer(), true, "recorded");
+        let id = fixture.content_hash.clone();
+        corpus.add_fixture(fixture);
+        assert!(corpus.deprecate(&id));
+        assert!(corpus.all()[0].deprecated);
+        assert!(corpus.verify_integrity().is_ok());
+    }
+
     #[test]
     fn load_missing_directory_errors() {
         assert!(matches!(
@@ -596,14 +787,15 @@ mod tests {
     fn benchmark_seeded_corpus_replays_clean_and_promotes() {
         let core = GraphiteCore::new();
         let corpus = seed_corpus_from_benchmark();
-        // 20 benchmark cases − 2 simulation-baseline-dependent (excluded) = 18.
+        // 24 benchmark cases − 2 simulation-baseline-dependent (excluded) = 22
+        // (Round 29, B-1: four benign shapes added).
         // No content_hash dedupe collapse: the REAL AAT case (pinned mainnet
         // transaction_instructions + CPI trace) is structurally distinct from
         // the SYNTHETIC AAT case.
         assert_eq!(
             corpus.len(),
-            18,
-            "benchmark seed must pin exactly 18 non-duplicate fixtures"
+            22,
+            "benchmark seed must pin exactly 22 non-duplicate fixtures"
         );
         let run = replay_corpus(&core, &corpus);
         assert!(

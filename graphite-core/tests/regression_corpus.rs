@@ -2,10 +2,14 @@
 //!
 //! Builds a diverse, HONESTLY-LABELED corpus and splits it into three sets:
 //!
-//!   - **holdout (real)** — 35 real mainnet exploit signatures (SolPhishHunter
+//!   - **holdout (real)** — 37 real mainnet exploit signatures (SolPhishHunter
 //!     arXiv:2505.04094 provenance), labeled `block` independently of
-//!     Graphite, plus 3 real mainnet successful transactions labeled by the
-//!     documented policy verdict for the instruction the reader selects.
+//!     Graphite, plus 1 real successful mainnet Jupiter swap labeled
+//!     `approve` by provenance (each label's source is recorded in its note;
+//!     no label is computed from Graphite's state). The exploits run in
+//!     descriptive mode (no transaction bytes) with request-body evidence
+//!     (`good_evidence`, which the engine does not let raise a tier), so
+//!     they measure the rules, not the artifact path.
 //!     NEVER used for tuning; evaluated last.
 //!   - **dev (synthetic)**  — manifest-driven canonical + structural variants
 //!     for every instruction of every seed manifest. Expected outcomes are
@@ -1594,7 +1598,7 @@ fn build_holdout() -> (RegressionCorpus, Vec<Note>) {
     let mut corpus = RegressionCorpus::new();
     let mut notes = Vec::new();
 
-    // 35 real mainnet exploit signatures — expected=block from provenance
+    // 37 real mainnet exploit signatures — expected=block from provenance
     // (SolPhishHunter arXiv:2505.04094 + on-chain reality), NOT from Graphite.
     let exploits: ExploitCorpus =
         serde_json::from_str(EXPLOIT_CORPUS_JSON).expect("exploit corpus parses");
@@ -1649,58 +1653,70 @@ fn build_holdout() -> (RegressionCorpus, Vec<Note>) {
         );
     }
 
-    // 3 real mainnet SUCCESSFUL transactions (meta.err == null). The label is
-    // the DOCUMENTED policy verdict for the instruction the reader selects:
-    //   - Jupiter swap → approve (known protocol, matching intent).
-    //   - pump/system fixtures select an UNKNOWN top-level program via the
-    //     max-accounts fallback → fail-closed block (P12 unknown protocol).
-    // This is the honest statement of Graphite's contract, not "benign ⇒
-    // approve".
-    for (json, prefer, label) in [
-        (
+    // Real mainnet transactions labeled benign — by PROVENANCE, written here,
+    // never computed from Graphite's own state.
+    //
+    // Round 29 (audit 2026-10-20, MED-5): there used to be three, described
+    // as "SUCCESSFUL (meta.err == null)" and labeled `expected =
+    // is_manifested` — whether Graphite has a manifest for the program the
+    // reader selected, which is Graphite's state, so the label could only
+    // agree with Graphite. Two of the three had in fact FAILED on chain
+    // (`real_mainnet_pump.json`: InstructionError [3, Custom 7002];
+    // `real_mainnet_system.json`: InstructionError [5, Custom 6004]), and the
+    // pump one contains no pump.fun instruction at all. A failed transaction
+    // carries no independent label — the chain refused it, which says nothing
+    // about whether a gate should — so both left the scored holdout. They stay
+    // in tests/fixtures as real instruction shapes (the manifest tests read
+    // them for Tier-0 discriminators). Replacements could not be fetched when
+    // this was fixed (the mainnet RPC was unreachable from the build
+    // environment); `scripts/fetch_real_fixtures.py` now keeps only
+    // transactions with `meta.err == null` whose top-level instructions invoke
+    // the target program.
+    {
+        let (json, prefer, label, label_source) = (
             JUP_MAINNET_JSON,
             "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
             "real-mainnet-jupiter",
-        ),
-        (
-            PUMP_MAINNET_JSON,
-            "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
-            "real-mainnet-pump",
-        ),
-        (SYSTEM_MAINNET_JSON, "", "real-mainnet-system"),
+            "provenance: a successful (meta.err == null) mainnet Jupiter v6 swap by an ordinary \
+             wallet, slot 438012579 — benign, so approve",
+        );
+        let tx: serde_json::Value = serde_json::from_str(json).expect("mainnet fixture parses");
+        assert!(
+            tx["meta"]["err"].is_null(),
+            "{label}: a transaction that failed on chain cannot be labeled benign by provenance"
+        );
+        let v = graphite_core::live_corpus::tx_to_input(&tx, &[prefer])
+            .unwrap_or_else(|| panic!("{label}: real mainnet fixture did not convert to an input"));
+        assert_eq!(
+            v.program_id, prefer,
+            "{label}: the reader must select the program the label is about"
+        );
+        push(
+            &mut corpus,
+            &mut notes,
+            v,
+            true,
+            "holdout",
+            "real-mainnet-benign",
+            "real-mainnet-tx",
+            format!("{label}: label source = {label_source}"),
+        );
+    }
+    // Real shapes only: the two failed transactions must convert (the reader
+    // handles them), but they are not scored.
+    for (json, label) in [
+        (PUMP_MAINNET_JSON, "real-mainnet-pump (failed on chain)"),
+        (SYSTEM_MAINNET_JSON, "real-mainnet-system (failed on chain)"),
     ] {
         let tx: serde_json::Value = serde_json::from_str(json).expect("mainnet fixture parses");
-        let prefer: Vec<&str> = if prefer.is_empty() {
-            vec![]
-        } else {
-            vec![prefer]
-        };
-        match graphite_core::live_corpus::tx_to_input(&tx, &prefer) {
-            Some(v) => {
-                // Documented policy: unknown program ⇒ fail-closed block.
-                let is_manifested = {
-                    let core = GraphiteCore::new();
-                    core.list_manifests()
-                        .iter()
-                        .any(|m| m.protocol.program_id == v.program_id)
-                };
-                let expected = is_manifested;
-                let short_prog = v.program_id[..8.min(v.program_id.len())].to_string();
-                push(
-                    &mut corpus,
-                    &mut notes,
-                    v,
-                    expected,
-                    "holdout",
-                    "real-mainnet-benign",
-                    "real-mainnet-tx",
-                    format!("{label}: selected program {short_prog} (manifested={is_manifested})"),
-                );
-            }
-            None => {
-                panic!("{label}: real mainnet fixture did not convert to an input");
-            }
-        }
+        assert!(
+            !tx["meta"]["err"].is_null(),
+            "{label}: this fixture is documented as a FAILED transaction"
+        );
+        assert!(
+            graphite_core::live_corpus::tx_to_input(&tx, &[]).is_some(),
+            "{label}: real mainnet fixture did not convert to an input"
+        );
     }
 
     (corpus, notes)
@@ -1828,7 +1844,10 @@ fn corpus_is_large_diverse_and_honestly_split() {
     let hold = by_split("holdout");
     assert!(dev >= 700, "dev split too small: {dev}");
     assert!(reg >= 30, "regression split too small: {reg}");
-    assert!(hold >= 35, "holdout split too small: {hold}");
+    assert_eq!(
+        hold, 38,
+        "holdout split: 37 real exploits + 1 real benign swap"
+    );
 
     // provenance honesty: holdout must be real; dev/regression must be labeled synthetic
     assert!(notes
@@ -2047,20 +2066,103 @@ fn real_holdout_evaluation_independent_labels() {
     );
 }
 
+/// The command that rewrites the committed corpus, named in every failure.
+const REGENERATE_CORPUS: &str = "GRAPHITE_REGENERATE_CORPUS=1 cargo test --release --all-features \
+     --test regression_corpus corpus_persists_and_reloads_identically";
+
+/// Every file of a saved corpus — the per-program fixture lists and
+/// `meta/corpus_manifest.json` — as (relative path, bytes), sorted.
+fn corpus_files(dir: &Path) -> Vec<(String, Vec<u8>)> {
+    let mut out = Vec::new();
+    for sub in ["", "meta"] {
+        let d = dir.join(sub);
+        let Ok(entries) = std::fs::read_dir(&d) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let name = path.file_name().expect("file name").to_string_lossy();
+            let rel = if sub.is_empty() {
+                name.to_string()
+            } else {
+                format!("{sub}/{name}")
+            };
+            out.push((rel, std::fs::read(&path).expect("read corpus file")));
+        }
+    }
+    out.sort();
+    out
+}
+
+/// Round 29 (audit 2026-10-20, LOW-5): this test used to save the corpus
+/// into `fixtures/corpus` — a path relative to wherever `cargo test` ran —
+/// on every run, rewriting ~30 MB of the source tree as a side effect of
+/// testing. It now saves into a fresh temporary directory, checks the
+/// round trip there, and compares the result with the COMMITTED corpus byte
+/// for byte, so a change that alters the corpus fails here until the
+/// committed copy is regenerated on purpose (`REGENERATE_CORPUS`).
 #[test]
 fn corpus_persists_and_reloads_identically() {
     let (all, notes) = build_all();
-    let dir = Path::new("fixtures/corpus");
-    all.save_to_dir(dir).expect("save corpus");
-    let loaded = RegressionCorpus::load_from_dir(dir).expect("load corpus");
+    let committed = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/corpus");
+    let regenerate = std::env::var("GRAPHITE_REGENERATE_CORPUS").as_deref() == Ok("1");
+    let out = if regenerate {
+        // A program that no longer has fixtures must not keep a stale file.
+        for (rel, _) in corpus_files(&committed) {
+            std::fs::remove_file(committed.join(rel)).expect("remove stale corpus file");
+        }
+        committed.clone()
+    } else {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
+        std::env::temp_dir().join(format!("graphite-corpus-{}-{nanos}", std::process::id()))
+    };
+    all.save_to_dir(&out).expect("save corpus");
+    // The manifest documents splits/provenance; it must NOT live inside the
+    // corpus dir itself (load_from_dir parses every .json there as a fixture
+    // list).
+    write_corpus_manifest(&out.join("meta"), &notes);
+    let loaded = RegressionCorpus::load_from_dir(&out).expect("load corpus");
     assert_eq!(
         loaded.len(),
         all.len(),
         "save/load roundtrip must preserve the corpus"
     );
-    // The manifest documents splits/provenance; it must NOT live inside the
-    // corpus dir (load_from_dir parses every .json there as a fixture list).
-    write_corpus_manifest(Path::new("fixtures/corpus/meta"), &notes);
+    if regenerate {
+        eprintln!("[corpus] rewrote {}", committed.display());
+        return;
+    }
+    let fresh = corpus_files(&out);
+    let shipped = corpus_files(&committed);
+    let _ = std::fs::remove_dir_all(&out);
+    let names = |v: &[(String, Vec<u8>)]| -> std::collections::BTreeSet<String> {
+        v.iter().map(|(n, _)| n.clone()).collect()
+    };
+    let (fresh_names, shipped_names) = (names(&fresh), names(&shipped));
+    let mut differ: Vec<String> = fresh_names
+        .symmetric_difference(&shipped_names)
+        .cloned()
+        .collect();
+    for (name, bytes) in &fresh {
+        if let Some((_, old)) = shipped.iter().find(|(n, _)| n == name) {
+            if old != bytes {
+                differ.push(name.clone());
+            }
+        }
+    }
+    differ.sort();
+    assert!(
+        differ.is_empty(),
+        "the corpus this tree builds differs from the committed fixtures/corpus in {} file(s): \
+         {:?}. If the change is intended, regenerate it with:\n  {REGENERATE_CORPUS}",
+        differ.len(),
+        differ.iter().take(20).collect::<Vec<_>>()
+    );
 }
 
 #[test]

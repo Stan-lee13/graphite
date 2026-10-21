@@ -76,7 +76,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "7134b466abef3acf32254279c8e8fa2492e09f95b5ac2b9b209c5055a62557d6"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -155,7 +156,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "2becac40b1c44c1ff281da03a39a2465d78c6e07882ecfafd68e982d7706ff08"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -242,7 +244,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "2497d2427829c9358880b352fcbd2e70276b1fdea11f39722d1177d68eb76578"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -289,7 +292,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "10f97929184354ff79c56397c90f09dd64aa401eeb6132b2203ccc6df3fcd83d"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -374,7 +378,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "6ac4fd7fd4c2ec23ac922eb156e8b031f8b3ca22bc1fbc844f9c9dd8b34a8a22"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -459,7 +464,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "f8038df733e929d0eba49a54839fc553df0c63a46f7fd9eeee1e19cd90c8a14e"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -552,13 +558,14 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "e9d3acb46b8542010cb0b91b6e4ae7eca1bd2cbbba996aae3629cded02919a62"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
     "version": "1.0.0",
     "content_hash": "068c7cb7696f39c41758fa2368549fcc9ac0678a2442537782f3a55ed0e34212",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {
@@ -631,7 +638,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "57ba979741d59a1bed546a1bf7ac831b5058827dfdcb119c3373fd268b474afa"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -710,7 +718,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "a0d9c9c9923e43c87b26dc5d385d73c7e538ece01f7a0451cb4bc2d0829ab62f"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -797,7 +806,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "ccb7b73c14b8317a7210e1631427a0806cd67aa062ac417ddc678f7045dd2343"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -885,7 +895,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "13642597dd2eb1611bcf2330ec1ddfffb4fa8e5b75f1905a118cf88c7506f4ff"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -973,7 +984,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "3dcf05b0c8c462bff9825ba82a3405425020d71c456dbd15201e00ff3394a372"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -1069,7 +1081,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "87c3a55ca3af796f700e85758ff935bf70f663c07a705c54fb2e6315b4d3680a"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -1139,7 +1152,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "21113234566127425994ddb89d75b10c3063d492e5fa83abc2d1c0851a2f75a7"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -1209,7 +1223,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "15df657ee4129cabfd549bdd7f8d1de3c519dd5c66e5ee83ed64f2039f40e78b"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -1287,7 +1302,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "c1ac01c3979435ddb1a0f36bba4ccf1f1e3fe39c86eabd4e25a6bca88b26049d"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -1368,7 +1384,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "7ff9bc73714c6cf1f782ae678e178401c8087d8e47eb877387db0ce25a08c695"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -1449,7 +1466,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "8f66bbeec26e89da62b0746e4a1de7f2d6ab98b6d7a33037e9eeda1f2968415d"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -1538,7 +1556,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "c592839c47d8a7da6ef1913c92f72f1c5b8847c82e482401d55413e0bd28d7ae"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -1608,7 +1627,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "36269eb1323b7f1ff5b8a257aae26353b3fb856e24dede9dcd03e12e7b7dd302"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -1678,7 +1698,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "bc9cf7f8ac3f43e748cfa00cfbd603e88a5d1ca361f8de49c0ea11f4c961e5a3"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -1756,7 +1777,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "209e3ea89e88551453ee8a1ed4f45790e47cba9f0e3aea612db7d81fb09d421d"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -1847,7 +1869,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "bd505e20208e3686c4e8a0792eed2baf9874bbb2083694ebe93e5e1b3a7453da"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -1938,7 +1961,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "577e9846346cd2207ae1b19d3f64dbfd312a5da1e08a0601c270c66f143b885f"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -2037,7 +2061,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "382e9a8b81acf16bae0d04b28370299c7e1660d2ac1db6ce68dcf3421d62c0e2"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -2117,7 +2142,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "093b7bacefdcba590fb04c1d0d1d71de6270dfec387da29032f91567ae0d41ce"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -2197,7 +2223,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "bf55d8b6e0a5e03517b76e8fd94c9f0258f09bf788fb054e4e3c4c2a245fb9e9"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -2285,7 +2312,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "75bf623426c9e922624f789487f037ade05d566c37bb8894b0019ecd4b21fe0a"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -2364,7 +2392,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "ec819a3dbf4f49de1ecacf54016b0e262a5f684b9829e004888c5195da6bf5fc"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -2443,7 +2472,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "381c5508cc26897d6eedbf4d20b974c95da145141f5316ce12152d766fd549ad"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -2530,7 +2560,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "1c54d0d562714bed39e0cf0fe90130a6a0777f6f4a7f962cb0635a7764330c47"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -2614,7 +2645,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "b76b35aeedec2a003921ef9a9c939dbadc21c29429c9bf01db7f41ce96a42ea3"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -2698,7 +2730,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "41eab59c5bf40dbb703e7b54a6683cabfa2dca6829e8fae9a637a1357c2e14a7"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -2790,7 +2823,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "17a9dd340aa479ef3fd725d6c48bf9a139d14a1e41f6ea7aad0bae30f9392f97"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -2868,7 +2902,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "18e1ef3c59cc67d5751542a72322f41f5930a59de4e74ae7ec6d5fe3f2bea8dc"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -2946,7 +2981,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "681e2a5e12f989ae1bb066032f815eb5616dcaf44351dbcaecd7fbc4ba52444f"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -3032,7 +3068,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "6217b5f902bc51da96370d615267d7eb7cbfb5272bc5816c758e9c16a55d2d69"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -3096,7 +3133,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "38fd731da1c13a6ce714882260a7a33c5ed292a6e5119a3826dc0e52e632ceaa"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -3160,7 +3198,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "e9a8ecca31cdb8fde1b95cffc4233efc680f7c745587239a8fbbabd2d1259db6"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -3232,7 +3271,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "a24700dee112c40f1bd6ab04c8be1440a298692d1c0bb94fc427168f45fdd52a"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -3299,7 +3339,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "38bc271e069104e42a0796e774b922fe02a04c6c57391734e374eed7e4425d3d"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -3366,7 +3407,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "c9354d7424c6df72fb3c2ac35d62980beee975526f4c9e7d64dde5ddaf511d09"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -3441,7 +3483,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "4d2bdb6ff65d449597c4c69f605242110df7de05d2ed05353527230b920254e2"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -3505,7 +3548,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "598e46bd48b15dfc4bcd93110bc8a4f08a4bb70d636af72334967e30370a9a64"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -3569,7 +3613,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "6ca8a8f923e7a9bd2c4477d7f90445ed0d05386ced0549ac398b6074c14336d0"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -3641,7 +3686,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "69f9226723310dba83dc89291daba8ad254905a202e5ebc80c14cf14a7eecd3e"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -3720,7 +3766,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "a647329bac854df478e68e22957fc24ac87b8693bdce0315a6d2cdbb2818079e"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -3799,7 +3846,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "499f9ce81f29262184c11c8b052b7a53876e24b90ddb8cf09f4ae32c69d9c510"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -3886,7 +3934,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "ffea98d7115198b06808645e5cd63782919337ceee43c37b5a260a3a2807ddb7"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -3951,7 +4000,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "5ada5fc0cdad449aebd4a4fa04b4c942d20e5e27f8e4fc2de8b6bd44b17bfcf2"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -4016,7 +4066,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "c99dd9680bcec8cb5b9ec541f1e9ac7ad425a715665455bd93c63e0a9112a4c9"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -4089,7 +4140,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "dfb65525da8ba10956e1045478dcbb9563f6150cd9e75f06e5bb254bc16fc53c"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -4154,7 +4206,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "36bd5774c371063ae55aa8c19425b67c26d67a2169fb3188f882c45716103449"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -4219,7 +4272,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "ac9531d7a29d4f83d8330eec8c07633a6c083f7ff923cc5c270578ef6feb5b53"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -4292,7 +4346,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "14fc9fc15b4e30850c0746e3ffd86a61dda3f30260885f3ed9fc563e0211ccb0"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -4357,7 +4412,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "8087ed9cda3be402a83bd3f205003e64ddee237b3deedeff629bf15f3d100b01"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -4422,7 +4478,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "060c4eb0bcf4142049a3a020cd7e7112cda81c36338ac5d288529111cf29c2ba"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -4495,7 +4552,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "a4e1581392ca7fb6174311648621ffefb9932cd6bb74d37d042eb6e3b2abb5f0"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -4563,7 +4621,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "da8a0995fbdb573b93c2f412386acb6c498f6a54224732cd027ae58705ebefdb"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -4631,7 +4690,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "9759c5d0e8a37a9a260e99ba5b4fcca87e1aa6f37c62c1a03c13e3fb7de4265b"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -4707,7 +4767,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "b1351bbb7c4259e32a93d1098b2d30b0b31de88c9d2d022df706955a0f79950b"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -4776,7 +4837,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "6a87b2aaae6121ee2fb346348a65a20116483faa97c15f5193d3d26324acac7d"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -4845,7 +4907,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "fbc18355233117f77369f2036ff61478cbbede236f66cac62f3d7c5c0fdb1631"
   },
   {
     "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
@@ -4922,6 +4985,7 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "43be7595e121261ddffbc0b6aaf2f368e01360bab8eb03f9c170a441c6fe9ab6"
   }
 ]

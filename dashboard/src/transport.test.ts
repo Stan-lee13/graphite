@@ -72,3 +72,57 @@ test("a redirect from the Core is a failed request, and its target is never cont
     }
   }
 });
+
+// Round 29 (audit 2026-10-20, D3): a Core that accepts the connection and
+// never answers used to hold the request — and with it the view's polling
+// loop — forever. Both the header wait and a stalled body are bounded.
+test("a Core that never answers is abandoned after the deadline", async () => {
+  const silent = createServer(() => {
+    /* accept, never answer */
+  });
+  const stalled = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.write('{"partial":');
+    /* never end the body */
+  });
+  for (const server of [silent, stalled]) {
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  }
+  try {
+    for (const server of [silent, stalled]) {
+      const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/graph`;
+      const started = Date.now();
+      await assert.rejects(fetchFromCore(url, {}, 200));
+      assert.ok(Date.now() - started < 5_000, "the deadline, not the socket, ended the request");
+    }
+  } finally {
+    for (const server of [silent, stalled]) {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }
+});
+
+test("the whole body comes back with the status", async () => {
+  const server = createServer((_req, res) => {
+    res.writeHead(418, { "content-type": "text/plain" });
+    res.end("short and stout");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const resp = await fetchFromCore(`http://127.0.0.1:${(server.address() as AddressInfo).port}/`, {});
+    assert.deepEqual(resp, { ok: false, status: 418, text: "short and stout" });
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+// Round 29 (audit 2026-10-20, D7): an empty base on a page with no web
+// origin (file:// gives "null") said `"" is not a URL`.
+test("an empty base on a page with no origin names the real problem", () => {
+  const why = insecureBaseReason("", "null") ?? "";
+  assert.doesNotMatch(why, /"" is not a URL/);
+  assert.match(why, /no web origin/);
+  assert.match(insecureBaseReason("nope", LOCAL_PAGE) ?? "", /"nope" is not a URL/);
+});

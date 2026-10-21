@@ -1,8 +1,9 @@
 //! A3-07 (2026-09-29 audit): an old registry submission cannot be replayed to
 //! roll a manifest back.
 //!
-//! Signatures and attestations verify over `content_hash`, the SHA-256 of the
-//! manifest JSON alone: no registry identity, no sequence, no binding to the
+//! Signatures and attestations verified over `content_hash`, the SHA-256 of the
+//! manifest JSON alone (since Round 29 they sign a domain-tagged message over
+//! the program id and the hash): no sequence, no binding to the
 //! current head. `submit` did not compare a submission with what the log
 //! already held, and a resubmission at the same computed tier is not a
 //! promotion, so the P10 gate did not run. An old accepted manifest handed in
@@ -79,10 +80,12 @@ fn attested(m: ProtocolManifest, reviewer: &SigningKey, reviewer_b58: &str) -> M
         signature_hex: None,
         attestations: vec![],
     };
-    let h = s.content_hash();
+    // Round 29 (MR-3): attestations sign the domain-separated registry
+    // message, not the bare content hash.
+    let message = s.signing_message();
     s.attestations.push(ReviewerAttestation {
         reviewer_pubkey: reviewer_b58.to_string(),
-        signature_hex: hex::encode(reviewer.sign(h.as_bytes()).to_bytes()),
+        signature_hex: hex::encode(reviewer.sign(&message).to_bytes()),
     });
     s
 }

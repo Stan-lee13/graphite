@@ -26,3 +26,34 @@ The two TypeScript tools in `integrations/agent-guard` that fetch transactions
 **Rule:** a number that is published, or that gates anything, comes from a tool that requests
 version 1. A version-0 tool may be used for onboarding a manifest, where its output is reviewed
 by hand, but not to measure traffic.
+
+## Editing shipped manifests (offline, no network)
+
+These rewrite `protocols/*.json` in place through `manifest_json.py`, which keeps each
+file's exact layout. They are idempotent, and each has a `--check` mode that changes
+nothing and exits 1 when the tree is stale.
+
+| Tool | What it does |
+|---|---|
+| `reclassify_manifests.py` | Re-applies the risk-class rules of `idl_to_manifest.classify()`/`refine()` (Round 29: authority before swap) to the shipped manifests, never lowering a class, plus the reviewed hand overrides it lists with `--list-overrides`. |
+| `recompute_evidence.py` | Recomputes each `battle_tested_evidence.json` record's derived fields (names, decode rate, `meets_battle_tested`, `declared_trust_tier`) from its stored observations against the current manifests. `tests/battle_tested_evidence.rs` fails when a record is stale. |
+| `apply_idl_optional_flags.py` | Marks the accounts a program's committed IDL declares optional as `optional` in its manifest (no `--check`; it reports what it marked). |
+
+`build_manifests.py` (one level up) refuses to overwrite an existing manifest unless
+`--force` is given.
+
+## Rendering the coverage page
+
+`render_coverage.py` writes `docs/protocol-coverage.md` from the manifests,
+`protocols/battle_tested_evidence.json`, the program census in `out/` and the recorded
+full-pipeline figures in `out/mainnet_sample_named.json`. Since Round 29 no figure in it is
+a literal in the script and the page carries no render date, so the same inputs give the
+same bytes; `tests/docs_match_the_registry.rs` compares its table with the loaded registry.
+Two sentences on the page come from those data files and are known to be off — the
+sample's registry is recorded as 131 manifests (`tools/mainnet-sample/README.md` says 129),
+and the "transaction versions in the same sample" line is the 80-block census's — and
+`docs/CURRENT.md` states the correct figures.
+
+`fetch_onchain_idls.py` fetches a program's own on-chain Anchor IDL. The older
+`fetch_idl.py` and its `verified_idls.json` output were removed in Round 29: the script
+derived the IDL address with a wrong on-curve test and its output was empty.

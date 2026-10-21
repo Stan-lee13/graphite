@@ -220,10 +220,14 @@ fn a_nonce_account_decodes_from_the_runtime_layout() {
     assert_eq!(state.authority, s.payer);
     assert_eq!(state.nonce_value, s.nonce_value);
 
-    // The legacy version tag (0) is also honoured by the runtime.
+    // The legacy version tag (0) is NOT honoured: agave's
+    // `Versions::verify_recent_blockhash` refuses every legacy durable nonce,
+    // so the transaction fails as BlockhashNotFound (Round 29, audit
+    // 2026-10-20; this used to assert the opposite).
     let mut legacy = data.clone();
     legacy[0..4].copy_from_slice(&0u32.to_le_bytes());
-    assert!(decode_nonce_account(SYSTEM_PROGRAM, &legacy).is_ok());
+    let legacy = decode_nonce_account(SYSTEM_PROGRAM, &legacy).unwrap_err();
+    assert!(legacy.contains("Legacy"), "{legacy}");
 
     // Everything the runtime refuses, refused here with a reason.
     let wrong_owner =

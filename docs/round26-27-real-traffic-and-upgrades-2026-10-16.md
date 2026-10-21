@@ -1,5 +1,9 @@
 # Rounds 26–27 — real traffic on every commit, and upgrades noticed
 
+> **Historical record.** This report describes the codebase at commit `24f104b`
+> on 2026-10-16, and the changes made on top of it. For the current state of
+> Graphite see [`CURRENT.md`](CURRENT.md).
+
 **Date:** 2026-10-16 · **Base:** `24f104b` (Round 25) · **Scope:** two open roadmap items that need
 no owner decision — a committed mainnet subset gated in CI (R-P2/R-P3) and protocol upgrade
 detection (R-M1) — and the dependency advisories CI's audit found published since Round 24.

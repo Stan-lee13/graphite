@@ -6228,11 +6228,11 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: market, eventQueue, perpSyncQueue",
-    "updates protocol accounting state"
+    "transfers funds between the protocol and the involved accounts"
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "collectTreasuryFunds",

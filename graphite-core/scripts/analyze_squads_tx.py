@@ -15,7 +15,16 @@ print(
     file=_v0_sys.stderr,
 )
 import json
+import sys
 import urllib.request
+from pathlib import Path
+
+# Round 29 (audit 2026-10-20, LOW-6): the repo's own base58, not an optional
+# third-party module. Without `base58` installed the old code printed an empty
+# data head for every instruction and carried on, so the analysis it exists
+# for silently said nothing.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from solana_keys import b58decode  # noqa: E402
 
 RPC = "https://api.devnet.solana.com"
 SQUADS = "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf"
@@ -56,12 +65,7 @@ def main():
         for i, ix in hits:
             data_b58 = ix.get("data", "")
             print(f"  ix{i}: accounts={len(ix.get('accounts', []))} data_b58_len={len(data_b58)}")
-            # base58 -> bytes head
-            try:
-                import base58
-                raw = base58.b58decode(data_b58)
-            except Exception:
-                raw = b""
+            raw = b58decode(data_b58)  # raises on malformed data: never a silent empty head
             print(f"    data hex head: {raw[:16].hex()}  ({len(raw)} bytes total)")
             # account list
             accs = ix.get("accounts", [])

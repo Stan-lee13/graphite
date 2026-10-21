@@ -15,7 +15,7 @@
 
 use crate::policy_engine::WalletProfile;
 #[cfg(feature = "rpc")]
-use crate::regression_engine::{record_fixture, RegressionCorpus};
+use crate::regression_engine::{RegressionCorpus, RegressionFixture, LABEL_SELF_RECORDED};
 #[cfg(feature = "rpc")]
 use crate::rpc_client::SolanaRpcClient;
 // `GraphiteCore` itself is not rpc-gated — only the fetch loop that uses it
@@ -174,32 +174,25 @@ pub fn corpus_wallet_profile() -> WalletProfile {
     }
 }
 
-/// Convert a `getBlock`/`getTransaction` transaction object into a
-/// `VerificationInput`.
-///
-/// Real Solana blocks interleave fee-payment and ComputeBudget instructions
-/// with the actual protocol call, so the FIRST instruction is usually
-/// System/ComputeBudget — not the interesting program. When `prefer_programs`
-/// is non-empty, the first instruction whose program is listed wins; otherwise
-/// (or when none match) the first instruction that references accounts is used
-/// (setup-only instructions with zero accounts are skipped either way).
-///
-/// Instruction data is base58-encoded in JSON-encoded RPC responses; the
-/// discriminator is the first 8 bytes hex-encoded. Real compute usage comes
-/// from the block metadata (`computeUnitsConsumed`).
 /// Expand a transaction message's account-key space to its FULL size,
 /// including Address Lookup Table (ALT) entries for v0 transactions.
 ///
 /// The JSON-RPC `getBlock`/`getTransaction` response keeps ONLY the static
 /// accountKeys for a v0 transaction; instruction indices beyond the static
-/// key count resolve into the entries of `addressTableLookups` (per lookup:
-/// writable entries then readonly entries, in lookup order). A parser that
+/// key count resolve into the entries of `addressTableLookups`. A parser that
 /// ignores the lookups silently DROPS every ALT-resolved account — proven
 /// against the pinned mainnet fixtures, where the Jupiter swap has 26 such
 /// references and the System batch has 8. This expansion restores the exact
 /// index space: entries become positionally-correct `alt:{table}:{entry}`
 /// placeholders (resolving the actual addresses needs the ALT account data,
 /// but program resolution and account-count analysis need only the positions).
+///
+/// The order is the runtime's: EVERY table's writable entries, in table
+/// order, and then every table's read-only entries, in table order (Round
+/// 29, audit 2026-10-20, LC-3). This appended each table's writable then
+/// read-only entries before moving to the next table — the same order for a
+/// single table, and the wrong one for two or more: every index past the
+/// first table's writables named the wrong entry.
 pub fn expand_account_keys(msg: &serde_json::Value) -> Option<Vec<String>> {
     let static_keys = msg.get("accountKeys")?.as_array()?;
     let mut keys: Vec<String> = static_keys
@@ -207,24 +200,48 @@ pub fn expand_account_keys(msg: &serde_json::Value) -> Option<Vec<String>> {
         .filter_map(|k| k.as_str().map(String::from))
         .collect();
     if let Some(lookups) = msg.get("addressTableLookups").and_then(|l| l.as_array()) {
-        for (ti, l) in lookups.iter().enumerate() {
-            let writable = l.get("writableIndexes").and_then(|a| a.as_array());
-            let readonly = l.get("readonlyIndexes").and_then(|a| a.as_array());
-            let mut entries: Vec<u64> = Vec::new();
-            if let Some(w) = writable {
-                entries.extend(w.iter().filter_map(|v| v.as_u64()));
-            }
-            if let Some(r) = readonly {
-                entries.extend(r.iter().filter_map(|v| v.as_u64()));
-            }
-            for e in entries {
-                keys.push(format!("alt:{ti}:{e}"));
+        for field in ["writableIndexes", "readonlyIndexes"] {
+            for (ti, l) in lookups.iter().enumerate() {
+                let entries = l.get(field).and_then(|a| a.as_array());
+                for e in entries.into_iter().flatten().filter_map(|v| v.as_u64()) {
+                    keys.push(format!("alt:{ti}:{e}"));
+                }
             }
         }
     }
     Some(keys)
 }
 
+/// The account a `VerificationInput` carries at the position of an
+/// ALT-resolved key the reader cannot resolve (Round 29, audit 2026-10-20,
+/// LC-2).
+///
+/// A deterministic, unclaimable stand-in for `alt:{table}:{entry}`: the
+/// base58 of SHA-256 over a domain tag and the placeholder. It is a valid
+/// 32-byte key, so verification accepts it, and it is no account anyone
+/// holds, so account resolution treats it as an unknown, unverified account:
+/// a slot the manifest pins (a PDA or a fixed address) does not match it and
+/// is flagged — the identity of an unresolved account is not established,
+/// and the verdict says so instead of guessing.
+pub fn unresolved_lookup_placeholder(placeholder: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(b"graphite/live-corpus/unresolved-lookup-entry/v1\0");
+    h.update(placeholder.as_bytes());
+    bs58::encode(h.finalize()).into_string()
+}
+
+/// Convert a `getBlock`/`getTransaction` transaction object into a
+/// `VerificationInput`.
+///
+/// Real Solana blocks interleave fee-payment and ComputeBudget instructions
+/// with the actual protocol call, so the FIRST instruction is usually
+/// System/ComputeBudget — not the interesting program. The selection rules
+/// are below (`preferred`, `fallback`).
+///
+/// Instruction data is base58-encoded in JSON-encoded RPC responses; the
+/// discriminator is the first 8 bytes hex-encoded. Real compute usage comes
+/// from the block metadata (`computeUnitsConsumed`).
 pub fn tx_to_input(tx: &serde_json::Value, prefer_programs: &[&str]) -> Option<VerificationInput> {
     // A version-1 transaction. Round 12 skipped v1 here because the RPC's
     // `encoding: json` layout for it had not been checked against a real
@@ -324,29 +341,29 @@ pub fn tx_to_input(tx: &serde_json::Value, prefer_programs: &[&str]) -> Option<V
     let ix = *preferred.or(fallback)?;
     let program_id = program_of(ix)?;
 
-    // Instruction accounts → real account keys (deduplicate, cap).
+    // Instruction accounts → account keys, POSITION FOR POSITION (Round 29,
+    // audit 2026-10-20, LC-2).
     //
-    // ALT-resolved positions carry `alt:{table}:{entry}` placeholders (the
-    // real addresses require the lookup-table account data, which the reader
-    // does not fetch). They are NOT valid base58 pubkeys, so passing one to
-    // verification would fail every fixture with InvalidAddress — silently
-    // dropping the transaction from the corpus. Skip them: fixtures record
-    // the instruction's static-key accounts only (provenance pins the tx
-    // signature for forensic lookup). If nothing resolvable remains, the
-    // instruction cannot be verified as-is and yields no input.
+    // A manifest names accounts by position, so the list must keep every
+    // position: an account the instruction names twice is named twice, and
+    // an ALT-resolved account the reader cannot resolve still occupies its
+    // slot. This used to deduplicate and to SKIP ALT positions, so every
+    // account after the first repeat or the first ALT entry was judged
+    // against the wrong manifest slot. An ALT position now carries
+    // `unresolved_lookup_placeholder` — a valid key nobody holds, which
+    // resolution treats as an unknown account. The list is capped (prefix
+    // kept); an index past the key space makes the transaction unreadable.
     let mut accounts: Vec<String> = Vec::new();
     if let Some(idx_list) = ix.get("accounts").and_then(|a| a.as_array()) {
-        for idx in idx_list.iter().filter_map(|i| i.as_u64()) {
-            if let Some(key) = keys.get(idx as usize).cloned() {
-                if key.starts_with("alt:") {
-                    continue;
-                }
-                if !accounts.contains(&key) {
-                    accounts.push(key);
-                    if accounts.len() >= MAX_ACCOUNTS_PER_INSTRUCTION {
-                        break;
-                    }
-                }
+        for idx in idx_list.iter() {
+            let key = keys.get(idx.as_u64()? as usize)?;
+            accounts.push(if key.starts_with("alt:") {
+                unresolved_lookup_placeholder(key)
+            } else {
+                key.clone()
+            });
+            if accounts.len() >= MAX_ACCOUNTS_PER_INSTRUCTION {
+                break;
             }
         }
     }
@@ -354,11 +371,13 @@ pub fn tx_to_input(tx: &serde_json::Value, prefer_programs: &[&str]) -> Option<V
         return None;
     }
 
-    // Instruction data is base58-encoded in JSON-encoded blocks.
+    // Instruction data is base58-encoded in JSON-encoded blocks. Data that
+    // does not decode makes the transaction unreadable here: it is skipped
+    // (LC-2). It used to become the discriminator "00", a selector the
+    // transaction never carried, recorded as if it had.
     let data_b58 = ix.get("data").and_then(|d| d.as_str()).unwrap_or("");
     let discriminator_hex = crate::solana_types::base58_decode(data_b58)
-        .map(|bytes| hex::encode(&bytes[..bytes.len().min(8)]))
-        .unwrap_or_else(|| "00".to_string());
+        .map(|bytes| hex::encode(&bytes[..bytes.len().min(8)]))?;
 
     // Real compute usage from the block metadata, if reported.
     let compute_units = tx
@@ -490,8 +509,10 @@ pub struct LiveSeedStats {
 ///
 /// `network_label` lands in the fixture `source` (e.g. `live-mainnet`), which
 /// keeps the corpus provenance honest. Recorded fixtures use the pipeline's
-/// own verdict as `expected_approved` — replay later re-checks that the
-/// pipeline still agrees with what it said when it saw the real transaction.
+/// own verdict as `expected_approved`, and carry `label_source =
+/// LABEL_SELF_RECORDED` saying so — replay later re-checks that the pipeline
+/// still agrees with what it said when it saw the real transaction, nothing
+/// more.
 #[cfg(feature = "rpc")]
 pub async fn seed_corpus_from_live(
     client: &SolanaRpcClient,
@@ -539,12 +560,17 @@ pub async fn seed_corpus_from_live(
                     stats.approved += 1;
                 }
                 let before = corpus.len();
-                record_fixture(
-                    corpus,
-                    &input,
+                // LC-1 (Round 29, audit 2026-10-20): the label is the
+                // pipeline's own verdict, and the fixture says so — replaying
+                // it checks the pipeline still agrees with itself, which is
+                // regression evidence, not evidence the verdict was right.
+                let mut fixture = RegressionFixture::new(
+                    input.clone(),
                     result.approved,
                     &format!("{network_label}:{slot}:{signature}"),
                 );
+                fixture.label_source = Some(LABEL_SELF_RECORDED.to_string());
+                corpus.add_fixture(fixture);
                 if corpus.len() > before {
                     stats.recorded += 1;
                 }
@@ -939,28 +965,90 @@ mod tests {
 
     /// ALT-resolved account positions (`alt:{table}:{entry}` placeholders) are
     /// not valid base58 — feeding one to verification would fail every fixture
-    /// with InvalidAddress and silently drop the transaction from the corpus.
-    /// They must be skipped, and an instruction whose accounts are ALL
-    /// ALT-resolved must yield no input (fail-closed, not garbage).
+    /// with InvalidAddress. Round 29 (LC-2): they are not SKIPPED either, which
+    /// shifted every later account onto the wrong manifest slot; each keeps
+    /// its position as an `unresolved_lookup_placeholder` key, and the list is
+    /// the instruction's own, position for position.
     #[test]
-    fn alt_placeholder_accounts_are_skipped_not_recorded() {
+    fn alt_positions_keep_their_place_as_unresolved_placeholders() {
         let jup = load_fixture("jup");
         let input = tx_to_input(&jup, &["JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"])
             .expect("jup fixture must parse");
-        assert!(
-            input
-                .account_addresses
-                .iter()
-                .all(|a| !a.starts_with("alt:")),
-            "ALT placeholders must never reach the VerificationInput"
-        );
-        // Every address must be a plausible base58 pubkey (32-44 chars).
-        for addr in &input.account_addresses {
+        let msg = &jup["transaction"]["message"];
+        let keys = expand_account_keys(msg).unwrap();
+        let jup_ix = msg["instructions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|ix| {
+                keys[ix["programIdIndex"].as_u64().unwrap() as usize]
+                    == "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
+            })
+            .unwrap();
+        let positions: Vec<&String> = jup_ix["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| &keys[i.as_u64().unwrap() as usize])
+            .take(MAX_ACCOUNTS_PER_INSTRUCTION)
+            .collect();
+        assert_eq!(input.account_addresses.len(), positions.len());
+        let mut placeholders = 0;
+        for (got, key) in input.account_addresses.iter().zip(positions) {
+            assert!(!got.starts_with("alt:"));
+            if key.starts_with("alt:") {
+                placeholders += 1;
+                assert_eq!(*got, unresolved_lookup_placeholder(key));
+            } else {
+                assert_eq!(got, key);
+            }
             assert!(
-                (32..=44).contains(&addr.len()),
-                "recorded account must be a real pubkey: {addr}"
+                crate::solana_types::Pubkey::from_base58(got).is_ok(),
+                "every position is a valid key: {got}"
             );
         }
+        assert!(
+            placeholders > 0,
+            "the fixture routes through its lookup table"
+        );
+    }
+
+    /// Round 29 (LC-2): a repeated account keeps both positions, and data
+    /// that does not decode makes the transaction unreadable rather than
+    /// "discriminator 00".
+    #[test]
+    fn repeated_accounts_are_kept_and_undecodable_data_is_skipped() {
+        let a = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
+        let b = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
+        let program = "11111111111111111111111111111111";
+        let tx = |data: &str| {
+            serde_json::json!({"transaction": {"message": {
+                "accountKeys": [a, b, program],
+                "instructions": [{"programIdIndex": 2, "accounts": [0, 1, 0], "data": data}]
+            }}})
+        };
+        // Any valid base58 decodes; "0OIl" uses the four characters base58
+        // leaves out.
+        let input = tx_to_input(&tx("3Bxs4h24hBtQy9rw"), &[]).expect("readable");
+        assert_eq!(input.account_addresses, vec![a, b, a]);
+        assert!(tx_to_input(&tx("0OIl"), &[]).is_none(), "not base58");
+    }
+
+    /// Round 29 (LC-3): with two lookup tables the runtime orders every
+    /// table's writable entries before any table's read-only ones.
+    #[test]
+    fn lookup_entries_follow_the_runtime_order_across_tables() {
+        let msg = serde_json::json!({
+            "accountKeys": ["S0", "S1"],
+            "addressTableLookups": [
+                {"accountKey": "T0", "writableIndexes": [5], "readonlyIndexes": [7, 8]},
+                {"accountKey": "T1", "writableIndexes": [1], "readonlyIndexes": [2]}
+            ]
+        });
+        assert_eq!(
+            expand_account_keys(&msg).unwrap(),
+            vec!["S0", "S1", "alt:0:5", "alt:1:1", "alt:0:7", "alt:0:8", "alt:1:2"]
+        );
     }
 
     /// v0 transactions carry Address Lookup Tables; the parser must expand the

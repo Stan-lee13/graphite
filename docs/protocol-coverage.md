@@ -5,11 +5,9 @@
 > Do not edit by hand — `tests/docs_match_the_registry.rs` compares this page to
 > the loaded registry, and a hand edit fails CI.
 
-Rendered: 2026-10-03
-
 ## In one line
 
-**137 protocol manifests / 3504 instructions**, of which **113 carry a BattleTested tier that a mainnet measurement supports**.
+**137 protocol manifests / 3541 instructions**, of which **113 carry a BattleTested tier that a mainnet measurement supports**.
 
 ## What BattleTested means here
 
@@ -31,9 +29,9 @@ Sampled 80 finalized blocks (77,589 successful transactions, 569 distinct progra
 
 Validator vote transactions are separated out because no agent ever signs one; including them moves the percentages without changing what an agent is protected for.
 
-The figure that matters most is measured by a different instrument, because it is the engine's own answer rather than a count over a block: `tools/mainnet-sample` runs whole finalized blocks through the full pipeline. On 10,617 transactions from 8 blocks on 2026-09-22, the share of NON-VOTE transactions whose primary program Graphite can name was **44.0%** (1,498 of 3,405); on the **same sample** against the 33-manifest registry Round 18 started from, it was **20.8%** (708 of 3,405).
+The figure that matters most is measured by a different instrument, because it is the engine's own answer rather than a count over a block: `tools/mainnet-sample` runs whole finalized blocks through the full pipeline. On 10,617 transactions from 8 blocks on 2026-09-22, against the 129-manifest registry of that day, the share of NON-VOTE transactions whose primary program Graphite can name was **44.0%** (1,498 of 3,405); on the **same sample** against the 33-manifest registry Round 18 started from, it was **20.8%** (708 of 3,405).
 
-Transaction versions in the same sample — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
+Transaction versions across the 80-block census above (77,589 successful transactions) — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
 
 ## Every manifest
 
@@ -47,6 +45,7 @@ Transaction versions in the same sample — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
 | Kamino Lending | `KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD` | 66 | BattleTested | 1,512 | 5,317s | 213 | 100% |
 | Orca Whirlpools | `whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc` | 66 | BattleTested | 1,061 | 15s | 201 | 100% |
 | Tuna (tuna4uSQ) | `tuna4uSQZncNeeiAMKbstuxA9CUkHH6HmC64wgmnogD` | 66 | BattleTested | 1,960 | 23,196s | 40 | 100% |
+| Token-2022 Program | `TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb` | 63 | BattleTested | 1,239 | 2s | 10,307 | 100% |
 | Arcium (Arcj82pX) | `Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ` | 59 | BattleTested | 1,202 | 14,867s | 42 | 100% |
 | Perpetuals (PERPHjGB) | `PERPHjGBqRHArX4DySjwM6UJHiR3sWAatqfdBS2qQJu` | 59 | BattleTested | 1,425 | 2,391s | 57 | 100% |
 | Marketplace (CcmRKTuZ) | `CcmRKTuZCGJBWQwMHvDYApBRvSZNHqGJXkznqpDTSQUr` | 52 | BattleTested | 1,553 | 8,424s | 53 | 100% |
@@ -62,7 +61,6 @@ Transaction versions in the same sample — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
 | Brrr Lend (G3v8Wxa6) | `G3v8Wxa6TU8rwjZ4J5ey7zbnp44VxYTyTVESa3P6ByjT` | 32 | BattleTested | 1,000 | 2,655s | 45 | 100% |
 | Jupiter V6 Aggregator | `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4` | 32 | BattleTested | 1,375 | 38s | 385 | 100% |
 | Crafting (CRAFT2RP) | `CRAFT2RPXPJWCEix4WpJST3E7NLf79GTqZUL75wngXo5` | 31 | BattleTested | 1,989 | 6,944s | 134 | 100% |
-| Token-2022 Program | `TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb` | 31 | BattleTested | 1,239 | 2s | 10,307 | 99% |
 | Marinade Staking | `MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD` | 29 | BattleTested | 1,977 | 295,528s | 40 | 100% |
 | Mmm (mmm3XBJg) | `mmm3XBJg5gk8XJxEKBvdgptZz6SgK4tXvn36sodowMc` | 29 | BattleTested | 1,000 | 414s | 63 | 100% |
 | OpenBook V2 | `opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb` | 29 | BattleTested | 1,526 | 208,408s | 40 | 100% |
@@ -77,8 +75,8 @@ Transaction versions in the same sample — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
 | Swift (mayan34V) | `mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny` | 27 | BattleTested | 1,971 | 10,858s | 80 | 100% |
 | AMM (Eo7WjKq6) | `Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB` | 26 | BattleTested | 1,635 | 298s | 44 | 100% |
 | Kamino Vault (KvauGMsp) | `KvauGMspG5k6rtzrqqn7WNn3oZdyKqLKwK2XWQ8FLjd` | 26 | BattleTested | 1,998 | 21,483s | 61 | 100% |
+| SPL Token Program | `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA` | 26 | BattleTested | 1,431 | 2s | 37,990 | 100% |
 | Okx DEX Router (proVF4pM) | `proVF4pMXVaYqmy4NjniPh4pqKNfMmsihgd4wdkCX3u` | 25 | BattleTested | 1,774 | 174s | 106 | 100% |
-| SPL Token Program | `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA` | 25 | BattleTested | 1,431 | 2s | 37,990 | 100% |
 | M2 (M2mx93ek) | `M2mx93ekt1fmXSVkTrUL9xVFHkmME8HTUi5Cyc5aF7K` | 24 | BattleTested | 1,988 | 1,320s | 54 | 100% |
 | Futarchy (FUTARELB) | `FUTARELBfJfQ8RDGhg1wdhddq1odMAJUePHFuBYfUxKq` | 23 | BattleTested | 1,137 | 2,458s | 29 | 100% |
 | Helium Sub Daos (hdaoVTCq) | `hdaoVTCqhfHHo75XdAMxBKdUqvq1i5bF23sisBqVgGR` | 23 | BattleTested | 1,860 | 82,121s | 41 | 100% |
@@ -108,8 +106,8 @@ Transaction versions in the same sample — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
 | Donau (FknMf1SR) | `FknMf1SRUnujeyezuvKBQ7T57L2iSGbNd6D3iSrdDUHQ` | 13 | BattleTested | 1,000 | 9,957s | 53 | 100% |
 | Pyth Solana Receiver (rec2HHDD) | `rec2HHDDnjLfj4kE7VyEtFA1HPGQLK33259532cRyHp` | 13 | BattleTested | 1,999 | 1,354s | 31 | 100% |
 | Pyth Solana Receiver (rec5EKMG) | `rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ` | 13 | BattleTested | 1,000 | 306s | 68 | 100% |
+| System Program | `11111111111111111111111111111111` | 13 | BattleTested | 1,456 | 1s | 15,411 | 100% |
 | Rmn Remote (RmnXLft1) | `RmnXLft1mSEwDgMKu2okYuHkiazxntFFcZFrrcXxYg7` | 12 | BattleTested | 1,000 | 33,182s | 49 | 100% |
-| System Program | `11111111111111111111111111111111` | 12 | BattleTested | 1,456 | 1s | 15,411 | 100% |
 | Hylo Earn Pool (HysTabVU) | `HysTabVUfmQBFcmzu1ctRd1Y1fxd66RBpboy1bmtDSQQ` | 11 | BattleTested | 1,856 | 114,370s | 41 | 100% |
 | Locker (LocpQguc) | `LocpQgucEQHbqNABEYvBvwoxCPsSbG91A1QaQhQQqjn` | 11 | BattleTested | 1,979 | 614,272s | 81 | 100% |
 | Staking (SKRskrmt) | `SKRskrmtL83pcL4YqLWt6iPefDqwXQWHSw9S9vz94BZ` | 11 | BattleTested | 1,000 | 2,266s | 45 | 100% |
@@ -170,8 +168,8 @@ Transaction versions in the same sample — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
 | Rush (RUsHe5Kt) | `RUsHe5Kt19Koe2stiQuTRS4wkev5QjY5AyatokniGeY` | 12 | OfficialManifest | 1,000 | 60,954s | 40 | 2% |
 | Merkle Distributor (MErKy6nZ) | `MErKy6nZVoVAkryxAejJz2juifQ4ArgLgHmaJCQkU7N` | 11 | OfficialManifest | 1,894 | 1,669,066s | 45 | 49% |
 | Timelock (strmRqUC) | `strmRqUCoQUgGUan5YhzUZa6KqdzwX5L6FpUxfmKg5m` | 10 | OfficialManifest | 1,000 | 7,874s | 49 | 78% |
+| Metaplex Token Metadata | `metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s` | 8 | OfficialManifest | 1,938 | 5,783s | 24 | 100% |
 | Tarb (BwRZQcpi) | `BwRZQcpiqQrQkpfWJDxzcpojPRmTB21FoVQYkcZBBReo` | 8 | OfficialManifest | 31 | 16,779s | 31 | 100% |
-| Metaplex Token Metadata | `metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s` | 5 | OfficialManifest | 1,938 | 5,783s | 24 | 4% |
 | Light System Program (SySTEM1e) | `SySTEM1eSU2p4BGQfQpimFEWWSC1XDFeun3Nqzz3rT7` | 4 | OfficialManifest | 1,000 | 3,165s | 45 | 0% |
 | Legacy Memo Program (SPL) | `Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo` | 1 | OfficialManifest | 827 | 780s | 58 | — |
 | Memo Program | `Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH` | 1 | OfficialManifest | 1,813 | 1,590,800s | 40 | — |

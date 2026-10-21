@@ -132,33 +132,63 @@ impl EventSink for RingBufferSink {
 }
 
 /// Append-only JSON-lines file sink. Each event is one line. Writes are
-/// sequential under a mutex; failures (disk full, permissions) are returned
-/// to the logger, which logs and continues.
+/// sequential under the sink's own mutex; failures (disk full, permissions)
+/// are returned to the logger, which logs and continues.
+///
+/// Round 29 (audit 2026-10-20, P-2): the file is opened once and kept open,
+/// and reopened only after a failure (or on [`FileSink::reopen`], e.g. after
+/// an operator rotates the file). It was opened and closed for every event,
+/// under the logger's global sinks lock — a filesystem round trip per
+/// verification, serialised across every verification in the process. Each
+/// line is one `write_all` of the event plus its newline, so a failure never
+/// leaves half an event followed by the next one on the same line.
 pub struct FileSink {
     path: PathBuf,
-    lock: Mutex<()>,
+    file: Mutex<Option<std::fs::File>>,
 }
 
 impl FileSink {
     pub fn new(path: &Path) -> Self {
         Self {
             path: path.to_path_buf(),
-            lock: Mutex::new(()),
+            file: Mutex::new(None),
         }
+    }
+
+    /// Close the file; the next event reopens it at `path` (append). For an
+    /// operator who rotated or removed the file: the open handle would
+    /// otherwise keep writing to the old one.
+    pub fn reopen(&self) {
+        *self.file.lock().unwrap_or_else(|p| p.into_inner()) = None;
     }
 }
 
 impl EventSink for FileSink {
     fn write_event(&self, event: &VerificationEvent) -> Result<(), String> {
-        let line = serde_json::to_string(event).map_err(|e| e.to_string())?;
-        let _guard = self.lock.lock().unwrap_or_else(|p| p.into_inner());
+        let mut line = serde_json::to_string(event).map_err(|e| e.to_string())?;
+        line.push('\n');
         use std::io::Write;
-        let mut f = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.path)
-            .map_err(|e| e.to_string())?;
-        writeln!(f, "{}", line).map_err(|e| e.to_string())
+        let mut slot = self.file.lock().unwrap_or_else(|p| p.into_inner());
+        if slot.is_none() {
+            *slot = Some(
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&self.path)
+                    .map_err(|e| e.to_string())?,
+            );
+        }
+        let result = slot
+            .as_mut()
+            .map(|f| f.write_all(line.as_bytes()))
+            .unwrap_or(Ok(()));
+        if let Err(e) = result {
+            // A handle that failed once is not trusted again: the next event
+            // opens the file afresh.
+            *slot = None;
+            return Err(e.to_string());
+        }
+        Ok(())
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -243,7 +273,12 @@ impl AnalyticsPlugin for VerificationEventLoggerPlugin {
 
     fn on_verification(&self, result: &VerificationResult) {
         let event = VerificationEvent::from_result(result);
-        let sinks = self.sinks.lock().unwrap_or_else(|p| p.into_inner());
+        // P-2 (Round 29): the sinks lock guards the LIST, and is held only
+        // to copy it. Holding it across every sink's I/O made each
+        // verification wait for every other's file write; each sink now
+        // serialises its own writes, and only those.
+        let sinks: Vec<Arc<dyn EventSink>> =
+            self.sinks.lock().unwrap_or_else(|p| p.into_inner()).clone();
         for sink in sinks.iter() {
             if let Err(e) = sink.write_event(&event) {
                 tracing::warn!("event sink failed (verification result unaffected): {}", e);
@@ -378,6 +413,67 @@ mod tests {
             Path::new("/definitely/not/a/real/dir/events.jsonl"),
         ))]);
         plugin.on_verification(&fake_result(true)); // must not panic
+    }
+
+    /// Round 29 (P-2): the logger's sinks lock is not held while a sink does
+    /// its I/O.
+    #[test]
+    fn the_sinks_lock_is_not_held_during_sink_io() {
+        struct Probe {
+            logger: std::sync::OnceLock<std::sync::Weak<VerificationEventLoggerPlugin>>,
+            lock_was_free: std::sync::atomic::AtomicBool,
+        }
+        impl EventSink for Probe {
+            fn write_event(&self, _: &VerificationEvent) -> Result<(), String> {
+                let logger = self.logger.get().and_then(|w| w.upgrade()).unwrap();
+                let free = logger.sinks.try_lock().is_ok();
+                self.lock_was_free
+                    .store(free, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            }
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+        }
+        let probe = Arc::new(Probe {
+            logger: std::sync::OnceLock::new(),
+            lock_was_free: std::sync::atomic::AtomicBool::new(false),
+        });
+        let plugin = Arc::new(VerificationEventLoggerPlugin::with_sinks(vec![
+            probe.clone()
+        ]));
+        probe.logger.set(Arc::downgrade(&plugin)).ok().unwrap();
+        plugin.on_verification(&fake_result(true));
+        assert!(probe
+            .lock_was_free
+            .load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    /// Round 29 (P-2): the file sink keeps its file open, and `reopen` (or a
+    /// failed write) makes the next event open the path afresh.
+    #[test]
+    fn the_file_sink_keeps_its_file_and_reopens_on_request() {
+        let dir =
+            std::env::temp_dir().join(format!("graphite-events-reopen-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("events.jsonl");
+        let sink = FileSink::new(&path);
+        let event = VerificationEvent::from_result(&fake_result(true));
+        sink.write_event(&event).unwrap();
+        assert!(sink.file.lock().unwrap().is_some(), "kept open");
+        // Rotated away: the open handle writes to the moved file until reopened.
+        let rotated = dir.join("events.jsonl.1");
+        std::fs::rename(&path, &rotated).unwrap();
+        sink.write_event(&event).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&rotated).unwrap().lines().count(),
+            2
+        );
+        sink.reopen();
+        sink.write_event(&event).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap().lines().count(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -10,6 +10,7 @@ import { useState, type FormEvent } from "react";
 import { Check, Eye, EyeOff, X } from "lucide-react";
 import {
   MIN_KEY_CHARS,
+  forgetKey,
   getConnection,
   normaliseBase,
   setConnection,
@@ -23,19 +24,21 @@ export function ConnectView({ core }: { core: CoreState }) {
   const current = getConnection();
   const [base, setBase] = useState(current.base);
   const [key, setKey] = useState(current.key);
+  const [remember, setRemember] = useState(current.remember);
   const [show, setShow] = useState(false);
   const [testing, setTesting] = useState(false);
   const [report, setReport] = useState<ConnectionReport | null>(null);
   const [saved, setSaved] = useState(false);
 
   const keyTooShort = key.trim().length > 0 && key.trim().length < MIN_KEY_CHARS;
-  const dirty = normaliseBase(base) !== current.base || key.trim() !== current.key;
+  const dirty =
+    normaliseBase(base) !== current.base || key.trim() !== current.key || remember !== current.remember;
 
   const runTest = async () => {
     setTesting(true);
     setReport(null);
     try {
-      setReport(await testConnection({ base, key }));
+      setReport(await testConnection({ base, key, remember }));
     } finally {
       setTesting(false);
     }
@@ -43,7 +46,7 @@ export function ConnectView({ core }: { core: CoreState }) {
 
   const save = (e: FormEvent) => {
     e.preventDefault();
-    setConnection({ base, key });
+    setConnection({ base, key, remember });
     setSaved(true);
     setTimeout(() => setSaved(false), 1600);
   };
@@ -52,7 +55,7 @@ export function ConnectView({ core }: { core: CoreState }) {
     <>
       <PageHead
         title="Connection"
-        desc="Which Core this console reads from, and the key it presents. Both stay in this browser."
+        desc="Which Core this console reads from, and the key it presents. Both stay in this browser; the key, for this tab only unless you choose otherwise."
       />
 
       <div className="connect">
@@ -110,12 +113,26 @@ export function ConnectView({ core }: { core: CoreState }) {
                   </span>
                 ) : (
                   <>
-                    The value of <code translate="no">GRAPHITE_API_KEY</code> on the Core. Stored only in this
-                    browser, sent only as a bearer header, never written to a URL.
+                    The value of <code translate="no">GRAPHITE_API_KEY</code> on the Core. Sent only as a bearer
+                    header, never written to a URL.
                   </>
                 )}
               </p>
             </div>
+
+            {/* Round 29 (audit 2026-10-20, D6): session-only by default; the
+                disk copy is an explicit choice, and un-ticking it removes it. */}
+            <label className="field-check">
+              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+              <span>
+                Remember the key on this device
+                <span className="field-help">
+                  {remember
+                    ? "Kept in this browser's localStorage until you forget it. Anyone who can use this browser profile, and any script that runs on this origin, can read it."
+                    : "Kept for this tab only (sessionStorage) and gone when the tab closes."}
+                </span>
+              </span>
+            </label>
 
             <div className="btn-row">
               <button type="button" className="btn" onClick={runTest} disabled={testing}>
@@ -129,8 +146,10 @@ export function ConnectView({ core }: { core: CoreState }) {
                   type="button"
                   className="btn quiet"
                   onClick={() => {
+                    // Round 29 (D9): forget the key only. This used to save
+                    // the address field too, unsaved edit and all.
                     setKey("");
-                    setConnection({ base, key: "" });
+                    forgetKey();
                   }}
                 >
                   Forget key
@@ -209,7 +228,7 @@ function Report({ report, hasKey }: { report: ConnectionReport; hasKey: boolean 
           <span>
             {report.authorized
               ? hasKey
-                ? "Key accepted. Every console route answered with it."
+                ? "Key accepted: a key-guarded route (/api/protocols/top) answered with it."
                 : "No key needed. This Core runs in dev mode."
               : report.authError?.kind === "unauthorized"
                 ? hasKey

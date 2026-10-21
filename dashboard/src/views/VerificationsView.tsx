@@ -4,9 +4,10 @@
 
 import { useState } from "react";
 import { api, type ConfidencePoint } from "../api";
+import { countWindow, verdictKind, verdictLabel, verdictTone, windowLabel } from "../figures";
 import { hrefFor } from "../router";
 import { useLayout, usePolling } from "../usePolling";
-import { CopyId, Empty, Fault, Figure, PageHead, Section, Skeleton, State, fmt, relTime, shortTime } from "../ui";
+import { CopyId, Empty, Fault, Figure, Freshness, PageHead, Section, Skeleton, State, fmt, pollFault, relTime, shortTime } from "../ui";
 
 const W = 1040;
 const H = 240;
@@ -26,16 +27,22 @@ type Filter = "all" | "approved" | "refused";
 
 export function VerificationsView() {
   const layout = useLayout();
-  const { data, error } = usePolling(() => api.confidenceHistory(), 5000);
+  const history = usePolling(() => api.confidenceHistory(), 5000);
   const graph = usePolling(() => api.graph(), 30000);
   const [filter, setFilter] = useState<Filter>("all");
 
-  if (error) return <Fault error={error} />;
+  const fault = pollFault(history);
+  if (fault) return <Fault error={fault} />;
+  const data = history.data;
   const loading = !data;
   const pts = data?.series ?? [];
   const nameOf = new Map((graph.data?.nodes ?? []).map((n) => [n.program_id, n.name]));
 
-  const approved = pts.filter((p) => p.approved).length;
+  // Round 29 (audit 2026-10-20, D1/D4): the split is over the window the
+  // server returned (its newest 500), and says so; descriptive approvals
+  // are counted apart from approvals bound to bytes.
+  const win = countWindow(pts);
+  const winLabel = windowLabel(win.n, data?.count ?? win.n);
   const mean = pts.length ? pts.reduce((s, p) => s + p.confidence, 0) / pts.length : 0;
 
   const listed = [...pts]
@@ -47,14 +54,30 @@ export function VerificationsView() {
     <>
       <PageHead title="Verifications" desc="Every verdict in the order the audit trail recorded it." />
 
-      <div className="figures">
-        <Figure label="On record" value={loading ? "—" : fmt.int(data.count)} />
-        <Figure label="Approved" value={loading ? "—" : fmt.int(approved)} sub={pts.length ? fmt.pct(approved / pts.length) : undefined} tone="pass" />
-        <Figure label="Refused" value={loading ? "—" : fmt.int(pts.length - approved)} tone={pts.length - approved > 0 ? "block" : "idle"} />
-        <Figure label="Mean confidence" value={loading ? "—" : fmt.score(mean)} sub="across the window" />
+      <Freshness sources={[history]} />
+
+      <div className="figures five">
+        <Figure label="On record" value={loading ? "—" : fmt.int(data.count)} sub="all time" />
+        <Figure
+          label={`Bound to bytes, ${winLabel}`}
+          value={loading ? "—" : fmt.int(win.bound)}
+          sub={win.n ? fmt.pct(win.bound / win.n) : undefined}
+          tone={win.bound > 0 ? "pass" : "idle"}
+        />
+        <Figure
+          label={`Descriptive, ${winLabel}`}
+          value={loading ? "—" : fmt.int(win.descriptive)}
+          sub="approved as described, no bytes"
+          tone={win.descriptive > 0 ? "warn" : "idle"}
+        />
+        <Figure label={`Refused, ${winLabel}`} value={loading ? "—" : fmt.int(win.refused)} tone={win.refused > 0 ? "block" : "idle"} />
+        <Figure label="Mean confidence" value={loading ? "—" : fmt.score(mean)} sub={winLabel} />
       </div>
 
-      <Section title="Confidence" meta={pts.length ? `${fmt.int(pts.length)} points, floors drawn for each wallet profile` : undefined}>
+      <Section
+        title="Confidence"
+        meta={pts.length ? `${winLabel} verdicts, floors drawn for each wallet profile` : undefined}
+      >
         {loading ? (
           <Skeleton rows={2} cols={1} />
         ) : pts.length === 0 ? (
@@ -170,8 +193,8 @@ function Chart({ pts, compact }: { pts: ConfidencePoint[]; compact: boolean }) {
       <path className="series-area" d={area} />
       <path className="series" d={line} />
       {pts.map((p, i) => (
-        <circle key={p.audit_trail_id} className={p.approved ? "pt pass" : "pt block"} cx={x(times[i])} cy={y(p.confidence)} r={p.approved ? 2 : 3}>
-          <title>{`${fmt.score(p.confidence)}, ${p.approved ? "approved" : "refused"}\n${shortTime(p.timestamp)}`}</title>
+        <circle key={p.audit_trail_id} className={`pt ${verdictTone(verdictKind(p))}`} cx={x(times[i])} cy={y(p.confidence)} r={p.approved ? 2 : 3}>
+          <title>{`${fmt.score(p.confidence)}, ${verdictLabel(verdictKind(p))}\n${shortTime(p.timestamp)}`}</title>
         </circle>
       ))}
       <line className="axis" x1={PAD_L} x2={W - PAD_R} y1={h - PAD_B} y2={h - PAD_B} />
@@ -191,17 +214,16 @@ function Chart({ pts, compact }: { pts: ConfidencePoint[]; compact: boolean }) {
  * does not constrain what gets signed, and is shown as such (W22).
  */
 function Verdict({ p }: { p: ConfidencePoint }) {
-  if (!p.approved) return <State kind="block">refused</State>;
-  if (p.transaction_sha256) {
-    return (
-      <State kind="pass" title={`bound to ${p.transaction_sha256}`}>
-        approved
-      </State>
-    );
-  }
+  const kind = verdictKind(p);
+  const title =
+    kind === "bound"
+      ? `bound to ${p.transaction_sha256}`
+      : kind === "descriptive"
+        ? "approved as described, not bound to transaction bytes"
+        : undefined;
   return (
-    <State kind="warn" title="approved as described, not bound to transaction bytes">
-      approved · descriptive
+    <State kind={verdictTone(kind)} title={title}>
+      {verdictLabel(kind)}
     </State>
   );
 }

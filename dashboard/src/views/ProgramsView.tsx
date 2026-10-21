@@ -8,7 +8,7 @@ import { ChevronDown, ExternalLink, Search } from "lucide-react";
 import { api, type GraphNode, type Manifest, type ManifestInstruction } from "../api";
 import { hrefFor, navigate } from "../router";
 import { useLayout, usePolling } from "../usePolling";
-import { CopyId, Detail, Empty, Fault, Figure, PageHead, Section, Skeleton, State, TierBadge, fmt, tierRank } from "../ui";
+import { CopyId, Detail, Empty, Fault, Figure, Freshness, PageHead, Section, Skeleton, State, TierBadge, fmt, pollFault, tierRank } from "../ui";
 
 export function ProgramsView({ selected }: { selected?: string }) {
   const layout = useLayout();
@@ -17,16 +17,19 @@ export function ProgramsView({ selected }: { selected?: string }) {
   const manifests = usePolling(() => api.manifests(), 30000);
   const [q, setQ] = useState("");
 
-  const error = top.error ?? graph.error;
-  if (error) return <Fault error={error} />;
+  const fault = pollFault(top, graph);
+  if (fault) return <Fault error={fault} />;
   const loading = !top.data || !graph.data;
 
+  // Round 29 (audit 2026-10-20, D10): `/api/protocols/top` reports observed
+  // counts for its five rows only. Every other program's count is unknown to
+  // the console — not zero, and not "no traffic".
   const observedBy = new Map((top.data?.top ?? []).map((t) => [t.program_id, t.observed_verifications]));
   const all = [...(graph.data?.nodes ?? [])]
-    .map((node) => ({ node, observed: observedBy.get(node.program_id) ?? 0 }))
+    .map((node) => ({ node, observed: observedBy.get(node.program_id) }))
     // Most-exercised first: what the gate actually sees traffic on matters
     // more at the top than alphabetical order.
-    .sort((a, b) => b.observed - a.observed || b.node.battle_tested_tx_count - a.node.battle_tested_tx_count);
+    .sort((a, b) => (b.observed ?? -1) - (a.observed ?? -1) || b.node.battle_tested_tx_count - a.node.battle_tested_tx_count);
 
   const needle = q.trim().toLowerCase();
   const rows = needle
@@ -45,7 +48,7 @@ export function ProgramsView({ selected }: { selected?: string }) {
     <>
       <PageHead
         title="Programs"
-        desc="Every program with a manifest in the semantic graph, ranked by how often the gate has seen it."
+        desc="Every program with a manifest in the semantic graph: the five the Core reports verification counts for come first, then by mainnet census."
         actions={
           <label className="search-field">
             <Search aria-hidden="true" />
@@ -62,6 +65,8 @@ export function ProgramsView({ selected }: { selected?: string }) {
           </label>
         }
       />
+
+      <Freshness sources={[top, graph]} />
 
       <div className="figures">
         <Figure label="Programs" value={loading ? "—" : fmt.int(all.length)} />
@@ -90,7 +95,7 @@ export function ProgramsView({ selected }: { selected?: string }) {
                   </span>
                   <span className="row-meta">
                     <span translate="no">{node.instruction_count} instructions</span>
-                    <span>{observed > 0 ? `${fmt.int(observed)} verifications` : "no traffic"}</span>
+                    <span>{observedText(observed)}</span>
                   </span>
                 </a>
                 <div className="row-side">
@@ -108,7 +113,7 @@ export function ProgramsView({ selected }: { selected?: string }) {
                 <th>Trust</th>
                 <th className="n">Instructions</th>
                 <th className="n">Baseline</th>
-                <th className="n">Battle-tested</th>
+                <th className="n">Mainnet census</th>
                 <th className="n">Verified here</th>
               </tr>
             </thead>
@@ -135,7 +140,7 @@ export function ProgramsView({ selected }: { selected?: string }) {
                   <td className="n">{node.instruction_count}</td>
                   <td className="n">{node.baseline_samples ? fmt.int(node.baseline_samples) : <span className="muted">—</span>}</td>
                   <td className="n">{node.battle_tested_tx_count ? fmt.int(node.battle_tested_tx_count) : <span className="muted">0</span>}</td>
-                  <td className="n">{observed ? fmt.int(observed) : <span className="muted">0</span>}</td>
+                  <td className="n">{observed === undefined ? <span className="muted" title={NOT_REPORTED}>—</span> : observed ? fmt.int(observed) : <span className="muted">0</span>}</td>
                 </tr>
               ))}
             </tbody>
@@ -185,6 +190,13 @@ function httpUrl(raw: string | undefined): string | undefined {
   }
 }
 
+const NOT_REPORTED = "The Core reports verification counts only for the five programs at the top of /api/protocols/top.";
+
+function observedText(observed: number | undefined): string {
+  if (observed === undefined) return "count not reported";
+  return observed > 0 ? `${fmt.int(observed)} verifications` : "not verified here yet";
+}
+
 export function ProgramDetail({
   node,
   observed,
@@ -193,7 +205,8 @@ export function ProgramDetail({
   nameOf,
 }: {
   node: GraphNode;
-  observed: number;
+  /** Undefined when `/api/protocols/top` did not report this program. */
+  observed: number | undefined;
   manifest: Manifest | null;
   manifestsLoading: boolean;
   nameOf: Map<string, string>;
@@ -229,10 +242,10 @@ export function ProgramDetail({
         <dt>Manifest</dt>
         <dd translate="no">{node.manifest_version ? versionLabel(node.manifest_version) : "none"}</dd>
         <dt>Verified here</dt>
-        <dd>{fmt.int(observed)}</dd>
+        <dd title={observed === undefined ? NOT_REPORTED : undefined}>{observed === undefined ? "not reported" : fmt.int(observed)}</dd>
         <dt>Baseline samples</dt>
         <dd>{node.baseline_samples ? fmt.int(node.baseline_samples) : "none yet"}</dd>
-        <dt>Battle-tested</dt>
+        <dt>Mainnet census</dt>
         <dd>{fmt.int(node.battle_tested_tx_count)}</dd>
         <dt>Community verified</dt>
         <dd>{fmt.int(node.community_verified_count)}</dd>

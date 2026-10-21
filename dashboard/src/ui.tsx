@@ -9,6 +9,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Copy, Inbox, KeyRound, PlugZap, ServerCrash, X } from "lucide-react";
 import { ApiError } from "./api";
 import { hrefFor } from "./router";
+import type { Polled } from "./usePolling";
 
 /** Ordered low → high. Index is the tier's rank, which drives the scale. */
 const TIER_ORDER = [
@@ -222,6 +223,46 @@ export function Fault({ error }: { error: ApiError }) {
         reason.
       </p>
     </div>
+  );
+}
+
+/**
+ * The fault to show *instead of* a view: only a source that has failed and
+ * has never delivered. Round 29 (audit 2026-10-20, D3): every view used to
+ * swap its last good data for a Fault panel on the first failed poll, so one
+ * 429 or one dropped connection blanked the screen the operator was reading.
+ * A source with data keeps it on screen, under `<Freshness>`'s banner.
+ */
+export function pollFault(...sources: Polled<unknown>[]): ApiError | null {
+  for (const s of sources) if (s.error && s.data === null) return s.error;
+  return null;
+}
+
+/**
+ * How old the numbers on screen are, and — when the latest poll failed —
+ * that they are the last good ones and why the new ones did not come.
+ * Round 29 (D3): `updatedAt` was tracked and never shown, so a view whose
+ * polls had silently stopped looked exactly like a live one.
+ */
+export function Freshness({ sources }: { sources: Polled<unknown>[] }) {
+  const failing = sources.find((s) => s.error !== null);
+  const times = sources.map((s) => s.updatedAt).filter((t): t is number => t !== null);
+  const oldest = times.length === sources.length && times.length > 0 ? Math.min(...times) : null;
+  if (failing?.error) {
+    return (
+      <div className="banner warn" role="status">
+        <span>
+          <strong>Showing the last good data{oldest !== null ? `, from ${relTime(oldest)}` : ""}.</strong>{" "}
+          {failing.error.message} The console keeps retrying.
+        </span>
+      </div>
+    );
+  }
+  if (oldest === null) return null;
+  return (
+    <p className="freshness" title={new Date(oldest).toLocaleString()}>
+      Updated {relTime(oldest)}
+    </p>
   );
 }
 

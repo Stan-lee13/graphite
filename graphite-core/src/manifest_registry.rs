@@ -10,27 +10,35 @@
 //! - **Tier is computed, never asserted (P7).** Submissions contribute
 //!   EVIDENCE (`has_signed_manifest`, independent attestation count);
 //!   `compute_trust_tier` derives the tier. The store's `append` recomputes
-//!   it too — a submission can never name its own tier.
+//!   it too — a submission can never name its own tier. A revoked reviewer's
+//!   signature and attestations stop counting, and the tiers in force are
+//!   recomputed from the reviewers registered NOW (`revoke_reviewer`).
 //! - **G5 independence:** `community_verified_count` counts only DISTINCT
 //!   registered reviewers (reputation ≥ `MIN_REVIEWER_REPUTATION`) whose
-//!   attestation signature verifies over the submission's content hash —
+//!   attestation signature verifies over the submission's signing message —
 //!   one attestation per (program, version) per reviewer. Duplicate, invalid,
 //!   and unregistered attestations are dropped.
+//! - **What is signed:** [`signing_message`] — a domain tag, the program id
+//!   and the canonical content hash ([`canonical_manifest_json`]), never the
+//!   bare hash string, so no signature made for anything else verifies here.
 //! - **Anonymous signing is worthless (P7):** a valid ed25519 signature by an
 //!   UNREGISTERED key earns no tier. A signature by a low-reputation
 //!   registered key is rejected outright.
 //! - **Append-only (P4):** accepted submissions are recorded in an append-only
-//!   log with version lineage (`previous_version_ref`); the Semantic Graph
-//!   append is likewise append-only.
-//! - **P10 gate:** a submission that would PROMOTE the program's trust tier
-//!   requires a passing regression run over that program's fixtures. The
-//!   engine runs the replay ITSELF against the supplied corpus — a caller can
-//!   never hand it a fabricated "passing" run — and replays against a core
-//!   carrying the CANDIDATE manifest, so the run answers "does what this
-//!   submission would install still reproduce the recorded outcomes?" rather
-//!   than "does the manifest it replaces still work?". A program with no prior
-//!   record counts as rank 0, so a first submission that earns any tier above
-//!   Unknown is a promotion and is gated like any other.
+//!   log with version lineage. A submission must name the version in force as
+//!   its `previous_version_ref` (or be the program's first), and no label or
+//!   content hash the registry has accepted, or refused at the replay gate, is
+//!   ever taken again — so an older signed version cannot be rolled in over a
+//!   newer one.
+//! - **P10 gate:** EVERY submission is replayed — the engine runs the replay
+//!   ITSELF, against a core carrying the CANDIDATE manifest, over the
+//!   registry's OWN regression corpus for the program plus whatever fixtures
+//!   the submitter supplies. The registry's corpus holds the fixtures of every
+//!   version it has accepted (including the refusals that pinned them) and is
+//!   persisted with the registry's state, so a submission can add fixtures
+//!   but never remove one: leaving a refusal fixture out of the corpus handed
+//!   in does not take it out of the replay. A caller can never hand it a
+//!   fabricated "passing" run.
 //!
 //!   **What the first-submission gate does and does not prove.** A brand-new
 //!   program has no prior recorded behaviour, so there is nothing for its first
@@ -40,16 +48,14 @@
 //!   the new manifest — claiming otherwise would be overclaiming. What it buys
 //!   is that the regression baseline EXISTS: the program cannot be enshrined
 //!   with an empty history, so its first upgrade has something to be held to.
-//!   Without it, a program admitted with no fixtures could never be
-//!   meaningfully gated on any later version either, and the gate would
-//!   protect only programs that happened to acquire fixtures some other way.
-//!   The submitter still chooses which transaction to pin, which is the same
-//!   assumption the upgrade path already makes.
+//!   The submitter still chooses which transactions to pin, which is the same
+//!   assumption the upgrade path makes for the fixtures it ADDS.
 //! - **P11:** trust is keyed by the exact `programId` string — no fuzzy match.
 //!
 //! Registry submissions reach at most Tier 4 (`CommunityVerified`): Tier 5
-//! (`BattleTested`) requires 1,000+ battle-tested transactions, which are
-//! earned by real usage, never self-attested through the registry.
+//! (`BattleTested`) requires 1,000+ battle-tested transactions in the
+//! program's graph evidence, which is operator-asserted (seeded by an
+//! operator), never attested through the registry.
 
 use crate::confidence_engine::TrustTier;
 use crate::manifest::ProtocolManifest;
@@ -60,12 +66,16 @@ use crate::semantic_graph_store::{
     compute_trust_tier, Behavior, BehaviorEvidence, SemanticGraphStore,
 };
 use crate::verification::GraphiteCore;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use thiserror::Error;
 
 /// Minimum demonstrated reputation for a reviewer's signature/attestation to
 /// count (G5). Operational parameter, not a security boundary on its own.
 pub const MIN_REVIEWER_REPUTATION: u64 = 100;
+
+/// The domain tag every registry signature begins with (Round 29, audit
+/// 2026-10-20, MR-3). See [`signing_message`].
+pub const SIGNING_DOMAIN: &[u8] = b"graphite-manifest-registry-v1\0";
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum RegistryError {
@@ -87,6 +97,26 @@ pub enum RegistryError {
     InvalidManifest(String),
     #[error("version {0} of this program was already accepted; a registry never re-accepts a version, so an old submission cannot be replayed over a newer one")]
     VersionAlreadyAccepted(String),
+    /// The submission does not name the version in force as its predecessor
+    /// (Round 29, audit 2026-10-20, MR-2).
+    #[error("lineage: the version in force is {head:?}, and this submission names {named:?} as its previous_version_ref — a submission must build on the version in force, so an older signed version can never be rolled in over a newer one")]
+    StaleLineage {
+        head: Option<String>,
+        named: Option<String>,
+    },
+    /// The registry's replay gate refused this label or content before (MR-2).
+    #[error("version {0} of this program (or its exact content) was refused by the regression gate before; a refused version is never taken again — correct it under a new label")]
+    VersionPreviouslyRefused(String),
+    /// The key is not a usable ed25519 public key (MR-6).
+    #[error("reviewer pubkey {0:?} is not a valid ed25519 public key (base58, 32 bytes, a point on the curve)")]
+    MalformedReviewerPubkey(String),
+    /// The key was revoked; revocation is permanent (MR-6).
+    #[error(
+        "reviewer {0} was revoked; a revoked key is never registered again — register a new key"
+    )]
+    ReviewerRevoked(String),
+    #[error("reviewer {0} is not registered")]
+    UnknownReviewer(String),
 }
 
 /// Outcome of a registry submission.
@@ -112,11 +142,11 @@ pub struct RegistryReviewer {
     pub reputation_score: u64,
 }
 
-/// An independent reviewer attestation over a submission's content hash.
+/// An independent reviewer attestation over a submission's signing message.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ReviewerAttestation {
     pub reviewer_pubkey: String,
-    /// hex-encoded ed25519 signature over the content hash.
+    /// hex-encoded ed25519 signature over [`signing_message`].
     pub signature_hex: String,
 }
 
@@ -131,17 +161,100 @@ pub struct ManifestSubmission {
     pub attestations: Vec<ReviewerAttestation>,
 }
 
+/// The canonical JSON form of a manifest — what the content hash covers
+/// (Round 29, audit 2026-10-20, MR-4).
+///
+/// The form: the JSON value serde produces for the PARSED
+/// [`ProtocolManifest`], written with
+///
+/// - the keys of every object sorted by their UTF-8 bytes, at every level;
+/// - no whitespace outside strings;
+/// - strings and numbers in serde_json's encoding (`\"`, `\\`, `\n`, `\uXXXX`
+///   for control characters; integers in plain decimal).
+///
+/// Because it is the parsed manifest, a field absent from the submitted
+/// document hashes as its default, and the documentation-only fields the
+/// parser does not keep (`protocol.note`, `protocol.idl_source`,
+/// `protocol.superseded`, the top-level `verification` block) are not
+/// covered: they never reach the registry. Field ORDER in the document, and
+/// the order in which the struct happens to declare its fields, no longer
+/// change the hash — it was `serde_json::to_string` of the struct, which is
+/// declaration-ordered and changes whenever a field is added or moved.
+pub fn canonical_manifest_json(manifest: &ProtocolManifest) -> String {
+    fn write(v: &serde_json::Value, out: &mut String) {
+        match v {
+            serde_json::Value::Object(map) => {
+                let mut keys: Vec<&String> = map.keys().collect();
+                keys.sort();
+                out.push('{');
+                for (i, k) in keys.into_iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    out.push_str(&serde_json::Value::String(k.clone()).to_string());
+                    out.push(':');
+                    write(&map[k], out);
+                }
+                out.push('}');
+            }
+            serde_json::Value::Array(items) => {
+                out.push('[');
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    write(item, out);
+                }
+                out.push(']');
+            }
+            scalar => out.push_str(&scalar.to_string()),
+        }
+    }
+    let value = serde_json::to_value(manifest).expect("a manifest is plain data");
+    let mut out = String::new();
+    write(&value, &mut out);
+    out
+}
+
+/// The exact bytes a registry signature or attestation signs (Round 29, audit
+/// 2026-10-20, MR-3):
+///
+/// ```text
+/// b"graphite-manifest-registry-v1\0" || program_id || b"\0" || content_hash_hex
+/// ```
+///
+/// Signatures used to cover the bare 64-character hex string. Reviewer keys
+/// are ordinary ed25519 keys — Solana wallet keys — so any signature that key
+/// ever made over that string (a wallet `signMessage` prompt showing a hash,
+/// say) verified as an attestation. The domain tag makes a registry signature
+/// one that could only have been made for the registry, and the program id
+/// binds it to the program as well as to the content. Submission, attestation
+/// and verification all build the message here; a signing tool must too.
+pub fn signing_message(program_id: &str, content_hash_hex: &str) -> Vec<u8> {
+    let mut m = Vec::with_capacity(SIGNING_DOMAIN.len() + program_id.len() + 1 + 64);
+    m.extend_from_slice(SIGNING_DOMAIN);
+    m.extend_from_slice(program_id.as_bytes());
+    m.push(0);
+    m.extend_from_slice(content_hash_hex.as_bytes());
+    m
+}
+
 impl ManifestSubmission {
-    /// The deterministic signing message: sha256 of the canonical manifest
-    /// JSON. Signatures and attestations verify over this.
+    /// The deterministic content hash: hex SHA-256 of the canonical manifest
+    /// JSON ([`canonical_manifest_json`]).
     pub fn content_hash(&self) -> String {
         Self::content_hash_of(&self.manifest)
     }
 
+    /// What the submitter signs and each reviewer attests: [`signing_message`]
+    /// over this manifest's program and content hash.
+    pub fn signing_message(&self) -> Vec<u8> {
+        signing_message(&self.manifest.protocol.program_id, &self.content_hash())
+    }
+
     fn content_hash_of(manifest: &ProtocolManifest) -> String {
         use sha2::{Digest, Sha256};
-        let canonical = serde_json::to_string(manifest).expect("manifest is serializable");
-        hex::encode(Sha256::digest(canonical.as_bytes()))
+        hex::encode(Sha256::digest(canonical_manifest_json(manifest).as_bytes()))
     }
 }
 
@@ -152,6 +265,9 @@ pub struct RegistryRecord {
     pub version_label: String,
     pub previous_version_ref: Option<String>,
     pub content_hash: String,
+    /// The tier computed when the version was accepted. The tier IN FORCE is
+    /// recomputed from the reviewers registered now (see
+    /// [`ManifestRegistryEngine::manifests_in_force`]).
     pub trust_tier: TrustTier,
     /// "signed" (registered-reporter signature) or "community" (attestations).
     pub source: String,
@@ -160,15 +276,48 @@ pub struct RegistryRecord {
     /// for records persisted before this field existed (serde default).
     #[serde(default)]
     pub manifest: Option<ProtocolManifest>,
+    /// The reviewer whose signature counted, if any (Round 29, MR-6). Absent
+    /// on records written before revocation existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signer: Option<String>,
+    /// The independent reviewers whose attestations counted (MR-6).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attesters: Vec<String>,
+}
+
+/// A version the replay gate refused (MR-2): its label and content are never
+/// taken again for this program.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefusedSubmission {
+    pub program_id: String,
+    pub version_label: String,
+    pub content_hash: String,
+    pub reason: String,
 }
 
 /// The community Manifest Registry engine.
+///
+/// Persisted whole (`to_json` / `from_json`). Every field added in Round 29
+/// is `serde(default)`, so a state file written before it loads with them
+/// empty.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct ManifestRegistryEngine {
     /// Registered reviewers: pubkey → identity + demonstrated reputation (G5).
     reviewers: HashMap<String, RegistryReviewer>,
     /// Append-only acceptance log with version lineage (P4).
     records: Vec<RegistryRecord>,
+    /// Reviewers whose keys were revoked (MR-6). Never registered again.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    revoked_reviewers: BTreeSet<String>,
+    /// Versions the replay gate refused (MR-2).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    refused: Vec<RefusedSubmission>,
+    /// The registry's own regression corpus (MR-1): every fixture of every
+    /// version it has accepted, for every program. Replayed on every
+    /// submission in addition to whatever the submitter supplies; a
+    /// submission can add to it and never remove from it.
+    #[serde(default)]
+    corpus: RegressionCorpus,
 }
 
 impl ManifestRegistryEngine {
@@ -178,6 +327,11 @@ impl ManifestRegistryEngine {
 
     /// Register a reviewer identity with a demonstrated reputation score.
     /// Operator API (Phase 2: operator-verified stake/GitHub claim).
+    ///
+    /// Round 29 (audit 2026-10-20, MR-6): the key must be a usable ed25519
+    /// public key — base58, 32 bytes, a valid curve point. Any non-empty
+    /// string was accepted, so a typo registered a reviewer whose signatures
+    /// could never verify, and nothing said so. A revoked key is refused.
     pub fn register_reviewer(
         &mut self,
         pubkey: &str,
@@ -185,6 +339,12 @@ impl ManifestRegistryEngine {
     ) -> Result<(), RegistryError> {
         if pubkey.trim().is_empty() {
             return Err(RegistryError::InvalidReviewerPubkey);
+        }
+        if parse_verifying_key(pubkey).is_none() {
+            return Err(RegistryError::MalformedReviewerPubkey(pubkey.to_string()));
+        }
+        if self.revoked_reviewers.contains(pubkey) {
+            return Err(RegistryError::ReviewerRevoked(pubkey.to_string()));
         }
         self.reviewers.insert(
             pubkey.to_string(),
@@ -194,6 +354,70 @@ impl ManifestRegistryEngine {
             },
         );
         Ok(())
+    }
+
+    /// Revoke a reviewer (Round 29, audit 2026-10-20, MR-6). Operator API.
+    ///
+    /// The key leaves the registered set for good, and its signature and
+    /// attestations stop counting wherever they counted: the tier of every
+    /// manifest in force is recomputed from the reviewers registered now
+    /// ([`Self::manifests_in_force`]), and every program whose version in
+    /// force the key had signed or attested gets a new Semantic Graph record
+    /// carrying the recomputed registry evidence (append-only, P4; the
+    /// program's other evidence is kept, G-3). Returns how many programs were
+    /// re-recorded.
+    ///
+    /// A version accepted before records named their reviewers (no `signer`
+    /// or `attesters` on the record) cannot be recomputed and keeps the tier
+    /// it was accepted at.
+    pub fn revoke_reviewer(
+        &mut self,
+        store: &mut SemanticGraphStore,
+        pubkey: &str,
+    ) -> Result<usize, RegistryError> {
+        if self.reviewers.remove(pubkey).is_none() {
+            return Err(RegistryError::UnknownReviewer(pubkey.to_string()));
+        }
+        self.revoked_reviewers.insert(pubkey.to_string());
+        let mut touched = 0;
+        let heads: Vec<RegistryRecord> = self.heads().into_iter().cloned().collect();
+        for head in heads {
+            let involved = head.signer.as_deref() == Some(pubkey)
+                || head.attesters.iter().any(|a| a == pubkey);
+            if !involved {
+                continue;
+            }
+            let evidence = self.evidence_in_force(&head);
+            store
+                .append_registry_evidence(Behavior {
+                    program_id: head.program_id.clone(),
+                    version: head.version_label.clone(),
+                    expected_state_changes: head
+                        .manifest
+                        .iter()
+                        .flat_map(|m| m.instructions.iter())
+                        .flat_map(|ix| ix.expected_state_changes.iter().cloned())
+                        .collect(),
+                    allowed_cpis: head
+                        .manifest
+                        .iter()
+                        .flat_map(|m| m.instructions.iter())
+                        .flat_map(|ix| ix.allowed_cpis.iter().cloned())
+                        .collect(),
+                    trust_tier: TrustTier::Unknown, // recomputed by append (P7)
+                    evidence,
+                    quarantined: false,
+                    quarantine_reason: None,
+                })
+                .map_err(|_| RegistryError::EmptyProgramId)?;
+            touched += 1;
+        }
+        Ok(touched)
+    }
+
+    /// Reviewer keys that have been revoked.
+    pub fn revoked_reviewers(&self) -> &BTreeSet<String> {
+        &self.revoked_reviewers
     }
 
     pub fn reviewer_reputation(&self, pubkey: &str) -> Option<u64> {
@@ -209,12 +433,77 @@ impl ManifestRegistryEngine {
         &self.records
     }
 
+    /// Versions the replay gate refused (MR-2).
+    pub fn refused(&self) -> &[RefusedSubmission] {
+        &self.refused
+    }
+
+    /// The registry's own regression corpus (MR-1).
+    pub fn regression_corpus(&self) -> &RegressionCorpus {
+        &self.corpus
+    }
+
+    /// Operator action: deprecate one fixture of the registry's corpus, by
+    /// its identity (`content_hash`). The escape hatch for a correction that
+    /// legitimately changes a pinned outcome — a submission cannot remove a
+    /// fixture, but an operator can retire one, deliberately and by name. A
+    /// deprecated fixture stays in the corpus (P4) and leaves the pass-rate
+    /// denominator.
+    pub fn deprecate_regression_fixture(&mut self, content_hash: &str) -> bool {
+        self.corpus.deprecate(content_hash)
+    }
+
     /// Last accepted record for a program (version lineage head).
     pub fn last_accepted(&self, program_id: &str) -> Option<&RegistryRecord> {
         self.records
             .iter()
             .rev()
             .find(|r| r.program_id == program_id)
+    }
+
+    /// The head record of every program, in order of each program's first
+    /// acceptance (P2).
+    fn heads(&self) -> Vec<&RegistryRecord> {
+        let mut order: Vec<&str> = Vec::new();
+        let mut latest: HashMap<&str, &RegistryRecord> = HashMap::new();
+        for record in &self.records {
+            let key = record.program_id.as_str();
+            if latest.insert(key, record).is_none() {
+                order.push(key);
+            }
+        }
+        order.into_iter().filter_map(|k| latest.remove(k)).collect()
+    }
+
+    /// The registry evidence a record carries NOW: its signer if still a
+    /// registered reviewer of sufficient reputation, and its attesters that
+    /// still are (MR-6). A record that names no reviewer (written before
+    /// reviewers were recorded) has no evidence to reconstruct; callers use
+    /// its stored tier instead (`tier_in_force`).
+    fn evidence_in_force(&self, record: &RegistryRecord) -> BehaviorEvidence {
+        let counts = |k: &str| {
+            self.reviewer_reputation(k)
+                .is_some_and(|r| r >= MIN_REVIEWER_REPUTATION)
+        };
+        BehaviorEvidence {
+            has_signed_manifest: record.signer.as_deref().is_some_and(counts),
+            community_verified_count: record
+                .attesters
+                .iter()
+                .filter(|a| counts(a))
+                .count()
+                .try_into()
+                .unwrap_or(u32::MAX),
+            ..Default::default()
+        }
+    }
+
+    /// The tier a record supports with the reviewers registered now.
+    fn tier_in_force(&self, record: &RegistryRecord) -> TrustTier {
+        if record.signer.is_none() && record.attesters.is_empty() {
+            return record.trust_tier;
+        }
+        compute_trust_tier(&self.evidence_in_force(record))
     }
 
     /// The CURRENT accepted manifest for each program — the last one accepted,
@@ -237,57 +526,56 @@ impl ManifestRegistryEngine {
     /// `None`) are skipped. The verification core merges these into its
     /// runtime registry (C53) so community-accepted protocols actually resolve
     /// at verification time, not just in the dashboard.
-    /// The manifests in force (see [`Self::accepted_manifests`]), each
-    /// carrying the tier the registry COMPUTED for it in place of the one
-    /// its document declares (A3-06, 2026-09-29 audit). The runtime reads a
-    /// manifest's `trust_tier` on the verdict path; a submission earning
-    /// HeuristicInferred from one attestation that wrote "OfficialManifest"
-    /// into its own document was verified at OfficialManifest. P7: a tier is
-    /// computed from evidence, never asserted. This is what a verification
-    /// core merges.
+    ///
+    /// Each manifest carries the tier the registry COMPUTES for it in place
+    /// of the one its document declares (A3-06, 2026-09-29 audit) — and
+    /// computes from the reviewers registered NOW, so a revoked reviewer's
+    /// signature or attestation no longer holds the tier up (Round 29, MR-6).
+    /// The runtime reads a manifest's `trust_tier` on the verdict path; a
+    /// submission earning HeuristicInferred from one attestation that wrote
+    /// "OfficialManifest" into its own document was verified at
+    /// OfficialManifest. P7: a tier is computed from evidence, never
+    /// asserted. This is what a verification core merges.
     pub fn manifests_in_force(&self) -> Vec<ProtocolManifest> {
-        let mut order: Vec<&str> = Vec::new();
-        let mut latest: HashMap<&str, (&ProtocolManifest, TrustTier)> = HashMap::new();
-        for record in &self.records {
-            let Some(manifest) = record.manifest.as_ref() else {
-                continue;
-            };
-            let key = record.program_id.as_str();
-            if latest.insert(key, (manifest, record.trust_tier)).is_none() {
-                order.push(key);
-            }
-        }
-        order
+        self.records_in_force()
             .into_iter()
-            .filter_map(|k| latest.remove(k))
-            .map(|(m, tier)| {
-                let mut m = m.clone();
-                m.trust_tier = tier.as_str().to_string();
+            .map(|(record, manifest)| {
+                let mut m = manifest.clone();
+                m.trust_tier = self.tier_in_force(record).as_str().to_string();
                 m
             })
             .collect()
     }
 
-    pub fn accepted_manifests(&self) -> impl Iterator<Item = &ProtocolManifest> {
+    /// The latest record carrying a manifest, per program, in order of each
+    /// program's first such record.
+    fn records_in_force(&self) -> Vec<(&RegistryRecord, &ProtocolManifest)> {
         let mut order: Vec<&str> = Vec::new();
-        let mut latest: HashMap<&str, &ProtocolManifest> = HashMap::new();
+        let mut latest: HashMap<&str, (&RegistryRecord, &ProtocolManifest)> = HashMap::new();
         for record in &self.records {
             let Some(manifest) = record.manifest.as_ref() else {
                 continue;
             };
             let key = record.program_id.as_str();
-            if latest.insert(key, manifest).is_none() {
+            if latest.insert(key, (record, manifest)).is_none() {
                 order.push(key);
             }
         }
-        order.into_iter().filter_map(move |k| latest.remove(k))
+        order.into_iter().filter_map(|k| latest.remove(k)).collect()
+    }
+
+    /// The manifests in force, as accepted (their documents' own tiers). See
+    /// [`Self::manifests_in_force`] for what a verification core merges.
+    pub fn accepted_manifests(&self) -> impl Iterator<Item = &ProtocolManifest> {
+        self.records_in_force().into_iter().map(|(_, m)| m)
     }
 
     /// Submit a community manifest.
     ///
-    /// `regression` is required only when the submission would PROMOTE the
-    /// program's current trust tier (P10): the engine runs the replay itself
-    /// over the supplied corpus, so a fabricated "passing" run is impossible.
+    /// `regression` is required for every submission (P10): the engine runs
+    /// the replay itself, over its own corpus for the program plus the
+    /// supplied one, so a fabricated "passing" run is impossible and an
+    /// omitted fixture is still replayed (MR-1).
     pub fn submit(
         &mut self,
         store: &mut SemanticGraphStore,
@@ -298,11 +586,22 @@ impl ManifestRegistryEngine {
         if program_id.trim().is_empty() {
             return Err(RegistryError::EmptyProgramId);
         }
-        // Schema validation — mirror the runtime loader: a manifest the loader
-        // would refuse must not be enshrined at an earned tier.
+        // Schema validation — the runtime loader's own (MR-5): a manifest the
+        // loader would refuse must not be enshrined at an earned tier.
         Self::validate_manifest(&submission.manifest)?;
         let content_hash = submission.content_hash();
         let version_label = submission.manifest.version.label.clone();
+
+        // MR-2: a label or content the replay gate refused is never taken
+        // again — after a fixture is deprecated, or the core changes, the
+        // same refused manifest must not slip through on a second try.
+        if self.refused.iter().any(|r| {
+            r.program_id == program_id
+                && (r.version_label == version_label || r.content_hash == content_hash)
+        }) {
+            return Err(RegistryError::VersionPreviouslyRefused(version_label));
+        }
+
         // A3-07 (2026-09-29 audit): a version is accepted once. Signatures
         // and attestations cover the manifest alone, so anyone holding an
         // old accepted submission could hand it in again after a correction;
@@ -316,13 +615,11 @@ impl ManifestRegistryEngine {
         // that earns it a HIGHER tier — more attesters. That cannot roll
         // anything back (it is the head), and without it the only way to
         // raise an accepted version's tier was to relabel identical content.
-        let head_tier = self
-            .records
-            .iter()
-            .rev()
-            .find(|r| r.program_id == program_id)
+        let head = self.last_accepted(&program_id).cloned();
+        let head_tier = head
+            .as_ref()
             .filter(|h| h.content_hash == content_hash && h.version_label == version_label)
-            .map(|h| h.trust_tier);
+            .map(|h| self.tier_in_force(h));
         if head_tier.is_none()
             && self.records.iter().any(|r| {
                 r.program_id == program_id
@@ -333,7 +630,8 @@ impl ManifestRegistryEngine {
         }
 
         // Evidence from the submission — P7: tier derived, never asserted.
-        let evidence = self.evidence_from_submission(&submission, &content_hash)?;
+        let (evidence, signer, attesters) =
+            self.evidence_from_submission(&submission, &content_hash)?;
         if !evidence.has_signed_manifest && evidence.community_verified_count == 0 {
             return Err(RegistryError::NoEvidence);
         }
@@ -343,69 +641,78 @@ impl ManifestRegistryEngine {
             return Err(RegistryError::VersionAlreadyAccepted(version_label));
         }
 
-        // P10 gate: promotion requires the ENGINE'S OWN replay over this
-        // program's fixtures to pass (fabricated runs are impossible).
-        //
-        // A program with no prior record sits at rank 0. A first submission
-        // that lands it above that IS a promotion — it moves the program from
-        // no trust to some trust, which is the largest single step the tier
-        // ladder has. Treating it as exempt (as this did until 2026-09-05)
-        // left the gate protecting only upgrades, so the way past it was
-        // simply to never have a first record: submit a fresh program and it
-        // was enshrined at OfficialManifest, or at CommunityVerified with
-        // enough attestations, with no replay at all.
-        let current_rank = store
-            .get(&program_id)
-            .map(|b| tier_rank(&b.trust_tier))
-            .unwrap_or(0);
-        let is_promotion = tier_rank(&tier) > current_rank;
-        // W12 (external review, verified 2026-10-03): an UPGRADE is held to the
-        // gate too. Only a promotion was, so a second reviewer could sign a v2
-        // that loosened v1 — a control instruction retagged `transfer` — at the
-        // same tier, with no replay, and it became the manifest in force. A
-        // program's first manifest is held to it by the promotion rule; every
-        // later one by this.
-        let is_upgrade = self.records.iter().any(|r| r.program_id == program_id);
-        if is_promotion || is_upgrade {
-            let (corpus, core) = regression.ok_or_else(|| {
-                RegistryError::RegressionGateBlocked(
-                    if is_promotion {
-                        "no regression corpus supplied for a tier promotion"
-                    } else {
-                        "no regression corpus supplied for an upgrade of a manifest in force"
-                    }
-                    .to_string(),
-                )
-            })?;
-            // Replay against the manifest the submission WOULD install, not
-            // the one it replaces. Under the old core an upgrade's fixtures
-            // were checked against the manifest being superseded, which only
-            // ever confirmed that the outgoing manifest still worked; and a
-            // first submission had no manifest to replay against at all,
-            // which is what made the gate unreachable for new programs and
-            // motivated exempting them.
-            // W12 (external review): replayed at the tier the registry
-            // computed, which is the tier `manifests_in_force` hands the
-            // runtime — not the one the document declares. A document
-            // declaring no tier replayed at Unknown, where a fixture's tier
-            // floor refused everything, so a loosened manifest passed a gate
-            // its runtime self would fail.
-            let mut candidate = submission.manifest.clone();
-            candidate.trust_tier = tier.as_str().to_string();
-            let candidate_core = core
-                .with_candidate_manifest(&candidate)
-                .map_err(|e| RegistryError::RegressionGateBlocked(e.to_string()))?;
-            let run = replay_corpus_for_program(&candidate_core, corpus, &program_id);
-            match decide_promotion(&run) {
-                PromotionDecision::Promote => {}
-                PromotionDecision::Block { reason } => {
-                    return Err(RegistryError::RegressionGateBlocked(reason));
-                }
+        // MR-2 (Round 29, audit 2026-10-20): the lineage is enforced. A
+        // version builds on the version in force — its `previous_version_ref`
+        // names the head's label — or it is the program's first. The ref used
+        // to be recorded and never compared, so a version signed long ago
+        // against v1 (and never submitted) could be handed in after v3 and,
+        // passing the replay, become the manifest in force: a rollback with
+        // a valid signature. The head handed in again (above) keeps its own
+        // lineage. Such a refusal is permanent by construction — the head
+        // never goes back to an older label — so it is not recorded.
+        if let Some(head) = &head {
+            if head_tier.is_none()
+                && submission.manifest.version.previous_version_ref.as_deref()
+                    != Some(head.version_label.as_str())
+            {
+                return Err(RegistryError::StaleLineage {
+                    head: Some(head.version_label.clone()),
+                    named: submission.manifest.version.previous_version_ref.clone(),
+                });
             }
         }
 
+        // P10 gate, on EVERY submission (MR-1). A first submission moves the
+        // program from no trust to some trust (2026-09-05: exempting it left
+        // the gate protecting only upgrades); an upgrade replaces the manifest
+        // in force (W12: a loosening v2 at the same tier went in unreplayed);
+        // a head resubmitted for a higher tier promotes it. Whatever the case,
+        // the replay covers the registry's OWN fixtures for the program —
+        // every accepted version's, persisted with the registry — plus the
+        // submitter's, so a refusal fixture left out of the submitted corpus
+        // is replayed anyway (MR-1: the gate used to replay only what the
+        // submitter handed it).
+        let (submitted, core) = regression.ok_or_else(|| {
+            RegistryError::RegressionGateBlocked(
+                "no regression corpus supplied — every submission is replayed (P10)".to_string(),
+            )
+        })?;
+        submitted.verify_integrity().map_err(|e| {
+            RegistryError::RegressionGateBlocked(format!("the supplied corpus is not intact: {e}"))
+        })?;
+        let mut replay = RegressionCorpus::new();
+        for f in self.corpus.fixtures_for(&program_id) {
+            replay.add_fixture(f.clone());
+        }
+        for f in submitted.fixtures_for(&program_id) {
+            // Same identity as a registry fixture: the registry's recorded
+            // outcome wins (`add_fixture` keeps the first), so a submitter
+            // cannot flip a pinned outcome by resubmitting its input.
+            replay.add_fixture(f.clone());
+        }
+        // Replay against the manifest the submission WOULD install, not the
+        // one it replaces, at the tier the registry computed (W12) — the tier
+        // `manifests_in_force` hands the runtime, not the document's own.
+        let mut candidate = submission.manifest.clone();
+        candidate.trust_tier = tier.as_str().to_string();
+        let candidate_core = core
+            .with_candidate_manifest(&candidate)
+            .map_err(|e| RegistryError::RegressionGateBlocked(e.to_string()))?;
+        let run = replay_corpus_for_program(&candidate_core, &replay, &program_id);
+        if let PromotionDecision::Block { reason } = decide_promotion(&run) {
+            self.refused.push(RefusedSubmission {
+                program_id: program_id.clone(),
+                version_label: version_label.clone(),
+                content_hash: content_hash.clone(),
+                reason: reason.clone(),
+            });
+            return Err(RegistryError::RegressionGateBlocked(reason));
+        }
+
         // P4: append to the Semantic Graph (append recomputes the tier) and to
-        // the acceptance log with version lineage.
+        // the acceptance log with version lineage. G-3: the program's other
+        // graph evidence (operator-asserted volume, simulation matches) is
+        // carried forward, not reset by a manifest version.
         let expected_state_changes: Vec<String> = submission
             .manifest
             .instructions
@@ -419,7 +726,7 @@ impl ManifestRegistryEngine {
             .flat_map(|ix| ix.allowed_cpis.iter().cloned())
             .collect();
         store
-            .append(Behavior {
+            .append_registry_evidence(Behavior {
                 program_id: program_id.clone(),
                 version: version_label.clone(),
                 expected_state_changes,
@@ -433,8 +740,14 @@ impl ManifestRegistryEngine {
             // above (EmptyProgramId) — unreachable here.
             .expect("append cannot fail after program_id validation");
 
-        let previous_version_ref = self
-            .last_accepted(&program_id)
+        // MR-1: the accepted version's fixtures join the registry's corpus.
+        for f in submitted.fixtures_for(&program_id) {
+            self.corpus.add_fixture(f.clone());
+        }
+
+        let previous_version_ref = head
+            .as_ref()
+            .filter(|_| head_tier.is_none())
             .map(|r| r.version_label.clone())
             .or_else(|| submission.manifest.version.previous_version_ref.clone());
         self.records.push(RegistryRecord {
@@ -449,6 +762,8 @@ impl ManifestRegistryEngine {
                 "community".to_string()
             },
             manifest: Some(submission.manifest.clone()),
+            signer,
+            attesters,
         });
 
         Ok(RegistryDecision::Accepted {
@@ -457,9 +772,15 @@ impl ManifestRegistryEngine {
         })
     }
 
-    /// Validate the manifest surface (mirrors `ManifestRegistry`'s loader
-    /// rejection rules: at least one instruction, each with a discriminator).
+    /// Validate the manifest surface: the runtime loader's full validation
+    /// (`manifest::validate_manifest` — Round 29, audit 2026-10-20, MR-5: this
+    /// was a partial copy of its rules, weaker than the validator a merged
+    /// manifest then had to pass), plus the registry's own resource caps and
+    /// its stricter rule on empty discriminators.
     fn validate_manifest(manifest: &ProtocolManifest) -> Result<(), RegistryError> {
+        // The resource caps run FIRST: they bound the work the full
+        // validation below does (its prefix-ambiguity check is quadratic in
+        // the instruction count).
         if manifest.instructions.is_empty() {
             return Err(RegistryError::InvalidManifest(
                 "manifest must declare at least one instruction".to_string(),
@@ -479,21 +800,6 @@ impl ManifestRegistryEngine {
                 manifest.instructions.len()
             )));
         }
-        // Round 17 (F-16-06, F-16-10): the same grammar the verification
-        // registry enforces at load, refused here at submission so a reviewer
-        // never accepts what the gate would then refuse to load. URL fields
-        // are rendered as links by the console; only http(s) is a link.
-        for (field, value) in [
-            ("website", &manifest.protocol.website),
-            ("github", &manifest.protocol.github),
-        ] {
-            let v = value.trim();
-            if !v.is_empty() && !(v.starts_with("https://") || v.starts_with("http://")) {
-                return Err(RegistryError::InvalidManifest(format!(
-                    "protocol.{field} {v:?} is not an http(s) URL"
-                )));
-            }
-        }
         for ix in &manifest.instructions {
             if ix.account_layouts.len() > 4 {
                 return Err(RegistryError::InvalidManifest(format!(
@@ -501,43 +807,6 @@ impl ManifestRegistryEngine {
                     ix.name,
                     ix.account_layouts.len()
                 )));
-            }
-            for (slot, a) in ix.all_layouts().flatten().enumerate() {
-                for seed in &a.pda_seeds {
-                    if let Err(reason) = crate::account_resolution::validate_seed_template(seed) {
-                        return Err(RegistryError::InvalidManifest(format!(
-                            "instruction '{}' account {slot} has an unsupported PDA seed template {seed:?}: {reason}",
-                            ix.name
-                        )));
-                    }
-                }
-            }
-        }
-        // Discriminator-length decision (certification item): matching is
-        // PREFIX-based (`input.starts_with(manifest_disc)`) because Solana
-        // instruction selectors are the LEADING bytes of instruction data —
-        // 2 hex chars (1 byte, SPL Token/Token-2022), 8 hex chars (4 bytes,
-        // System u32 LE), 16 hex chars (8 bytes, Anchor-style). An input like
-        // "0900000000000000" MUST match manifest "09". Prefix matching is
-        // unambiguous iff no two instructions of a program have one
-        // discriminator as a proper prefix of another; such manifests are
-        // rejected here (fail-closed — an ambiguous selector could route an
-        // instruction to the wrong security rules).
-        for i in 0..manifest.instructions.len() {
-            for j in (i + 1)..manifest.instructions.len() {
-                let a = manifest.instructions[i].discriminator.to_lowercase();
-                let b = manifest.instructions[j].discriminator.to_lowercase();
-                let ambiguous =
-                    !a.is_empty() && !b.is_empty() && (a.starts_with(&b) || b.starts_with(&a));
-                if ambiguous {
-                    return Err(RegistryError::InvalidManifest(format!(
-                        "discriminator ambiguity: '{}' ({}) and '{}' ({}) are prefix-related — prefix matching would be ambiguous; use distinct-width selectors",
-                        manifest.instructions[i].name,
-                        a,
-                        manifest.instructions[j].name,
-                        b
-                    )));
-                }
             }
         }
         for ix in &manifest.instructions {
@@ -576,14 +845,6 @@ impl ManifestRegistryEngine {
                     )));
                 }
             }
-            for acc in ix.all_layouts().flatten() {
-                if acc.pda_seeds.len() > MAX_LIST_ITEMS {
-                    return Err(RegistryError::InvalidManifest(format!(
-                        "account '{}' exceeds {MAX_LIST_ITEMS} pda seeds — resource-exhaustion guard",
-                        acc.name
-                    )));
-                }
-            }
             if ix.discriminator.trim().is_empty() {
                 // Deliberately STRICTER than the runtime loader, which allows
                 // empty discriminators for raw-UTF-8-data programs (e.g. the
@@ -596,16 +857,21 @@ impl ManifestRegistryEngine {
                 )));
             }
         }
-        Ok(())
+        crate::manifest::validate_manifest(manifest)
+            .map_err(|e| RegistryError::InvalidManifest(e.to_string()))
     }
 
-    /// Derive BehaviorEvidence from a submission (G5 + P7).
+    /// Derive BehaviorEvidence from a submission (G5 + P7), with the signer
+    /// and the independent attesters that counted (MR-6).
     fn evidence_from_submission(
         &self,
         submission: &ManifestSubmission,
         content_hash: &str,
-    ) -> Result<BehaviorEvidence, RegistryError> {
+    ) -> Result<(BehaviorEvidence, Option<String>, Vec<String>), RegistryError> {
         let mut evidence = BehaviorEvidence::default();
+        let program_id = submission.manifest.protocol.program_id.as_str();
+        let mut counted_signer: Option<String> = None;
+        let mut counted_attesters: Vec<String> = Vec::new();
 
         // signer_pubkey and signature_hex must be provided together — a
         // partial pair is a malformed submission, not a silent no-op.
@@ -622,10 +888,14 @@ impl ManifestRegistryEngine {
         // 1. Submitter signature — only registered reviewers with sufficient
         // reputation count (P7, G5).
         if let (Some(signer), Some(sig)) = (&submission.signer_pubkey, &submission.signature_hex) {
-            if !Self::verify_signature(signer, sig, content_hash) {
+            if !Self::verify_signature(signer, sig, program_id, content_hash) {
                 return Err(RegistryError::InvalidSignature(
-                    "signer signature does not verify".to_string(),
+                    "signer signature does not verify over the registry signing message"
+                        .to_string(),
                 ));
+            }
+            if self.revoked_reviewers.contains(signer) {
+                return Err(RegistryError::ReviewerRevoked(signer.clone()));
             }
             let reputation = self
                 .reviewer_reputation(signer)
@@ -637,6 +907,7 @@ impl ManifestRegistryEngine {
                 });
             }
             evidence.has_signed_manifest = true;
+            counted_signer = Some(signer.clone());
         }
 
         // 2. Independent attestations (G5): distinct registered reviewers with
@@ -644,7 +915,7 @@ impl ManifestRegistryEngine {
         let mut counted: HashSet<String> = HashSet::new();
         for attestation in &submission.attestations {
             let Some(reputation) = self.reviewer_reputation(&attestation.reviewer_pubkey) else {
-                continue; // unregistered reviewer contributes nothing
+                continue; // unregistered (or revoked) reviewer contributes nothing
             };
             if reputation < MIN_REVIEWER_REPUTATION {
                 continue;
@@ -652,6 +923,7 @@ impl ManifestRegistryEngine {
             if !Self::verify_signature(
                 &attestation.reviewer_pubkey,
                 &attestation.signature_hex,
+                program_id,
                 content_hash,
             ) {
                 continue; // invalid attestation is dropped, not an error
@@ -666,18 +938,22 @@ impl ManifestRegistryEngine {
                 continue;
             }
             evidence.community_verified_count += 1;
+            counted_attesters.push(attestation.reviewer_pubkey.clone());
         }
 
-        Ok(evidence)
+        Ok((evidence, counted_signer, counted_attesters))
     }
 
-    /// Verify an ed25519 signature over the content-hash string.
-    fn verify_signature(pubkey_b58: &str, signature_hex: &str, content_hash: &str) -> bool {
-        use ed25519_dalek::{Signature, VerifyingKey};
-        let Ok(decoded) = bs58::decode(pubkey_b58).into_vec() else {
-            return false;
-        };
-        let Ok(pk_bytes) = <[u8; 32]>::try_from(decoded.as_slice()) else {
+    /// Verify an ed25519 signature over [`signing_message`] for this program
+    /// and content hash (MR-3).
+    fn verify_signature(
+        pubkey_b58: &str,
+        signature_hex: &str,
+        program_id: &str,
+        content_hash: &str,
+    ) -> bool {
+        use ed25519_dalek::Signature;
+        let Some(pk) = parse_verifying_key(pubkey_b58) else {
             return false;
         };
         let Ok(sig_bytes) = hex::decode(signature_hex) else {
@@ -686,11 +962,9 @@ impl ManifestRegistryEngine {
         let Ok(sig_bytes) = <[u8; 64]>::try_from(sig_bytes.as_slice()) else {
             return false;
         };
-        let Ok(pk) = VerifyingKey::from_bytes(&pk_bytes) else {
-            return false;
-        };
         let sig = Signature::from_bytes(&sig_bytes);
-        pk.verify_strict(content_hash.as_bytes(), &sig).is_ok()
+        pk.verify_strict(&signing_message(program_id, content_hash), &sig)
+            .is_ok()
     }
 
     /// Durability snapshot (same pattern as SemanticGraphStore).
@@ -698,22 +972,26 @@ impl ManifestRegistryEngine {
         serde_json::to_string(self)
     }
 
+    /// Restore a snapshot. A state file written before Round 29 has no
+    /// corpus, refusals or revocations and loads with them empty. A corpus
+    /// fixture that is not what it says it is (RG-1) fails the load — the
+    /// registry's corpus is what the replay gate trusts.
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(json)
+        let engine: Self = serde_json::from_str(json)?;
+        engine
+            .corpus
+            .verify_integrity()
+            .map_err(<serde_json::Error as serde::de::Error>::custom)?;
+        Ok(engine)
     }
 }
 
-/// Ordinal rank of a trust tier for promotion comparison (the enum has no
-/// Ord derive; this is the single source of tier ordering here).
-fn tier_rank(tier: &TrustTier) -> u8 {
-    match tier {
-        TrustTier::Unknown => 0,
-        TrustTier::HeuristicInferred => 1,
-        TrustTier::OfficialManifest => 2,
-        TrustTier::SimulationValidated => 3,
-        TrustTier::CommunityVerified => 4,
-        TrustTier::BattleTested => 5,
-    }
+/// A base58 ed25519 public key, if `pubkey_b58` is one: 32 bytes that decode
+/// to a valid curve point.
+fn parse_verifying_key(pubkey_b58: &str) -> Option<ed25519_dalek::VerifyingKey> {
+    let decoded = bs58::decode(pubkey_b58).into_vec().ok()?;
+    let bytes = <[u8; 32]>::try_from(decoded.as_slice()).ok()?;
+    ed25519_dalek::VerifyingKey::from_bytes(&bytes).ok()
 }
 
 #[cfg(test)]
@@ -734,8 +1012,9 @@ mod tests {
         bs58::encode(key.verifying_key().to_bytes()).into_string()
     }
 
-    fn sign(key: &SigningKey, content_hash: &str) -> String {
-        hex::encode(key.sign(content_hash.as_bytes()).to_bytes())
+    /// An ed25519 signature over `message`, hex.
+    fn sign(key: &SigningKey, message: &[u8]) -> String {
+        hex::encode(key.sign(message).to_bytes())
     }
 
     fn manifest(program_id: &str, name: &str, version: &str) -> ProtocolManifest {
@@ -777,15 +1056,27 @@ mod tests {
             signature_hex: None, // filled after content_hash is known
             attestations: vec![],
         };
-        let hash = sub.content_hash();
+        let message = sub.signing_message();
         ManifestSubmission {
-            signature_hex: Some(sign(signer, &hash)),
+            signature_hex: Some(sign(signer, &message)),
             ..sub
         }
     }
 
     fn signed_submission(program: &str, version: &str, signer: &SigningKey) -> ManifestSubmission {
         sign_manifest(manifest(program, "Test Protocol", version), signer)
+    }
+
+    /// A signed upgrade naming `previous` as the version it builds on (MR-2).
+    fn signed_upgrade(
+        program: &str,
+        version: &str,
+        previous: &str,
+        signer: &SigningKey,
+    ) -> ManifestSubmission {
+        let mut m = manifest(program, "Test Protocol", version);
+        m.version.previous_version_ref = Some(previous.to_string());
+        sign_manifest(m, signer)
     }
 
     #[test]
@@ -799,11 +1090,9 @@ mod tests {
         let signer_b58 = pubkey_b58(&signer);
         engine.register_reviewer(&signer_b58, 1000).unwrap();
 
-        let mut m = manifest(
-            "Prog1111111111111111111111111111111111",
-            "Ambiguous",
-            "v1.0",
-        );
+        // A valid program id: the registry runs the runtime's full validation
+        // (MR-5), which refuses a malformed id before reaching discriminators.
+        let mut m = manifest(NON_SEED, "Ambiguous", "v1.0");
         let mut second = m.instructions[0].clone();
         second.name = "SecondOp".to_string();
         second.discriminator = "0100".to_string(); // "01" is a proper prefix of "0100"
@@ -812,7 +1101,7 @@ mod tests {
         assert!(
             matches!(
                 engine.submit(&mut store, submission, None),
-                Err(RegistryError::InvalidManifest(reason)) if reason.contains("discriminator ambiguity")
+                Err(RegistryError::InvalidManifest(reason)) if reason.contains("ambiguous discriminators")
             ),
             "prefix-ambiguous discriminators must be rejected"
         );
@@ -1062,7 +1351,7 @@ mod tests {
             signature_hex: None,
             attestations: vec![],
         };
-        let hash = submission.content_hash();
+        let hash = submission.signing_message();
         // Valid attestations: a, b, and a duplicate of a (counts once),
         // an invalid signature (c signed the wrong message), and the
         // unregistered attacker (dropped).
@@ -1081,7 +1370,7 @@ mod tests {
             },
             ReviewerAttestation {
                 reviewer_pubkey: pubkey_b58(&c),
-                signature_hex: sign(&c, "tampered-hash"),
+                signature_hex: sign(&c, b"tampered-hash"),
             },
             ReviewerAttestation {
                 reviewer_pubkey: pubkey_b58(&attacker),
@@ -1132,7 +1421,7 @@ mod tests {
 
         // The same content and label, now attested by two reviewers other
         // than its signer (W11: the signer does not attest itself).
-        let hash = signed.content_hash();
+        let hash = signed.signing_message();
         let mut attested = signed.clone();
         attested.attestations = [&b, &c]
             .into_iter()
@@ -1602,6 +1891,7 @@ mod tests {
 
         let mut m2 = manifest(PROGRAM, "Renamed Protocol", "v2.0");
         m2.instructions[0].name = "SecondVersionOp".to_string();
+        m2.version.previous_version_ref = Some("v1.0".to_string());
         // W12: an upgrade is held to the gate like a promotion; this one
         // changes no verdict the corpus pins, so it passes.
         assert!(matches!(
@@ -1649,7 +1939,7 @@ mod tests {
         engine.register_reviewer(&pubkey_b58(&b), 1000).unwrap();
         let core = GraphiteCore::new();
         let mut submission = signed_submission(NON_SEED, "v1.0", &a);
-        let hash = submission.content_hash();
+        let hash = submission.signing_message();
         submission.attestations = [&a, &b]
             .into_iter()
             .map(|k| ReviewerAttestation {
@@ -1714,6 +2004,7 @@ mod tests {
             .unwrap();
 
         let mut v2 = manifest(NON_SEED, "Guarded", "v2.0");
+        v2.version.previous_version_ref = Some("v1.0".to_string());
         v2.instructions[0].accounts = accounts;
         v2.instructions[0].risk_class = "transfer".to_string();
         assert_eq!(v2.trust_tier, "", "the document declares no tier");
@@ -1770,7 +2061,7 @@ mod tests {
         engine
             .submit(
                 &mut store,
-                signed_submission(program, "v2.0", &signer),
+                signed_upgrade(program, "v2.0", "v1.0", &signer),
                 Some((&corpus, &core)),
             )
             .unwrap();
@@ -1970,5 +2261,379 @@ mod tests {
             "community-accepted program must resolve as a known protocol (C53): {}",
             result.summary
         );
+    }
+
+    // ── Round 29 (audit 2026-10-20): MR-1 … MR-6, G-3 ──────────────────────
+
+    fn guarded_accounts() -> Vec<AccountRoleDef> {
+        [("from", true), ("to", false)]
+            .into_iter()
+            .map(|(name, is_signer)| AccountRoleDef {
+                name: name.to_string(),
+                role: "writable".to_string(),
+                is_writable: true,
+                is_signer,
+                pda_seeds: vec![],
+                expected_address: vec![],
+                optional: false,
+            })
+            .collect()
+    }
+
+    /// MR-1: the gate replays the registry's OWN corpus. v1's refusal fixture
+    /// is replayed against a loosening v2 even though the corpus v2's
+    /// submitter hands in leaves it out (and carries a fixture of its own
+    /// that v2 passes).
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
+    #[test]
+    fn a_submission_cannot_drop_a_fixture_the_registry_holds() {
+        let mut engine = ManifestRegistryEngine::new();
+        let mut store = SemanticGraphStore::new();
+        let (a, b) = (key(91), key(92));
+        engine.register_reviewer(&pubkey_b58(&a), 1000).unwrap();
+        engine.register_reviewer(&pubkey_b58(&b), 1000).unwrap();
+        let core = GraphiteCore::new();
+
+        let mut v1 = manifest(NON_SEED, "Guarded", "v1.0");
+        v1.instructions[0].accounts = guarded_accounts();
+        v1.instructions[0].risk_class = "authority".to_string();
+        let v1 = sign_manifest(v1, &a);
+        let corpus = onboarding_corpus(&core, &v1);
+        assert!(!corpus.all()[0].expected_approved, "precondition");
+        engine
+            .submit(&mut store, v1, Some((&corpus, &core)))
+            .unwrap();
+        assert_eq!(
+            engine.regression_corpus().fixtures_for(NON_SEED).len(),
+            1,
+            "the accepted version's fixture joins the registry's corpus"
+        );
+
+        let mut v2 = manifest(NON_SEED, "Guarded", "v2.0");
+        v2.version.previous_version_ref = Some("v1.0".to_string());
+        v2.instructions[0].accounts = guarded_accounts();
+        v2.instructions[0].risk_class = "transfer".to_string();
+        let v2 = sign_manifest(v2, &b);
+        // The submitter's own corpus: one fixture v2 replays cleanly (an
+        // instruction v2 does not describe, refused under it), and NOT v1's.
+        let candidate = core.with_candidate_manifest(&v2.manifest).unwrap();
+        let other = make_fixture_input(NON_SEED, "02", "transfer", &[], &[ACCT_A, ACCT_B]);
+        let outcome = candidate.verify(&other).unwrap().approved;
+        let mut partial = RegressionCorpus::new();
+        crate::regression_engine::record_fixture(&mut partial, &other, outcome, "submitter");
+        assert!(matches!(
+            engine.submit(&mut store, v2, Some((&partial, &core))),
+            Err(RegistryError::RegressionGateBlocked(_))
+        ));
+        assert_eq!(engine.manifests_in_force()[0].version.label, "v1.0");
+        assert_eq!(engine.refused().len(), 1, "the refusal is recorded");
+
+        // The registry's corpus survives its state file, and a state file
+        // written before it existed still loads.
+        let restored = ManifestRegistryEngine::from_json(&engine.to_json().unwrap()).unwrap();
+        assert_eq!(restored.regression_corpus().len(), 1);
+        assert_eq!(restored.refused().len(), 1);
+        let legacy = r#"{"reviewers":{},"records":[]}"#;
+        let old = ManifestRegistryEngine::from_json(legacy).expect("pre-Round-29 state loads");
+        assert!(old.regression_corpus().is_empty() && old.refused().is_empty());
+    }
+
+    /// MR-2: a submission must build on the version in force, and a version
+    /// the gate refused is never taken again — not even after the fixture
+    /// that pinned it is retired.
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
+    #[test]
+    fn lineage_is_enforced_and_a_refused_version_stays_refused() {
+        let mut engine = ManifestRegistryEngine::new();
+        let mut store = SemanticGraphStore::new();
+        let signer = key(93);
+        engine
+            .register_reviewer(&pubkey_b58(&signer), 1000)
+            .unwrap();
+        let core = GraphiteCore::new();
+        let v1 = signed_submission(NON_SEED, "v1.0", &signer);
+        let corpus = onboarding_corpus(&core, &v1);
+        engine
+            .submit(&mut store, v1, Some((&corpus, &core)))
+            .unwrap();
+
+        // No previous_version_ref, then the wrong one: both refused.
+        for previous in [None, Some("v0.9")] {
+            let mut m = manifest(NON_SEED, "Test Protocol", "v2.0");
+            m.version.previous_version_ref = previous.map(str::to_string);
+            let err = engine
+                .submit(
+                    &mut store,
+                    sign_manifest(m, &signer),
+                    Some((&corpus, &core)),
+                )
+                .unwrap_err();
+            assert!(
+                matches!(err, RegistryError::StaleLineage { ref head, .. } if head.as_deref() == Some("v1.0")),
+                "{err:?}"
+            );
+        }
+        engine
+            .submit(
+                &mut store,
+                signed_upgrade(NON_SEED, "v2.0", "v1.0", &signer),
+                Some((&corpus, &core)),
+            )
+            .unwrap();
+        // An older version signed against v1, handed in after v2: refused.
+        assert!(matches!(
+            engine.submit(
+                &mut store,
+                signed_upgrade(NON_SEED, "v1.5", "v1.0", &signer),
+                Some((&corpus, &core)),
+            ),
+            Err(RegistryError::StaleLineage { .. })
+        ));
+
+        // A version the gate refuses: its fixture pins the opposite outcome.
+        let v3 = signed_upgrade(NON_SEED, "v3.0", "v2.0", &signer);
+        let candidate = core.with_candidate_manifest(&v3.manifest).unwrap();
+        let input = make_fixture_input(NON_SEED, "01", "stake", &[], &[ACCT_A, ACCT_B]);
+        let actual = candidate.verify(&input).unwrap().approved;
+        let mut pinning = RegressionCorpus::new();
+        crate::regression_engine::record_fixture(&mut pinning, &input, !actual, "pin");
+        assert!(matches!(
+            engine.submit(&mut store, v3.clone(), Some((&pinning, &core))),
+            Err(RegistryError::RegressionGateBlocked(_))
+        ));
+        // The pinning fixture was never accepted into the registry's corpus,
+        // and even with a clean corpus the refused version is not retried.
+        assert!(matches!(
+            engine.submit(&mut store, v3, Some((&corpus, &core))),
+            Err(RegistryError::VersionPreviouslyRefused(_))
+        ));
+    }
+
+    /// MR-3: a signature over the bare content hash — what any wallet's
+    /// `signMessage` over that string produces — no longer verifies; the
+    /// signed message is domain-tagged and names the program.
+    #[test]
+    fn a_signature_over_the_bare_hash_does_not_verify() {
+        let mut engine = ManifestRegistryEngine::new();
+        let mut store = SemanticGraphStore::new();
+        let signer = key(94);
+        engine
+            .register_reviewer(&pubkey_b58(&signer), 1000)
+            .unwrap();
+        let mut sub = signed_submission(NON_SEED, "v1.0", &signer);
+        sub.signature_hex = Some(sign(&signer, sub.content_hash().as_bytes()));
+        assert!(matches!(
+            engine.submit(&mut store, sub.clone(), None),
+            Err(RegistryError::InvalidSignature(_))
+        ));
+        let hash = sub.content_hash();
+        let mut expected = b"graphite-manifest-registry-v1\0".to_vec();
+        expected.extend_from_slice(NON_SEED.as_bytes());
+        expected.push(0);
+        expected.extend_from_slice(hash.as_bytes());
+        assert_eq!(sub.signing_message(), expected);
+        assert_eq!(signing_message(NON_SEED, &hash), expected);
+        // The same signature does not carry over to another program.
+        let good = signed_submission(NON_SEED, "v1.0", &signer);
+        assert!(ManifestRegistryEngine::verify_signature(
+            &pubkey_b58(&signer),
+            good.signature_hex.as_deref().unwrap(),
+            NON_SEED,
+            &hash
+        ));
+        assert!(!ManifestRegistryEngine::verify_signature(
+            &pubkey_b58(&signer),
+            good.signature_hex.as_deref().unwrap(),
+            SYSTEM,
+            &hash
+        ));
+    }
+
+    /// MR-4: the content hash is over canonical JSON — keys sorted at every
+    /// level, no insignificant whitespace — so it does not depend on the
+    /// order the struct declares its fields in.
+    #[test]
+    fn the_content_hash_covers_canonical_json() {
+        let m = manifest(NON_SEED, "Test Protocol", "v1.0");
+        let canonical = canonical_manifest_json(&m);
+        // Top-level keys in byte order (the struct declares `protocol` and
+        // `version` BEFORE `instructions`), the nested objects likewise.
+        assert!(
+            canonical.starts_with(r#"{"graphite_manifest_version":"1.0","instructions":[{"accounts":[],"allowed_cpis":[],"discriminator":"01""#),
+            "{canonical}"
+        );
+        let positions: Vec<usize> = [
+            "\"graphite_manifest_version\"",
+            "\"instructions\"",
+            "\"protocol\"",
+            "\"trust_tier\"",
+            "\"version\":{",
+        ]
+        .iter()
+        .map(|k| canonical.find(k).unwrap())
+        .collect();
+        assert!(positions.windows(2).all(|w| w[0] < w[1]), "{canonical}");
+        assert!(
+            canonical.contains(
+                r#""version":{"effective_from_slot":0,"label":"v1.0","previous_version_ref":null}"#
+            ),
+            "{canonical}"
+        );
+        assert!(
+            !canonical.contains(": ") && !canonical.contains(", ") && !canonical.contains('\n')
+        );
+        use sha2::{Digest, Sha256};
+        let sub = ManifestSubmission {
+            manifest: m,
+            signer_pubkey: None,
+            signature_hex: None,
+            attestations: vec![],
+        };
+        assert_eq!(
+            sub.content_hash(),
+            hex::encode(Sha256::digest(canonical.as_bytes()))
+        );
+    }
+
+    /// MR-5: the registry runs the runtime's own validation, so a manifest the
+    /// loader would refuse is refused at submission — rules the registry's
+    /// partial copy did not have.
+    #[test]
+    fn a_submission_the_runtime_would_refuse_is_refused() {
+        let mut bogus_class = manifest(NON_SEED, "T", "v1");
+        bogus_class.instructions[0].risk_class = "multisig_execution".to_string();
+        let mut non_hex = manifest(NON_SEED, "T", "v1");
+        non_hex.instructions[0].discriminator = "zz".to_string();
+        let mut self_derived = manifest(NON_SEED, "T", "v1");
+        self_derived.instructions[0].accounts = guarded_accounts();
+        self_derived.instructions[0].accounts[0].pda_seeds = vec!["{account_0}".to_string()];
+        for m in [bogus_class, non_hex, self_derived] {
+            assert!(crate::manifest::validate_manifest(&m).is_err());
+            assert!(matches!(
+                ManifestRegistryEngine::validate_manifest(&m),
+                Err(RegistryError::InvalidManifest(_))
+            ));
+        }
+    }
+
+    /// MR-6: a reviewer key must be a usable ed25519 key, and a revoked
+    /// reviewer's attestations stop counting where the tier is recomputed —
+    /// in force and on the graph.
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
+    #[test]
+    fn a_revoked_reviewer_stops_counting() {
+        let mut engine = ManifestRegistryEngine::new();
+        assert!(matches!(
+            engine.register_reviewer("reviewerPubkey1", 1000),
+            Err(RegistryError::MalformedReviewerPubkey(_))
+        ));
+        assert!(matches!(
+            engine.register_reviewer(&bs58::encode([1u8; 31]).into_string(), 1000),
+            Err(RegistryError::MalformedReviewerPubkey(_))
+        ));
+        let mut store = SemanticGraphStore::new();
+        let (signer, a, b) = (key(95), key(96), key(97));
+        for k in [&signer, &a, &b] {
+            engine.register_reviewer(&pubkey_b58(k), 1000).unwrap();
+        }
+        let mut sub = signed_submission(NON_SEED, "v1.0", &signer);
+        let message = sub.signing_message();
+        sub.attestations = [&a, &b]
+            .into_iter()
+            .map(|k| ReviewerAttestation {
+                reviewer_pubkey: pubkey_b58(k),
+                signature_hex: sign(k, &message),
+            })
+            .collect();
+        let core = GraphiteCore::new();
+        let corpus = onboarding_corpus(&core, &sub);
+        engine
+            .submit(&mut store, sub, Some((&corpus, &core)))
+            .unwrap();
+        assert_eq!(
+            engine.manifests_in_force()[0].trust_tier,
+            "CommunityVerified"
+        );
+        assert_eq!(
+            store.get(NON_SEED).unwrap().trust_tier,
+            TrustTier::CommunityVerified
+        );
+
+        assert_eq!(
+            engine.revoke_reviewer(&mut store, &pubkey_b58(&b)).unwrap(),
+            1
+        );
+        assert_eq!(
+            engine.manifests_in_force()[0].trust_tier,
+            "OfficialManifest"
+        );
+        assert_eq!(
+            store.get(NON_SEED).unwrap().trust_tier,
+            TrustTier::OfficialManifest
+        );
+        assert!(matches!(
+            engine.register_reviewer(&pubkey_b58(&b), 1000),
+            Err(RegistryError::ReviewerRevoked(_))
+        ));
+        assert!(matches!(
+            engine.revoke_reviewer(&mut store, &pubkey_b58(&b)),
+            Err(RegistryError::UnknownReviewer(_))
+        ));
+        // A revoked signer's new submission is refused outright.
+        engine
+            .revoke_reviewer(&mut store, &pubkey_b58(&signer))
+            .unwrap();
+        assert!(matches!(
+            engine.submit(
+                &mut store,
+                signed_upgrade(NON_SEED, "v2.0", "v1.0", &signer),
+                Some((&corpus, &core))
+            ),
+            Err(RegistryError::ReviewerRevoked(_))
+        ));
+        // The revocation survives the state file.
+        let restored = ManifestRegistryEngine::from_json(&engine.to_json().unwrap()).unwrap();
+        assert_eq!(restored.revoked_reviewers().len(), 2);
+    }
+
+    /// G-3: accepting a manifest keeps the program's operator-seeded graph
+    /// evidence; it used to append a record carrying registry evidence only.
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
+    #[test]
+    fn a_registry_acceptance_keeps_operator_evidence() {
+        let mut engine = ManifestRegistryEngine::new();
+        let mut store = SemanticGraphStore::new();
+        store
+            .append(Behavior {
+                program_id: NON_SEED.to_string(),
+                version: "operator".to_string(),
+                expected_state_changes: vec![],
+                allowed_cpis: vec![],
+                trust_tier: TrustTier::Unknown,
+                evidence: BehaviorEvidence {
+                    has_signed_manifest: true,
+                    battle_tested_tx_count: 5000,
+                    simulation_match_count: 9,
+                    ..Default::default()
+                },
+                quarantined: false,
+                quarantine_reason: None,
+            })
+            .unwrap();
+        let signer = key(98);
+        engine
+            .register_reviewer(&pubkey_b58(&signer), 1000)
+            .unwrap();
+        let core = GraphiteCore::new();
+        let sub = signed_submission(NON_SEED, "v1.0", &signer);
+        let corpus = onboarding_corpus(&core, &sub);
+        engine
+            .submit(&mut store, sub, Some((&corpus, &core)))
+            .unwrap();
+        let latest = store.get(NON_SEED).unwrap();
+        assert_eq!(latest.version, "v1.0");
+        assert_eq!(latest.evidence.battle_tested_tx_count, 5000);
+        assert_eq!(latest.evidence.simulation_match_count, 9);
+        assert_eq!(latest.trust_tier, TrustTier::BattleTested);
     }
 }

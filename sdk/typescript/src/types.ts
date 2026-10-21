@@ -245,7 +245,8 @@ export interface VerificationResult {
   /** Phase 1.5: Simulation integrity result (null if not checked) */
   simulation_flagged?: boolean | null;
   simulation_divergence?: number | null;
-  /** 8-layer pipeline results (L1-L8) */
+  /** 8-layer pipeline results (L1-L8). Always emitted by the Core and
+   *  required by `GraphiteClient.verify`; optional here for hand-built results. */
   layers?: PipelineLayerResult[];
   /**
    * Roadmap R-M1: programs this transaction invokes that were redeployed, or
@@ -266,12 +267,26 @@ export interface VerificationResult {
    * bytes are otherwise the same shape — which is exactly how an integration
    * can end up executing an instruction nothing examined.
    *
-   * Optional for compatibility with servers older than 2026-09-08. Absent is
-   * NOT the same as `descriptive`: it means the server did not say, and a gate
-   * that requires artifact binding should treat it as unknown rather than
-   * assume either answer.
+   * Optional in this type only so that code constructing a result by hand
+   * (test fakes, older fixtures) still compiles. `GraphiteClient.verify`
+   * refuses a response without it (audit 2026-10-20: the Core has emitted it
+   * on every verdict since 2026-09-08 and the schema now requires it). Absent
+   * is NOT the same as `descriptive`: it means nothing said, and a gate that
+   * requires artifact binding treats it as unknown rather than assume either
+   * answer.
    */
   scope?: VerificationScope;
+}
+
+/** `GET /health`. Open by design (no API key); `status` stays "ok" while the
+ *  node serves traffic, and `degraded` is the operator signal. */
+export interface HealthResponse {
+  status: string;
+  service: string;
+  version: string;
+  degraded?: boolean;
+  degraded_reasons?: string[];
+  [key: string]: unknown;
 }
 
 /**
@@ -363,9 +378,10 @@ export interface ArtifactBoundScope {
   /** Security-relevant properties still not independently observed. */
   unobserved: string[];
   /**
-   * `unobserved_codes[i]` names `unobserved[i]`. Optional only for servers
-   * older than Round 9 (2026-09-12); a gate that decides on codes must treat
-   * its absence as unknown, not as empty.
+   * `unobserved_codes[i]` names `unobserved[i]`. Optional in this type for
+   * hand-built results; `GraphiteClient.verify` requires it, as the schema
+   * does (audit 2026-10-20). A gate that decides on codes must treat its
+   * absence as unknown, not as empty.
    */
   unobserved_codes?: UnobservedCode[];
   /**
@@ -410,12 +426,20 @@ export type VerificationScope = ArtifactBoundScope | DescriptiveScope;
  *
  * An execution gate that can actually move funds should require this rather
  * than gating on `approved` alone. Returns false for an absent scope: an older
- * server that did not say has not said yes.
+ * server that did not say has not said yes. Returns false, too, for a scope
+ * that claims `artifact_bound` without a 64-lowercase-hex digest of what it
+ * bound (audit 2026-10-20, parity with Go's `IsArtifactBound`): a binding
+ * without its digest binds nothing.
  */
 export function isArtifactBound(
   result: Pick<VerificationResult, "scope">,
 ): result is Pick<VerificationResult, "scope"> & { scope: ArtifactBoundScope } {
-  return result.scope?.kind === "artifact_bound";
+  const scope = result.scope;
+  return (
+    scope?.kind === "artifact_bound" &&
+    typeof scope.transaction_sha256 === "string" &&
+    /^[0-9a-f]{64}$/.test(scope.transaction_sha256)
+  );
 }
 
 /**
@@ -602,6 +626,14 @@ export interface ExecutionCheckResult {
   chain_inconsistent?: string | null;
   /** The inclusion witness's account, when one is attached; `null` otherwise. */
   inclusion_witness?: InclusionWitness | null;
+  /**
+   * Every verdict the trail holds for the key the execution resolved by, as
+   * counts (Round 17, F-16-11): `refused > 0` beside an approval means the
+   * artifact was refused and then re-verified under a looser profile. `null`
+   * when nothing was resolved. The server has always sent it; the type
+   * lacked it until the 2026-10-20 audit.
+   */
+  recorded_verdicts?: { approved: number; refused: number } | null;
   /** Whether this reconciliation row reached the trail. */
   audit_recorded: boolean;
 }

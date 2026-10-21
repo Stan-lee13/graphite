@@ -1266,7 +1266,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: whitelist, market_admin",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -1274,7 +1274,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "add_to_whitelist_v2",
@@ -1320,7 +1320,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: whitelist_entry, market_admin",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -1328,7 +1328,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "admin_cancel_cnft_listing",
@@ -1789,14 +1789,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: rent_receiver, offer, buyer_user_escrow_account, buyer_user_escrow_token_account, buyer_usdc_account",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "admin_cancel_pnft_listing",
@@ -2018,14 +2018,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: rent_payer, user, user_escrow, user_escrow_token_account, user_usdc_account",
-    "closes the position or account and transfers remaining funds back to the user"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "close"
+   "risk_class": "authority"
   },
   {
    "name": "admin_force_close_core_listing",
@@ -2089,14 +2089,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: rent_receiver, listing",
-    "closes the position or account and transfers remaining funds back to the user"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "close"
+   "risk_class": "authority"
   },
   {
    "name": "admin_force_close_nft_listing",
@@ -2160,14 +2160,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: rent_receiver, listing",
-    "closes the position or account and transfers remaining funds back to the user"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "close"
+   "risk_class": "authority"
   },
   {
    "name": "admin_force_close_pnft_listing",
@@ -2231,14 +2231,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: rent_receiver, listing",
-    "closes the position or account and transfers remaining funds back to the user"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "close"
+   "risk_class": "authority"
   },
   {
    "name": "buy_cnft",
@@ -3539,7 +3539,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: whitelist, market_admin",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -3547,7 +3547,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "deposit_to_user_escrow",
@@ -4387,14 +4387,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: whitelist, market_admin",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "remove_from_whitelist_v2",
@@ -4426,14 +4426,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: whitelist_entry, market_admin",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "set_backend_account",

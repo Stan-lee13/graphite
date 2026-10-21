@@ -207,14 +207,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: distributor, from, to, admin",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "close_claim",
@@ -278,14 +278,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: distributor, admin_or_claimant, claimant, claim_status",
-    "closes the position or account and transfers remaining funds back to the user"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "close"
+   "risk_class": "authority"
   },
   {
    "name": "compress_claim",
@@ -501,7 +501,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: distributor, clawback_receiver, token_vault, admin",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -509,7 +509,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "refund_claim",

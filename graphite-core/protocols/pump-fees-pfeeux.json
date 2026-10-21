@@ -309,11 +309,11 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, donation_fee_pda, quote_mint, donation_fee_pda_ata, epoch_tracker, debouncer, debouncer_ata",
-    "updates protocol accounting state"
+    "transfers funds between the protocol and the involved accounts"
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "create_donation_fee_pda",
@@ -526,7 +526,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, sharing_config, bonding_curve, pool",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -534,7 +534,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "create_social_fee_pda",
@@ -650,14 +650,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: fee_config",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "get_fees",
@@ -826,7 +826,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, fee_config",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -834,7 +834,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "initialize_fee_program_global",
@@ -1310,14 +1310,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: authority, fee_program_global",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "set_disable_flags",
@@ -1403,14 +1403,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: authority, fee_program_global",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "sweep_buyback",
@@ -1512,14 +1512,14 @@
    "discriminator": "ca0a4bc8a422d260",
    "accounts": [],
    "expected_state_changes": [
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer",
+   "risk_class": "authority",
    "variable_accounts": true
   },
   {
@@ -1628,14 +1628,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: authority, fee_program_global, buyback_vault",
-    "credits the output token account with the received amount for the swap"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "update_buyback_claim_rate_limit",
@@ -1683,14 +1683,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: authority, fee_program_global, buyback_vault",
-    "credits the output token account with the received amount for the swap"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "update_fee_config",
@@ -2140,14 +2140,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: fee_config",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "upsert_stable_fee_tiers",
@@ -2196,14 +2196,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: fee_config",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   }
  ],
  "trust_tier": "OfficialManifest"

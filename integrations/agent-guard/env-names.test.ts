@@ -15,7 +15,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { assertNoLegacyEnvNames, rpcHostForLog } from "./env-names.js";
+import {
+  assertDevnetCluster,
+  assertNoLegacyEnvNames,
+  DEVNET_GENESIS_HASH,
+  MAINNET_GENESIS_HASH,
+  rpcHostForLog,
+} from "./env-names.js";
 
 test("A5-07: the legacy GRAPHITE_URL name is refused without GRAPHITE_CORE_URL", () => {
   assert.throws(
@@ -68,4 +74,19 @@ test("R9 / R-P8 phase 4: every mainnet tool reads version 1, so v1 traffic is in
     assert.match(src, /maxSupportedTransactionVersion:\s*1\b/, `${script}: must request version 1`);
     assert.match(src, /v1Read/, `${script}: must report how many v1 transactions it read`);
   }
+});
+
+// Round 29 (audit 2026-10-20, Info): devnet-test.ts signs and submits, and
+// nothing checked the cluster.
+test("devnet-test runs on devnet (by genesis hash) or a loopback validator, never mainnet", () => {
+  assert.doesNotThrow(() => assertDevnetCluster(DEVNET_GENESIS_HASH, "https://api.devnet.solana.com"));
+  assert.doesNotThrow(() => assertDevnetCluster("LocalValidatorGenesis1111111111111111111111", "http://127.0.0.1:8899"));
+  assert.throws(() => assertDevnetCluster(MAINNET_GENESIS_HASH, "https://api.devnet.solana.com"), /MAINNET-BETA/);
+  assert.throws(() => assertDevnetCluster(MAINNET_GENESIS_HASH, "http://127.0.0.1:8899"), /MAINNET-BETA/);
+  assert.throws(() => assertDevnetCluster("SomeOtherCluster11111111111111111111111111", "https://rpc.example.com"), /devnet or a local/);
+  const source = readFileSync(new URL("./devnet-test.ts", import.meta.url), "utf8");
+  const check = source.indexOf("assertDevnetCluster(await connection.getGenesisHash(), rpcUrl)");
+  assert.ok(check > 0, "devnet-test.ts checks the cluster");
+  const firstExecution = source.indexOf("await executeBoundTransaction(");
+  assert.ok(firstExecution > 0 && check < firstExecution, "before anything is signed");
 });

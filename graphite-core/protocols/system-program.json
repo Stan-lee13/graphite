@@ -55,7 +55,7 @@
     },
     {
      "name": "to",
-     "role": "writable",
+     "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []
@@ -122,7 +122,7 @@
    "accounts": [
     {
      "name": "from",
-     "role": "writable",
+     "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []
@@ -146,7 +146,7 @@
     [
      {
       "name": "from",
-      "role": "writable",
+      "role": "signer",
       "is_writable": true,
       "is_signer": true,
       "pda_seeds": []
@@ -226,14 +226,20 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarRecentB1ockHashes11111111111111111111"
+     ]
     },
     {
      "name": "rent",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarRent111111111111111111111111111111111"
+     ]
     },
     {
      "name": "authority",
@@ -266,14 +272,20 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarRecentB1ockHashes11111111111111111111"
+     ]
     },
     {
      "name": "rent",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarRent111111111111111111111111111111111"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -369,13 +381,6 @@
      "name": "from",
      "role": "writable",
      "is_writable": true,
-     "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "to",
-     "role": "writable",
-     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -385,15 +390,47 @@
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
+    },
+    {
+     "name": "to",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
     }
    ],
    "expected_state_changes": [
-    "debits accounts.from lamports by data.lamports",
-    "credits accounts.to lamports by data.lamports"
+    "debits accounts.from by data.lamports lamports",
+    "credits accounts.to by data.lamports lamports"
    ],
    "allowed_cpis": [],
-   "risk_rules": [],
+   "risk_rules": [
+    "accounts.from must be the address create_with_seed(accounts.base, data.from_seed, data.from_owner); it is not a signer — accounts.base signs for it",
+    "base must be signer",
+    "lamports must not exceed accounts.from lamport balance"
+   ],
    "risk_class": "transfer"
+  },
+  {
+   "name": "UpgradeNonceAccount",
+   "discriminator": "0c000000",
+   "accounts": [
+    {
+     "name": "nonce",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "upgrades accounts.nonce from the legacy nonce version to the current one"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "no signer: anyone may upgrade a legacy nonce account; lamports and authority are unchanged"
+   ],
+   "risk_class": "inert"
   }
  ],
  "trust_tier": "BattleTested"

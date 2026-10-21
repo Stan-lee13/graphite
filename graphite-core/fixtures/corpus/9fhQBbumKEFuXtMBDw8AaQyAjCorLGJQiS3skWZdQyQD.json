@@ -55,7 +55,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "84be03ec9993da7dc0422cbc17b05587cdae38285b6b2a614c159199e97e7ff2"
   },
   {
     "program_id": "9fhQBbumKEFuXtMBDw8AaQyAjCorLGJQiS3skWZdQyQD",
@@ -113,6 +114,7 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "2e7e92f68cd5bf9736a1f385b8b4684ae911cc98c8e90119cefc8454e704399c"
   }
 ]

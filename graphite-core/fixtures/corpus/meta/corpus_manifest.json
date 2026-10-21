@@ -217,70 +217,70 @@
     "note": "System Program::AdvanceNonceAccount near-prefix discriminator"
   },
   {
-    "hash": "787322acb954941a1f9e9dc2c9ba0a822a669ead44193aaf4ad913118e7da037",
+    "hash": "108178a79778a7086df858360a75e16d6c8b79a855466d261976be50a16fe7fd",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "System Program::WithdrawNonceAccount intent=transfer"
   },
   {
-    "hash": "79f3ddc4856085e0ee41a809a4cdfa1724fca25d3f4a77cd2a2359ce9773e9f2",
+    "hash": "578a9a89eba9b6d8765c4fe7558e26fd1ea00df61aff8d606fdaca4a8ad96d65",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "System Program::WithdrawNonceAccount empty intent — Check 10 gate"
   },
   {
-    "hash": "1f094f5c9a1434d403a558655fe91a67bb0526036a3690d2ec44d10125b86e60",
+    "hash": "70c6af6e0df3f619eb69ef6f0255640c4a20117d9a6211ccb9db4b3aa470068a",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "System Program::WithdrawNonceAccount swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "fcf8d76005df8dfad907e3405c85597964101d67b420e1563d6be845f3fbb573",
+    "hash": "f460a3ebdac2e4a6d25e887026ac2b862493a0ca30f237ea67633ffa1fc48812",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "System Program::WithdrawNonceAccount +8 accounts — STMT drainer"
   },
   {
-    "hash": "11a299175e39359287fdef6460f256b38a62161c5e69848b75bb0cb1839f1de8",
+    "hash": "bcd0748a6cd68e6b7238793fd39a38fed386de76433e1986e5c47c77362a3561",
     "split": "dev",
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
     "note": "System Program::WithdrawNonceAccount near-prefix discriminator"
   },
   {
-    "hash": "153487397c99403d98ffac6de1cf0f844a5e4cf98ea3157a7a52423fbdda5b32",
+    "hash": "8b6a83875a687557e38c36d845799e1e01870e2845e9021dae0237f740a96cf7",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "System Program::InitializeNonceAccount intent=create"
   },
   {
-    "hash": "e61f963d00ac8ddbf21fbeb36c5bfa3876de42deaf38ab7ce3438fded33b83e0",
+    "hash": "7e3af6dd98e7a3b9f1c434b06bbcdedfd1044cc1a69a6d4ae8afb44d79b7cb1a",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "System Program::InitializeNonceAccount empty intent — Check 10 gate"
   },
   {
-    "hash": "48bc8249743bc7b7399e6e3c81e9f4b7ef89cdbedb1452925a2a2d45845d5a9d",
+    "hash": "da42fcac82ba55ac2100f84b71e215d4fb93757a211c8fe4e5f6f54108eeab31",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "System Program::InitializeNonceAccount swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "96a502834c789b492600b5d4bbe1c6284a1318ff350ffff473a7ffa925f7d00f",
+    "hash": "ab520544c3833beb6a0dca356efb23d3d5871969f227cf6beafbf0a05e11f803",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "System Program::InitializeNonceAccount +8 accounts — STMT drainer"
   },
   {
-    "hash": "5f20c84ec69890d6bd07fc5e1d2cfab66422c0d3bfdf608e88aa3f1c1e45a1a9",
+    "hash": "7aae6ef2703a66f0b422d2685680476baa6b290ee48a9358272d34c554e97b49",
     "split": "dev",
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
@@ -425,6 +425,41 @@
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
     "note": "System Program::TransferWithSeed near-prefix discriminator"
+  },
+  {
+    "hash": "ef317b903d5689bf07728badb4e77b10c48007ed35fb25976774dfe76a4e0861",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "System Program::UpgradeNonceAccount intent=transfer"
+  },
+  {
+    "hash": "f1f8b647e7b24e6e54115f6e8919187b78e3a896d79aabc3445f911ff0dbe9b2",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "System Program::UpgradeNonceAccount empty intent — Check 10 gate"
+  },
+  {
+    "hash": "b7cb4ee582d02bab36c44202847022d610fc38d1866bd66c5d97cd01675ad2fa",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "System Program::UpgradeNonceAccount swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "627c517c26352200a4263bd7a3ce9ce86262f14651806ae5c2d410f1e4a63205",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "System Program::UpgradeNonceAccount +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "1e5373b4c69e56582c0428cfc856fed40039a5d3589a28540116d7fa5cdd53cd",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "System Program::UpgradeNonceAccount near-prefix discriminator"
   },
   {
     "hash": "b6c663a7649156a29c32d880565b99bbba07f6ae3c0fc6cf829feecd0249a0a1",
@@ -6580,42 +6615,42 @@
     "note": "Associated Token Account Program::CreateAssociatedTokenAccountIdempotent near-prefix discriminator"
   },
   {
-    "hash": "7dc906d0b8c5ac741b2978b6ec4ec64033ebf3ce3062310bec745dc5fdca1f37",
+    "hash": "021495a13c567c482529e484b3a93e0b8c2eff882454c3041ff38bae206de9d7",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Associated Token Account Program::RecoverNested intent=transfer"
   },
   {
-    "hash": "816a2acc25de7b4ce5f9a300fa9812ab16057712b9a868155740adbeb7847eb3",
+    "hash": "e1686daa3e7b0468cf131b0cf20611e4b7d9e5e23534cbab84b12d6900f6f567",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Associated Token Account Program::RecoverNested empty intent — Check 10 gate"
   },
   {
-    "hash": "4c649d6646ae44dec5926f599a1f328ae4f2d9ad995fc37ce84c73e0729c1914",
+    "hash": "572a3ac0e9082980f61013aa7f07d75e54d5dbbc104f8756c325ef6e262c408b",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Associated Token Account Program::RecoverNested swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "ca1caf9e35742b261c844f2894cc1fe812d10ecfcf89c6ce9e13a958708742c9",
+    "hash": "7cdfca80b0ce3c3c46e90943dc2a66282ff89f3757fdb0d97e55af8eb12a7b2d",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "Associated Token Account Program::RecoverNested +8 accounts — STMT drainer"
   },
   {
-    "hash": "f0be0068a2ba9547028376e24c09c39e18fdc4a541788f64827948fdec6ac5e8",
+    "hash": "16bcb56bb22e58e88b5b7c2de9a126a3edfe29936245b5a868c11c604f83f17d",
     "split": "dev",
     "class": "padded-width",
     "provenance": "synthetic-manifest",
     "note": "Associated Token Account Program::RecoverNested zero-padded discriminator"
   },
   {
-    "hash": "fb395d51ae2b85b00f6d3051f554ebb561465df0366f8f5aa310d98cfc08ac88",
+    "hash": "dd5f3a0f3e22b1731c7999a36aa3f80cfb27624b580c4eb6e663eb0a1b69008e",
     "split": "dev",
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
@@ -6634,6 +6669,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::activate_arx empty intent — Check 10 gate"
+  },
+  {
+    "hash": "6b9bbbcb1fa02bf5f56c48c7d11b18d76fea1dcc8bf875a6890d9e571287e18e",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::activate_arx swap intent on non-swap program — Check 9"
   },
   {
     "hash": "ed1e2013d30a045bf7931ef6e6c07cd73497f1558a2b6d09bd4d45a4bf56e64b",
@@ -6664,6 +6706,13 @@
     "note": "Arcium (Arcj82pX)::activate_cluster empty intent — Check 10 gate"
   },
   {
+    "hash": "b64ffc8930526445b07889e2abc9a316c4bc9b9787553a374a1eac5c893c1c0e",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::activate_cluster swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "a1b1a5532e78c38895f48b89d419e6f75e0218530a868890a140bad0e326b359",
     "split": "dev",
     "class": "account-overflow",
@@ -6683,6 +6732,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::add_permissioned_recovery_peers empty intent — Check 10 gate"
+  },
+  {
+    "hash": "2963ede7953f72b3054d2505790b9fc3553d7e181cb9f96e6fe5fbdf0efedc9e",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::add_permissioned_recovery_peers swap intent on non-swap program — Check 9"
   },
   {
     "hash": "a94b18f947a1ac3142d13a81e0bd5226963dbbdcf21586668ad2602080162e56",
@@ -6706,6 +6762,13 @@
     "note": "Arcium (Arcj82pX)::bump_epoch_cluster empty intent — Check 10 gate"
   },
   {
+    "hash": "d4c9a2754615f445163154985176fe5bb3b3f9e502d2e62fe444c1984c68b4c1",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::bump_epoch_cluster swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "5c32833fab0c3054321114a9f21210b4ab52840c2c7e4ae8560952d493865941",
     "split": "dev",
     "class": "account-overflow",
@@ -6725,6 +6788,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::callback_computation empty intent — Check 10 gate"
+  },
+  {
+    "hash": "c40ef1350ac15ecd8493bca7c02d85168a50d1c7a556777348e3347f9c37cb0d",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::callback_computation swap intent on non-swap program — Check 9"
   },
   {
     "hash": "69dce639942199685e0cc423a8ca23a435383394bddc09fc770218b593f06af0",
@@ -6748,6 +6818,13 @@
     "note": "Arcium (Arcj82pX)::claim_computation_rent empty intent — Check 10 gate"
   },
   {
+    "hash": "06a69c7160f9096657bc3c80e23d276fca535ee39022652f2ccdfa5d48784aca",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::claim_computation_rent swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "671d66630d863353ecbb4759f0461da9ace4681ba594795508336f4881d7c4de",
     "split": "dev",
     "class": "account-overflow",
@@ -6767,6 +6844,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::claim_failure_append empty intent — Check 10 gate"
+  },
+  {
+    "hash": "4a782e4095425d115cdf725a6b9812f78f88924305670b31e90482c6a1cbdfb7",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::claim_failure_append swap intent on non-swap program — Check 9"
   },
   {
     "hash": "3b479a6c452a73747fb976ba67d9eb6b4dad87af0899dda2cd6512b49d0ee2c5",
@@ -6790,6 +6874,13 @@
     "note": "Arcium (Arcj82pX)::claim_failure_finalize empty intent — Check 10 gate"
   },
   {
+    "hash": "4d0fafd4122d898c7e7c940e7a1661297393a7fab1ffaeb81ad2da20ce511e96",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::claim_failure_finalize swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "75c1e24a75d1b8acf9a8a76ed6307fb85ef9e988f00f892ce211c755ee2ab66e",
     "split": "dev",
     "class": "account-overflow",
@@ -6809,6 +6900,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::claim_failure_init empty intent — Check 10 gate"
+  },
+  {
+    "hash": "432f13c66aa2c77a3c3477a81db4a571d25d2d8a67315405ba658b48f7f7cd27",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::claim_failure_init swap intent on non-swap program — Check 9"
   },
   {
     "hash": "756cb05b91b641483c109425f7e20ab5929af5479079c018bed62ff53a3f5d42",
@@ -6832,6 +6930,13 @@
     "note": "Arcium (Arcj82pX)::claim_node_fees empty intent — Check 10 gate"
   },
   {
+    "hash": "43ff206e847efcfb52d087bff5d4d77bad500a03455c4032ec38ee4ae7df0b3c",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::claim_node_fees swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "b06e851fce7c597edd2fea921e127053a4339ca446685927173c96981f1856f9",
     "split": "dev",
     "class": "account-overflow",
@@ -6851,6 +6956,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::close_key_recovery empty intent — Check 10 gate"
+  },
+  {
+    "hash": "384992d61b2131d652eb0a37e602f50e935496249c5a854364e33791acd4cc06",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::close_key_recovery swap intent on non-swap program — Check 9"
   },
   {
     "hash": "8315c47908232c856c6967cedcd14f14a623b739dbf598325cfb46d3d1c3b90c",
@@ -6874,6 +6986,13 @@
     "note": "Arcium (Arcj82pX)::close_permissioned_recovery_peers_account empty intent — Check 10 gate"
   },
   {
+    "hash": "ee660ee050ae93eb15c3c61fe91751a2f7614bac39cd3b5996a034205359e4b3",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::close_permissioned_recovery_peers_account swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "9a77ec48f124d0a548fcaf72ea1e8bd8784e34c7ab915a8afc0201781d48fba6",
     "split": "dev",
     "class": "account-overflow",
@@ -6893,6 +7012,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::deactivate_arx empty intent — Check 10 gate"
+  },
+  {
+    "hash": "87d4757e0e298c96a93f1df8584a044dd3bf724aaacd8e5dc6cb9fdfd3b1252d",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::deactivate_arx swap intent on non-swap program — Check 9"
   },
   {
     "hash": "74f88ea2f671c9e7ce89e5439a81650ccfb603a6ba96469b2e926b3e02265954",
@@ -6916,6 +7042,13 @@
     "note": "Arcium (Arcj82pX)::deactivate_cluster empty intent — Check 10 gate"
   },
   {
+    "hash": "f3f2a35e45280ddf644eeb775073efec098fc690971b363fd9d1d90c794f0724",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::deactivate_cluster swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "f188b95ceddf59d7cb613fe799f5f3bf5783fd9be37b1691efa6c0894f5cdbab",
     "split": "dev",
     "class": "account-overflow",
@@ -6935,6 +7068,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::dummy_instruction empty intent — Check 10 gate"
+  },
+  {
+    "hash": "6abfecd55d46519dc271caca33ccbf1f2d05c263e93b63ec3859f24a187f8130",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::dummy_instruction swap intent on non-swap program — Check 9"
   },
   {
     "hash": "73762411aab1d6444cc1158010302ed6e465d04bb811456e5351db7661894279",
@@ -6958,6 +7098,13 @@
     "note": "Arcium (Arcj82pX)::embiggen_raw_circuit_acc empty intent — Check 10 gate"
   },
   {
+    "hash": "20554e5bd5940ad760bb588eb6b8e8df01e1d2a3708f679248bf5214e75e429c",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::embiggen_raw_circuit_acc swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "c7a660c892691d3e8684c5c73a44d7bda12bd1015d89924a59889563e25624ec",
     "split": "dev",
     "class": "account-overflow",
@@ -6977,6 +7124,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::extend_recovery_keyshares empty intent — Check 10 gate"
+  },
+  {
+    "hash": "cd443ed72a8a02809feb2fb271c163a35bc44a8ef210c0da9d5220d20c07d2ee",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::extend_recovery_keyshares swap intent on non-swap program — Check 9"
   },
   {
     "hash": "2bec038061d894a4cef0dd3ff371ffeee114df915e976b2c5121b8314dbe84e5",
@@ -7000,6 +7154,13 @@
     "note": "Arcium (Arcj82pX)::finalize_computation_definition empty intent — Check 10 gate"
   },
   {
+    "hash": "841bae345cccc2672d790f4909e94735f44145c8d1453fa0f90b03a5cb4e1773",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::finalize_computation_definition swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "a6416b72e73e39148e1a4cd488d4ade8bdd5b094222443d8af5748d2084efd27",
     "split": "dev",
     "class": "account-overflow",
@@ -7019,6 +7180,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::finalize_key_recovery_callback empty intent — Check 10 gate"
+  },
+  {
+    "hash": "87c97a4a71424b786f60adbb4ff4e335fb43be56347116b1aee47a032329d332",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::finalize_key_recovery_callback swap intent on non-swap program — Check 9"
   },
   {
     "hash": "1df1168a0465f97f5cd604bb462e20d366b89ff310f4d2a8fbec94305a964feb",
@@ -7042,6 +7210,13 @@
     "note": "Arcium (Arcj82pX)::finalize_key_recovery_execution empty intent — Check 10 gate"
   },
   {
+    "hash": "352a18633d9b3ae50b67b45cb778ff476b500800375793306a31811d53631cd7",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::finalize_key_recovery_execution swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "d6ef68884f2cdaf1716554b9e0402b36f87dd1d74fb55d04d8bd4e39a1d243e9",
     "split": "dev",
     "class": "account-overflow",
@@ -7061,6 +7236,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::finalize_key_recovery_shares_upload empty intent — Check 10 gate"
+  },
+  {
+    "hash": "10351f3fa00f3d93e095906b86d4dfda0a21f4311762954f67e51d9700b65047",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::finalize_key_recovery_shares_upload swap intent on non-swap program — Check 9"
   },
   {
     "hash": "82488883cb38fc5855cc40bcfbb4bf973343d5ddad525074c3a5ddea0c1ac017",
@@ -7084,6 +7266,13 @@
     "note": "Arcium (Arcj82pX)::finalize_mxe_keys empty intent — Check 10 gate"
   },
   {
+    "hash": "dfb861e171ab3a13f71dc636068b7468b4a49d9c16227a94d8cbc55a3a959f1d",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::finalize_mxe_keys swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "e3c1bf8fb1dbeb1c6b6fc1f0fff51896514a3a31a566466238e3518bf60a80f0",
     "split": "dev",
     "class": "account-overflow",
@@ -7103,6 +7292,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::increase_mempool_size empty intent — Check 10 gate"
+  },
+  {
+    "hash": "171b72b20c68ad9a17a2d9025dcabda237bd973e01e7a0906fc72bd8d295d087",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::increase_mempool_size swap intent on non-swap program — Check 9"
   },
   {
     "hash": "3a7d64cdfe8a2892c7ccf5d2b6488b4b0870427bc48a57c2cb54a169f7af7f63",
@@ -7126,6 +7322,13 @@
     "note": "Arcium (Arcj82pX)::init empty intent — Check 10 gate"
   },
   {
+    "hash": "5ef7dfa5894f2731295291cf6fed6a353347c3675d1c246779c363c04e90bf6b",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::init swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "c1f96a2b261ea93ecb838f3ff9acee51421c1ea83ef4da77c9067fde35ffe5cc",
     "split": "dev",
     "class": "account-overflow",
@@ -7145,6 +7348,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::init_arx_node empty intent — Check 10 gate"
+  },
+  {
+    "hash": "299e49ebf58409da33945a672252d1e37e56aeeb978d00b16fee161d80f9ac7c",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::init_arx_node swap intent on non-swap program — Check 9"
   },
   {
     "hash": "4942331ca9897e43866a725073bd042f8a0dd4d99594b869d2b9c2e19631ffb1",
@@ -7168,6 +7378,13 @@
     "note": "Arcium (Arcj82pX)::init_cluster empty intent — Check 10 gate"
   },
   {
+    "hash": "48962efba7b7d5fd634c7e2813daf9ca51fd19bd7b06f4cc867df2e0cabaac61",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::init_cluster swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "3c009abe7aa6e9c154777745bdcd9374b68b93859ba6c4e6e4c3bbe62bbd0b75",
     "split": "dev",
     "class": "account-overflow",
@@ -7187,6 +7404,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::init_computation_definition empty intent — Check 10 gate"
+  },
+  {
+    "hash": "bf1990c5e89ac795ab7b1ad855f109c36d025f234fec9e381faca1ab01e50889",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::init_computation_definition swap intent on non-swap program — Check 9"
   },
   {
     "hash": "58c6e8e10d41b7a055801a3bbe25400f5c542f2425fc9df38d74423dbf2aec81",
@@ -7210,6 +7434,13 @@
     "note": "Arcium (Arcj82pX)::init_key_recovery_execution_part1 empty intent — Check 10 gate"
   },
   {
+    "hash": "b9d0f22e1796a32eaf7eed54a590758dbbe3c387b7cd694773e1800cd42117f3",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::init_key_recovery_execution_part1 swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "ae67c824bafcab6dffda5e4d116a42ee79bfd6a2a5fcdbd370ef000ff11ad6e5",
     "split": "dev",
     "class": "account-overflow",
@@ -7229,6 +7460,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::init_key_recovery_execution_part2 empty intent — Check 10 gate"
+  },
+  {
+    "hash": "e7a0c420f9f44637ed85d25b6825b827b0643c17f7b5d99358d23e1a5662381a",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::init_key_recovery_execution_part2 swap intent on non-swap program — Check 9"
   },
   {
     "hash": "888edb0cac2c2986aeb6d0b6987c43a1429017126d264a931c5c65a2475cba91",
@@ -7252,6 +7490,13 @@
     "note": "Arcium (Arcj82pX)::init_mxe_part1 empty intent — Check 10 gate"
   },
   {
+    "hash": "0541dd2b8101ce88f5860205dd48821035c97565dbbdffc32cd24cc614aad700",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::init_mxe_part1 swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "5f0a65fe66f39dfeef98794d036f281de1ece8cd31785069549cb166a24a2378",
     "split": "dev",
     "class": "account-overflow",
@@ -7271,6 +7516,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::init_mxe_part2 empty intent — Check 10 gate"
+  },
+  {
+    "hash": "1bb2fd419eb94c55122adfa8f297bd921ed011b6a84a909994e033dda4c797ab",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::init_mxe_part2 swap intent on non-swap program — Check 9"
   },
   {
     "hash": "5165a11952be74f385f42d254b404c0181d822e0d55937cacd5f0836d19eeca7",
@@ -7294,6 +7546,13 @@
     "note": "Arcium (Arcj82pX)::init_operator empty intent — Check 10 gate"
   },
   {
+    "hash": "5d1a4245a1637dcf2ea8c8739552cd2596ff8e813fe333353d4956c2834ceb36",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::init_operator swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "792dcbf904e18c9c5006aa9ec5b75f61e169b556a4b51878e7e5e0beec7014d3",
     "split": "dev",
     "class": "account-overflow",
@@ -7313,6 +7572,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::init_permissioned_recovery_peers_account empty intent — Check 10 gate"
+  },
+  {
+    "hash": "80caf8a095c51c8707b42a0f3d450c06829d592f567b2e3059fac927a2c55ca0",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::init_permissioned_recovery_peers_account swap intent on non-swap program — Check 9"
   },
   {
     "hash": "4afb042ed2376f33d88a60c9e5e19934c323e42e59e610b3e32ce61a317f6839",
@@ -7336,6 +7602,13 @@
     "note": "Arcium (Arcj82pX)::init_raw_circuit_acc empty intent — Check 10 gate"
   },
   {
+    "hash": "6ab75989fa64a5330da3302bfb68b73043df20248243ceef46bd4c10eee4fcf9",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::init_raw_circuit_acc swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "516bb3492d759059ab554396c87e3ec84be1dcb219c583e3e2938ec6e269f597",
     "split": "dev",
     "class": "account-overflow",
@@ -7355,6 +7628,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::init_recovery_peer_account empty intent — Check 10 gate"
+  },
+  {
+    "hash": "f39c117433aacbd4347bc156d0e7c17a6630a26dc3a6824d86de21df08c2fd37",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::init_recovery_peer_account swap intent on non-swap program — Check 9"
   },
   {
     "hash": "2046d44f5383854cee34aff2a48949a39e7b15cffe9775e9e3da5296a3a5d34a",
@@ -7378,6 +7658,13 @@
     "note": "Arcium (Arcj82pX)::join_cluster empty intent — Check 10 gate"
   },
   {
+    "hash": "1f7ce5372c44c6e590a4cf4acca752b47c46bdd5e6718b2a6d620530dcb09ae9",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::join_cluster swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "932a006f84f869e9a58fb597ff80a4f3662db33841c1b0cb562781cf8133e6d5",
     "split": "dev",
     "class": "account-overflow",
@@ -7397,6 +7684,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::propose_fee empty intent — Check 10 gate"
+  },
+  {
+    "hash": "e06a7e4e676da2a919618eae4701302d5ad6c1b609f5a977662306022052dc40",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::propose_fee swap intent on non-swap program — Check 9"
   },
   {
     "hash": "66e678ebe666ae374976dc45ba1d51e41d0bd02b3c6c7db81b048c072927a630",
@@ -7420,6 +7714,13 @@
     "note": "Arcium (Arcj82pX)::propose_join_cluster empty intent — Check 10 gate"
   },
   {
+    "hash": "39aef3c8d1d4fce72a5de64a98d72198cbe85562f984b3e9083f7ac5b025a057",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::propose_join_cluster swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "b8a5368954415adade420a94a6f13f8997e6728220edf6967cca09250c8f78f5",
     "split": "dev",
     "class": "account-overflow",
@@ -7439,6 +7740,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::queue_computation empty intent — Check 10 gate"
+  },
+  {
+    "hash": "104aff7c8ca3b2cc809cab347e60f0cb074b976a29aa2575352e28881f4afcbe",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::queue_computation swap intent on non-swap program — Check 9"
   },
   {
     "hash": "bb0d1b957afd64fa3528bbbd401fdd3007d3ac1feb9e55a1e2b4a537f125481a",
@@ -7462,6 +7770,13 @@
     "note": "Arcium (Arcj82pX)::queue_key_recovery_init empty intent — Check 10 gate"
   },
   {
+    "hash": "138212a8499689f91f4c95c7844e7d0c9039359db6ec200a5dddc89415b99414",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::queue_key_recovery_init swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "dc285fc1491a93130eff8f95cecc75c1285e34cc296e53de3c49cbedeba28664",
     "split": "dev",
     "class": "account-overflow",
@@ -7481,6 +7796,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::reclaim_expired_computation_fee empty intent — Check 10 gate"
+  },
+  {
+    "hash": "37ea8ddcc1486c855789cd65cd7ac81b58ee5a700e9516533635ba7e7a05c8bf",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::reclaim_expired_computation_fee swap intent on non-swap program — Check 9"
   },
   {
     "hash": "20cbad510045d9b375d239ea64b8f9abc23c652ca4f252744ed086470cc080a0",
@@ -7504,6 +7826,13 @@
     "note": "Arcium (Arcj82pX)::reclaim_failure_rent_idempotent empty intent — Check 10 gate"
   },
   {
+    "hash": "075657ace76fb16731e4ffab2f8e44e5ee5988335a057b7677c2b548d49cb8af",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::reclaim_failure_rent_idempotent swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "9956f9decd466bb07998f4cee815855ad6f3bc2fcbd6d03d44dfe3b5a2915901",
     "split": "dev",
     "class": "account-overflow",
@@ -7523,6 +7852,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::recover_mxe empty intent — Check 10 gate"
+  },
+  {
+    "hash": "e8cef383c3700b870136d184355e9571cb2a7d2d995d38a553e5cb12e6878c10",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::recover_mxe swap intent on non-swap program — Check 9"
   },
   {
     "hash": "40fa0717f4babd3b9b6e5c7dfa548b00b63ecf05fb1f05b286a2e4e4eb785a5c",
@@ -7546,6 +7882,13 @@
     "note": "Arcium (Arcj82pX)::register_account_in_lut empty intent — Check 10 gate"
   },
   {
+    "hash": "f8552082fae3c7e72e620512950747929c03924168f61edc48ae2564edfa0f0b",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::register_account_in_lut swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "920a4572219a1b6bfc333e72dc698547524260fa735d143fd0dbc53517acae95",
     "split": "dev",
     "class": "account-overflow",
@@ -7565,6 +7908,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::remove_permissioned_recovery_peers empty intent — Check 10 gate"
+  },
+  {
+    "hash": "6b3032dd745bd7bfaf13bf18f076de0ec79d1175e7e974dca85df29abecf4e27",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::remove_permissioned_recovery_peers swap intent on non-swap program — Check 9"
   },
   {
     "hash": "e5243d6229c67dbe73be7517f69d2b9ccb4b93deea4a313a1494dd28a8f731a8",
@@ -7588,6 +7938,13 @@
     "note": "Arcium (Arcj82pX)::requeue_key_recovery_finalize empty intent — Check 10 gate"
   },
   {
+    "hash": "f1bd33c9830edd6793a43f163d3ccab9b15cc719bba7c3a0c89256cfc7208093",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::requeue_key_recovery_finalize swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "ae36844028ce76fd3d7265c9057d0f6effc6460f0a13ef0b9e319edf0febd15a",
     "split": "dev",
     "class": "account-overflow",
@@ -7607,6 +7964,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::requeue_mxe_keygen empty intent — Check 10 gate"
+  },
+  {
+    "hash": "0e0de9c0c6087298c2c933a1164ab1eee7b6add1332c93ee444b25aa9666b809",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::requeue_mxe_keygen swap intent on non-swap program — Check 9"
   },
   {
     "hash": "dd8aa9ca8d83b4cc3312a510e45c0d1aa41da67af6f706eb5ed4dadabac10cb2",
@@ -7630,6 +7994,13 @@
     "note": "Arcium (Arcj82pX)::set_arx_node_config empty intent — Check 10 gate"
   },
   {
+    "hash": "a31eccc7272c6f3b6cd1fa30bdb86cf1c8be9c589241bd94e6da4b47c0da43ee",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::set_arx_node_config swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "12e23b23f65d9165debb77b17518ed5e13a099ece5a2e1a02d8873d1ea530d68",
     "split": "dev",
     "class": "account-overflow",
@@ -7649,6 +8020,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::set_arx_node_metadata empty intent — Check 10 gate"
+  },
+  {
+    "hash": "85edbfa9e54b432d83fdfc8ba0e9946c1418800fcbaf2ead2ea7bb3c8473aa55",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::set_arx_node_metadata swap intent on non-swap program — Check 9"
   },
   {
     "hash": "f43ca8cb6e528cdcc694a7b98d77c5bec4dbe7af9a0bd205031e9824cafb28c2",
@@ -7672,6 +8050,13 @@
     "note": "Arcium (Arcj82pX)::set_cluster empty intent — Check 10 gate"
   },
   {
+    "hash": "2250fd296772973071b6b667d9940b357be9d714014f9adce4b79d6a06eac1f4",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::set_cluster swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "a49044f09e2b3b7e5bca7e4bc8a264e2d08fbc8050506b33afc9a0bbefa8984f",
     "split": "dev",
     "class": "account-overflow",
@@ -7691,6 +8076,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::set_cluster_authority empty intent — Check 10 gate"
+  },
+  {
+    "hash": "2c45fa7a1367d147d37b943dc8c6eed79eb5553275360e8cc84784323a698762",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::set_cluster_authority swap intent on non-swap program — Check 9"
   },
   {
     "hash": "21370f37d946dbddd8096a2099298db432a307e0ba8b53f62ad1e087b45dd1f4",
@@ -7714,6 +8106,13 @@
     "note": "Arcium (Arcj82pX)::set_cluster_td_info empty intent — Check 10 gate"
   },
   {
+    "hash": "812c44724ad513a45143296b2df17accc05058e9f3d0874323f6223d39603e41",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::set_cluster_td_info swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "3e58b100db1fc5a56c4d012c353ecdff3414562475c4563ea7c59c117cc00264",
     "split": "dev",
     "class": "account-overflow",
@@ -7733,6 +8132,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::set_mxe_keys empty intent — Check 10 gate"
+  },
+  {
+    "hash": "2168805ae9f5490d791ac5f3a80db8f95b365e1eecc5ea8a82dcb146aa5fca7f",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::set_mxe_keys swap intent on non-swap program — Check 9"
   },
   {
     "hash": "f0ca1ea9d793ad859086dfaa44635244dd0eb8e0b4272ac7c22dc6b5397d2fd9",
@@ -7756,6 +8162,13 @@
     "note": "Arcium (Arcj82pX)::set_mxe_recovery_keys_init empty intent — Check 10 gate"
   },
   {
+    "hash": "9ec7a91d4d1371adfd4f2da9f27f0348f1f1a71b28f44c8f2045dda2a7d899f1",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::set_mxe_recovery_keys_init swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "56351ea2f08c42109e7b65728ff547dab2595fef1629219a2643a7070fa391e6",
     "split": "dev",
     "class": "account-overflow",
@@ -7775,6 +8188,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::submit_aggregated_bls_pubkey empty intent — Check 10 gate"
+  },
+  {
+    "hash": "f5d84c41e8bd7cf66efaab19085c7b7e2546cb061cfc187ac37c4ac7c5e598ed",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::submit_aggregated_bls_pubkey swap intent on non-swap program — Check 9"
   },
   {
     "hash": "320699b41e7898bc7d2d2a2506ff0fe1a20134afaa9885f39557a61bdfeacfaf",
@@ -7798,6 +8218,13 @@
     "note": "Arcium (Arcj82pX)::submit_key_recovery_share empty intent — Check 10 gate"
   },
   {
+    "hash": "5ec1bdd7abbdadb74d918ef5634127bd72ceaf7255741da5cc5ece1ef4eca345",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::submit_key_recovery_share swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "ef74c2445f6161dc4ba8df2bd97c418e68129da4c52dafa15692bf2c42b346cc",
     "split": "dev",
     "class": "account-overflow",
@@ -7817,6 +8244,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::update_current_epoch_idempotent empty intent — Check 10 gate"
+  },
+  {
+    "hash": "a80e3e1bc7c28d275b39e0d0bd8d3a6abb61321923be765d37a17832c1c419b4",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::update_current_epoch_idempotent swap intent on non-swap program — Check 9"
   },
   {
     "hash": "27228b9e2c8259bfcf67bcd103e793d5d501c8b64a81073e38bed5f414fdb716",
@@ -7840,6 +8274,13 @@
     "note": "Arcium (Arcj82pX)::upload_circuit empty intent — Check 10 gate"
   },
   {
+    "hash": "814f8bc27ede9fc0119a7b56a72e191b66e68494f7c22e3f59426f74a0c7eb19",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::upload_circuit swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "66fbfc44f214e6ea4b7027cb93868d2c28cc5ad5040e27de9b64f92b3c31d353",
     "split": "dev",
     "class": "account-overflow",
@@ -7859,6 +8300,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Arcium (Arcj82pX)::vote_fee empty intent — Check 10 gate"
+  },
+  {
+    "hash": "9fd1543928c92a3372774bef75d7636bb0d395604ef21b345dbf5fca0521a650",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Arcium (Arcj82pX)::vote_fee swap intent on non-swap program — Check 9"
   },
   {
     "hash": "b9ba60a4a7656948866b305d4f2e08b0bb770e39b2fb274a2ec91513d60ff81d",
@@ -15603,6 +16051,13 @@
     "note": "Bridge (FCW1uBM3)::createBridge empty intent — Check 10 gate"
   },
   {
+    "hash": "9df336d36bc81c5dbd374a873ddcbb27b6b1da4798da7cf8a10abec3e7379639",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Bridge (FCW1uBM3)::createBridge swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "10175855a920c55041bb5b0f296b92753de85f656366460cb95d0a1cbf5a7eb8",
     "split": "dev",
     "class": "account-overflow",
@@ -15631,6 +16086,13 @@
     "note": "Bridge (FCW1uBM3)::deposit empty intent — Check 10 gate"
   },
   {
+    "hash": "c7c7828045da9ea04aa266db2023b22f02f42cbd18803dffd5ba2411efb780d2",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Bridge (FCW1uBM3)::deposit swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "01a568a78ed06b2ac921550e9fbbb4362b584c41f28e7b98e5e85ce76dd53bc8",
     "split": "dev",
     "class": "account-overflow",
@@ -15650,6 +16112,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Bridge (FCW1uBM3)::depositWithId empty intent — Check 10 gate"
+  },
+  {
+    "hash": "4fa4b4c555f322ecf26c16e89af786265e9d0fae0eb4fde3e16d0e51db546458",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Bridge (FCW1uBM3)::depositWithId swap intent on non-swap program — Check 9"
   },
   {
     "hash": "24a94c6a178b107bda2141a6303729110b1e8bf65749a488e9e78347eb8cefa4",
@@ -15673,6 +16142,13 @@
     "note": "Bridge (FCW1uBM3)::createPool empty intent — Check 10 gate"
   },
   {
+    "hash": "6ca0867e1fb5f021f5bf62432155bc7ad5df2526782a89fad6e5e61ae71878e8",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Bridge (FCW1uBM3)::createPool swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "7892531cb15c0fef70b547d1e2320ef0d9157d9f35abe293b7ac210ec637bab1",
     "split": "dev",
     "class": "account-overflow",
@@ -15692,6 +16168,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Bridge (FCW1uBM3)::allowOperator empty intent — Check 10 gate"
+  },
+  {
+    "hash": "289c340e4956d39f1e8f40a3d6bc650cafa17e3a3b0b9cf600f40c546571b1d9",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Bridge (FCW1uBM3)::allowOperator swap intent on non-swap program — Check 9"
   },
   {
     "hash": "3c7890fc71190d49194a0c67400a44756345020f4422ffc89eede6277e249dc2",
@@ -15715,6 +16198,13 @@
     "note": "Bridge (FCW1uBM3)::withdraw empty intent — Check 10 gate"
   },
   {
+    "hash": "4ebca7b04e80677cccafa5874e73708eaa35045dfc99f5e44c61cd689fdee69a",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Bridge (FCW1uBM3)::withdraw swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "797127d3a6921f2814ff19da5ae014adca67a4e5282e89ee682a9ef4d4a0fa43",
     "split": "dev",
     "class": "account-overflow",
@@ -15736,6 +16226,13 @@
     "note": "Bridge (FCW1uBM3)::recoverNested empty intent — Check 10 gate"
   },
   {
+    "hash": "7a718544247d6748ef70187b14de77e3ede62f95a2ae9387598a5a562d4c7e09",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Bridge (FCW1uBM3)::recoverNested swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "da559b5a489ceb7089ceddca897b54b1ec3b69ea9d3e54d9963a1794a207e9d2",
     "split": "dev",
     "class": "account-overflow",
@@ -15755,6 +16252,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Bridge (FCW1uBM3)::transferAdmin empty intent — Check 10 gate"
+  },
+  {
+    "hash": "13769c32f6eaa7f4109025ab4a05d7e08ba3130cac1f4fe51041efce4c3eb36d",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Bridge (FCW1uBM3)::transferAdmin swap intent on non-swap program — Check 9"
   },
   {
     "hash": "434e4084e434e73fda1146b0b6153754d934b7f166d20dca2f2b733e9ad7ed56",
@@ -16688,6 +17192,13 @@
     "note": "Futarchy (FUTARELB)::initializeDao empty intent — Check 10 gate"
   },
   {
+    "hash": "86d3cd69ca6eab95a76eb0688159247d42c1619e9b20c1b4ccaa1c9168b97a24",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::initializeDao swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "f3b8c26345511553a9f750fa53cbde2ae73b9ba3b0d99827b7dc2b3697941cca",
     "split": "dev",
     "class": "account-overflow",
@@ -16716,6 +17227,13 @@
     "note": "Futarchy (FUTARELB)::initializeProposal empty intent — Check 10 gate"
   },
   {
+    "hash": "54a7044d7e963ce47b8401e646ff76e573f154e2765624d5334c1ea43512bdb8",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::initializeProposal swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "aaf1ce5f2af018bdc47959da3e46730d16ba92ea9209a2aaa79358fc08fd31f9",
     "split": "dev",
     "class": "account-overflow",
@@ -16735,6 +17253,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Futarchy (FUTARELB)::stakeToProposal empty intent — Check 10 gate"
+  },
+  {
+    "hash": "e569606800cde12b3cf7d31ecbd95455e16a25d178444fd42e42263ff5f70785",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::stakeToProposal swap intent on non-swap program — Check 9"
   },
   {
     "hash": "30d634c40e723c370dab8a27ef042e64195155d6b6705741183424117780176a",
@@ -16758,6 +17283,13 @@
     "note": "Futarchy (FUTARELB)::unstakeFromProposal empty intent — Check 10 gate"
   },
   {
+    "hash": "ada78a501a1f81c03f96975a281802ed637c252c72d32fe3bcf88ba4d6e280dd",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::unstakeFromProposal swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "2359ceea384f08915042e981ce3c4d8b71efd14a275949f9dca138cc2435dbe8",
     "split": "dev",
     "class": "account-overflow",
@@ -16777,6 +17309,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Futarchy (FUTARELB)::launchProposal empty intent — Check 10 gate"
+  },
+  {
+    "hash": "e1ae6dbbdc920e8c89f67021a2318d49329452ef35951795e0e97279d50c2d07",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::launchProposal swap intent on non-swap program — Check 9"
   },
   {
     "hash": "93a2b641f6ad58ed2b7f835fd7ab3bdc25714d9defc185d424259389aa9cc294",
@@ -16800,6 +17339,13 @@
     "note": "Futarchy (FUTARELB)::finalizeProposal empty intent — Check 10 gate"
   },
   {
+    "hash": "0e71dda8cbd0b244b900561e882bc52b1b0557a58998e4a1e04f4f59f2223731",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::finalizeProposal swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "ec7324721f0bacfa3a5a4209f2cfdb961f4f7a3cef7f5e78f59af5c023786493",
     "split": "dev",
     "class": "account-overflow",
@@ -16819,6 +17365,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Futarchy (FUTARELB)::updateDao empty intent — Check 10 gate"
+  },
+  {
+    "hash": "9b068f9ba8e02a80f4aac0c3929adaf88ef2be5d74b6bbd504003c43cc683482",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::updateDao swap intent on non-swap program — Check 9"
   },
   {
     "hash": "8e4c8572bb96ac85c3c74290888752079a8949db54d2e3d8b3ad55ecd04ae4c1",
@@ -16842,6 +17395,13 @@
     "note": "Futarchy (FUTARELB)::resizeDao empty intent — Check 10 gate"
   },
   {
+    "hash": "df66301173c1844720decce3102d329599e15e145d97aa3755bda4f3e5f8dd1a",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::resizeDao swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "772309a6b4135b23f2960a50e1c76857cbfee8186324e56d2642e1344892c578",
     "split": "dev",
     "class": "account-overflow",
@@ -16849,11 +17409,11 @@
     "note": "Futarchy (FUTARELB)::resizeDao +8 accounts — STMT drainer"
   },
   {
-    "hash": "a22caccd7a6fdc259eda835513e27049da04df595b701e121126dbe276ffe448",
+    "hash": "cdd8bc8c5d7a288a25c407431f888c34dfa9a2e7eb20d4e7256071f8362b6e84",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
-    "note": "Futarchy (FUTARELB)::spotSwap intent=swap"
+    "note": "Futarchy (FUTARELB)::spotSwap intent=transfer"
   },
   {
     "hash": "882602434366be814e6f0488d59516ad779ff7dc6008730b4e4db4b5f084322f",
@@ -16863,18 +17423,25 @@
     "note": "Futarchy (FUTARELB)::spotSwap empty intent — Check 10 gate"
   },
   {
-    "hash": "872b2df303b4be1dd7232b4376a120ffd457806e271361fe4f3c1879da580d24",
+    "hash": "a22caccd7a6fdc259eda835513e27049da04df595b701e121126dbe276ffe448",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::spotSwap swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "131255c46940977a1a4267dc6a20bfe0d5781b7499446f40c459d500d74cef79",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "Futarchy (FUTARELB)::spotSwap +8 accounts — STMT drainer"
   },
   {
-    "hash": "ce6b0518ff4c49b5bd49f4416cdc0ccb127c561a5e4d207dfd80657c9a1c4c2e",
+    "hash": "46b1fa17fd64a3bcf6cdbca6ee6e34e15604d860d2a29ae39c1f5d0e1c76225d",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
-    "note": "Futarchy (FUTARELB)::conditionalSwap intent=swap"
+    "note": "Futarchy (FUTARELB)::conditionalSwap intent=transfer"
   },
   {
     "hash": "9424358eb432ed958080b2c9fef35cc5df5efbc57724eac1d57ce32f6315ec0f",
@@ -16884,7 +17451,14 @@
     "note": "Futarchy (FUTARELB)::conditionalSwap empty intent — Check 10 gate"
   },
   {
-    "hash": "9149d460166739c1f701605df67952c7f6e93a68a62a610eb3d1915c15948958",
+    "hash": "ce6b0518ff4c49b5bd49f4416cdc0ccb127c561a5e4d207dfd80657c9a1c4c2e",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::conditionalSwap swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "179f6f3ce7d802219d1aa9d222cc6c31178383bc9d3b19261e0203b724365a2a",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
@@ -16903,6 +17477,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Futarchy (FUTARELB)::provideLiquidity empty intent — Check 10 gate"
+  },
+  {
+    "hash": "930fb2bc7994f1758ab8e6d0cee6319041b2d0245b015f425fef6e06497f8e5d",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::provideLiquidity swap intent on non-swap program — Check 9"
   },
   {
     "hash": "e4534729a2f6a9daecd1af0df74636f59f59f03fb8f05955df2e96a2c769ea36",
@@ -16926,6 +17507,13 @@
     "note": "Futarchy (FUTARELB)::withdrawLiquidity empty intent — Check 10 gate"
   },
   {
+    "hash": "74eb4c59f56e3d87bdf5297da1a496b61343745eef5fd94219fcd7c7298dac19",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::withdrawLiquidity swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "50b1ca5605de8ff69cff90a34317ab17ebba5ead4834b6a06b6922fde5f77560",
     "split": "dev",
     "class": "account-overflow",
@@ -16945,6 +17533,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Futarchy (FUTARELB)::collectFees empty intent — Check 10 gate"
+  },
+  {
+    "hash": "8c1f76d3eb4abb594687b32a5b6236f094ef02d50fc972a93e653eee57051d51",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::collectFees swap intent on non-swap program — Check 9"
   },
   {
     "hash": "0244b04a2f11eaf4dd9d8efd176cc05b440d3c6e37ad602af8820afdc940e32b",
@@ -16968,6 +17563,13 @@
     "note": "Futarchy (FUTARELB)::executeSpendingLimitChange empty intent — Check 10 gate"
   },
   {
+    "hash": "89cb4b91a06dfa0357f3ac1b0e22da80ae1944c40c0322c6d3a5de1ce4bb0192",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::executeSpendingLimitChange swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "a45c01f33de2d06ec4ba87154b8e81a6ff4fe2650a518cf999c0c1d196c87518",
     "split": "dev",
     "class": "account-overflow",
@@ -16987,6 +17589,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Futarchy (FUTARELB)::sponsorProposal empty intent — Check 10 gate"
+  },
+  {
+    "hash": "2198dd24cb28f5a8bca611e6d777e34197d582203af9a38bf56828c6d3cb9c0f",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::sponsorProposal swap intent on non-swap program — Check 9"
   },
   {
     "hash": "3bea516b08a5daa2badd7cfa6759585dd627ed2a5a7927a6ac3fb12d996b74e5",
@@ -17010,6 +17619,13 @@
     "note": "Futarchy (FUTARELB)::collectMeteoraDammFees empty intent — Check 10 gate"
   },
   {
+    "hash": "e5651e5f1d4da379f4966a61b2b784a816d27ec832b5394c2a0b812b959e175d",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::collectMeteoraDammFees swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "6e36a114028f57e664a37234090115b75c861992edeb32193eb9730e08a62b53",
     "split": "dev",
     "class": "account-overflow",
@@ -17029,6 +17645,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Futarchy (FUTARELB)::initiateVaultSpendOptimisticProposal empty intent — Check 10 gate"
+  },
+  {
+    "hash": "1c083601d5ab2321f165eb41404dc583a81ee0c76eae9b4f57f1e380c5382d72",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::initiateVaultSpendOptimisticProposal swap intent on non-swap program — Check 9"
   },
   {
     "hash": "ab1eb045fdaec46d34ea31b48e867ae3d9e2add7e8c17990696c1f8d77bbeb72",
@@ -17052,6 +17675,13 @@
     "note": "Futarchy (FUTARELB)::finalizeOptimisticProposal empty intent — Check 10 gate"
   },
   {
+    "hash": "9d1f6025afce9c7c505b41b9a201b35c060f87e835ab2fd703abda714ac124e4",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::finalizeOptimisticProposal swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "c697c82c30bc4b3576cbf0d11253515a8bcaf2c6b4340a36f1d83f48e6b1ac93",
     "split": "dev",
     "class": "account-overflow",
@@ -17071,6 +17701,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Futarchy (FUTARELB)::adminEnqueueMultisigProposalApproval empty intent — Check 10 gate"
+  },
+  {
+    "hash": "98386183e1279dcf2ec969f16141bd506e27486c60a8cacf08dedaa2a3a60bc8",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::adminEnqueueMultisigProposalApproval swap intent on non-swap program — Check 9"
   },
   {
     "hash": "f18fff8200cca9a0b0cad7abd835563687d1134c67a5080ed2881ddcf6640df8",
@@ -17094,6 +17731,13 @@
     "note": "Futarchy (FUTARELB)::executeMultisigProposalApproval empty intent — Check 10 gate"
   },
   {
+    "hash": "ac009e8f3bffd5a3c990bd84845b64827f120257a7bd9648c5a975e9b9e15957",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::executeMultisigProposalApproval swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "5ff96964f0575a0d6a29c9cb0a054b1c010d8b6bb2e5e6076b9852d19d6ee1a3",
     "split": "dev",
     "class": "account-overflow",
@@ -17113,6 +17757,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Futarchy (FUTARELB)::adminExecuteMultisigProposal empty intent — Check 10 gate"
+  },
+  {
+    "hash": "3825ffd116c3d70d613aad739f04963d44ab673c9d75b70247cacd21b0acd119",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::adminExecuteMultisigProposal swap intent on non-swap program — Check 9"
   },
   {
     "hash": "a4bd4ad67549c9314b2dee917a77154ed63dc3264056eaffaaf323d5a2eb8730",
@@ -17136,6 +17787,13 @@
     "note": "Futarchy (FUTARELB)::adminCancelProposal empty intent — Check 10 gate"
   },
   {
+    "hash": "7bae87be516250c57a26c44a95aee34d52601cc496652e50fcc3ff84774e3f2d",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::adminCancelProposal swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "b47c926d43e0cd0bfa6bbf4fd51aa9308a0289c761064f07a2afa69628d0e13e",
     "split": "dev",
     "class": "account-overflow",
@@ -17155,6 +17813,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Futarchy (FUTARELB)::adminRemoveProposal empty intent — Check 10 gate"
+  },
+  {
+    "hash": "7abcfd2c9289baab2750ba5d6ba0f84d3b04b6b456a8b952156d814eb0f27ba3",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Futarchy (FUTARELB)::adminRemoveProposal swap intent on non-swap program — Check 9"
   },
   {
     "hash": "fde6017540fa32fe40c3de6b6af49d1d40e794bf4c712ea57f992188cf56cde2",
@@ -35910,6 +36575,13 @@
     "note": "Raydium Liquidity Locking (LockrWmn)::lockClmmPosition empty intent — Check 10 gate"
   },
   {
+    "hash": "5de1345db50abcde638f158ced3ddda57b41aaf4bb284754b4809ea1080bf10b",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Raydium Liquidity Locking (LockrWmn)::lockClmmPosition swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "80b2b9a9a394db0617834d67a59d284019cc7bd27582761ac79b8393769b9e96",
     "split": "dev",
     "class": "account-overflow",
@@ -35938,6 +36610,13 @@
     "note": "Raydium Liquidity Locking (LockrWmn)::collectClmmFeesAndRewards empty intent — Check 10 gate"
   },
   {
+    "hash": "d54bf85e17d28556893d7b2d62af276391a54c33a15b747466c4856659a5799c",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Raydium Liquidity Locking (LockrWmn)::collectClmmFeesAndRewards swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "ea567835c47bfc48dc1fedb0322efc11e390cd2a1efbd9f155e13fb65fbd4de5",
     "split": "dev",
     "class": "account-overflow",
@@ -35959,6 +36638,13 @@
     "note": "Raydium Liquidity Locking (LockrWmn)::lockCpLiquidity empty intent — Check 10 gate"
   },
   {
+    "hash": "617d5bea05ce67dd64557c3f09ef7b08bd118d711dde86a028251b437a5743a9",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Raydium Liquidity Locking (LockrWmn)::lockCpLiquidity swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "3ec66470ba8a3662e2cec3422ce63881266045c58a7d1b937dd4d9e729ac04a3",
     "split": "dev",
     "class": "account-overflow",
@@ -35978,6 +36664,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Raydium Liquidity Locking (LockrWmn)::collectCpFees empty intent — Check 10 gate"
+  },
+  {
+    "hash": "fa3391c00e68c9b3c991672cf41b1c7ffbe325065c7b7acbf12494c696497e35",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Raydium Liquidity Locking (LockrWmn)::collectCpFees swap intent on non-swap program — Check 9"
   },
   {
     "hash": "3bfb388cf58950644bd58b7bdbdb05014f275d38e31c2f4d07ceffd75c0970e4",
@@ -37811,28 +38504,28 @@
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
-    "note": "Marginfi::onchain_observed_shape_7acct intent=transfer"
+    "note": "Marginfi::lending_account_repay intent=transfer"
   },
   {
     "hash": "0cabe386038c0edefcbef655d05274a7bbf8266258b65fb13dec26d565a168c6",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
-    "note": "Marginfi::onchain_observed_shape_7acct empty intent — Check 10 gate"
+    "note": "Marginfi::lending_account_repay empty intent — Check 10 gate"
   },
   {
     "hash": "ed4786150e41453d96592378d5503c4c81fccfcf3461895c1e15891ce551d7dd",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
-    "note": "Marginfi::onchain_observed_shape_7acct swap intent on non-swap program — Check 9"
+    "note": "Marginfi::lending_account_repay swap intent on non-swap program — Check 9"
   },
   {
     "hash": "22cc21f668812d668360fb7cbeaf3ad3f0bb8d262af5ccb3be6550c962096f32",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
-    "note": "Marginfi::onchain_observed_shape_7acct +8 accounts — STMT drainer"
+    "note": "Marginfi::lending_account_repay +8 accounts — STMT drainer"
   },
   {
     "hash": "4573e6ed215304bc48c4e07d2c42ef8164d44f4ad2908dd143597ee16238271d",
@@ -58471,6 +59164,48 @@
     "note": "SPL Token Program::UiAmountToAmount near-prefix discriminator"
   },
   {
+    "hash": "c49bf51d8490ea95c225c616f0591947e21c38170bf951d80ea6ee057543b4ec",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "SPL Token Program::WithdrawExcessLamports intent=transfer"
+  },
+  {
+    "hash": "fd3125be90e2b92c1b62335c22b2d7e3a5b7611a15a3c3f567c6e6e1439894bf",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "SPL Token Program::WithdrawExcessLamports empty intent — Check 10 gate"
+  },
+  {
+    "hash": "d735cf15a84f0cdde2a1f52e40dd824c5d33a18fb45e9643da6c3e412f57be09",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "SPL Token Program::WithdrawExcessLamports swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "4a146b3bf5b849ccecf2b4bcd7db586006ae371544e64a9df3941d3997178670",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "SPL Token Program::WithdrawExcessLamports +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "2c4ce604839f4335c01fc0ca40446a031d277f6058ab20086e92fb6d265d2483",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "SPL Token Program::WithdrawExcessLamports zero-padded discriminator"
+  },
+  {
+    "hash": "cdd4b0044877f897066193b5a70b19f3f7aab2d693ad7355fff9ce9f735933b8",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "SPL Token Program::WithdrawExcessLamports near-prefix discriminator"
+  },
+  {
     "hash": "07ae3435e34c13df54f49aca0014102a652674eb82b77ece4223569ba850921f",
     "split": "dev",
     "class": "canonical",
@@ -59764,6 +60499,1280 @@
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
     "note": "Token-2022 Program::SetTransferFee near-prefix discriminator"
+  },
+  {
+    "hash": "5642c21512fac00d4e3c97ac6f542a4c46d016ee7bea038a2dc76e701ef9c9f1",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeMintCloseAuthority intent=create"
+  },
+  {
+    "hash": "32eccdb07f1e2cf905e88a4467164d9331aeb666449d675323e10d6f733d34d2",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeMintCloseAuthority empty intent — Check 10 gate"
+  },
+  {
+    "hash": "1269bb1eaa77773528a801642d18fa1d4b9066c067e660dee1183ead7688c67b",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeMintCloseAuthority swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "dab1942614354de21f9930fd34fd4f59c27b12fa0f53e1f376f3d73845a2e170",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeMintCloseAuthority +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "937cba49755370a34655ce5a1d3f8b817c216d5ee013bed39e7a4549c66c40aa",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeMintCloseAuthority zero-padded discriminator"
+  },
+  {
+    "hash": "285681edc58daa99bc5e3934a183de1e8041084a5e13645e22ef3ecf85bef228",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeMintCloseAuthority near-prefix discriminator"
+  },
+  {
+    "hash": "14052dd5da9def1a54460220ce92bc05adb759c545fd387a5319e512b0987558",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeDefaultAccountState intent=create"
+  },
+  {
+    "hash": "72bbdd341412529eb286a5e28084aacb6f4372122f6234da6275b00e21297615",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeDefaultAccountState empty intent — Check 10 gate"
+  },
+  {
+    "hash": "17f26df07eb7d29fa1a0c8887e264403077c6d53a0f99af13497403866ad2bf2",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeDefaultAccountState swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "1db7131786ccf5554349252b634d87463fbd17729794525fb7ca3173bd5100b3",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeDefaultAccountState +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "f588cdaf90c2fe7a23a9ad0f8eccbb35d428cc48db00760b98480b6c84d99a1c",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeDefaultAccountState zero-padded discriminator"
+  },
+  {
+    "hash": "b0a3c0bca8256da2a612b2379a1cc4d8d232d4779e32ba178f7a025d51c3eb27",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeDefaultAccountState near-prefix discriminator"
+  },
+  {
+    "hash": "2eb79802317f8dd3d6f371a595e4416d1db257d916cb8a82f45c9f5229f486f7",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateDefaultAccountState intent=transfer"
+  },
+  {
+    "hash": "d3e17459efd9c7434a3e503972de2037665cd2aeb456ec0170187d5a8040a7f8",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateDefaultAccountState empty intent — Check 10 gate"
+  },
+  {
+    "hash": "2a69e38f1dfd3bac015fb8573c7cebc6933e70007c0b94967f32560c0abe60b8",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateDefaultAccountState swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "d3ec042845e9c817c22eca6742bbcac9320a4b59a1a3ee93f9652681f86bf68b",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateDefaultAccountState +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "33b8a90bde92550326c5ebcfd305102ac52396dd01ad844efd685b90f1b2e6c7",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateDefaultAccountState zero-padded discriminator"
+  },
+  {
+    "hash": "79028747f08ae9f906e795d212f522b4709529e5ffab5d3ce0e41fcb22c7d0af",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateDefaultAccountState near-prefix discriminator"
+  },
+  {
+    "hash": "cf103d39125c68b34b78b7c0f9223681ac73c1e540cbb333245cfd25cc7b74a0",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::Reallocate intent=create"
+  },
+  {
+    "hash": "d5398eb9155eef924c34101a115d1fa5af679d64f47cb93bd9938873b9677094",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::Reallocate empty intent — Check 10 gate"
+  },
+  {
+    "hash": "949083e30c255e51f8fecf7d64dd50e5b69e9d6452cb2dc05524881885489514",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::Reallocate swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "2d756fd72b3eba6afd31b7d6a4dd3386c3defcb4e7f7aaab3bd0f78e2ab0b403",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::Reallocate +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "03167d15384081fe4e5cc0d41d999cbdb04128b587016ea2af60e428f09b190d",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::Reallocate zero-padded discriminator"
+  },
+  {
+    "hash": "47de4feb256ca42049d669b550833226e0f627844a347d72cf71ff20ea4d4b9a",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::Reallocate near-prefix discriminator"
+  },
+  {
+    "hash": "c3e5a0b5860026bfbd670dae56a63f57dd4d13cdfa3a22cae10869b6c39acefe",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::EnableRequiredTransferMemos intent=transfer"
+  },
+  {
+    "hash": "adba544bea71f1ed7424be4068cc47984d8991e6e7c3b8ff0e8f283548e51b0e",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::EnableRequiredTransferMemos empty intent — Check 10 gate"
+  },
+  {
+    "hash": "438dd90f3b239313c935062d28696e34a1e67e2c04f76b6845efce1dcd223159",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::EnableRequiredTransferMemos swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "9e4c350820eaedafc93f10f86e427ec3c38a8b1f4b9d3de025e2f0ad42bd9713",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::EnableRequiredTransferMemos +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "29ca30cac4af9a64a4bcc5e94230a0fadad14410f63f88f50b76bf0784dd3d0b",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::EnableRequiredTransferMemos zero-padded discriminator"
+  },
+  {
+    "hash": "7a29bf0539a51d3aecbb79b275ac5740597b0c9fad54056254d8444bb10ed2cc",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::EnableRequiredTransferMemos near-prefix discriminator"
+  },
+  {
+    "hash": "3dfdd13bbd0ac2a7375de3a558c417299659af618c5949caa0b7d4c91e476395",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::DisableRequiredTransferMemos intent=transfer"
+  },
+  {
+    "hash": "1ae58e4e4b12b82768da038ee0a9de08b9e59d7ac62f57a9c3f2d8766055a47c",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::DisableRequiredTransferMemos empty intent — Check 10 gate"
+  },
+  {
+    "hash": "986cbefe5d3ff0afc687f72e91c6a912cd12f8ae9ed500205b0c8d957961b45c",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::DisableRequiredTransferMemos swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "68af9416399d93570a36537cb975e4b32de8fa4e1f9489c473405cc34f0cb456",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::DisableRequiredTransferMemos +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "a3a6670f4c20f0ba118ac9002ea861566c66b1d2168d9d5d41d1901151fb7ce6",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::DisableRequiredTransferMemos zero-padded discriminator"
+  },
+  {
+    "hash": "9fef19d88b62d5b4f91991685e4e11ac563b921b9375740f4fd76ec9c5bd998b",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::DisableRequiredTransferMemos near-prefix discriminator"
+  },
+  {
+    "hash": "18c073da76a7c0bbb6989930f83fba2a35915c1ec15800797c7cdd7feb128a99",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::CreateNativeMint intent=create"
+  },
+  {
+    "hash": "bcef7cb993e96a1cad1eac2dd94062953cb42c117ccffa7e5087f80116269d37",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::CreateNativeMint empty intent — Check 10 gate"
+  },
+  {
+    "hash": "e2c58b1252414bf3ecaefbcf57ed95a17ec8b00eabe23a066d55b9439b781866",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::CreateNativeMint swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "8f8b62a33339f102fe6f90352c66246176b64756847838d9b997d4eb68b2ad43",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::CreateNativeMint +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "c070cd729690a8817fcfba72690a3b2c375ea9b14bbf8ae3d479454eed4d9199",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::CreateNativeMint zero-padded discriminator"
+  },
+  {
+    "hash": "f62aa750fb2e4411068ad546e49dc9a097d02b80877a46533ee9394203b72aa7",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::CreateNativeMint near-prefix discriminator"
+  },
+  {
+    "hash": "9524167c09e88c59a23b276391fbeb58dca2c42a80d423c7aff2c8fb2a7f6b78",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeNonTransferableMint intent=create"
+  },
+  {
+    "hash": "c26be04334bdcf74eb363a8484f699fbc6f5d36f0b3544a5def8ed8d02681d0d",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeNonTransferableMint empty intent — Check 10 gate"
+  },
+  {
+    "hash": "705990235a389141c14e4c1c6de43d839e7ab23ee3c08fd789b7e19b908119a8",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeNonTransferableMint swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "3a5c128febc825f7d95fc2cfee3dafdd25120b5fb25268c74dc201af1b7e1809",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeNonTransferableMint +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "4262b49405305aa753b90a95caf728a90b883f0e749be4c9f236bcf36c3e420d",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeNonTransferableMint zero-padded discriminator"
+  },
+  {
+    "hash": "7e69d2a76941bdafce3a9dc8f212b22ca175dace63e082ff6a2547cac61645e0",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeNonTransferableMint near-prefix discriminator"
+  },
+  {
+    "hash": "c11b15a5e8056bd7c973024a8066e01da0119b1c0907ca6e6476535e28ab421c",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeInterestBearingMint intent=create"
+  },
+  {
+    "hash": "78697bb6ed63715f0257141850d5f2e80482bd42340387694c212cfd2bb6717b",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeInterestBearingMint empty intent — Check 10 gate"
+  },
+  {
+    "hash": "9f800e0454635dbf765aa84a36ed775c63be25027068d88df20ca3795843bd09",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeInterestBearingMint swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "643e6235a6911c999de1e59d86207367249931ff4b7895a4b664df7af3cc07f0",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeInterestBearingMint +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "49cf1a48bba41b7f9212d47fd23d9221070be802b4067dde5cbd49b1617f9491",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeInterestBearingMint zero-padded discriminator"
+  },
+  {
+    "hash": "32752cac0bd88c2d7037260d0568418933caa054ddb791287ab5d118ee5d7c78",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeInterestBearingMint near-prefix discriminator"
+  },
+  {
+    "hash": "364d10b75ecf4809415bd0cadce329cc117e1ceb478db43433cba10f082d0bb2",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateInterestRate intent=transfer"
+  },
+  {
+    "hash": "03053614f6a4f28ca5e9898213246ec6e571df612f4c96071815b3db9a1090e6",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateInterestRate empty intent — Check 10 gate"
+  },
+  {
+    "hash": "ccde3b2a1cff2c78ce40140144e6a4e5553bd8b9aff8225ef0f94074d4ebe4c5",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateInterestRate swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "c523a5d7ebb72ed8c2343b37da2e64224f804a117fc620b22f99b1fd4a32f35d",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateInterestRate +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "d2e559a30846557f14e44ec87a6fc5bd327b982d324db9bd152a432bf39c9971",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateInterestRate zero-padded discriminator"
+  },
+  {
+    "hash": "81c5a2a7dfeeeb27f0c3c711aea2ba503bd6c78efdfc67f7d7553b8faac5eb70",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateInterestRate near-prefix discriminator"
+  },
+  {
+    "hash": "3711138d6bba578550a1c299b354473d0dbabb40ff4e724a41f48e26d5be938b",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::EnableCpiGuard intent=transfer"
+  },
+  {
+    "hash": "ddbec4b5b51ad8d36bdc918dc6ee2b73e6ee9974d68cf54b19ae1d301a751821",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::EnableCpiGuard empty intent — Check 10 gate"
+  },
+  {
+    "hash": "1652f248385df07b081e49adb680bb3a9545b454143e3a51ca661c402f724f4d",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::EnableCpiGuard swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "24d3c48c3b18789216daf70b31e4c26b2de16eda699b1ef0bda9981b84b47092",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::EnableCpiGuard +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "074a328a860bf3391e1606d830ce73138cdecf49c9e616ede0ff4c49045c346b",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::EnableCpiGuard zero-padded discriminator"
+  },
+  {
+    "hash": "e80550f967d9ec99dc6952a5ca3a980d24df08a2e180d11a5af2d82e283a10cf",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::EnableCpiGuard near-prefix discriminator"
+  },
+  {
+    "hash": "69f491abff37b32ce835cca9d731ba1a1be5fbe478867669907df8292e7fe84a",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::DisableCpiGuard intent=transfer"
+  },
+  {
+    "hash": "75d84400479c1423ca53543db3312d5bb7ac0c450160d216f285ceab05b16b53",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::DisableCpiGuard empty intent — Check 10 gate"
+  },
+  {
+    "hash": "8ef42fb4a2f1f6a0d9dd61b64d6ead2947dbd9146efa6d7287f864eaa6525f29",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::DisableCpiGuard swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "d869621e47f8d2396c4a5044c092da66372e526cc13fd953a204d0b00e86ecc4",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::DisableCpiGuard +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "d820fee319aef8505a8ab6e5dc6ace22b37d86d32b9dede7ab3bfe59181186b1",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::DisableCpiGuard zero-padded discriminator"
+  },
+  {
+    "hash": "3510f25fabc06907ce18cdd2f59627de5aee73a82bc46d5fa1da9c906e3b3340",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::DisableCpiGuard near-prefix discriminator"
+  },
+  {
+    "hash": "8fbebbd150a5c3676f4b90e8424d64a5cb381ef33c7985f9f652ff9d1b55863d",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializePermanentDelegate intent=create"
+  },
+  {
+    "hash": "9e4b0fd805549457cdc4e964499f2a63ebf389b329f266a57258cb591742d6de",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializePermanentDelegate empty intent — Check 10 gate"
+  },
+  {
+    "hash": "ae61cb68af9ee46dc235a7ab226a07c438c64a125c4ab9e5f28af86b825fec42",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializePermanentDelegate swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "bae00b91ae3d5bb41df281619b9d0a20b49dab77e95cf7b21d85d6bef12ec9f1",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializePermanentDelegate +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "b132e6dd015897202772db20fe287849db003240391888794865232568d6c255",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializePermanentDelegate zero-padded discriminator"
+  },
+  {
+    "hash": "4ee1ba30c135cb882e62c4c634d121e341cb4b238836aa3156edf5168c45c92d",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializePermanentDelegate near-prefix discriminator"
+  },
+  {
+    "hash": "e882b3c79f32b056258d8f96832dcf9b32938154ea7b081326a98e0dfbba0a18",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeTransferHook intent=create"
+  },
+  {
+    "hash": "0ebafc6f8d1896e8bc7e8e992b394fddb644df14aef83afc91e3e1b253d5a422",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeTransferHook empty intent — Check 10 gate"
+  },
+  {
+    "hash": "294f72719ddb86f26b24bee4cb7f11bd4dacc9bb13514534d3162a8179fdfeb3",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeTransferHook swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "e9ed1fe8ac88046f68786aec5da61f3ab4073fbb546ce8628d86bfeb6a379411",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeTransferHook +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "daec13eaefa124f6fe397b82b427891c49df772c85c355f0ac7ee362e4621ed7",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeTransferHook zero-padded discriminator"
+  },
+  {
+    "hash": "858f0d470cc0df5a76fdf726274781fc7a4b0b2bd8fc4c35b5dff2545e74397e",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeTransferHook near-prefix discriminator"
+  },
+  {
+    "hash": "8a6f8739a9ce9248afe743a9fe140441e38bc472645bc6ff70f3f257d9ba3580",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateTransferHook intent=transfer"
+  },
+  {
+    "hash": "60a5a84c3640a727a30abf5941c5b01ddb48047793192ad777236d70f34cf8f8",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateTransferHook empty intent — Check 10 gate"
+  },
+  {
+    "hash": "1e877fec6051d06fa2f84339bc845a3352c9d2fe6b49c84ecca5c919d50cc729",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateTransferHook swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "61d28915fa013b9a867e0a1a7d61aec4d58f919e54eadb9ac080495a352bfb1c",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateTransferHook +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "3237bbd5988a6debd33cd72d6f6804c433e5c8506d14a3f4ac93d341dda1040d",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateTransferHook zero-padded discriminator"
+  },
+  {
+    "hash": "2dedd1903786904d6c36a50f13cde76c3b38ba5eb7ec9a40da2945dbce8a12d3",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateTransferHook near-prefix discriminator"
+  },
+  {
+    "hash": "df9a8a799f07f13a78eaba1ca304ed4b00f23200e5065bdb9d0edc9b6204568e",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::WithdrawExcessLamports intent=transfer"
+  },
+  {
+    "hash": "0ba8193bfccd359947f5b6eddb27e1a4c60b5eae5f4839c53806161e815ff4db",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::WithdrawExcessLamports empty intent — Check 10 gate"
+  },
+  {
+    "hash": "c12581357b0d1b9e6a9908fd5fdc8049946dd7b803e05d2d3274be490121dfe3",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::WithdrawExcessLamports swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "44d3efadc168d8d663a725bd920039fd8ce994ff8920b01922f38a5fd28df25d",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::WithdrawExcessLamports +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "a863d48f58559d58c7c8d59d575ed151f2e9f1bbc5341c69f8a62eca9a408409",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::WithdrawExcessLamports zero-padded discriminator"
+  },
+  {
+    "hash": "4d1e477936630d4ca8eb651a900d92c1d5c4f95106fd5b2b2836b982be003c2c",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::WithdrawExcessLamports near-prefix discriminator"
+  },
+  {
+    "hash": "70f67020b6b08a034505677465dc2a4fec20b91fb9c7ebcd8de6d6f1173e324c",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeMetadataPointer intent=create"
+  },
+  {
+    "hash": "60bfbfba353287be7f56032e70ba53f001edb59b570ef171b8d69c9cce015c5f",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeMetadataPointer empty intent — Check 10 gate"
+  },
+  {
+    "hash": "c34e391a3a0a59589b7ddad55a09aaa21cbbb4f5266cc3b3d19383008b209234",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeMetadataPointer swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "4f0ac71cbae43941cca64213e5dae54296a90049c3da511f14c70a42e0c32dfc",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeMetadataPointer +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "6453c87c559786db7592b35be08a78ef5b6f7a09fd201707aa6bb7450217e34b",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeMetadataPointer zero-padded discriminator"
+  },
+  {
+    "hash": "a2da63ede789684b87e0bb27a8746cd0fbb58c1b75b07d9641166212000476d5",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeMetadataPointer near-prefix discriminator"
+  },
+  {
+    "hash": "91138b3a7d88b07fff2d2553aa3043615e8c02156fe2cba3d878f33efa31c623",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateMetadataPointer intent=transfer"
+  },
+  {
+    "hash": "74a88bf0f60a2196eee7c1b23d0ea67443ee3234fcba57a89243283a75d369f5",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateMetadataPointer empty intent — Check 10 gate"
+  },
+  {
+    "hash": "6b4ae94aad5d7a61c897f84546228a1300dbbd39be6e944563be7cb50bc2498c",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateMetadataPointer swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "9a04f2555d7bf467d772a6e423007bff96bb0ac9116e31eff5c6502982de81bc",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateMetadataPointer +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "284bac0999cf94bda2f7fd1f6031379723d92c5c9d4f0411bd42fc5842fce2d0",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateMetadataPointer zero-padded discriminator"
+  },
+  {
+    "hash": "c239bce1ce9d21ed21d0ba1bb71211e668b8b40b09fcced951a8e0bce62fcdc9",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateMetadataPointer near-prefix discriminator"
+  },
+  {
+    "hash": "c59b24e4808d382c0be7738e9ac9611c699b0da6a9b31375de4ba20fd64b8a32",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeGroupPointer intent=create"
+  },
+  {
+    "hash": "540b8c738ac9973f57335d0a4304e73c27563b23107cb4fafd041d7f8acc2642",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeGroupPointer empty intent — Check 10 gate"
+  },
+  {
+    "hash": "b502c64695a0954a2844c3f1be9640117b7533f93a857df5e93abc229b468794",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeGroupPointer swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "69ca10b0b4c9cd4a73709460f7e5f29741617b76030ba56b6f252b8e8c8344f3",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeGroupPointer +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "a19a127428409010c5597d36f45e2bcb355c3cd65a1db1cf47a43c350484dae7",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeGroupPointer zero-padded discriminator"
+  },
+  {
+    "hash": "a14fd0a3163f25ead3b74d4c4070d1edd4cee9e2e666bfd32cd679b888cbafeb",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeGroupPointer near-prefix discriminator"
+  },
+  {
+    "hash": "31e9bbefb04c1d0c9a4f67a34066f04e2bf8fcef059baf32c51a26959eabefa9",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateGroupPointer intent=transfer"
+  },
+  {
+    "hash": "512b9f91a7a3ffec960a21c3bb0b397462c7e195e25bfac0b9dd37562ce73f4b",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateGroupPointer empty intent — Check 10 gate"
+  },
+  {
+    "hash": "4f8aa8e000d53ec6079e7e8c833d10394a711f5682d3a95ce1488e615069395b",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateGroupPointer swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "97d4d8ece0150173b38f6a346edbcce1dea79425291afdf1b4e2eabbd230be81",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateGroupPointer +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "79a7377a4e1884ecc981fd4ecf62b30650383613c9bf921d29281ac316a27db4",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateGroupPointer zero-padded discriminator"
+  },
+  {
+    "hash": "303d22293fd0e2840c31e8bd1acffb6586f047bf798c30e401fe4914833c47a9",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateGroupPointer near-prefix discriminator"
+  },
+  {
+    "hash": "4e722882a6d6076edc29c90f079037843c7f4363c82bac45bdadb04e10f2bae8",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeGroupMemberPointer intent=create"
+  },
+  {
+    "hash": "ebb010b0b891f270b42022226d30e1252e7a7f35342fb37f4a861f6c3aa9b32d",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeGroupMemberPointer empty intent — Check 10 gate"
+  },
+  {
+    "hash": "06cd768b1f1119b31c14475d9643fb7b3023caed988a87939f2dad307cdf7248",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeGroupMemberPointer swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "1961c59b01a40ef7a7d1a780b50301ce71da809f8dc089567f5b2ff6d49d81cc",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeGroupMemberPointer +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "4d4269f2d20e0f39649e4f89153f026ff41c81568bf183a648b706500fede152",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeGroupMemberPointer zero-padded discriminator"
+  },
+  {
+    "hash": "1a8832f1b62de5b70bfedba70a78f06f4e69c99a6052f7290f1304cae922c228",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeGroupMemberPointer near-prefix discriminator"
+  },
+  {
+    "hash": "c2b1abc793390156abf9285088f32b955a709516f41904db5a53d2bcf51af372",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateGroupMemberPointer intent=transfer"
+  },
+  {
+    "hash": "77072477ad80cf9b32f5916714b97b362e981e60a50a4e93efcff6649568276b",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateGroupMemberPointer empty intent — Check 10 gate"
+  },
+  {
+    "hash": "399e84d8cce66c4056c91dbcc0dfea6b0a0d820a58b06ce655d94aed072eeb2b",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateGroupMemberPointer swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "f27284d30720e069e00889025308806dd39770b2e0c8d30585472cd86d01d802",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateGroupMemberPointer +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "4a6f0bc6f2a27dfa33de5a8f6e2147d10460eb4ddddaaa1ac6e5d1221f6c8a62",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateGroupMemberPointer zero-padded discriminator"
+  },
+  {
+    "hash": "89c56c13d0d45626d4be09006b235e16f49fcf315e9a09d6969dd030063a3561",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateGroupMemberPointer near-prefix discriminator"
+  },
+  {
+    "hash": "f5d63f8c0590cad466110b9879506e5321f390b6cc9213054fff57b0fa99da24",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeScaledUiAmount intent=create"
+  },
+  {
+    "hash": "2fa1ad9a50f793db97f5e8d79b0fa294e05acb4992212b97c2a0119e89f8df07",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeScaledUiAmount empty intent — Check 10 gate"
+  },
+  {
+    "hash": "1cd3a38d142f844b607822396a04b19f9e6a5dab86c481731c46cf0c09e3db6f",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeScaledUiAmount swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "f7989a0a696e856eb268047a149e5becaf5db3ae23ec88d8fcffac05ebb53831",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeScaledUiAmount +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "dc7d68a34850cba56b36dae78401039d27fde32f441a042b57ab69bcaf0daa2e",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeScaledUiAmount zero-padded discriminator"
+  },
+  {
+    "hash": "428b3a9ae0b5f01a95ad817fc19914754ccdcebc309a2fecbd85e0c231d68f8f",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeScaledUiAmount near-prefix discriminator"
+  },
+  {
+    "hash": "a23663322ea852c8e150af3f7ea36d97f94bf8c9fd79f93e582530cc3631c82b",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateMultiplier intent=transfer"
+  },
+  {
+    "hash": "9a9a2236751930baf1c77d8ea56cec8330600162a3055f5f1b8914b1d43f351d",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateMultiplier empty intent — Check 10 gate"
+  },
+  {
+    "hash": "994e6ad54c212ea5ba52ed6a6172fd425576291dc1696701b6f47c37bfc86e59",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateMultiplier swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "e29d01ef08bf26df731438b6bd5eda15023a077d66a71b29850673387d66de42",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateMultiplier +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "cf5e25482d6f4718ba420c6835ec32bbf89d3765eb2f9c1221a332dc9cced57a",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateMultiplier zero-padded discriminator"
+  },
+  {
+    "hash": "b490bdee627d61323e11f79bc600e10cd3c0b1aad517e3b249a98d9d046629bc",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::UpdateMultiplier near-prefix discriminator"
+  },
+  {
+    "hash": "ec98f12598442e599de15fe7df26a76c5904d4815b3a81de9631c6eea2623c8c",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializePausable intent=create"
+  },
+  {
+    "hash": "0fe6433af67d8dab42833c937222dbb1bef80e0a641cd83d8a126179d334b883",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializePausable empty intent — Check 10 gate"
+  },
+  {
+    "hash": "984bcfaba0f99829228b9ee0b25c80e9ca36b0100efefc0c5d7495c9c33338fd",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializePausable swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "8e4a0f747d8810ca401787b72671b8500fd3b14bc2fa8cc691adf1e8b7e0e82b",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializePausable +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "27c73aded3a52db1ef6a5e4192288fddc015a67ab046ca1ccd7e74c552470a77",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializePausable zero-padded discriminator"
+  },
+  {
+    "hash": "252984ae8bf408d86eb6f2ac55b1d94be56799b451f43cb33e59fb667c96d1b4",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializePausable near-prefix discriminator"
+  },
+  {
+    "hash": "396cdd266848dd484e8f36677d9a34e720cd1278fc054218f646c472b691926d",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::Pause intent=transfer"
+  },
+  {
+    "hash": "99930e9a98610233191f39781523e5573782f61a81d54c78604d0ed3caac514f",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::Pause empty intent — Check 10 gate"
+  },
+  {
+    "hash": "ee492c53e9fba44cd1f40d3a0f49a4ab58de8e05f8d6263d6411af61b21e7fa6",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::Pause swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "f726827a8dc46b796dbfb7a3c94d81b278a9e8d119ba9d8b65c66db85dcf7498",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::Pause +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "dc4ca6d2df9779be9d94d514162541c71916935b890c59f00c665d82bc37de74",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::Pause zero-padded discriminator"
+  },
+  {
+    "hash": "50c60039cf4bac701b6fc2e70505a658f06eb087e42c5278f0bb999daafaba57",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::Pause near-prefix discriminator"
+  },
+  {
+    "hash": "981a53e205e3abb1fe40ad5916cdc003b85575b574806f9ff2ec9c90fce34fe4",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::Resume intent=transfer"
+  },
+  {
+    "hash": "95cbb9116b589d2b4d3a91669e0e85ffe22d28216fb4408d425e4eda3863db2a",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::Resume empty intent — Check 10 gate"
+  },
+  {
+    "hash": "dc68c1c734ea78f6950b941d0b461eb3f18880f5731b932f0376faab6146a1d7",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::Resume swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "d597c954496a81c0cd3952c8fe307e38b19d967b822e979d44196b890b70aa15",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::Resume +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "150beb0388649decdc7a3203f30612bb3a11eae08722fa6e5574202a929ccc48",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::Resume zero-padded discriminator"
+  },
+  {
+    "hash": "57214640597d22e7a17fa692dcf6a5f7dcb51c6637cb6b4bdfe71b0bbe9da606",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::Resume near-prefix discriminator"
+  },
+  {
+    "hash": "625998c46592b16c216404b1fd8265b1d4fea93dbcd614da5a559ef49e655779",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataInitialize intent=create"
+  },
+  {
+    "hash": "e6fc3bd3ee8b91bf08c5e4a0ed2fecd67aa77d22be3a3c3a8462a97c0393a6cf",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataInitialize empty intent — Check 10 gate"
+  },
+  {
+    "hash": "38e1b4bf09d8a73fc7f515e52ba1319c4ce4ee20ba8d50fee8dfcfe9553e42a9",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataInitialize swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "84e2bd401696eadf4b0408ace67260c7011ca09da7f156a5499509e3ca8c39a5",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataInitialize +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "0f50a5fb7a21abcb14e4f27d2c2c4119039a76ca85d68a50029c9333d3b0fd27",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataUpdateField intent=transfer"
+  },
+  {
+    "hash": "567078a11ef393c64ae03863f19aed7021b73449519fa3b3909e91322022c9dc",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataUpdateField empty intent — Check 10 gate"
+  },
+  {
+    "hash": "6df3f8b94f9c05d5f8aa4d9042b0ddc215022e651c942699a62a977f0c8e561f",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataUpdateField swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "9d8e545de6e3a11ba85f34154c11f9649b91700e1bf424760944bc7bc461fb08",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataUpdateField +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "1fc234c31fa6c08aae875ae2a9df45ac0dbef73875a81cc199c32fb844193112",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataRemoveKey intent=transfer"
+  },
+  {
+    "hash": "ecb699284ce244fe0d0577b28e0b929caa94aa51244af2b66d056f67de9e32f5",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataRemoveKey empty intent — Check 10 gate"
+  },
+  {
+    "hash": "699f10145a26353664fd54b5e54494c17e27c892c3e54edaeb1016f07974135a",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataRemoveKey swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "a1d012ab0e3df47eb967aeeb8f9962058658ae60f17edd0aadfc4ff73b331e6c",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataRemoveKey +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "9522e920c4121bb9c57c43ef3c85c46dda512891ebeb6577e8b72c7d419390cc",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataUpdateAuthority intent=transfer"
+  },
+  {
+    "hash": "f55f6d82cefcb362632fb443c76027eb303a0e7d69e491be1ea458327de5cf11",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataUpdateAuthority empty intent — Check 10 gate"
+  },
+  {
+    "hash": "15ff72c2620eb55ecddeb31f4b7e79386550e1a1578f52c70e6b64eb96344ad5",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataUpdateAuthority swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "ced3aedbe2d3f1dff7f69e779442963ac9b2e32e9e7a1778bbcefddf26c815b4",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataUpdateAuthority +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "dad9bdd6d2f3a5fc0174f6ef8c7b160be3d96b045a355842f783cd049d001874",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataEmit intent=transfer"
+  },
+  {
+    "hash": "74251a6f3a6fcfd01e42bcc8d1eccbcad5afaf7508f0a19284c9f12350f689f2",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataEmit empty intent — Check 10 gate"
+  },
+  {
+    "hash": "e691d4d201ece4a02544cbf948aea18d9a2e7d0ff726f9560dccc19fa6981885",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataEmit swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "e0d243805f315a1adb3a62380ded04702fbae3f60b13eccbbb7ebf571b9ae990",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TokenMetadataEmit +8 accounts — STMT drainer"
   },
   {
     "hash": "d32e069dcf33b27031d5f2ef25fec03796582bf82c4203817c3b3657a790cb04",
@@ -74452,6 +76461,13 @@
     "note": "Helium Sub Daos (hdaoVTCq)::add_recent_proposal_to_dao_v0 empty intent — Check 10 gate"
   },
   {
+    "hash": "6da947a624b5239d99cad0c090a08e3257bdef14593c0a63f534a84c937fe01f",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::add_recent_proposal_to_dao_v0 swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "f31e9fca8d4839f1b56cf748c6fe047a7fb3714b47ef8c2038977d5ff63bc020",
     "split": "dev",
     "class": "account-overflow",
@@ -74480,6 +76496,13 @@
     "note": "Helium Sub Daos (hdaoVTCq)::admin_set_dc_onboarding_fees_paid empty intent — Check 10 gate"
   },
   {
+    "hash": "4b58eb73b6f523692ead815f7ba27eb454dfb4e04de6de9a08d15842094d6e40",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::admin_set_dc_onboarding_fees_paid swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "7f4d2193512247fdd7999e07fdd1929f0b7b8ce021d96fb9effd7ece9e3b2936",
     "split": "dev",
     "class": "account-overflow",
@@ -74499,6 +76522,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Helium Sub Daos (hdaoVTCq)::admin_set_dc_onboarding_fees_paid_epoch_info empty intent — Check 10 gate"
+  },
+  {
+    "hash": "9969c4ffce992dbd1172bceeecff3931e191812ddeed5b840d3bad765483e162",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::admin_set_dc_onboarding_fees_paid_epoch_info swap intent on non-swap program — Check 9"
   },
   {
     "hash": "747cdede6a17fb8d12752ac749b28e31653fad4de8864e005e1341ba97861380",
@@ -74522,6 +76552,13 @@
     "note": "Helium Sub Daos (hdaoVTCq)::calculate_utility_score_v0 empty intent — Check 10 gate"
   },
   {
+    "hash": "b03016fdb3e814ec4a082739cae04625b8963e0b92a2badbbd02dee382142790",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::calculate_utility_score_v0 swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "6f8c6ffc43461d94ed365cb115d9397db7834dda0cc9cc63f30b0c761a78f9eb",
     "split": "dev",
     "class": "account-overflow",
@@ -74541,6 +76578,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Helium Sub Daos (hdaoVTCq)::change_delegation_v0 empty intent — Check 10 gate"
+  },
+  {
+    "hash": "6ad1ec0fedd768fb5f4c2d4d3bb91a102c999c6798095059834ac7724f48d6c2",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::change_delegation_v0 swap intent on non-swap program — Check 9"
   },
   {
     "hash": "038676d16296eb3177a071ab649fd7249b902be568bfc10c7cd87e0565a13107",
@@ -74564,6 +76608,13 @@
     "note": "Helium Sub Daos (hdaoVTCq)::claim_rewards_v0 empty intent — Check 10 gate"
   },
   {
+    "hash": "0918ab293f8163021a96ad7345a8f87593ee104d5fb523037c21ba61310a215f",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::claim_rewards_v0 swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "4e73c6007e15b244c5d0248f9d6f626ed879da5a588810692b36e0e6e78cade7",
     "split": "dev",
     "class": "account-overflow",
@@ -74583,6 +76634,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Helium Sub Daos (hdaoVTCq)::claim_rewards_v1 empty intent — Check 10 gate"
+  },
+  {
+    "hash": "46f701ade7f62690cb844a316ca6d93b65949d8307f5759c8673af2754273f1e",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::claim_rewards_v1 swap intent on non-swap program — Check 9"
   },
   {
     "hash": "5125e58b0dcd05e5e853217ea260546840c4508bac5060dda44289461dc05ba9",
@@ -74606,6 +76664,13 @@
     "note": "Helium Sub Daos (hdaoVTCq)::close_delegation_v0 empty intent — Check 10 gate"
   },
   {
+    "hash": "5e2f0bffb278e5dd92b35b02babf32f2f7fe33ec8b98348853cec485f4036943",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::close_delegation_v0 swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "f3d2f62c5c920031cc44aac83979fc9b5ea34d108e9a605e0c0ea4b03bbcd1e6",
     "split": "dev",
     "class": "account-overflow",
@@ -74625,6 +76690,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Helium Sub Daos (hdaoVTCq)::delegate_v0 empty intent — Check 10 gate"
+  },
+  {
+    "hash": "86dd9ebf9816d29ad7c169f6331f3389c7bd9459fbc6efb4afcacaeace1cc0d6",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::delegate_v0 swap intent on non-swap program — Check 9"
   },
   {
     "hash": "90420ea6ffc6452e40cc61bd83cb9b4d9b89d600d0767bd31ab9abc139b89723",
@@ -74648,6 +76720,13 @@
     "note": "Helium Sub Daos (hdaoVTCq)::extend_expiration_ts_v0 empty intent — Check 10 gate"
   },
   {
+    "hash": "0cb3c328ba1a38c0de157bca7e6dbff1571a866dc0bfbd1c35e1e4044c92ff0f",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::extend_expiration_ts_v0 swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "1c239bc162f9e769cd1ebf70fc3b2ce18fe6d2ebe5c668a5eb444ecddcadf11b",
     "split": "dev",
     "class": "account-overflow",
@@ -74667,6 +76746,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Helium Sub Daos (hdaoVTCq)::initialize_dao_v0 empty intent — Check 10 gate"
+  },
+  {
+    "hash": "65c3909d2e649e144af3163d21b26a0f9b8c4b4493ed23f1803df6ba13aae60d",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::initialize_dao_v0 swap intent on non-swap program — Check 9"
   },
   {
     "hash": "5ffd47837db1d390e63ba0e7dcb9ef4fd88b2cdb228813e15b168d76f12cc483",
@@ -74690,6 +76776,13 @@
     "note": "Helium Sub Daos (hdaoVTCq)::initialize_hnt_delegator_pool empty intent — Check 10 gate"
   },
   {
+    "hash": "ff99b4cce160cb2a20c7765ca8c49b7fbcce4f7f09c30ae340aa6d71871a17cd",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::initialize_hnt_delegator_pool swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "f93f124b78e1c0b2a70b7347daa787672ef50ce42da9354ae9fb3497deba17dd",
     "split": "dev",
     "class": "account-overflow",
@@ -74709,6 +76802,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Helium Sub Daos (hdaoVTCq)::initialize_sub_dao_v0 empty intent — Check 10 gate"
+  },
+  {
+    "hash": "b1f5262d4c387dfa1afe70caeb03a7ad86f66d7601828797a8e73777900874f4",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::initialize_sub_dao_v0 swap intent on non-swap program — Check 9"
   },
   {
     "hash": "e8b10d2c7bd797b89ef23523805f9646c9be9aeee14fae7c66125c47d66363b5",
@@ -74732,6 +76832,13 @@
     "note": "Helium Sub Daos (hdaoVTCq)::issue_rewards_v0 empty intent — Check 10 gate"
   },
   {
+    "hash": "d90b86da4a32c4a51c4b08eb6563da173af2e3e03034115d895e37f26d323974",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::issue_rewards_v0 swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "88bd7e98ada08cc4a885c6b9f4eefeef0c269fe7684770639b86f9aee18047fa",
     "split": "dev",
     "class": "account-overflow",
@@ -74751,6 +76858,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Helium Sub Daos (hdaoVTCq)::reset_lockup_v0 empty intent — Check 10 gate"
+  },
+  {
+    "hash": "26e60fde398de1fd55929bbd8f915ea5b8aaadf400c2e005eba720d874619f05",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::reset_lockup_v0 swap intent on non-swap program — Check 9"
   },
   {
     "hash": "4df44fffc8a04489620902a119cea2e0cf425d981be839b6f13ccf29ecd097ab",
@@ -74774,6 +76888,13 @@
     "note": "Helium Sub Daos (hdaoVTCq)::switch_mobile_ops_fund empty intent — Check 10 gate"
   },
   {
+    "hash": "1c33a520115578e67d39a2f0cb4c7cb1243e66a7148f4f5f84f29e285b9aa698",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::switch_mobile_ops_fund swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "3e38a0b2ba106950fcba359bbcd586b0cc993714ffa6e2a4ef274d1f0b5afa63",
     "split": "dev",
     "class": "account-overflow",
@@ -74793,6 +76914,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Helium Sub Daos (hdaoVTCq)::track_dc_burn_v0 empty intent — Check 10 gate"
+  },
+  {
+    "hash": "c6ce34b441091a59e1264addce6c42d852457c9eb4bb0d25c8792106ca187690",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::track_dc_burn_v0 swap intent on non-swap program — Check 9"
   },
   {
     "hash": "80e41129ae5d15507dae638172a47b2c42d17a6248a070b2a6d56baca0247d65",
@@ -74816,6 +76944,13 @@
     "note": "Helium Sub Daos (hdaoVTCq)::track_dc_onboarding_fees_v0 empty intent — Check 10 gate"
   },
   {
+    "hash": "2742fae1082cd4dd9dfec8a69156565c4bc6f1244bfbaa29ddd707b55a02f74a",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::track_dc_onboarding_fees_v0 swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "8a34f7d04f1ed2c8e693d9dcc08d58052cbfe40a924d3f4269001824a39d3af9",
     "split": "dev",
     "class": "account-overflow",
@@ -74835,6 +76970,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Helium Sub Daos (hdaoVTCq)::track_vote_v0 empty intent — Check 10 gate"
+  },
+  {
+    "hash": "a23852ccb3e87e3a70c7903e2157f8ae058bc860f2dbf3749fd61dd0e7d3f62d",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::track_vote_v0 swap intent on non-swap program — Check 9"
   },
   {
     "hash": "cd3e211137a0334d7bdaf31def2317682cf85633b9a3e34d4550fcfacddd87d6",
@@ -74858,6 +77000,13 @@
     "note": "Helium Sub Daos (hdaoVTCq)::transfer_v0 empty intent — Check 10 gate"
   },
   {
+    "hash": "33f41476d7f406df08699e7cbbfdb63bd8411cdc1ad86172b4f97adaa36fd138",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::transfer_v0 swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "855bb4a1df5ec727f8a7dbf172390c25ef683f2f3024e1cd9748331cd28445c1",
     "split": "dev",
     "class": "account-overflow",
@@ -74877,6 +77026,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Helium Sub Daos (hdaoVTCq)::update_dao_v0 empty intent — Check 10 gate"
+  },
+  {
+    "hash": "639eff73e02e1e9d14f907b36b2bd4b968f4f8ed4f4870e78abd09381733ccf6",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::update_dao_v0 swap intent on non-swap program — Check 9"
   },
   {
     "hash": "c2452ee52ecdcf978b76827d55ae7be79a2cc78304defceb7d40bb42abb8c3f2",
@@ -74900,6 +77056,13 @@
     "note": "Helium Sub Daos (hdaoVTCq)::update_sub_dao_v0 empty intent — Check 10 gate"
   },
   {
+    "hash": "b2d7c3991b6c29a5e9645a79f33d7838fd8a9bd0254ea24b29ab163181aaccf4",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::update_sub_dao_v0 swap intent on non-swap program — Check 9"
+  },
+  {
     "hash": "80b89a88332e58365b2b4712949bcae9c7f20e9a7497ba27781d2161bc05a2ad",
     "split": "dev",
     "class": "account-overflow",
@@ -74919,6 +77082,13 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Helium Sub Daos (hdaoVTCq)::update_sub_dao_vehnt_v0 empty intent — Check 10 gate"
+  },
+  {
+    "hash": "c17cbb62b585b76cb1eafe868e38182fff7a02c2d552903786c457524b67cf7b",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Helium Sub Daos (hdaoVTCq)::update_sub_dao_vehnt_v0 swap intent on non-swap program — Check 9"
   },
   {
     "hash": "dbf97c72fce61c0c163bc2de99f4141553d2719e90abf4f8309db38f1877bdb8",
@@ -76823,6 +78993,132 @@
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
     "note": "Metaplex Token Metadata::BurnNft near-prefix discriminator"
+  },
+  {
+    "hash": "998dba7fb2179b74561086ca74695b3b2a6d2c6703dad387fffaaa7666ae733e",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Metaplex Token Metadata::Delegate intent=transfer"
+  },
+  {
+    "hash": "6e47a6ff4036c4aa60cacc817d56b53715876a207a77ffbd0cd3c4eeafaafb01",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Metaplex Token Metadata::Delegate empty intent — Check 10 gate"
+  },
+  {
+    "hash": "77fa0385eeb49b4d52621c1f6b8a333855462a0c2e48c1154fe9fb4bd14c6f97",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Metaplex Token Metadata::Delegate swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "489f7eadb53447ca8ed1e96f4f2c64b199d51b5b42b543d4a3e64a9cadc8d9e5",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Metaplex Token Metadata::Delegate +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "cedc255fb3d6ae0db0a454fa1f72bd298e954fc5cce1bff4b13c1b81e9cc1bb5",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Metaplex Token Metadata::Delegate zero-padded discriminator"
+  },
+  {
+    "hash": "90dac1ca37bbadfa9cb55b416955a50ca9f2579993cb437dae89db56487d2f16",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Metaplex Token Metadata::Delegate near-prefix discriminator"
+  },
+  {
+    "hash": "f638ba33ebab8078ff9474fd826d17f3647b1152880a1431185813f739a014a5",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Metaplex Token Metadata::Revoke intent=transfer"
+  },
+  {
+    "hash": "082e960fdd253107f448e83369ac83a8989aa0db1252cbda20c0777caa0add86",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Metaplex Token Metadata::Revoke empty intent — Check 10 gate"
+  },
+  {
+    "hash": "4565f20ef77ad6bae7cce28dd9798affee6b3068dfd84c37bdc3c2b8d5c6c84d",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Metaplex Token Metadata::Revoke swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "004e79d9f58f7b2f7e04088ddb953fe978ef1a5c3dfeeac6f293987cf36f959b",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Metaplex Token Metadata::Revoke +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "edfcee42d5ffa4ca44e8282ce4626f12743a0117872bd378bcf0c988b897dfca",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Metaplex Token Metadata::Revoke zero-padded discriminator"
+  },
+  {
+    "hash": "d02ada19c97110216a1df0d24d37ad6631e9e940807d2a3c6a5a81863ab0c3aa",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Metaplex Token Metadata::Revoke near-prefix discriminator"
+  },
+  {
+    "hash": "cc2ec1d94b03eca2cae7ce81de52a682e5863e4966a261e68339da1fe3968ad0",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Metaplex Token Metadata::Transfer intent=transfer"
+  },
+  {
+    "hash": "84d42199587fa082c45aeaf2195cac8889c6c6b55d97bd7eb1f9e5b22fc220dc",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Metaplex Token Metadata::Transfer empty intent — Check 10 gate"
+  },
+  {
+    "hash": "f6adc4c5b277e20d16ec7e2f9feffd31687eb1959ee9687284ef0fd12fc75b56",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Metaplex Token Metadata::Transfer swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "adf6121456ccf628beeeca835c005d5576fc0c4bcf9ac3a5c0a5a3d26a1d8dac",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Metaplex Token Metadata::Transfer +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "c11cdd5c3f9ba4b7a577c4f51fdb7e456f12814dbf09ad5db69a2ff08453d909",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Metaplex Token Metadata::Transfer zero-padded discriminator"
+  },
+  {
+    "hash": "bec21659088cdf306ed9a0f99e0b01b3dbf75f6ed0d6339b570edcd61e253c8a",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Metaplex Token Metadata::Transfer near-prefix discriminator"
   },
   {
     "hash": "c2ee30a3892f62d9df490fbb4f14da30ed33c2cb9d1445a651cafb5d3a3392e5",
@@ -88788,24 +91084,10 @@
     "note": "3PbK87xn2yGs1m4nUgaGjrLwmTChPFgGg3aLwpi8NY7nWF78cY5ZQwvM1kLSGFd5hVdnmJ9BP19vkbpsji2DiK3A (Live mainnet RPC (api.mainnet-beta.solana.com) — Dec 2025 AAT mass drain: 20 calls to AAT drainer (disc 0e), 23 unique accounts) attack=AAT"
   },
   {
-    "hash": "4d729068033faa189d3c0283e7828e44c6142c7ec2baebb0b8526d4577ffafe3",
+    "hash": "be9eea02a8d77deb3cf32a226ce661f697921675c96e8efad5eb1524336f8857",
     "split": "holdout",
     "class": "real-mainnet-benign",
     "provenance": "real-mainnet-tx",
-    "note": "real-mainnet-jupiter: selected program JUP6LkbZ (manifested=true)"
-  },
-  {
-    "hash": "9dcffa968436b323912772758c88c8add1bc3422ca9271183a74cb3a0d5782b5",
-    "split": "holdout",
-    "class": "real-mainnet-benign",
-    "provenance": "real-mainnet-tx",
-    "note": "real-mainnet-pump: selected program QZerdCbK (manifested=false)"
-  },
-  {
-    "hash": "9a731d401e96b22fe7eab34185e4cb51fbdcd1ee2ec3e851651de96612d1e229",
-    "split": "holdout",
-    "class": "real-mainnet-benign",
-    "provenance": "real-mainnet-tx",
-    "note": "real-mainnet-system: selected program pAMMBay6 (manifested=true)"
+    "note": "real-mainnet-jupiter: label source = provenance: a successful (meta.err == null) mainnet Jupiter v6 swap by an ordinary wallet, slot 438012579 — benign, so approve"
   }
 ]

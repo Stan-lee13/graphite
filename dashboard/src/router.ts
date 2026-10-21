@@ -1,6 +1,6 @@
 // Hash routing. The URL carries the view and the selected program, so a link
 // to "#/programs/JUP6…" opens exactly that drawer, and the back button does
-// what a person expects. No dependency: the console has seven routes.
+// what a person expects. No dependency: the console has eight routes.
 
 import { useEffect, useState } from "react";
 

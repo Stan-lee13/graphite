@@ -3,10 +3,15 @@
 //! Production features:
 //! - API-key auth (`GRAPHITE_API_KEY` env; Bearer token, constant-time
 //!   comparison), required by default: the server refuses to start without a
-//!   key unless `GRAPHITE_DEV_MODE=1` is set, and then only on loopback.
+//!   key unless `GRAPHITE_DEV_MODE=1` is set, and then only on loopback (and
+//!   only to requests whose `Host` is a loopback name).
 //! - Per-IP rate limiting (`GRAPHITE_RATE_LIMIT` requests/second, default 30)
+//!   on every route but `/health`
 //! - CORS: denied by default; allow origins via `GRAPHITE_CORS_ORIGINS`
-//!   (comma-separated). Servers calling the API don't need CORS at all.
+//!   (comma-separated, no wildcard). Servers calling the API don't need CORS
+//!   at all.
+//! - Load shedding: verifications and every other route draw on separate
+//!   in-flight pools; `/health` on neither
 //! - Request body size limit (1 MB max — prevents DoS via large payloads)
 //! - Request timeout (10s max — prevents slow-loris attacks)
 //! - Optional live L3 simulation: `GRAPHITE_RPC_URL` attaches a Solana RPC
@@ -22,6 +27,9 @@ use crate::durable::{
     audit_path, AuditErrorRecord, AuditLog, AuditRecord, AuditSelector, LifecycleEvent,
     LifecycleEventRecord, VerdictOnRecord, VerificationKey, VerificationKeyKind,
 };
+use crate::operator_boundary::{enforce_wallet_profile, env_number, OperatorPolicy};
+#[cfg(test)]
+use crate::operator_boundary::{env_flag, parse_pinned_profile};
 use crate::verification::{GraphiteCore, VerificationError, VerificationInput, VerificationResult};
 use axum::extract::{ConnectInfo, State};
 use axum::http::{header, HeaderValue, Method, StatusCode};
@@ -112,38 +120,102 @@ const DEFAULT_MAX_CONNECTIONS_PER_PEER: usize = 64;
 /// this cuts only connections that are stalled or idle; a client reconnects.
 const DEFAULT_CONNECTION_LIFETIME: Duration = Duration::from_secs(120);
 
-/// Open connections per peer (keyed like the rate limiter: IPv6 per /64),
-/// released by [`PeerSlot`] on drop.
+/// How many peers' worth of connections one IPv6 /48 may hold together
+/// (audit 2026-10-20, L6).
+///
+/// The per-peer cap is keyed like the rate limiter, per /64, because one host
+/// is routinely handed a whole /64. A /56 — what many ISPs hand a single
+/// customer — is 256 /64s, so one subscriber could hold 256 × 64 connections,
+/// past the whole 1,024 default: the per-peer cap did not bound them. A /48
+/// (one site) now holds at most `SITE_CONNECTION_FACTOR` × the per-peer cap
+/// across all of its /64s: 256 at the defaults, a quarter of the global cap,
+/// which still leaves room for a site with many hosts behind it. Wider
+/// allocations (a /32 holder has 65,536 /48s) are bounded only by the global
+/// cap; that cap is what keeps descriptors from running out, and this one is
+/// fairness between clients. IPv4 is keyed per address, as before: a /24 is
+/// 256 real addresses an attacker must actually hold.
+const SITE_CONNECTION_FACTOR: usize = 4;
+
+/// The /48 an IPv6 peer belongs to, or `None` for IPv4 (and IPv4-mapped
+/// IPv6), which has no site aggregate.
+fn site_key(ip: IpAddr) -> Option<IpAddr> {
+    match ip {
+        IpAddr::V4(_) => None,
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(_) => None,
+            None => {
+                let s = v6.segments();
+                Some(IpAddr::V6(std::net::Ipv6Addr::new(
+                    s[0], s[1], s[2], 0, 0, 0, 0, 0,
+                )))
+            }
+        },
+    }
+}
+
+/// Open connections per peer (keyed like the rate limiter: IPv6 per /64) and
+/// per IPv6 site (/48), released by [`PeerSlot`] on drop.
 #[derive(Default)]
 struct PeerConnections {
-    open: std::sync::Mutex<HashMap<IpAddr, usize>>,
+    open: std::sync::Mutex<PeerCounts>,
+}
+
+/// The two tallies. Separate maps: a /64 key whose fourth segment is zero is
+/// the same `IpAddr` as its /48 key.
+#[derive(Default)]
+struct PeerCounts {
+    peers: HashMap<IpAddr, usize>,
+    sites: HashMap<IpAddr, usize>,
+}
+
+/// Why a connection was refused at accept.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PeerRefusal {
+    /// The peer (/64) already holds its cap.
+    Peer,
+    /// The peer's /48 already holds `SITE_CONNECTION_FACTOR` × the cap.
+    Site,
 }
 
 /// One peer's claim on a connection slot; returns it when dropped.
 struct PeerSlot {
     peers: Arc<PeerConnections>,
     key: IpAddr,
+    site: Option<IpAddr>,
 }
 
 impl PeerConnections {
-    /// A slot for `ip`, unless it already holds `limit` (0 = no limit; the
-    /// connection is still counted, so the map stays exact).
-    fn claim(self: &Arc<Self>, ip: IpAddr, limit: usize) -> Option<PeerSlot> {
+    /// A slot for `ip`, unless its peer already holds `limit` or its /48
+    /// already holds `SITE_CONNECTION_FACTOR × limit` (0 = no limit; the
+    /// connection is still counted, so the maps stay exact).
+    fn claim(self: &Arc<Self>, ip: IpAddr, limit: usize) -> Result<PeerSlot, PeerRefusal> {
         let key = rate_limit_key(ip);
+        let site = site_key(ip);
         let mut open = self.lock();
-        let n = open.entry(key).or_insert(0);
-        if limit != 0 && *n >= limit {
-            return None;
+        if limit != 0 {
+            if open.peers.get(&key).copied().unwrap_or(0) >= limit {
+                return Err(PeerRefusal::Peer);
+            }
+            if let Some(site) = site {
+                let site_limit = limit.saturating_mul(SITE_CONNECTION_FACTOR);
+                if open.sites.get(&site).copied().unwrap_or(0) >= site_limit {
+                    return Err(PeerRefusal::Site);
+                }
+            }
         }
-        *n += 1;
+        *open.peers.entry(key).or_insert(0) += 1;
+        if let Some(site) = site {
+            *open.sites.entry(site).or_insert(0) += 1;
+        }
         drop(open);
-        Some(PeerSlot {
+        Ok(PeerSlot {
             peers: Arc::clone(self),
             key,
+            site,
         })
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<IpAddr, usize>> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, PeerCounts> {
         match self.open.lock() {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
@@ -153,13 +225,87 @@ impl PeerConnections {
 
 impl Drop for PeerSlot {
     fn drop(&mut self) {
-        let mut open = self.peers.lock();
-        if let Some(n) = open.get_mut(&self.key) {
-            *n -= 1;
-            if *n == 0 {
-                open.remove(&self.key);
+        fn release(map: &mut HashMap<IpAddr, usize>, key: &IpAddr) {
+            if let Some(n) = map.get_mut(key) {
+                *n -= 1;
+                if *n == 0 {
+                    map.remove(key);
+                }
             }
         }
+        let mut open = self.peers.lock();
+        release(&mut open.peers, &self.key);
+        if let Some(site) = &self.site {
+            release(&mut open.sites, site);
+        }
+    }
+}
+
+/// At most one log line per window for one class of caller-triggerable
+/// refusal, carrying how many were suppressed since the last (audit
+/// 2026-10-20, L4).
+///
+/// The connection caps and load shedding are refusals any client can cause
+/// on demand, and each wrote a line: a flood of connections was a flood of
+/// log lines, the cheapest way to fill the operator's disk and bury real
+/// faults. The refusals are still counted exactly (in `/metrics` where they
+/// are metrics); the log keeps one line per window with the count.
+struct LogThrottle {
+    window_ms: u64,
+    /// Milliseconds since `process_millis`'s epoch of the last emitted line;
+    /// 0 = never.
+    last_ms: std::sync::atomic::AtomicU64,
+    suppressed: std::sync::atomic::AtomicU64,
+}
+
+/// The window for the server's refusal-log throttles.
+const REFUSAL_LOG_WINDOW_MS: u64 = 10_000;
+
+impl LogThrottle {
+    const fn new(window_ms: u64) -> Self {
+        Self {
+            window_ms,
+            last_ms: std::sync::atomic::AtomicU64::new(0),
+            suppressed: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+
+    /// `Some(n)` when a line should be written now, `n` being how many were
+    /// suppressed since the last one; `None` when this one is suppressed.
+    fn admit(&self) -> Option<u64> {
+        use std::sync::atomic::Ordering::Relaxed;
+        let now = process_millis();
+        let last = self.last_ms.load(Relaxed);
+        if last != 0 && now.saturating_sub(last) < self.window_ms {
+            self.suppressed.fetch_add(1, Relaxed);
+            return None;
+        }
+        if self
+            .last_ms
+            .compare_exchange(last, now, Relaxed, Relaxed)
+            .is_err()
+        {
+            // Another thread took this window's line.
+            self.suppressed.fetch_add(1, Relaxed);
+            return None;
+        }
+        Some(self.suppressed.swap(0, Relaxed))
+    }
+}
+
+/// Monotonic milliseconds since first use, never 0.
+fn process_millis() -> u64 {
+    static EPOCH: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    EPOCH.get_or_init(Instant::now).elapsed().as_millis() as u64 + 1
+}
+
+/// `" (N more like it since the last line)"` for a throttled log line, or
+/// nothing.
+fn suppressed_note(n: u64) -> String {
+    if n == 0 {
+        String::new()
+    } else {
+        format!(" ({n} more like it since the last line)")
     }
 }
 
@@ -190,6 +336,20 @@ impl Drop for PeerSlot {
 /// measured on the same container). Raise it with `GRAPHITE_MAX_CONCURRENT`
 /// when the upstream RPC can sustain more.
 const DEFAULT_MAX_CONCURRENT_VERIFICATIONS: usize = 32;
+
+/// How many requests to the routes that are NOT verifications — the
+/// dashboard's `/api/*`, `/audit/event`, `/manifests`, `/metrics` and
+/// `/admin/*` — may be in flight at once (audit 2026-10-20, M12).
+///
+/// They used to take the verification permits. A dashboard read waits for
+/// one of the four archive-scan slots, and a lifecycle report for the
+/// lifecycle lock, holding its permit the whole time, so 32 slow dashboard
+/// polls against a large trail held every permit and `/verify` was shed with
+/// 503 while nothing was being verified. They now draw on this separate pool
+/// and can never take a verification's capacity; when it is full they are
+/// shed the same way, counted apart
+/// (`graphite_auxiliary_load_shed_total`). `/health` draws on neither.
+const MAX_CONCURRENT_AUXILIARY: usize = 16;
 
 /// Dashboard series caps: the confidence chart and the violations list only
 /// ever materialize this many points per request (memory stays bounded as
@@ -232,6 +392,9 @@ struct AppState {
     /// The configured limit, reported to a shed caller so they can size their
     /// own concurrency instead of guessing.
     inflight_limit: usize,
+    /// The separate pool for every route that is not a verification (see
+    /// `MAX_CONCURRENT_AUXILIARY`), so those can never hold `inflight`.
+    aux_inflight: Arc<tokio::sync::Semaphore>,
     /// Operator-pinned wallet profile; when set it overrides the request body.
     pinned_profile: Option<crate::policy_engine::WalletProfile>,
     /// Opt-out allowing a caller-supplied profile weaker than any built-in.
@@ -253,6 +416,13 @@ struct Metrics {
     rate_limited: Arc<std::sync::atomic::AtomicU64>,
     /// Requests shed because the server was already at its in-flight limit.
     load_shed: Arc<std::sync::atomic::AtomicU64>,
+    /// Non-verification requests shed because their own pool was full
+    /// (audit 2026-10-20, M12).
+    aux_load_shed: Arc<std::sync::atomic::AtomicU64>,
+    /// Requests to `/verify/execution`, `/audit/event` and `/admin/quarantine`
+    /// refused as malformed, 400 or 422 (audit 2026-10-20). `/verify`'s own
+    /// refusals are in `verify_errors`.
+    request_rejections: Arc<std::sync::atomic::AtomicU64>,
     lifecycle_events: Arc<std::sync::atomic::AtomicU64>,
     /// Lifecycle events reported against a content_hash whose most recent
     /// verification was a BLOCK: a signing, submission or confirmation of a
@@ -442,10 +612,14 @@ fn rate_limit_key(ip: IpAddr) -> IpAddr {
 /// proxies in front, the last `hops` entries were appended by infrastructure
 /// under the operator's control, and the real client IP is the leftmost of
 /// THOSE. Anything further left is caller-supplied and must never be
-/// believed. If the header is missing, malformed, or has fewer entries than
-/// the configured hop count (i.e. the request did not traverse the expected
-/// proxy chain), we fall back to the direct peer address rather than trusting
-/// a partial chain — fail-safe, never fail-open (P12).
+/// believed.
+///
+/// A request with no `X-Forwarded-For` at all is keyed by its direct peer: a
+/// client reaching the server directly, or the proxy's own traffic. A request
+/// that carries the header but whose chain cannot name a client — fewer
+/// entries than the configured hop count (it did not traverse the expected
+/// chain), or a malformed entry at the client's position — is keyed by
+/// [`UNATTRIBUTED_CLIENT`], never by a chain entry it does not trust (P12).
 fn client_ip(
     req: &axum::http::Request<axum::body::Body>,
     addr: SocketAddr,
@@ -458,41 +632,65 @@ fn client_ip(
     // HTTP defines repeated header lines as one comma-joined list, and a
     // proxy that appends its entry as a NEW line leaves the client's own line
     // first. Reading only the first line read the client's claim: a second
-    // line chose the rate-limit bucket. A line that is not text makes the
-    // whole chain untrusted, and the peer address is used.
-    let mut lines = Vec::new();
+    // line chose the rate-limit bucket.
+    //
+    // Read as BYTES (audit 2026-10-20, L1). A line that was not visible ASCII
+    // made the whole chain untrusted and fell back to the peer address — the
+    // proxy's, behind `GRAPHITE_TRUST_PROXY` — so one byte >= 0x80 in the
+    // client's OWN line moved its requests into the bucket every client
+    // behind the proxy falls back to, and draining it cost nothing. Only the
+    // entry at the client's position must parse; the client-supplied entries
+    // to its left are never read, whatever they contain. A comma is ASCII, so
+    // splitting on it cannot be confused by any other byte.
+    let mut present = false;
+    let mut entries: Vec<&[u8]> = Vec::new();
     for v in req.headers().get_all("x-forwarded-for") {
-        match v.to_str() {
-            Ok(line) => lines.push(line),
-            Err(_) => return addr.ip(),
-        }
+        present = true;
+        entries.extend(
+            v.as_bytes()
+                .split(|b| *b == b',')
+                .map(<[u8]>::trim_ascii)
+                .filter(|e| !e.is_empty()),
+        );
     }
-    if !lines.is_empty() {
-        let entries: Vec<&str> = lines
-            .iter()
-            .flat_map(|line| line.split(','))
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .collect();
-        // Index from the right by the number of proxies we actually trust.
-        // `entries.len() < hops` means the request did not come through the
-        // full expected chain — do not trust any of it.
-        if entries.len() >= trust_proxy_hops as usize {
-            let idx = entries.len() - trust_proxy_hops as usize;
-            // An entry may carry a port (`203.0.113.7:4711`, `[2001:db8::1]:443`
-            // — some proxies write one); it names the same client, so it
-            // keys the same bucket rather than falling back to the proxy's
-            // address, which would put every client behind it in one bucket.
-            if let Some(ip) = entries.get(idx).and_then(|v| {
-                v.parse::<IpAddr>()
-                    .ok()
-                    .or_else(|| v.parse::<SocketAddr>().ok().map(|a| a.ip()))
-            }) {
-                return ip;
-            }
-        }
+    if !present {
+        return addr.ip();
     }
-    addr.ip()
+    // Index from the right by the number of proxies we actually trust.
+    // `entries.len() < hops` means the request did not come through the full
+    // expected chain — do not trust any of it.
+    let hops = trust_proxy_hops as usize;
+    if entries.len() < hops {
+        return UNATTRIBUTED_CLIENT;
+    }
+    forwarded_entry_ip(entries[entries.len() - hops]).unwrap_or(UNATTRIBUTED_CLIENT)
+}
+
+/// The rate-limit key of a request whose forwarded chain cannot name its
+/// client (audit 2026-10-20, L1).
+///
+/// Not the peer address: behind a trusted proxy the peer is the proxy, and
+/// its bucket is the one the proxy's own requests use, so a client that
+/// could steer its requests there could exhaust it at will. Not a fresh key
+/// per request either: that would be a way around the limiter. One shared
+/// bucket, then, that only unattributable requests reach. With the hop count
+/// right every proxied request carries a parseable entry at the client's
+/// position (the proxy wrote it), so in a correct deployment this bucket is
+/// empty; when it is not, the requests in it share one rate, and exhausting
+/// it costs only other unattributable requests. `0100::` is the IPv6
+/// discard-only prefix (RFC 6666): no peer ever has this address, and
+/// `rate_limit_key`'s /64 masking leaves it as it is.
+const UNATTRIBUTED_CLIENT: IpAddr =
+    IpAddr::V6(std::net::Ipv6Addr::new(0x0100, 0, 0, 0, 0, 0, 0, 0));
+
+/// One `X-Forwarded-For` entry as a client address. An entry may carry a
+/// port (`203.0.113.7:4711`, `[2001:db8::1]:443` — some proxies write one); it
+/// names the same client, so it keys the same bucket.
+fn forwarded_entry_ip(entry: &[u8]) -> Option<IpAddr> {
+    let v = std::str::from_utf8(entry).ok()?;
+    v.parse::<IpAddr>()
+        .ok()
+        .or_else(|| v.parse::<SocketAddr>().ok().map(|a| a.ip()))
 }
 
 pub use crate::verification::{lock_data_dir, DATA_DIR_LOCK};
@@ -678,16 +876,147 @@ pub fn dev_mode_from_env() -> bool {
 
 /// `GRAPHITE_QUARANTINE_ON_UPGRADE` (roadmap R-M1): unset, empty, `0` or
 /// `false` is off; `1` or `true` is on; anything else refuses to start, so a
-/// typo is never a silent "off".
+/// typo is never a silent "off". The rule every boolean switch now follows
+/// (`boundary::env_flag`).
+#[cfg(test)]
 fn quarantine_on_upgrade_from(value: Option<&str>) -> Result<bool, String> {
+    env_flag("GRAPHITE_QUARANTINE_ON_UPGRADE", value)
+}
+
+/// `GRAPHITE_TRUST_PROXY`: the number of trusted proxy hops in front of this
+/// server (`1` = the common single reverse-proxy/LB setup). `true` is a
+/// compatibility alias for `1`, `false` for `0`; unset or empty is 0.
+///
+/// Anything else refuses to start (audit 2026-10-20): it used to read as 0,
+/// so `GRAPHITE_TRUST_PROXY=yes` started a server that put every client
+/// behind the proxy in the proxy's one rate-limit bucket, with nothing said.
+fn trust_proxy_hops_from(value: Option<&str>) -> Result<u8, String> {
     match value.map(str::trim) {
-        None | Some("") | Some("0") => Ok(false),
-        Some("1") => Ok(true),
-        Some(v) if v.eq_ignore_ascii_case("true") => Ok(true),
-        Some(v) if v.eq_ignore_ascii_case("false") => Ok(false),
-        Some(v) => Err(format!(
-            "GRAPHITE_QUARANTINE_ON_UPGRADE={v:?} is not 1, true, 0 or false. REFUSING TO START."
-        )),
+        None | Some("") => Ok(0),
+        Some(v) if v.eq_ignore_ascii_case("true") => Ok(1),
+        Some(v) if v.eq_ignore_ascii_case("false") => Ok(0),
+        Some(v) => v.parse::<u8>().map_err(|_| {
+            format!(
+                "invalid GRAPHITE_TRUST_PROXY {v:?}: must be the number of trusted proxy hops (0-255), or true (= 1) / false (= 0). REFUSING TO START."
+            )
+        }),
+    }
+}
+
+/// `GRAPHITE_CORS_ORIGINS`: a comma-separated list of browser origins
+/// allowed to call the API, each `http://` or `https://` plus a host and
+/// optional port, nothing after it.
+///
+/// A wildcard is refused (audit 2026-10-20, L2): `*` reached tower-http's
+/// origin list, which panics on it, so the server died at startup with a
+/// backtrace instead of a configuration error. It is refused rather than
+/// honoured because the API is credentialed — every route but `/health`
+/// takes the Bearer key — and a wildcard would let any page a key-holder's
+/// browser visits drive the API with a key it obtained. An entry that is not
+/// an origin (a path, a trailing slash, whitespace inside) used to be dropped
+/// silently or kept unmatchable; it is refused too.
+fn cors_origins_from(value: Option<&str>) -> Result<Vec<HeaderValue>, String> {
+    let Some(raw) = value.map(str::trim).filter(|v| !v.is_empty()) else {
+        return Ok(Vec::new());
+    };
+    let mut origins = Vec::new();
+    for entry in raw.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+        if entry == "*" {
+            return Err(
+                "GRAPHITE_CORS_ORIGINS=* is refused: the API is credentialed (Bearer key), and a wildcard origin would let any web page drive it. List the dashboard's origins explicitly, e.g. https://dashboard.example.com. REFUSING TO START."
+                    .to_string(),
+            );
+        }
+        let rest = entry
+            .strip_prefix("https://")
+            .or_else(|| entry.strip_prefix("http://"));
+        let is_origin = rest.is_some_and(|host| {
+            !host.is_empty()
+                && !host.contains(['/', '?', '#', '*'])
+                && !host.chars().any(char::is_whitespace)
+        });
+        if !is_origin {
+            return Err(format!(
+                "GRAPHITE_CORS_ORIGINS entry {entry:?} is not an origin (scheme://host[:port], http or https, nothing after it). REFUSING TO START."
+            ));
+        }
+        origins.push(HeaderValue::from_str(entry).map_err(|_| {
+            format!("GRAPHITE_CORS_ORIGINS entry {entry:?} is not a valid header value. REFUSING TO START.")
+        })?);
+    }
+    Ok(origins)
+}
+
+/// The server's numeric limits, read strictly from `get` (audit 2026-10-20:
+/// each fell back to its default on a value that did not parse, so a typo'd
+/// limit ran with a number nobody chose, while `GRAPHITE_RATE_LIMIT` beside
+/// them refused to start).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Limits {
+    rotate_bytes: u64,
+    max_archives: usize,
+    inflight_limit: usize,
+    max_connections: usize,
+    max_per_peer: usize,
+    connection_lifetime: Duration,
+}
+
+impl Limits {
+    fn from_lookup(
+        get: impl Fn(&str) -> Option<String>,
+        trust_proxy_hops: u8,
+    ) -> Result<Self, String> {
+        let var = |name: &str| get(name);
+        Ok(Self {
+            rotate_bytes: env_number(
+                "GRAPHITE_AUDIT_ROTATE_BYTES",
+                var("GRAPHITE_AUDIT_ROTATE_BYTES").as_deref(),
+                crate::durable::DEFAULT_ROTATE_BYTES,
+                "a whole number of bytes (0 disables rotation)",
+                |_| true,
+            )?,
+            max_archives: env_number(
+                "GRAPHITE_AUDIT_MAX_ARCHIVES",
+                var("GRAPHITE_AUDIT_MAX_ARCHIVES").as_deref(),
+                0usize,
+                "a whole number of archives (0 keeps every archive)",
+                |_| true,
+            )?,
+            inflight_limit: env_number(
+                "GRAPHITE_MAX_CONCURRENT",
+                var("GRAPHITE_MAX_CONCURRENT").as_deref(),
+                DEFAULT_MAX_CONCURRENT_VERIFICATIONS,
+                "a whole number of verifications greater than 0",
+                |n| n > 0,
+            )?,
+            max_connections: env_number(
+                "GRAPHITE_MAX_CONNECTIONS",
+                var("GRAPHITE_MAX_CONNECTIONS").as_deref(),
+                DEFAULT_MAX_CONNECTIONS,
+                "a whole number of connections greater than 0",
+                |n| n > 0,
+            )?,
+            // Behind a trusted proxy every connection comes from the proxy,
+            // so the default there is no per-peer cap.
+            max_per_peer: env_number(
+                "GRAPHITE_MAX_CONNECTIONS_PER_IP",
+                var("GRAPHITE_MAX_CONNECTIONS_PER_IP").as_deref(),
+                if trust_proxy_hops == 0 {
+                    DEFAULT_MAX_CONNECTIONS_PER_PEER
+                } else {
+                    0
+                },
+                "a whole number of connections (0 = no per-peer cap)",
+                |_| true,
+            )?,
+            connection_lifetime: Duration::from_secs(env_number(
+                "GRAPHITE_CONNECTION_LIFETIME_SECS",
+                var("GRAPHITE_CONNECTION_LIFETIME_SECS").as_deref(),
+                DEFAULT_CONNECTION_LIFETIME.as_secs(),
+                "a whole number of seconds greater than 0",
+                |n| n > 0,
+            )?),
+        })
     }
 }
 
@@ -722,74 +1051,86 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
     // on the audit trail (W21): see `verify_handler`.
     core.defer_observations_until_recorded();
 
+    // The operator's boundary policy — the pinned wallet profile, the
+    // permissive-profile opt-out, durable nonces, the upgrade quarantine and
+    // the plugins directory — read by the same code `graphite verify` reads
+    // it with (audit 2026-10-20, L11), so the CLI reproduces this server's
+    // decision. Every switch is read strictly: a value other than
+    // 1/true/0/false is a startup error, never a silent "off".
+    let policy = OperatorPolicy::from_env()?;
+
     // Durable-nonce transactions: refused at L2 unless the operator opts in,
     // and then only after the nonce account is verified on-chain. See
-    // `GraphiteCore::set_allow_durable_nonce`.
-    let allow_durable_nonce = std::env::var("GRAPHITE_ALLOW_DURABLE_NONCE")
-        .map(|v| v.trim() == "1" || v.trim().eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-    core.set_allow_durable_nonce(allow_durable_nonce);
-
-    // Roadmap R-M1: a program redeployed since Graphite last saw it is always
-    // reported; quarantining it as well is the operator's decision. A value
-    // other than 1/true/0/false is a startup error, never a silent "off".
-    let quarantine_on_upgrade = quarantine_on_upgrade_from(
-        std::env::var("GRAPHITE_QUARANTINE_ON_UPGRADE")
-            .ok()
-            .as_deref(),
-    )?;
-    core.set_quarantine_on_upgrade(quarantine_on_upgrade);
-    if quarantine_on_upgrade {
+    // `GraphiteCore::set_allow_durable_nonce`. Roadmap R-M1: a program
+    // redeployed since Graphite last saw it is always reported; quarantining
+    // it as well is the operator's decision.
+    //
+    // Plugin framework (Constitution P8): approved third-party plugin
+    // manifests from GRAPHITE_PLUGINS_DIR are activated (review gate —
+    // pending/rejected manifests are skipped). Round 17 (F-16-07): an
+    // operator who configured a plugin directory expects those plugins to be
+    // running, so one that does not load is a startup error.
+    let plugins = policy.apply_to_core(&mut core)?;
+    if policy.quarantine_on_upgrade {
         tracing_log(
             "a program redeployed since Graphite last saw it is QUARANTINED until the operator lifts it (GRAPHITE_QUARANTINE_ON_UPGRADE=1)",
         );
     }
-    if allow_durable_nonce {
+    if policy.learn_from_policy_refusals {
+        tracing_log(
+            "requests refused ONLY by the confidence/tier threshold TRAIN the simulation baseline (GRAPHITE_LEARN_FROM_POLICY_REFUSALS=1): anyone holding the verify key can raise a program's confidence for every caller",
+        );
+    }
+    if policy.allow_durable_nonce {
         tracing_log(
             "durable-nonce transactions PERMITTED (GRAPHITE_ALLOW_DURABLE_NONCE=1): they do not expire; each one is verified against its nonce account on-chain before L2 passes",
         );
     }
-
-    // Plugin framework (Constitution P8): activate approved third-party plugin
-    // manifests from GRAPHITE_PLUGINS_DIR (review gate — pending/rejected
-    // manifests are skipped), and optionally mirror every verification event
-    // to a JSON-lines file for production observability.
-    if let Ok(dir) = std::env::var("GRAPHITE_PLUGINS_DIR") {
-        if !dir.is_empty() {
-            match core.attach_plugins_dir(std::path::Path::new(&dir)) {
-                // Round 19 (F-19-26): say what "skipped" means. A manifest
-                // is the review gate for activating a plugin from this
-                // directory; the reviewed, in-tree built-ins are registered
-                // by the core itself and stay active whatever a manifest
-                // here says about them — a file in a directory must not be
-                // able to switch off a check. The log used to read as though
-                // a rejected manifest had disabled one.
-                Ok(summary) => tracing_log(&format!(
-                    "plugins: {} registered, {} pending (not activated), {} rejected (not activated), {} already registered (not run again) from {}; the built-in plugins are always active and are not governed by manifests in this directory",
-                    summary.registered, summary.skipped_pending, summary.skipped_rejected, summary.already_registered, dir
-                )),
-                // Round 17 (F-16-07): an operator who configured a plugin
-                // directory expects those plugins to be running. Starting
-                // without them was a silent removal of every check they
-                // carry; it is a startup error now.
-                Err(e) => {
-                    return Err(format!(
-                        "plugins: FAILED to load {dir} (GRAPHITE_PLUGINS_DIR): {e} — refusing to start without the plugins the operator configured"
-                    )
-                    .into())
-                }
-            }
-        }
+    if let (Some(summary), Some(dir)) = (plugins, &policy.plugins_dir) {
+        // Round 19 (F-19-26): say what "skipped" means. A manifest is the
+        // review gate for activating a plugin from this directory; the
+        // reviewed, in-tree built-ins are registered by the core itself and
+        // stay active whatever a manifest here says about them — a file in a
+        // directory must not be able to switch off a check. The log used to
+        // read as though a rejected manifest had disabled one.
+        tracing_log(&format!(
+            "plugins: {} registered, {} pending (not activated), {} rejected (not activated), {} already registered (not run again) from {}; the built-in plugins are always active and are not governed by manifests in this directory",
+            summary.registered,
+            summary.skipped_pending,
+            summary.skipped_rejected,
+            summary.already_registered,
+            dir.display()
+        ));
     }
+    // Optionally mirror every verification event to a JSON-lines file for
+    // production observability. A file the operator named that cannot be
+    // attached is a startup error (audit 2026-10-20), as an unloadable
+    // GRAPHITE_PLUGINS_DIR is: it used to log one line and start without
+    // it, so the stream the operator's tooling reads was silently absent.
     if let Ok(events_file) = std::env::var("GRAPHITE_PLUGIN_EVENTS_FILE") {
-        if !events_file.is_empty() {
-            match core.attach_event_file_sink(std::path::Path::new(&events_file)) {
-                Ok(()) => tracing_log(&format!(
-                    "plugins: verification events appended to {}",
-                    events_file
-                )),
-                Err(e) => tracing_log(&format!("plugins: event file sink not attached: {}", e)),
-            }
+        if !events_file.trim().is_empty() {
+            // The sink opens its file lazily, on the first event, so attaching
+            // proves nothing about the path: it is opened for append here, as
+            // the sink will, so a path that cannot be written refuses to start.
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&events_file)
+                .map_err(|e| {
+                    format!(
+                        "plugins: FAILED to open the event file {events_file} (GRAPHITE_PLUGIN_EVENTS_FILE): {e} — refusing to start without the event stream the operator configured"
+                    )
+                })?;
+            core.attach_event_file_sink(std::path::Path::new(&events_file))
+                .map_err(|e| {
+                    format!(
+                        "plugins: FAILED to attach the event file {events_file} (GRAPHITE_PLUGIN_EVENTS_FILE): {e} — refusing to start without the event stream the operator configured"
+                    )
+                })?;
+            tracing_log(&format!(
+                "plugins: verification events appended to {}",
+                events_file
+            ));
         }
     }
 
@@ -918,28 +1259,31 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         _ => 30.0,
     };
 
-    let cors_origins: Vec<HeaderValue> = std::env::var("GRAPHITE_CORS_ORIGINS")
-        .ok()
-        .filter(|v| !v.is_empty())
-        .map(|v| {
-            v.split(',')
-                .filter_map(|s| s.trim().parse::<HeaderValue>().ok())
-                .collect()
-        })
-        .unwrap_or_default();
+    let cors_origins = cors_origins_from(std::env::var("GRAPHITE_CORS_ORIGINS").ok().as_deref())?;
+
+    // X-Forwarded-For is only honored behind an explicitly-trusted proxy.
+    // The value is the NUMBER OF TRUSTED PROXY HOPS in front of this server.
+    // See `client_ip` for why the count matters: entries are trusted from
+    // the right, so an over-count would start believing caller-supplied
+    // values again.
+    let trust_proxy_hops =
+        trust_proxy_hops_from(std::env::var("GRAPHITE_TRUST_PROXY").ok().as_deref())?;
+    let limits = Limits::from_lookup(|k| std::env::var(k).ok(), trust_proxy_hops)?;
 
     // Audit log rotation bounds BOTH unbounded disk growth and the dashboard
     // endpoints' full-file scan cost. Archives are kept forever by default
     // (P9): pruning is opt-in via GRAPHITE_AUDIT_MAX_ARCHIVES, so discarding
     // audit history is always an explicit operator decision.
-    let rotate_bytes = std::env::var("GRAPHITE_AUDIT_ROTATE_BYTES")
-        .ok()
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .unwrap_or(crate::durable::DEFAULT_ROTATE_BYTES);
-    let max_archives = std::env::var("GRAPHITE_AUDIT_MAX_ARCHIVES")
-        .ok()
-        .and_then(|v| v.trim().parse::<usize>().ok())
-        .unwrap_or(0);
+    let rotate_bytes = limits.rotate_bytes;
+    let max_archives = limits.max_archives;
+    if rotate_bytes == 0 {
+        // Audit 2026-10-20: rotation off keeps one active file, and the
+        // in-memory indexes over it (three keys per verification), for the
+        // life of the process.
+        tracing::warn!(
+            "GRAPHITE_AUDIT_ROTATE_BYTES=0: the active audit file and its in-memory indexes grow without bound for the life of the process"
+        );
+    }
     let audit =
         match AuditLog::open_with_rotation(audit_path(&data_dir), rotate_bytes, max_archives) {
             Ok(log) => {
@@ -982,24 +1326,16 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         };
 
     // Wallet policy profile enforcement at the network trust boundary — see
-    // `enforce_wallet_profile`. A misconfigured pin is a hard startup error:
-    // an operator who meant to pin a policy must not silently get the
-    // caller-controlled behavior instead.
-    let pinned_profile = match std::env::var("GRAPHITE_WALLET_PROFILE") {
-        Ok(v) if !v.trim().is_empty() => {
-            match parse_pinned_profile(&v) {
-                Ok(p) => {
-                    tracing_log(&format!("wallet profile PINNED server-side: {p:?} (request-body profiles are ignored)"));
-                    Some(p)
-                }
-                Err(e) => return Err(format!("invalid GRAPHITE_WALLET_PROFILE: {e}").into()),
-            }
-        }
-        _ => None,
-    };
-    let allow_permissive_profiles = std::env::var("GRAPHITE_ALLOW_PERMISSIVE_PROFILES")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
+    // `enforce_wallet_profile`. A misconfigured pin was refused above, by
+    // `OperatorPolicy::from_env`: an operator who meant to pin a policy must
+    // not silently get the caller-controlled behavior instead.
+    let pinned_profile = policy.pinned_profile;
+    if let Some(p) = pinned_profile {
+        tracing_log(&format!(
+            "wallet profile PINNED server-side: {p:?} (request-body profiles are ignored)"
+        ));
+    }
+    let allow_permissive_profiles = policy.allow_permissive_profiles;
     if allow_permissive_profiles && pinned_profile.is_none() {
         tracing_log(
             "WARNING: GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1 — a caller may supply a wallet \
@@ -1007,54 +1343,48 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         );
     }
 
-    // X-Forwarded-For is only honored behind an explicitly-trusted proxy.
-    // The value is the NUMBER OF TRUSTED PROXY HOPS in front of this server
-    // (`1` = the common single reverse-proxy/LB setup). `true` is accepted as
-    // a compatibility alias for `1`; `0`/unset/anything else disables the
-    // header entirely. See `client_ip` for why the count matters: entries are
-    // trusted from the right, so an over-count would start believing
-    // caller-supplied values again.
-    let trust_proxy_hops: u8 = std::env::var("GRAPHITE_TRUST_PROXY")
-        .ok()
-        .map(|v| {
-            if v.eq_ignore_ascii_case("true") {
-                1
-            } else {
-                v.trim().parse::<u8>().unwrap_or(0)
-            }
-        })
-        .unwrap_or(0);
-
     // Manifest Registry state (shared contract with the CLI: default
     // `registry_state.json`, override `GRAPHITE_REGISTRY_STATE`). Community
     // submissions accepted via `graphite registry submit` survive restarts
     // and are (C53) merged into the VERIFICATION core's registry, so accepted
     // community manifests resolve at verification time — not just in the
-    // dashboard. A corrupt file fails loud (tracing error) rather than
-    // silently resetting reviewer reputations.
+    // dashboard. A missing file is the first-run case.
+    //
+    // A corrupt or unreadable file refuses to start (audit 2026-10-20). It
+    // used to log one line and start with an EMPTY registry: every accepted
+    // community manifest silently stopped resolving and every reviewer's
+    // reputation was gone, while the CLI, reading the same file, refused it.
+    // The next `registry` write would then have saved the empty state over
+    // the real one.
     let registry_state_path = std::env::var("GRAPHITE_REGISTRY_STATE")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("registry_state.json"));
     let registry_engine = match std::fs::read_to_string(&registry_state_path) {
-        Ok(json) => match crate::manifest_registry::ManifestRegistryEngine::from_json(&json) {
-            Ok(engine) => {
-                tracing_log(&format!(
-                    "manifest registry: loaded {} accepted record(s) from {}",
-                    engine.records().len(),
-                    registry_state_path.display()
-                ));
-                engine
-            }
-            Err(e) => {
-                tracing_log(&format!(
-                    "manifest registry: CORRUPT state file {} — starting fresh: {}",
-                    registry_state_path.display(),
-                    e
-                ));
-                crate::manifest_registry::ManifestRegistryEngine::new()
-            }
-        },
-        Err(_) => crate::manifest_registry::ManifestRegistryEngine::new(),
+        Ok(json) => {
+            let engine = crate::manifest_registry::ManifestRegistryEngine::from_json(&json)
+                .map_err(|e| {
+                    format!(
+                        "manifest registry: CORRUPT state file {} ({e}). REFUSING TO START rather than serving with an empty registry; restore the file from a backup, or move it aside deliberately to start fresh",
+                        registry_state_path.display()
+                    )
+                })?;
+            tracing_log(&format!(
+                "manifest registry: loaded {} accepted record(s) from {}",
+                engine.records().len(),
+                registry_state_path.display()
+            ));
+            engine
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            crate::manifest_registry::ManifestRegistryEngine::new()
+        }
+        Err(e) => {
+            return Err(format!(
+                "manifest registry: state file {} cannot be read ({e}). REFUSING TO START rather than serving with an empty registry",
+                registry_state_path.display()
+            )
+            .into())
+        }
     };
     let merged = core.merge_community_manifests(&registry_engine);
     if merged > 0 {
@@ -1063,13 +1393,9 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         ));
     }
 
-    let inflight_limit = std::env::var("GRAPHITE_MAX_CONCURRENT")
-        .ok()
-        .and_then(|v| v.trim().parse::<usize>().ok())
-        .filter(|n| *n > 0)
-        .unwrap_or(DEFAULT_MAX_CONCURRENT_VERIFICATIONS);
+    let inflight_limit = limits.inflight_limit;
     tracing_log(&format!(
-        "in-flight verification limit: {inflight_limit} (GRAPHITE_MAX_CONCURRENT); excess is shed with 503 + Retry-After rather than left to expire at the {}s request timeout",
+        "in-flight verification limit: {inflight_limit} (GRAPHITE_MAX_CONCURRENT); excess is shed with 503 + Retry-After rather than left to expire at the {}s request timeout; other routes share a separate pool of {MAX_CONCURRENT_AUXILIARY}, and /health draws on neither",
         REQUEST_TIMEOUT.as_secs()
     ));
     let state = AppState {
@@ -1083,6 +1409,7 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         metrics: Metrics::default(),
         inflight: Arc::new(tokio::sync::Semaphore::new(inflight_limit)),
         inflight_limit,
+        aux_inflight: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_AUXILIARY)),
         pinned_profile,
         allow_permissive_profiles,
     };
@@ -1137,21 +1464,10 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         }
     };
 
-    let max_connections = std::env::var("GRAPHITE_MAX_CONNECTIONS")
-        .ok()
-        .and_then(|v| v.trim().parse::<usize>().ok())
-        .filter(|n| *n > 0)
-        .unwrap_or(DEFAULT_MAX_CONNECTIONS);
-    let max_per_peer = std::env::var("GRAPHITE_MAX_CONNECTIONS_PER_IP")
-        .ok()
-        .and_then(|v| v.trim().parse::<usize>().ok())
-        .unwrap_or(if trust_proxy_hops == 0 {
-            DEFAULT_MAX_CONNECTIONS_PER_PEER
-        } else {
-            0
-        });
+    let max_connections = limits.max_connections;
+    let max_per_peer = limits.max_per_peer;
     tracing_log(&format!(
-        "connection limit: {max_connections} (GRAPHITE_MAX_CONNECTIONS), {} per peer (GRAPHITE_MAX_CONNECTIONS_PER_IP); a request head must arrive within {}s",
+        "connection limit: {max_connections} (GRAPHITE_MAX_CONNECTIONS), {} per peer (GRAPHITE_MAX_CONNECTIONS_PER_IP; IPv6 per /64, and {SITE_CONNECTION_FACTOR}x that per /48); a request head must arrive within {}s",
         if max_per_peer == 0 {
             "no limit".to_string()
         } else {
@@ -1159,12 +1475,7 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         },
         HEADER_READ_TIMEOUT.as_secs()
     ));
-    let connection_lifetime = std::env::var("GRAPHITE_CONNECTION_LIFETIME_SECS")
-        .ok()
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .filter(|s| *s > 0)
-        .map(Duration::from_secs)
-        .unwrap_or(DEFAULT_CONNECTION_LIFETIME);
+    let connection_lifetime = limits.connection_lifetime;
     tracing_log(&format!(
         "a connection is closed after {}s (GRAPHITE_CONNECTION_LIFETIME_SECS)",
         connection_lifetime.as_secs()
@@ -1219,17 +1530,37 @@ async fn serve_hardened(
             },
             _ = &mut shutdown => break,
         };
-        let Some(peer_slot) = peers.claim(remote.ip(), max_per_peer) else {
-            tracing::warn!(
-                "connection from {remote} closed at accept: that peer already holds {max_per_peer} connections (GRAPHITE_MAX_CONNECTIONS_PER_IP)"
-            );
-            drop(stream);
-            continue;
+        // Refusals at accept are caller-triggerable, so each kind is logged
+        // at most once per window, with a count (audit 2026-10-20, L4).
+        static PEER_CAP_REFUSALS: LogThrottle = LogThrottle::new(REFUSAL_LOG_WINDOW_MS);
+        static CONNECTION_CAP_REFUSALS: LogThrottle = LogThrottle::new(REFUSAL_LOG_WINDOW_MS);
+        let peer_slot = match peers.claim(remote.ip(), max_per_peer) {
+            Ok(slot) => slot,
+            Err(refusal) => {
+                if let Some(suppressed) = PEER_CAP_REFUSALS.admit() {
+                    let what = match refusal {
+                        PeerRefusal::Peer => format!("that peer already holds {max_per_peer}"),
+                        PeerRefusal::Site => format!(
+                            "its IPv6 /48 already holds {}",
+                            max_per_peer.saturating_mul(SITE_CONNECTION_FACTOR)
+                        ),
+                    };
+                    tracing::warn!(
+                        "connection from {remote} closed at accept: {what} connections (GRAPHITE_MAX_CONNECTIONS_PER_IP){}",
+                        suppressed_note(suppressed)
+                    );
+                }
+                drop(stream);
+                continue;
+            }
         };
         let Ok(permit) = permits.clone().try_acquire_owned() else {
-            tracing::warn!(
-                "connection from {remote} closed at accept: {max_connections} connections already open (GRAPHITE_MAX_CONNECTIONS)"
-            );
+            if let Some(suppressed) = CONNECTION_CAP_REFUSALS.admit() {
+                tracing::warn!(
+                    "connection from {remote} closed at accept: {max_connections} connections already open (GRAPHITE_MAX_CONNECTIONS){}",
+                    suppressed_note(suppressed)
+                );
+            }
             drop(stream);
             continue;
         };
@@ -1312,15 +1643,19 @@ fn build_app(state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
         .route("/api/policy-violations", get(policy_violations_handler))
         .route("/api/protocols/top", get(top_protocols_handler))
         .route("/api/registry", get(registry_handler))
+        // The programs whose simulation baseline is frozen, by id. On
+        // `/health` until the 2026-10-20 audit, which answers without a key;
+        // it now carries only the count there.
+        .route("/api/frozen-baselines", get(frozen_baselines_handler))
         // Order (Round 19, F-19-14). Each `route_layer` wraps the ones added
-        // before it, so the LAST one here runs FIRST: rate limit, then auth,
-        // then the concurrency permit. This was the reverse — the permit was
-        // taken before the caller was authenticated or rate-limited, and a
-        // refusal held it while the body drained, so 32 unauthenticated
-        // connections trickling a body could hold every permit for the full
-        // request timeout and shed all real traffic (and /health) with 503.
-        // Now a request costs a permit only once it is authenticated, within
-        // its rate, and fully received.
+        // before it, so the LAST one here runs FIRST: the dev-mode Host
+        // check, then rate limit, then auth, then the concurrency permit.
+        // This was the reverse — the permit was taken before the caller was
+        // authenticated or rate-limited, and a refusal held it while the body
+        // drained, so 32 unauthenticated connections trickling a body could
+        // hold every permit for the full request timeout and shed all real
+        // traffic with 503. Now a request costs a permit only once it is
+        // authenticated, within its rate, and fully received.
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             concurrency_limit_middleware,
@@ -1332,6 +1667,10 @@ fn build_app(state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit_middleware,
+        ))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            dev_mode_host_middleware,
         ))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -1359,9 +1698,8 @@ fn build_app(state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
         .with_state(state)
 }
 
-/// API-key auth. `/health` stays open for load balancers.
 /// Answer a request that is being refused before its body was read — a 401,
-/// 429 or 503 from the middlewares — WITHOUT leaving that body unread.
+/// 421, 429 or 503 from the middlewares — WITHOUT leaving that body unread.
 ///
 /// Closing a connection with unread bytes in the socket makes the kernel
 /// send RST instead of FIN, and a client still writing its body sees a reset
@@ -1406,12 +1744,80 @@ const REFUSAL_DRAIN_TIMEOUT: Duration = Duration::from_secs(1);
 /// asserted together at the RPC client's construction.
 const BODY_READ_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// The route a load balancer polls. Open without a key, exempt from the rate
+/// limiter and from load shedding (audit 2026-10-20, L3), and cheap: it reads
+/// counters, the audit file's size and the archive count, never the trail.
+const HEALTH_PATH: &str = "/health";
+
+/// Whether a `Host` header names this machine's loopback interface:
+/// `localhost` (or a name under `.localhost`, RFC 6761), any `127.0.0.0/8`
+/// address, or `[::1]`, with or without a port.
+fn is_loopback_host(host: &str) -> bool {
+    let host = host.trim();
+    // `[v6]:port`, `[v6]`, `name:port`, `v4:port`, `name`, `v4`.
+    let name = if let Some(rest) = host.strip_prefix('[') {
+        match rest.split_once(']') {
+            Some((inner, tail)) if tail.is_empty() || tail.starts_with(':') => inner,
+            _ => return false,
+        }
+    } else {
+        match host.rsplit_once(':') {
+            Some((name, port)) if port.bytes().all(|b| b.is_ascii_digit()) => name,
+            Some(_) => return false,
+            None => host,
+        }
+    };
+    let name = name.trim_end_matches('.');
+    if name.eq_ignore_ascii_case("localhost") || name.to_ascii_lowercase().ends_with(".localhost") {
+        return true;
+    }
+    name.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
+}
+
+/// Dev mode answers only to requests addressed to loopback (audit
+/// 2026-10-20, L8).
+///
+/// A keyless instance is bound to loopback, which keeps other machines out
+/// but not a web page in the operator's own browser: DNS rebinding points an
+/// attacker's domain at 127.0.0.1, and the page's requests then reach this
+/// server with `Host: attacker.example`, unauthenticated — `/verify`, the
+/// dashboard reads, the lifecycle trail. The browser always sends the name it
+/// resolved, so a keyless instance refuses any request whose `Host` is not a
+/// loopback name or address. A request with no `Host` at all (HTTP/1.0, or a
+/// raw client) is not one a browser makes and is let through. With an API
+/// key configured the key is the control and this check does not run.
+async fn dev_mode_host_middleware(
+    State(state): State<AppState>,
+    req: axum::http::Request<axum::body::Body>,
+    next: Next,
+) -> Response {
+    if state.api_key.is_none() {
+        let host = req
+            .headers()
+            .get(header::HOST)
+            .map(|v| v.to_str().map(is_loopback_host).unwrap_or(false));
+        if host == Some(false) {
+            let refusal = (
+                StatusCode::MISDIRECTED_REQUEST,
+                Json(serde_json::json!({
+                    "error": "this unauthenticated (GRAPHITE_DEV_MODE) instance answers only to requests addressed to a loopback host",
+                    "hint": "address it as 127.0.0.1, [::1] or localhost; set GRAPHITE_API_KEY to serve other names",
+                })),
+            )
+                .into_response();
+            return refuse_after_draining(req, refusal).await;
+        }
+    }
+    next.run(req).await
+}
+
+/// API-key auth. `/health` stays open for load balancers.
 async fn auth_middleware(
     State(state): State<AppState>,
     req: axum::http::Request<axum::body::Body>,
     next: Next,
 ) -> Response {
-    if req.uri().path() == "/health" {
+    if req.uri().path() == HEALTH_PATH {
         return next.run(req).await;
     }
     // The operator surface answers only to the operator key (Round 19,
@@ -1480,6 +1886,14 @@ async fn rate_limit_middleware(
     req: axum::http::Request<axum::body::Body>,
     next: Next,
 ) -> Response {
+    // `/health` is exempt (audit 2026-10-20, L3): it is documented as open
+    // for load balancers, and behind a trusted proxy the balancer's own
+    // probes all key one bucket — the proxy's — so any client able to land
+    // requests in that bucket could fail the balancer's checks and have a
+    // healthy node pulled. It costs no audit scan and no RPC.
+    if req.uri().path() == HEALTH_PATH {
+        return next.run(req).await;
+    }
     let ip = rate_limit_key(client_ip(&req, addr, state.trust_proxy_hops));
     if !state.rate.check(ip) {
         Metrics::inc(&state.metrics.rate_limited);
@@ -1502,16 +1916,25 @@ async fn rate_limit_middleware(
 /// behaviour being removed. A shed request is answered immediately with a
 /// status the caller can act on.
 ///
-/// Applied to every route, but only the verification paths can hold the permit
-/// for long — `/health` and `/metrics` return without touching an RPC, and
-/// keeping them under the same limit is what makes the health check honest:
-/// if the server truly cannot take more work, its readiness signal should say
-/// so rather than reporting healthy while shedding everything.
+/// Two pools (audit 2026-10-20, M12): `/verify` and `/verify/execution`, the
+/// routes that spend verification capacity (the pipeline, the RPC budget),
+/// draw on `inflight`; every other route draws on its own smaller pool,
+/// `aux_inflight`, so a dashboard read waiting on an archive-scan slot can
+/// never hold a verification's permit. `/health` draws on neither (L3): it
+/// is a liveness probe, and a balancer that saw it shed would pull a node
+/// that is merely busy — saturation is what `graphite_load_shed_total` is
+/// for. It used to share the verification pool, which made a busy node
+/// look dead.
 async fn concurrency_limit_middleware(
     State(state): State<AppState>,
     req: axum::http::Request<axum::body::Body>,
     next: Next,
 ) -> Response {
+    let path = req.uri().path();
+    if path == HEALTH_PATH {
+        return next.run(req).await;
+    }
+    let verification = matches!(path, "/verify" | "/verify/execution");
     // Receive the body BEFORE taking a permit (Round 19, F-19-14): a permit
     // is a unit of verification capacity, and a client that is still sending
     // is not using any. A body that does not arrive within
@@ -1545,14 +1968,50 @@ async fn concurrency_limit_middleware(
             }
         };
     let req = axum::http::Request::from_parts(parts, axum::body::Body::from(bytes));
+    if !verification {
+        let Ok(permit) = Arc::clone(&state.aux_inflight).try_acquire_owned() else {
+            Metrics::inc(&state.metrics.aux_load_shed);
+            static AUX_SHED_LOG: LogThrottle = LogThrottle::new(REFUSAL_LOG_WINDOW_MS);
+            if let Some(suppressed) = AUX_SHED_LOG.admit() {
+                tracing_client_reject(&format!(
+                    "at capacity: {MAX_CONCURRENT_AUXILIARY} non-verification requests already in flight, shedding{}",
+                    suppressed_note(suppressed)
+                ));
+            }
+            let refusal = (
+                StatusCode::SERVICE_UNAVAILABLE,
+                [(header::RETRY_AFTER, "1")],
+                Json(serde_json::json!({
+                    "error": "server at capacity for this route",
+                    "error_type": "LoadShed",
+                    "hint": "the server is already running its maximum number of concurrent non-verification requests (dashboard reads, lifecycle reports, operator actions); verifications are unaffected. Retry after the interval in the Retry-After header",
+                    "in_flight_limit": MAX_CONCURRENT_AUXILIARY,
+                })),
+            )
+                .into_response();
+            return refuse_after_draining(req, refusal).await;
+        };
+        let response = next.run(req).await;
+        drop(permit);
+        return response;
+    }
     let permit = match Arc::clone(&state.inflight).try_acquire_owned() {
         Ok(p) => p,
         Err(_) => {
             Metrics::inc(&state.metrics.load_shed);
-            tracing_server_error(&format!(
-                "at capacity: {} verifications already in flight, shedding",
-                state.inflight_limit
-            ));
+            // WARN, not ERROR, and throttled (audit 2026-10-20, L4): any
+            // caller can shed load on demand by sending enough requests, and
+            // by this module's own rule (`tracing_client_reject`) what a
+            // caller can manufacture must not page anyone. The count is
+            // exact in graphite_load_shed_total.
+            static SHED_LOG: LogThrottle = LogThrottle::new(REFUSAL_LOG_WINDOW_MS);
+            if let Some(suppressed) = SHED_LOG.admit() {
+                tracing_client_reject(&format!(
+                    "at capacity: {} verifications already in flight, shedding{}",
+                    state.inflight_limit,
+                    suppressed_note(suppressed)
+                ));
+            }
             let refusal = (
                 StatusCode::SERVICE_UNAVAILABLE,
                 // Retry-After is what makes this actionable rather than merely
@@ -1575,17 +2034,8 @@ async fn concurrency_limit_middleware(
     response
 }
 
-/// Verify handler — returns 200 on success, 400 on bad input, 500 on internal error.
-///
-/// Error classification:
-///   400 BAD_REQUEST: client provided invalid input (bad address, wrong account count,
-///     unknown discriminator, invalid program ID). These are caller-fixable.
-///   500 INTERNAL_SERVER_ERROR: internal failures (risk engine, policy engine,
-///     confidence computation, PDA derivation, semantic graph). These indicate
-///     bugs in Graphite, not caller errors. Per Constitution P12 (fail-closed),
-///     the response body explains the error but the HTTP status tells the client
-///     this is a server-side issue, not a transaction rejection.
-/// Custom error response for verification failures
+/// How a verification failure is answered: a caller-fixable 400, or a 500
+/// whose detail stays in the log and the audit trail (see `client_message`).
 #[derive(Debug, Clone)]
 pub enum VerificationHttpError {
     BadRequest(String),
@@ -1725,182 +2175,52 @@ fn classify_error(e: &VerificationError) -> VerificationHttpError {
     }
 }
 
-use crate::policy_engine::WEAKEST_BUILTIN_MIN_CONFIDENCE;
+/// The longest rejection text logged or returned for a body that did not
+/// parse (audit 2026-10-20, L5): the bound the audit trail applies to the
+/// same text (`durable`'s `MAX_AUDIT_FIELD_CHARS`, 256), with the same
+/// truncation marker. The extractor's message quotes the offending input, so
+/// a megabyte body produced a megabyte log line and a megabyte response.
+const MAX_REJECTION_TEXT_CHARS: usize = crate::durable::MAX_AUDIT_FIELD_CHARS;
 
-/// Enforce the wallet policy profile at the network trust boundary.
-///
-/// CRITICAL (2026-09-05 red-team, verified end-to-end against a live server):
-/// `wallet_profile` arrives in the SAME request body, over the SAME connection,
-/// as `proposed_intent`, `program_id` and every other field the (possibly
-/// prompt-injected) agent supplies. Graphite has no way to tell an operator's
-/// deliberate policy from an attacker's chosen one. Sending
-/// `{"Custom":{"min_confidence":0.0,"min_trust_tier":"Unknown"}}` therefore
-/// approved a transaction to a completely unmanifested program at confidence
-/// 0.0 — P6's ceiling still computed correctly, it just no longer gated
-/// anything, because the threshold it was compared against was attacker-chosen.
-///
-/// Two layers, both applied here at the boundary rather than in the core (a
-/// library embedder IS its own operator and may legitimately choose any
-/// profile; an HTTP caller is not):
-///
-/// 1. `GRAPHITE_WALLET_PROFILE` pins the profile server-side. When set, the
-///    request body's profile is ignored entirely — the operator's policy is
-///    configuration, not something the caller can negotiate.
-/// 2. Otherwise a caller-supplied `Custom` profile is CLAMPED so it can never
-///    be weaker than the weakest built-in profile. Named profiles pass through
-///    untouched (all four are sane postures). `GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1`
-///    opts out for the genuinely trusted single-tenant case.
-///
-/// Returns the effective profile and, when it differs from what was asked for,
-/// a disclosure string so the override is visible in the response and audit
-/// trail rather than silently applied (P3).
-fn enforce_wallet_profile(
-    requested: crate::policy_engine::WalletProfile,
-    pinned: Option<crate::policy_engine::WalletProfile>,
-    allow_permissive: bool,
-) -> Result<(crate::policy_engine::WalletProfile, Option<String>), String> {
-    use crate::policy_engine::{WalletProfile, WEAKEST_BUILTIN_MIN_TRUST_TIER};
-
-    // Round 17 (F-16-08): a confidence bar above 1.0 can never be met and is
-    // not a policy; it used to travel through the whole pipeline and come
-    // back as a 500 from the policy engine. Malformed input is a 400, and
-    // it is refused before anything is simulated or recorded.
-    //
-    // Round 19 (F-19-27): the same for a bar BELOW 0.0, NaN or infinite. They
-    // were clamped up to the weakest built-in by default — safe — but passed
-    // straight through under GRAPHITE_ALLOW_PERMISSIVE_PROFILES, carrying a
-    // NaN into the policy comparison. The operator's own
-    // `custom:<x>:<tier>` pin already refused all of them; the request path
-    // now agrees with it in every mode.
-    if let WalletProfile::Custom { min_confidence, .. } = requested {
-        if !(0.0..=1.0).contains(&min_confidence) {
-            return Err(format!(
-                "wallet_profile.Custom.min_confidence must be within [0.0, 1.0], got {min_confidence}"
-            ));
-        }
+/// `text`, bounded to [`MAX_REJECTION_TEXT_CHARS`], saying what was cut.
+fn bounded_rejection_text(text: &str) -> String {
+    let total = text.chars().count();
+    if total <= MAX_REJECTION_TEXT_CHARS {
+        return text.to_string();
     }
-
-    if let Some(p) = pinned {
-        if p != requested {
-            return Ok((
-                p,
-                Some(
-                    "wallet profile is pinned server-side (GRAPHITE_WALLET_PROFILE); the \
-                     profile supplied in the request was ignored"
-                        .to_string(),
-                ),
-            ));
-        }
-        return Ok((p, None));
-    }
-    if allow_permissive {
-        return Ok((requested, None));
-    }
-    match requested {
-        WalletProfile::Custom {
-            min_confidence,
-            min_trust_tier,
-        } if !min_confidence.is_finite()
-            || min_confidence < WEAKEST_BUILTIN_MIN_CONFIDENCE
-            || min_trust_tier < WEAKEST_BUILTIN_MIN_TRUST_TIER =>
-        {
-            // Both axes (F-15-07): the confidence floor AND the tier floor of
-            // the weakest built-in profile. Each override is disclosed.
-            let confidence_raised =
-                !min_confidence.is_finite() || min_confidence < WEAKEST_BUILTIN_MIN_CONFIDENCE;
-            let tier_raised = min_trust_tier < WEAKEST_BUILTIN_MIN_TRUST_TIER;
-            let mut notes = Vec::new();
-            if confidence_raised {
-                notes.push(format!(
-                    "min_confidence ({min_confidence}) was raised to {WEAKEST_BUILTIN_MIN_CONFIDENCE}"
-                ));
-            }
-            if tier_raised {
-                notes.push(format!(
-                    "min_trust_tier ({min_trust_tier:?}) was raised to {WEAKEST_BUILTIN_MIN_TRUST_TIER:?}"
-                ));
-            }
-            Ok((
-                WalletProfile::Custom {
-                    min_confidence: if confidence_raised {
-                        WEAKEST_BUILTIN_MIN_CONFIDENCE
-                    } else {
-                        min_confidence
-                    },
-                    min_trust_tier: if tier_raised {
-                        WEAKEST_BUILTIN_MIN_TRUST_TIER
-                    } else {
-                        min_trust_tier
-                    },
-                },
-                Some(format!(
-                    "requested custom profile is weaker than any built-in profile: {} — a \
-                     caller-supplied threshold cannot disable the confidence/trust-tier gate (set \
-                     GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1 to allow, or pin the profile with \
-                     GRAPHITE_WALLET_PROFILE)",
-                    notes.join("; ")
-                )),
-            ))
-        }
-        other => Ok((other, None)),
-    }
+    let kept: String = text.chars().take(MAX_REJECTION_TEXT_CHARS).collect();
+    format!("{kept}… [truncated, {total} chars total]")
 }
 
-/// Parse `GRAPHITE_WALLET_PROFILE`. Accepts the four built-in names, or
-/// `custom:<min_confidence>:<TrustTier>`. An unparseable value is a
-/// configuration error the operator must see, so it is reported rather than
-/// silently ignored.
-fn parse_pinned_profile(raw: &str) -> Result<crate::policy_engine::WalletProfile, String> {
-    use crate::confidence_engine::TrustTier;
-    use crate::policy_engine::WalletProfile;
-    let v = raw.trim();
-    match v.to_ascii_lowercase().as_str() {
-        "treasury" => return Ok(WalletProfile::Treasury),
-        "trading" | "tradingbot" => return Ok(WalletProfile::TradingBot),
-        "gaming" => return Ok(WalletProfile::Gaming),
-        "enterprise" => return Ok(WalletProfile::Enterprise),
-        _ => {}
-    }
-    let parts: Vec<&str> = v.split(':').collect();
-    if parts.len() == 3 && parts[0].eq_ignore_ascii_case("custom") {
-        let min_confidence: f64 = parts[1]
-            .parse()
-            .map_err(|_| format!("invalid min_confidence {:?}", parts[1]))?;
-        if !min_confidence.is_finite() || !(0.0..=1.0).contains(&min_confidence) {
-            return Err(format!(
-                "min_confidence {min_confidence} must be within [0.0, 1.0]"
-            ));
-        }
-        let min_trust_tier = match parts[2] {
-            "Unknown" => TrustTier::Unknown,
-            "HeuristicInferred" => TrustTier::HeuristicInferred,
-            "OfficialManifest" => TrustTier::OfficialManifest,
-            "SimulationValidated" => TrustTier::SimulationValidated,
-            "CommunityVerified" => TrustTier::CommunityVerified,
-            "BattleTested" => TrustTier::BattleTested,
-            other => return Err(format!("unknown trust tier {other:?}")),
-        };
-        return Ok(WalletProfile::Custom {
-            min_confidence,
-            min_trust_tier,
-        });
-    }
-    Err(format!(
-        "unrecognized profile {v:?} (expected treasury|trading|gaming|enterprise|custom:<min_confidence>:<TrustTier>)"
-    ))
-}
-
+/// Verify handler — returns 200 on success, 400 on bad input, 500 on internal
+/// error, 422 on a body that is not a `VerificationInput`.
+///
+/// Error classification:
+///   400 BAD_REQUEST: client provided invalid input (bad address, wrong account count,
+///     unknown discriminator, invalid program ID). These are caller-fixable.
+///   500 INTERNAL_SERVER_ERROR: internal failures (risk engine, policy engine,
+///     confidence computation, PDA derivation, semantic graph). These indicate
+///     bugs in Graphite, not caller errors. Per Constitution P12 (fail-closed),
+///     the response body explains the error but the HTTP status tells the client
+///     this is a server-side issue, not a transaction rejection.
+///
+/// The wallet-profile boundary (`enforce_wallet_profile`) lives in
+/// `cli::boundary`, shared with `graphite verify` (audit 2026-10-20, L11).
 async fn verify_handler(
     State(state): State<AppState>,
     payload: Result<Json<VerificationInput>, axum::extract::rejection::JsonRejection>,
 ) -> Result<Json<VerificationResult>, (StatusCode, Json<serde_json::Value>)> {
     // A malformed/unparseable body (422 from the Json extractor) is a probing
     // attempt and MUST be audited too — it never reaches the match below, so
-    // it is handled here to leave a trail.
+    // it is handled here to leave a trail. Counted like every other refusal
+    // of a verification request (audit 2026-10-20, L5: it reached neither
+    // counter, so a flood of junk bodies was invisible on /metrics).
     let Json(input) = match payload {
         Ok(p) => p,
         Err(rejection) => {
-            let message = rejection.body_text();
+            Metrics::inc(&state.metrics.verify_requests);
+            Metrics::inc(&state.metrics.verify_errors);
+            let message = bounded_rejection_text(&rejection.body_text());
             // A failed append is counted and reported by the log itself and
             // surfaces as `degraded` on /health. It is not turned into a panic
             // here: the response is already a rejection, so nothing false is
@@ -2076,7 +2396,7 @@ async fn verify_handler(
                 state.core.discard_observation(&result.audit_trail_id);
                 Metrics::inc(&state.metrics.verify_errors);
                 tracing_server_error(
-                    "audit write FAILED for a completed verification — refusing to return the                      verdict, because an approval with no durable record cannot be reconciled                      by L8, cannot be quarantined against, and cannot be investigated",
+                    "audit write FAILED for a completed verification — refusing to return the verdict, because an approval with no durable record cannot be reconciled by L8, cannot be quarantined against, and cannot be investigated",
                 );
                 return Err((
                     StatusCode::SERVICE_UNAVAILABLE,
@@ -2104,8 +2424,10 @@ async fn verify_handler(
             });
             let mut result = result;
             if let Some(note) = profile_note {
-                // Visible in the response and, via the summary, in the audit
-                // trail — an overridden policy must never be applied silently.
+                // Visible in the response's summary, and on the audit row
+                // through its `wallet_profile` field (written above; the
+                // summary itself is not on the row) — an overridden policy
+                // must never be applied silently.
                 result.summary = format!("{} | policy: {}", result.summary, note);
             }
             Ok(Json(result))
@@ -2186,9 +2508,15 @@ async fn verify_handler(
 /// Liveness + durability health.
 ///
 /// Reports whether the append-only audit trail is actually being written.
-/// Audit writes are non-fatal by design (a failing audit disk must not take
-/// down verification), which previously made a stopped audit trail invisible
-/// to operators — `audit.writes_failed` is what makes it alertable.
+/// A verdict the trail cannot take is refused with 503 (see
+/// `verify_handler`), but the node stays up and keeps refusing correctly, so
+/// a load balancer must keep it: `status` stays "ok" and `degraded` with
+/// `audit.writes_failed` is what makes a stopped trail alertable.
+///
+/// Answers without a key (load balancers), so it says what is wrong without
+/// naming what (audit 2026-10-20): the programs whose simulation baseline is
+/// frozen are a count here and listed at the authenticated
+/// `/api/frozen-baselines`.
 async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
     let audit = state.audit.as_ref().map(|a| a.health());
     let mut persistence = state.core.persistence_health();
@@ -2226,10 +2554,10 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
     // Round 17 (F-16-02): a trusted baseline that has refused MIN_SAMPLES
     // clean executions is frozen — every honest transaction of that program
     // at a different shape is being refused as `SimulationSpoofing`. That is
-    // an operator's decision to make (`graphite graph promote-shadow`), and
-    // it cannot be made if nothing reports it.
-    let frozen = state.core.frozen_baselines();
-    if !frozen.is_empty() {
+    // an operator's decision to make (`graphite evidence promote-shadow`),
+    // and it cannot be made if nothing reports it.
+    let frozen = state.core.frozen_baselines().len();
+    if frozen > 0 {
         reasons.push("simulation_baseline_frozen");
     }
     Json(serde_json::json!({
@@ -2254,12 +2582,10 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
             None => serde_json::json!({ "enabled": false }),
         },
         "graph_persistence": persistence,
-        // Programs whose trusted baseline has refused at least MIN_SAMPLES
-        // clean executions, with the count (Round 17, F-16-02).
-        "frozen_baselines": frozen.iter().map(|(p, n)| serde_json::json!({
-            "program_id": p,
-            "refused_clean_executions": n,
-        })).collect::<Vec<_>>(),
+        // How many programs' trusted baseline has refused at least
+        // MIN_SAMPLES clean executions (Round 17, F-16-02). Which ones, at
+        // the authenticated /api/frozen-baselines.
+        "frozen_baseline_count": frozen,
         // Whether L8 has a second, independent source for inclusion
         // (Round 12). `false` means every reconciliation rests on one RPC.
         "inclusion_witness": state.core.has_inclusion_witness(),
@@ -2269,6 +2595,27 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
             "detected": state.core.program_upgrades_detected(),
             "quarantine_on_upgrade": state.core.quarantine_on_upgrade(),
         },
+    }))
+}
+
+/// The programs whose trusted simulation baseline is frozen, with how many
+/// clean executions each has refused (Round 17, F-16-02). Behind the verify
+/// key since the 2026-10-20 audit; `/health` carries the count.
+async fn frozen_baselines_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let frozen: Vec<serde_json::Value> = state
+        .core
+        .frozen_baselines()
+        .into_iter()
+        .map(|(program_id, refused)| {
+            serde_json::json!({
+                "program_id": program_id,
+                "refused_clean_executions": refused,
+            })
+        })
+        .collect();
+    Json(serde_json::json!({
+        "count": frozen.len(),
+        "frozen_baselines": frozen,
     }))
 }
 
@@ -2308,13 +2655,13 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
     );
     push(
         "graphite_verify_errors_total",
-        "Verification requests that failed before producing a result.",
+        "Verification requests that failed before producing a result, including bodies that did not parse (422) and verdicts the trail could not record (503).",
         "counter",
         m.verify_errors.load(std::sync::atomic::Ordering::Relaxed),
     );
     push(
         "graphite_auth_failures_total",
-        "Requests rejected with 401 by the auth middleware.",
+        "Requests refused by the auth middleware: 401 for a missing or wrong key, 403 for an operator route on an instance with no operator key configured.",
         "counter",
         m.auth_failures.load(std::sync::atomic::Ordering::Relaxed),
     );
@@ -2329,6 +2676,19 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
         "Requests rejected with 503 because the server was already at its in-flight limit.",
         "counter",
         m.load_shed.load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
+        "graphite_auxiliary_load_shed_total",
+        "Non-verification requests (dashboard reads, lifecycle reports, operator actions, /manifests, /metrics) rejected with 503 because their own in-flight pool was full. Verification capacity is separate and unaffected.",
+        "counter",
+        m.aux_load_shed.load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
+        "graphite_request_rejections_total",
+        "Requests to /verify/execution, /audit/event and /admin/quarantine refused as malformed (400 or 422); each is also on the audit trail. /verify's are in graphite_verify_errors_total.",
+        "counter",
+        m.request_rejections
+            .load(std::sync::atomic::Ordering::Relaxed),
     );
     push(
         "graphite_lifecycle_events_total",
@@ -2479,25 +2839,6 @@ struct LifecycleEventBody {
     detail: Option<String>,
 }
 
-/// Record a lifecycle event for a stage Graphite does not itself perform
-/// (Constitution P9).
-///
-/// P9 requires the full transaction lifecycle to be auditable. Graphite
-/// genuinely observes construction, simulation and verification, and records
-/// those on the verification row. It does NOT sign, submit, or watch the
-/// chain — only the caller knows when those happened, so this endpoint is how
-/// they enter the same append-only trail, keyed by `content_hash` so the whole
-/// lifecycle reconciles to one transaction.
-///
-/// The record is explicitly an ATTESTATION, not a proof: Graphite cannot
-/// confirm a signing it did not perform. `reported_by` names the reporter and
-/// the record says what was reported. Synthesizing these events server-side
-/// instead would put fabricated history in an audit trail, which is worse than
-/// the gap it would paper over.
-///
-/// Self-observed event types are REJECTED here — a caller must not be able to
-/// inject a "verification" row that no verification produced, which would let
-/// them forge an approval into the audit trail.
 /// Body for `POST /verify/execution`.
 #[derive(Debug, serde::Deserialize)]
 struct ExecutionBody {
@@ -2527,6 +2868,116 @@ struct ExecutionBody {
     reported_by: Option<String>,
 }
 
+/// What one of the handlers below answers.
+type HandlerResult = Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)>;
+
+/// Count and audit a malformed request to a route other than `/verify`, as
+/// `/verify` counts and audits its own (audit 2026-10-20).
+///
+/// `/verify/execution`, `/audit/event` and `/admin/quarantine` answered 400
+/// and 422 with no counter and no audit row, so probing them — forged keys,
+/// junk signatures, oversized fields — left no trace on the trail `/verify`'s
+/// probes land on. A 422's extractor text is bounded as `/verify`'s is (L5).
+/// Responses that are not refusals of the request's shape (401/403, 503) are
+/// left as they are.
+async fn account_for_rejection(
+    state: &AppState,
+    route: &'static str,
+    program_id: Option<String>,
+    result: HandlerResult,
+) -> HandlerResult {
+    let Err((status, Json(mut body))) = result else {
+        return result;
+    };
+    if status != StatusCode::BAD_REQUEST && status != StatusCode::UNPROCESSABLE_ENTITY {
+        return Err((status, Json(body)));
+    }
+    Metrics::inc(&state.metrics.request_rejections);
+    let error = bounded_rejection_text(body.get("error").and_then(|v| v.as_str()).unwrap_or(""));
+    if status == StatusCode::UNPROCESSABLE_ENTITY {
+        body["error"] = serde_json::Value::String(error.clone());
+    }
+    let error_type = body
+        .get("error_type")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            if status == StatusCode::UNPROCESSABLE_ENTITY {
+                "JsonRejection".to_string()
+            } else {
+                "InvalidInput".to_string()
+            }
+        });
+    if let Some(log) = &state.audit {
+        let recorded = append_error_off_runtime(
+            log,
+            AuditErrorRecord {
+                timestamp: crate::durable::now_utc_rfc3339(),
+                program_id: program_id
+                    .filter(|p| !p.is_empty())
+                    .unwrap_or_else(|| "<none>".to_string()),
+                instruction_name: route.to_string(),
+                error,
+                error_type,
+                status: status.as_u16(),
+            },
+        )
+        .await;
+        if !recorded {
+            tracing_server_error(&format!(
+                "audit: error record for a {} on {route} was NOT written",
+                status.as_u16()
+            ));
+        }
+    }
+    Err((status, Json(body)))
+}
+
+/// `POST /verify/execution`: [`execution`], its refusals accounted for.
+async fn execution_handler(
+    State(state): State<AppState>,
+    payload: Result<Json<ExecutionBody>, axum::extract::rejection::JsonRejection>,
+) -> HandlerResult {
+    let result = execution(State(state.clone()), payload).await;
+    account_for_rejection(&state, "POST /verify/execution", None, result).await
+}
+
+/// `POST /audit/event`: [`lifecycle_event`], its refusals accounted for.
+async fn lifecycle_event_handler(
+    State(state): State<AppState>,
+    payload: Result<Json<LifecycleEventBody>, axum::extract::rejection::JsonRejection>,
+) -> HandlerResult {
+    let result = lifecycle_event(State(state.clone()), payload).await;
+    account_for_rejection(&state, "POST /audit/event", None, result).await
+}
+
+/// `POST /admin/quarantine`: [`quarantine`], its refusals accounted for, one
+/// operator action at a time.
+///
+/// Serialized (audit 2026-10-20): `quarantine` reads whether the program is
+/// already quarantined and then acts, and two requests on different workers
+/// could both read "not quarantined" and both append a quarantine record —
+/// or a lift's undo (W21) could land between another request's read and its
+/// act. Operator actions are rare; holding one lock across the read, the
+/// change and the audit append makes each atomic. An async lock, held across
+/// the append's await: a request cut off by the timeout releases it while its
+/// append finishes on the blocking pool, but by then its change is already
+/// in force and visible to the next reader, so the next one cannot act on a
+/// stale read.
+async fn quarantine_handler(
+    State(state): State<AppState>,
+    payload: Result<Json<QuarantineBody>, axum::extract::rejection::JsonRejection>,
+) -> HandlerResult {
+    static OPERATOR_ACTIONS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _one_at_a_time = OPERATOR_ACTIONS.lock().await;
+    let program_id = payload
+        .as_ref()
+        .ok()
+        .map(|Json(b)| b.program_id.trim().to_string());
+    let result = quarantine(State(state.clone()), payload).await;
+    account_for_rejection(&state, "POST /admin/quarantine", program_id, result).await
+}
+
 /// L8 — Execution Verification, the post-submission half of the pipeline.
 ///
 /// Every verification response already says "audit_trail_id bound to
@@ -2546,7 +2997,7 @@ struct ExecutionBody {
 /// Fail-closed: no RPC client, an RPC failure, or no audit log yields
 /// `Unavailable`. An unavailable check reports that it is unavailable; it never
 /// reports a confirmation.
-async fn execution_handler(
+async fn execution(
     State(state): State<AppState>,
     payload: Result<Json<ExecutionBody>, axum::extract::rejection::JsonRejection>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
@@ -2685,12 +3136,27 @@ async fn execution_handler(
             append_lifecycle_off_runtime(
                 log,
                 LifecycleEventRecord {
-                    event_type: LifecycleEvent::Confirmation,
+                    // A confirmation only when L8 saw one (audit 2026-10-20,
+                    // M4): included at cluster-backed commitment. Anything
+                    // else — unknown, `processed` only, unavailable — is a
+                    // check, recorded as such and outside the lifecycle order.
+                    event_type: if matches!(
+                        result.chain_status,
+                        crate::verification::ExecutionVerification::Confirmed { commitment, .. }
+                            if commitment.is_cluster_backed()
+                    ) {
+                        LifecycleEvent::Confirmation
+                    } else {
+                        LifecycleEvent::ExecutionCheck
+                    },
                     timestamp: crate::durable::now_utc_rfc3339(),
+                    // Trimmed, as it was validated and looked up (audit
+                    // 2026-10-20): the row carried the caller's raw value,
+                    // padding and all, so it never matched the hash it named.
                     content_hash: result
                         .recorded_content_hash
                         .clone()
-                        .or_else(|| body.content_hash.clone())
+                        .or_else(|| body.content_hash.as_deref().map(|h| h.trim().to_string()))
                         .unwrap_or_default(),
                     verdict_on_record: None,
                     verdict_on_record_key: None,
@@ -2775,7 +3241,7 @@ async fn execution_handler(
         // decision did not govern the wallet.
         Metrics::inc(&state.metrics.execution_discrepancies);
         tracing_server_error(&format!(
-            "L8 DISCREPANCY: signature {} executed on-chain but Graphite BLOCKED it              (audit_trail_id {:?})",
+            "L8 DISCREPANCY: signature {} executed on-chain but Graphite BLOCKED it (audit_trail_id {:?})",
             signature, result.recorded_audit_trail_id
         ));
     }
@@ -2908,7 +3374,7 @@ const MAX_QUARANTINE_REASON_CHARS: usize = 1024;
 /// `GraphiteCore::quarantine_program` for the recorded tradeoff (P14): a
 /// threshold on request traffic would hand a denial of service to anyone able
 /// to send requests, since they choose the inputs those checks judge.
-async fn quarantine_handler(
+async fn quarantine(
     State(state): State<AppState>,
     payload: Result<Json<QuarantineBody>, axum::extract::rejection::JsonRejection>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
@@ -2969,6 +3435,13 @@ async fn quarantine_handler(
             "already_quarantined": true,
             "note": "the program was already quarantined; nothing was changed or recorded",
         })));
+    }
+    // Tests only: hold the window between the read above and the change below
+    // open, so a test can show `quarantine_handler`'s lock is what closes it
+    // (the read and the change are microseconds apart otherwise).
+    #[cfg(test)]
+    if body.reason.as_deref() == Some(QUARANTINE_RACE_WINDOW_REASON) {
+        tokio::time::sleep(Duration::from_millis(40)).await;
     }
 
     // Kept so a lift that cannot be recorded can be undone (W21, below).
@@ -3132,12 +3605,36 @@ async fn quarantine_list_handler(
     })))
 }
 
+/// The one quarantine reason whose requests are held between the
+/// already-quarantined read and the change in tests (see `quarantine`).
+#[cfg(test)]
+const QUARANTINE_RACE_WINDOW_REASON: &str = "race-window-test";
+
 /// The one audit trail id whose lifecycle reports are held between the
-/// history read and the append in tests (see `lifecycle_event_handler`).
+/// history read and the append in tests (see `lifecycle_event`).
 #[cfg(test)]
 const RACE_WINDOW_TRAIL_ID: &str = "gr-cafecafecafecafe";
 
-async fn lifecycle_event_handler(
+/// Record a lifecycle event for a stage Graphite does not itself perform
+/// (Constitution P9).
+///
+/// P9 requires the full transaction lifecycle to be auditable. Graphite
+/// genuinely observes construction, simulation and verification, and records
+/// those on the verification row. It does NOT sign, submit, or watch the
+/// chain — only the caller knows when those happened, so this endpoint is how
+/// they enter the same append-only trail, keyed by `content_hash` so the whole
+/// lifecycle reconciles to one transaction.
+///
+/// The record is explicitly an ATTESTATION, not a proof: Graphite cannot
+/// confirm a signing it did not perform. `reported_by` names the reporter and
+/// the record says what was reported. Synthesizing these events server-side
+/// instead would put fabricated history in an audit trail, which is worse than
+/// the gap it would paper over.
+///
+/// Self-observed event types are REJECTED here — a caller must not be able to
+/// inject a "verification" row that no verification produced, which would let
+/// them forge an approval into the audit trail.
+async fn lifecycle_event(
     State(state): State<AppState>,
     payload: Result<Json<LifecycleEventBody>, axum::extract::rejection::JsonRejection>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
@@ -3747,7 +4244,7 @@ async fn policy_violations_handler(State(state): State<AppState>) -> Json<serde_
     // Bounded read: only the most recent violations are surfaced; memory
     // stays bounded by the cap while `count` reports the exact total.
     let audit = state.audit.clone();
-    let (records, errors, total_violations, _) = dashboard_scan(move || match &audit {
+    let (records, errors, total_violations, total_errors) = dashboard_scan(move || match &audit {
         Some(log) => log.read_tail_filtered(VIOLATIONS_CAP, AuditSelector::Blocked),
         None => (Vec::new(), Vec::new(), 0, 0),
     })
@@ -3787,17 +4284,60 @@ async fn policy_violations_handler(State(state): State<AppState>) -> Json<serde_
             })
         })
         .collect();
+    // The true totals from the whole trail (audit 2026-10-20, L7): the error
+    // half used the length of the capped list, so past VIOLATIONS_CAP error
+    // records `count` stopped growing while the trail kept them.
+    // Each half's true total as well, so the dashboard can show both without
+    // reading a capped list's length as a total.
     Json(serde_json::json!({
         "violations": violations,
         "error_violations": error_violations,
-        "count": total_violations + error_violations.len(),
+        "violation_count": total_violations,
+        "error_count": total_errors,
+        "count": total_violations + total_errors,
     }))
 }
 
-/// Dashboard: top 5 protocols by battle-tested volume (earned evidence, P7)
-/// plus verified observation count from the audit log. Sorted descending by
-/// volume; ties broken deterministically by program id.
-async fn top_protocols_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+/// The most rows `/api/protocols/top?limit=` returns.
+const MAX_TOP_PROTOCOLS: usize = 500;
+/// The rows `/api/protocols/top` returns without `?limit=`.
+const DEFAULT_TOP_PROTOCOLS: usize = 5;
+
+/// `?limit=` for `/api/protocols/top`: absent is the default of 5; otherwise
+/// a whole number from 1 to [`MAX_TOP_PROTOCOLS`] (audit 2026-10-20: the
+/// dashboard needs every program's verification count, and the fixed 5 rows
+/// hid the rest).
+fn top_protocols_limit(query: Option<&str>) -> Result<usize, String> {
+    let mut limit = DEFAULT_TOP_PROTOCOLS;
+    for pair in query.unwrap_or("").split('&').filter(|p| !p.is_empty()) {
+        let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
+        if key == "limit" {
+            limit = value
+                .parse::<usize>()
+                .ok()
+                .filter(|n| (1..=MAX_TOP_PROTOCOLS).contains(n))
+                .ok_or_else(|| {
+                    format!("limit must be a whole number from 1 to {MAX_TOP_PROTOCOLS}")
+                })?;
+        }
+    }
+    Ok(limit)
+}
+
+/// Dashboard: the top protocols (5, or `?limit=` up to 500) by battle-tested
+/// volume (operator-asserted evidence, P7) plus verified observation count from the
+/// audit log. Sorted descending by volume; ties broken deterministically by
+/// program id. `program_count` is how many programs there are in all.
+async fn top_protocols_handler(
+    State(state): State<AppState>,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let limit = top_protocols_limit(query.as_deref()).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e, "error_type": "InvalidInput" })),
+        )
+    })?;
     // Streaming per-program counts: memory is bounded by distinct programs,
     // never by log size.
     let audit = state.audit.clone();
@@ -3848,8 +4388,11 @@ async fn top_protocols_handler(State(state): State<AppState>) -> Json<serde_json
             .cmp(&total(a))
             .then_with(|| a["program_id"].as_str().cmp(&b["program_id"].as_str()))
     });
-    rows.truncate(5);
-    Json(serde_json::json!({ "top": rows }))
+    let total = rows.len();
+    rows.truncate(limit);
+    Ok(Json(
+        serde_json::json!({ "top": rows, "program_count": total }),
+    ))
 }
 
 /// Dashboard: Manifest Registry state — accepted submissions with version
@@ -3938,6 +4481,7 @@ fn tracing_server_error(msg: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::policy_engine::WEAKEST_BUILTIN_MIN_CONFIDENCE;
 
     // ── X-Forwarded-For spoofing (HIGH, 2026-09-05 production audit) ────────
     //
@@ -3969,22 +4513,24 @@ mod tests {
         let b: IpAddr = "198.51.100.1".parse().unwrap();
         let first = peers.claim(a, 2).expect("first");
         let _second = peers.claim(a, 2).expect("second");
-        assert!(
-            peers.claim(a, 2).is_none(),
+        assert_eq!(
+            peers.claim(a, 2).err(),
+            Some(PeerRefusal::Peer),
             "a third connection from one peer is refused"
         );
-        assert!(peers.claim(b, 2).is_some(), "another peer is unaffected");
+        assert!(peers.claim(b, 2).is_ok(), "another peer is unaffected");
         drop(first);
         assert!(
-            peers.claim(a, 2).is_some(),
+            peers.claim(a, 2).is_ok(),
             "a slot comes back when its connection ends"
         );
 
         let v6a: IpAddr = "2001:db8:1:2::1".parse().unwrap();
         let v6b: IpAddr = "2001:db8:1:2::ffff".parse().unwrap();
         let _x = peers.claim(v6a, 1).expect("first in the /64");
-        assert!(
-            peers.claim(v6b, 1).is_none(),
+        assert_eq!(
+            peers.claim(v6b, 1).err(),
+            Some(PeerRefusal::Peer),
             "the same /64 is the same peer"
         );
 
@@ -3993,9 +4539,66 @@ mod tests {
         let held: Vec<_> = (0..100)
             .map(|_| peers.claim(b, 0).expect("unlimited"))
             .collect();
-        assert_eq!(peers.lock().get(&rate_limit_key(b)).copied(), Some(100));
+        assert_eq!(
+            peers.lock().peers.get(&rate_limit_key(b)).copied(),
+            Some(100)
+        );
         drop(held);
-        assert_eq!(peers.lock().get(&rate_limit_key(b)).copied(), None);
+        assert_eq!(peers.lock().peers.get(&rate_limit_key(b)).copied(), None);
+    }
+
+    /// Audit 2026-10-20 (L6): one IPv6 /56 is 256 /64s, and the per-/64 cap
+    /// alone let its holder open 256 × the cap. The /48 a peer belongs to
+    /// holds at most `SITE_CONNECTION_FACTOR` × the cap across all of its
+    /// /64s; another /48 is unaffected, and site slots come back on drop.
+    #[test]
+    fn many_slash_64s_of_one_site_cannot_hold_every_connection() {
+        let peers = Arc::new(PeerConnections::default());
+        let cap = 2;
+        // Distinct /64s inside one /56 (2001:db8:1:0000/56 .. 00ff).
+        let held: Vec<_> = (0..SITE_CONNECTION_FACTOR * cap)
+            .map(|i| {
+                let ip: IpAddr = format!("2001:db8:1:{:x}::1", i % 256).parse().unwrap();
+                peers.claim(ip, cap).expect("within the site's share")
+            })
+            .collect();
+        let next: IpAddr = "2001:db8:1:ff::1".parse().unwrap();
+        assert_eq!(
+            peers.claim(next, cap).err(),
+            Some(PeerRefusal::Site),
+            "a fresh /64 of a /48 that already holds its share is refused"
+        );
+        let elsewhere: IpAddr = "2001:db8:2:ff::1".parse().unwrap();
+        assert!(
+            peers.claim(elsewhere, cap).is_ok(),
+            "another /48 is unaffected"
+        );
+        // IPv4 has no site aggregate.
+        assert!(site_key("203.0.113.7".parse().unwrap()).is_none());
+        assert!(site_key("::ffff:203.0.113.7".parse().unwrap()).is_none());
+        drop(held);
+        assert!(peers.claim(next, cap).is_ok(), "site slots come back");
+        assert_eq!(
+            peers.lock().sites.len(),
+            0,
+            "no site entry is left once its connections end"
+        );
+    }
+
+    /// Audit 2026-10-20 (L4): a refusal any client can cause is logged at
+    /// most once per window, and the line carries how many were suppressed.
+    #[test]
+    fn refusal_logging_is_throttled_and_counts_what_it_suppressed() {
+        let t = LogThrottle::new(60);
+        assert_eq!(t.admit(), Some(0), "the first line is written");
+        for _ in 0..5 {
+            assert_eq!(t.admit(), None, "inside the window: suppressed");
+        }
+        std::thread::sleep(Duration::from_millis(80));
+        assert_eq!(t.admit(), Some(5), "the next line reports the five");
+        assert_eq!(t.admit(), None);
+        assert_eq!(suppressed_note(0), "");
+        assert!(suppressed_note(5).contains("5 more"));
     }
 
     /// A4-02: a second `X-Forwarded-For` LINE is part of the same list; the
@@ -4107,32 +4710,87 @@ mod tests {
     }
 
     /// A request that did NOT traverse the expected proxy chain (fewer
-    /// entries than configured hops) must fall back to the direct peer, never
-    /// trust a partial chain. Otherwise an attacker who can reach the server
-    /// directly, bypassing the proxy, sends a single-entry header and picks
-    /// their own identity.
+    /// entries than configured hops) must never have a partial chain
+    /// trusted: otherwise an attacker who can reach the server directly,
+    /// bypassing the proxy, sends a single-entry header and picks their own
+    /// identity. It keys the shared unattributed bucket, not the peer's:
+    /// behind a proxy the peer IS the proxy (audit 2026-10-20, L1).
     #[test]
-    fn short_xff_chain_falls_back_to_peer_instead_of_trusting_it() {
+    fn short_xff_chain_is_not_trusted() {
         let req = req_with_xff(Some("6.6.6.6"));
+        let ip = client_ip(&req, PEER, 2);
         assert_eq!(
-            client_ip(&req, PEER, 2),
-            PEER.ip(),
+            ip, UNATTRIBUTED_CLIENT,
             "a chain shorter than the trusted hop count must not be believed"
         );
+        assert_ne!(ip, "6.6.6.6".parse::<IpAddr>().unwrap());
     }
 
-    /// Malformed, empty, and garbage headers must degrade to the peer address
-    /// rather than panicking or producing a wildcard identity.
+    /// Malformed, empty, and garbage headers must not panic, must not be
+    /// believed, and must not land in the peer's (behind a proxy: the
+    /// proxy's) bucket: they share the one unattributed key. No header at
+    /// all is a direct client or the proxy's own request, keyed by the peer.
     #[test]
-    fn malformed_xff_headers_degrade_to_the_peer_address() {
+    fn malformed_xff_headers_key_the_unattributed_bucket() {
         for header in ["", "   ", ",,,", "not-an-ip", "999.999.999.999", ", ,"] {
             assert_eq!(
                 client_ip(&req_with_xff(Some(header)), PEER, 1),
-                PEER.ip(),
-                "malformed header {header:?} must fall back to the peer"
+                UNATTRIBUTED_CLIENT,
+                "malformed header {header:?} must key the unattributed bucket"
             );
         }
         assert_eq!(client_ip(&req_with_xff(None), PEER, 1), PEER.ip());
+        // The key survives rate-limit masking and is no peer's address.
+        assert_eq!(rate_limit_key(UNATTRIBUTED_CLIENT), UNATTRIBUTED_CLIENT);
+        assert_ne!(UNATTRIBUTED_CLIENT, PEER.ip());
+    }
+
+    /// Audit 2026-10-20 (L1): a byte that is not visible ASCII in the
+    /// client's OWN part of the chain made the whole header unreadable and
+    /// keyed the request by the peer — the proxy — so any client could move
+    /// its requests into the bucket the proxy's own traffic uses and drain
+    /// it. Only the entry at the client's position is read; whatever the
+    /// client put to its left is never parsed.
+    #[test]
+    fn a_non_ascii_client_entry_does_not_move_the_request_to_the_proxys_bucket() {
+        let lines: [&[u8]; 2] = [b"\xff\xfe junk \xc3\xa9", b"198.51.100.42"];
+        let mut b = axum::http::Request::builder().uri("/verify");
+        for line in lines {
+            b = b.header(
+                "x-forwarded-for",
+                HeaderValue::from_bytes(line).expect("obs-text is a valid header value"),
+            );
+        }
+        let req = b.body(axum::body::Body::empty()).unwrap();
+        assert_eq!(
+            client_ip(&req, PEER, 1),
+            "198.51.100.42".parse::<IpAddr>().unwrap(),
+            "the proxy-appended entry names the client whatever the client's own line holds"
+        );
+        // One line: the client's junk, then the proxy's append.
+        let req = axum::http::Request::builder()
+            .uri("/verify")
+            .header(
+                "x-forwarded-for",
+                HeaderValue::from_bytes(b"\xff\xff, 198.51.100.43").unwrap(),
+            )
+            .body(axum::body::Body::empty())
+            .unwrap();
+        assert_eq!(
+            client_ip(&req, PEER, 1),
+            "198.51.100.43".parse::<IpAddr>().unwrap()
+        );
+        // The entry AT the client's position is malformed: unattributed,
+        // never the proxy's address.
+        let req = axum::http::Request::builder()
+            .uri("/verify")
+            .header(
+                "x-forwarded-for",
+                HeaderValue::from_bytes(b"198.51.100.44, \xff\xff").unwrap(),
+            )
+            .body(axum::body::Body::empty())
+            .unwrap();
+        assert_eq!(client_ip(&req, PEER, 1), UNATTRIBUTED_CLIENT);
     }
 
     /// IPv6 entries (and the bracketed form proxies sometimes emit) must
@@ -4304,6 +4962,7 @@ mod tests {
             // behaviour under test. The shedding path has its own tests.
             inflight: Arc::new(tokio::sync::Semaphore::new(1024)),
             inflight_limit: 1024,
+            aux_inflight: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_AUXILIARY)),
             pinned_profile: None,
             allow_permissive_profiles: false,
         };
@@ -4331,14 +4990,21 @@ mod tests {
 
         let shed_metric = Arc::clone(&state.metrics.load_shed);
         let app = build_app(state, vec![]);
-
-        let mut req = axum::http::Request::builder()
-            .uri("/health")
-            .body(Body::empty())
-            .unwrap();
         let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
-        req.extensions_mut().insert(ConnectInfo(addr));
-        let resp = app.clone().oneshot(req).await.unwrap();
+        // A verification: the route the permit is capacity for. (This used
+        // `/health`, which no longer draws on the pool — audit 2026-10-20,
+        // L3; see `health_is_neither_shed_nor_rate_limited`.)
+        let verify = || {
+            let mut req = axum::http::Request::builder()
+                .method("POST")
+                .uri("/verify")
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap();
+            req.extensions_mut().insert(ConnectInfo(addr));
+            req
+        };
+        let resp = app.clone().oneshot(verify()).await.unwrap();
 
         assert_eq!(
             resp.status(),
@@ -4358,23 +5024,119 @@ mod tests {
         assert_eq!(
             shed_metric.load(std::sync::atomic::Ordering::Relaxed),
             1,
-            "shedding must be visible in /metrics — an invisible refusal is an outage nobody              can diagnose"
+            "shedding must be visible in /metrics — an invisible refusal is an outage nobody can diagnose"
         );
 
         // And the server recovers the moment a permit is returned: shedding is
         // backpressure, not a latch.
         drop(held);
-        let mut req = axum::http::Request::builder()
-            .uri("/health")
-            .body(Body::empty())
-            .unwrap();
-        req.extensions_mut().insert(ConnectInfo(addr));
-        let resp = app.oneshot(req).await.unwrap();
+        let resp = app.oneshot(verify()).await.unwrap();
         assert_eq!(
             resp.status(),
-            StatusCode::OK,
-            "the limit must be released when the request completes"
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "the limit must be released when the request completes (the body `{{}}` reaches the handler and is refused there)"
         );
+    }
+
+    /// Audit 2026-10-20 (L3): `/health` is documented as open for load
+    /// balancers, and it sat behind the rate limiter and the verification
+    /// pool. A saturated node answered its balancer 503 and was pulled while
+    /// it was merely busy; behind a trusted proxy every balancer probe keys
+    /// the proxy's bucket. It is exempt from both, and stays cheap.
+    #[tokio::test]
+    async fn health_is_neither_shed_nor_rate_limited() {
+        let (mut state, _dir) = test_state();
+        state.inflight = Arc::new(tokio::sync::Semaphore::new(1));
+        state.inflight_limit = 1;
+        let _held = Arc::clone(&state.inflight).try_acquire_owned().unwrap();
+        state.aux_inflight = Arc::new(tokio::sync::Semaphore::new(1));
+        let _aux_held = Arc::clone(&state.aux_inflight).try_acquire_owned().unwrap();
+        // A bucket of exactly one token that refills every ten seconds.
+        state.rate = RateLimiter::new(0.1);
+        let app = build_app(state, vec![]);
+        for i in 0..5 {
+            let (status, _) = get_text(&app, "/health").await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "/health #{i} was refused while the node was saturated and its caller over its rate"
+            );
+        }
+        // The control: the same caller on another route is limited.
+        let (first, _) = get_text(&app, "/manifests").await;
+        let (second, _) = get_text(&app, "/manifests").await;
+        assert_eq!(first, StatusCode::SERVICE_UNAVAILABLE, "aux pool is full");
+        assert_eq!(second, StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    /// Audit 2026-10-20 (M12): the dashboard's reads, `/manifests`,
+    /// `/metrics`, lifecycle reports and operator actions held VERIFICATION
+    /// permits while they waited on an archive-scan slot or the lifecycle
+    /// lock, so slow dashboard polls shed `/verify`. They draw on their own
+    /// pool: with every one of its slots held, a verification still runs,
+    /// and with every verification permit held, the dashboard still reads.
+    #[tokio::test]
+    async fn non_verification_routes_cannot_hold_verification_permits() {
+        use axum::body::Body;
+        use tower::ServiceExt;
+        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+        let verify = || {
+            let mut req = axum::http::Request::builder()
+                .method("POST")
+                .uri("/verify")
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap();
+            req.extensions_mut().insert(ConnectInfo(addr));
+            req
+        };
+
+        // Every non-verification slot held (32 slow dashboard polls).
+        let (mut state, _dir) = test_state();
+        state.aux_inflight = Arc::new(tokio::sync::Semaphore::new(2));
+        let _polls = Arc::clone(&state.aux_inflight)
+            .try_acquire_many_owned(2)
+            .unwrap();
+        let aux_shed = Arc::clone(&state.metrics.aux_load_shed);
+        let verify_shed = Arc::clone(&state.metrics.load_shed);
+        let app = build_app(state, vec![]);
+        let resp = app.clone().oneshot(verify()).await.unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "/verify must reach its handler while the dashboard pool is full"
+        );
+        let (status, body) = get_json(&app, "/api/policy-violations").await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body["error_type"], "LoadShed");
+        assert_eq!(aux_shed.load(std::sync::atomic::Ordering::Relaxed), 1);
+        assert_eq!(
+            verify_shed.load(std::sync::atomic::Ordering::Relaxed),
+            0,
+            "a dashboard shed is not a verification shed"
+        );
+
+        // Every verification permit held: the dashboard still answers.
+        let (mut state, _dir) = test_state();
+        state.inflight = Arc::new(tokio::sync::Semaphore::new(1));
+        state.inflight_limit = 1;
+        let _busy = Arc::clone(&state.inflight).try_acquire_owned().unwrap();
+        let app = build_app(state, vec![]);
+        for path in [
+            "/api/graph",
+            "/api/policy-violations",
+            "/api/registry",
+            "/metrics",
+        ] {
+            let (status, _) = get_text(&app, path).await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "{path} while verifications are saturated"
+            );
+        }
+        let resp = app.oneshot(verify()).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     /// Shedding is distinct from rate limiting, and /metrics has to keep them
@@ -4390,7 +5152,7 @@ mod tests {
         let (_, body) = get_text(&app, "/metrics").await;
         assert!(
             body.contains("graphite_load_shed_total"),
-            "the shed counter must be exported — an invisible refusal is an outage nobody can              diagnose: {body}"
+            "the shed counter must be exported — an invisible refusal is an outage nobody can diagnose: {body}"
         );
         assert!(
             body.contains("graphite_rate_limited_total"),
@@ -5195,14 +5957,21 @@ mod tests {
     async fn dashboard_registry_returns_records_and_reviewers() {
         let (state, dir) = test_state();
         let mut engine = crate::manifest_registry::ManifestRegistryEngine::new();
-        engine.register_reviewer("reviewerPubkey1", 1000).unwrap();
+        // A real ed25519 key: the registry refuses anything else (MR-6).
+        let reviewer = bs58::encode(
+            ed25519_dalek::SigningKey::from_bytes(&[1u8; 32])
+                .verifying_key()
+                .to_bytes(),
+        )
+        .into_string();
+        engine.register_reviewer(&reviewer, 1000).unwrap();
         let mut state = state;
         state.registry_engine = Arc::new(engine);
         let app = build_app(state, vec![]);
         let (status, json) = get_json(&app, "/api/registry").await;
         assert_eq!(status, axum::http::StatusCode::OK);
         assert_eq!(json["record_count"], 0, "no submissions yet (read-only)");
-        assert_eq!(json["reviewers"][0]["pubkey"], "reviewerPubkey1");
+        assert_eq!(json["reviewers"][0]["pubkey"], reviewer.as_str());
         assert_eq!(json["reviewers"][0]["reputation_score"], 1000);
         let _ = dir;
     }
@@ -5415,7 +6184,7 @@ mod tests {
             assert_eq!(
                 classified.status_code(),
                 StatusCode::BAD_REQUEST,
-                "{label}: malformed caller input classified as {} — an attacker can                  manufacture that status for free. error: {err}",
+                "{label}: malformed caller input classified as {} — an attacker can manufacture that status for free. error: {err}",
                 classified.status_code()
             );
         }
@@ -5828,10 +6597,19 @@ mod tests {
             .await;
             assert_eq!(status, axum::http::StatusCode::BAD_REQUEST, "{bad}: {body}");
         }
-        let after = std::fs::metadata(audit_path(&dir))
-            .map(|m| m.len())
-            .unwrap_or(0);
-        assert_eq!(after, before, "a refused event writes nothing");
+        // A refused event records no lifecycle row. Since the 2026-10-20
+        // audit each refusal leaves a bounded error row, as `/verify`'s do —
+        // and none of them carries the value: the trail cannot be filled
+        // through this route.
+        let contents = std::fs::read_to_string(audit_path(&dir)).unwrap_or_default();
+        let new_rows: Vec<&str> = contents[before as usize..].lines().collect();
+        assert_eq!(new_rows.len(), 8, "one error row per refusal");
+        for row in new_rows {
+            assert!(row.len() < 1024, "an error row of {} bytes", row.len());
+            assert!(!row.contains("xxxx"), "the row echoes the value: {row}");
+            assert!(row.contains("POST /audit/event"), "{row}");
+            assert!(!row.contains("\"event_type\":\"signing\""), "{row}");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -6161,6 +6939,17 @@ mod tests {
                                 "/admin/quarantine",
                                 Some(&operator_key),
                                 serde_json::json!({"program_id": SYSTEM, "reason": "r-p14"}),
+                            )
+                            .await
+                        }
+                        "/verify/execution" => {
+                            // No RPC is attached, so the chain cannot answer:
+                            // the row is a check, never a confirmation.
+                            post_json(
+                                &app,
+                                "/verify/execution",
+                                Some(VERIFY_TEST_KEY),
+                                serde_json::json!({"signature": signature}),
                             )
                             .await
                         }
@@ -6630,6 +7419,50 @@ mod tests {
         );
         drop(first);
         let _again = lock_data_dir(&dir).expect("free once released");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Audit 2026-10-20 (M4): an L8 check that did not see the transaction
+    /// included writes an `execution_check` row, never a Graphite-attested
+    /// `confirmation`, so the caller's truthful `submission` that follows is
+    /// not reported as arriving after a confirmation.
+    #[tokio::test]
+    async fn an_l8_check_that_saw_nothing_is_not_a_confirmation() {
+        let (state, dir) = test_state();
+        let app = build_app(state, vec![]);
+        let signature = sig(5);
+        let (s, body) = post_json(
+            &app,
+            "/verify/execution",
+            None,
+            serde_json::json!({ "signature": signature, "content_hash": "48c65c638aceb5de" }),
+        )
+        .await;
+        assert_eq!(s, axum::http::StatusCode::OK, "{body}");
+        let contents = std::fs::read_to_string(audit_path(&dir)).unwrap();
+        let row: serde_json::Value =
+            serde_json::from_str(contents.lines().last().unwrap()).unwrap();
+        assert_eq!(row["event_type"], "execution_check", "{row}");
+        assert_eq!(row["observed_by_graphite"], true);
+        let (s, body) = post_json(
+            &app,
+            "/audit/event",
+            None,
+            serde_json::json!({
+                "event_type": "submission",
+                "content_hash": "48c65c638aceb5de",
+                "transaction_signature": signature,
+            }),
+        )
+        .await;
+        assert_eq!(s, axum::http::StatusCode::OK, "{body}");
+        let anomalies = body["sequence_anomalies"].as_array().unwrap();
+        assert!(
+            !anomalies
+                .iter()
+                .any(|a| a.as_str().unwrap_or_default().contains("out of order")),
+            "a check that saw nothing ordered the caller's report: {body}"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -7167,6 +8000,498 @@ Connection: close
             "{contents}"
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ── Audit 2026-10-20: server findings ───────────────────────────────────
+
+    /// L2: `GRAPHITE_CORS_ORIGINS=*` reached tower-http's origin list, which
+    /// panics on a wildcard, so the server died at startup with a backtrace.
+    /// It is a configuration error now, and so is an entry that is not an
+    /// origin (it was dropped or kept unmatchable, silently).
+    #[test]
+    fn cors_wildcards_and_non_origins_are_configuration_errors() {
+        assert_eq!(cors_origins_from(None).unwrap(), Vec::<HeaderValue>::new());
+        assert!(cors_origins_from(Some("  ")).unwrap().is_empty());
+        let ok =
+            cors_origins_from(Some("https://dash.example.com, http://localhost:5173,")).unwrap();
+        assert_eq!(ok.len(), 2);
+        for bad in [
+            "*",
+            "https://dash.example.com,*",
+            "https://dash.example.com/",
+            "https://dash.example.com/path",
+            "dash.example.com",
+            "null",
+            "ftp://dash.example.com",
+            "https://",
+            "https://*.example.com",
+        ] {
+            let e = cors_origins_from(Some(bad)).unwrap_err();
+            assert!(e.contains("REFUSING TO START"), "{bad}: {e}");
+        }
+        // What the refused value would have done: building the layer with a
+        // wildcard in the list panics. The parser keeps it from getting there.
+        let panicked = std::panic::catch_unwind(|| {
+            tower_http::cors::CorsLayer::new().allow_origin(vec![HeaderValue::from_static("*")])
+        })
+        .is_err();
+        assert!(
+            panicked,
+            "precondition: tower-http panics on a listed wildcard"
+        );
+    }
+
+    /// Audit 2026-10-20: the numeric and boolean settings fell back to their
+    /// defaults on a value that did not parse (`GRAPHITE_TRUST_PROXY=yes` was
+    /// 0, `GRAPHITE_MAX_CONCURRENT=3O` was 32, `GRAPHITE_ALLOW_PERMISSIVE_PROFILES=" 1"`
+    /// was off). Each refuses to start now, naming the variable.
+    #[test]
+    fn settings_that_do_not_parse_refuse_to_start() {
+        assert_eq!(trust_proxy_hops_from(None), Ok(0));
+        assert_eq!(trust_proxy_hops_from(Some("")), Ok(0));
+        assert_eq!(trust_proxy_hops_from(Some(" TRUE ")), Ok(1));
+        assert_eq!(trust_proxy_hops_from(Some("false")), Ok(0));
+        assert_eq!(trust_proxy_hops_from(Some(" 2 ")), Ok(2));
+        for bad in ["yes", "-1", "256", "1.5", "on"] {
+            assert!(trust_proxy_hops_from(Some(bad)).is_err(), "{bad}");
+        }
+
+        let none = |_: &str| None;
+        let d = Limits::from_lookup(none, 0).unwrap();
+        assert_eq!(d.inflight_limit, DEFAULT_MAX_CONCURRENT_VERIFICATIONS);
+        assert_eq!(d.max_connections, DEFAULT_MAX_CONNECTIONS);
+        assert_eq!(d.max_per_peer, DEFAULT_MAX_CONNECTIONS_PER_PEER);
+        assert_eq!(d.connection_lifetime, DEFAULT_CONNECTION_LIFETIME);
+        assert_eq!(d.rotate_bytes, crate::durable::DEFAULT_ROTATE_BYTES);
+        assert_eq!(d.max_archives, 0);
+        assert_eq!(
+            Limits::from_lookup(none, 1).unwrap().max_per_peer,
+            0,
+            "behind a proxy the default is no per-peer cap"
+        );
+        let with = |name: &'static str, value: &'static str| {
+            move |k: &str| (k == name).then(|| value.to_string())
+        };
+        assert_eq!(
+            Limits::from_lookup(with("GRAPHITE_MAX_CONNECTIONS_PER_IP", "0"), 0)
+                .unwrap()
+                .max_per_peer,
+            0
+        );
+        assert_eq!(
+            Limits::from_lookup(with("GRAPHITE_MAX_CONCURRENT", " 8 "), 0)
+                .unwrap()
+                .inflight_limit,
+            8
+        );
+        for (name, value) in [
+            ("GRAPHITE_AUDIT_ROTATE_BYTES", "64MB"),
+            ("GRAPHITE_AUDIT_MAX_ARCHIVES", "-1"),
+            ("GRAPHITE_MAX_CONCURRENT", "3O"),
+            ("GRAPHITE_MAX_CONCURRENT", "0"),
+            ("GRAPHITE_MAX_CONNECTIONS", "0"),
+            ("GRAPHITE_MAX_CONNECTIONS", "lots"),
+            ("GRAPHITE_MAX_CONNECTIONS_PER_IP", "ten"),
+            ("GRAPHITE_CONNECTION_LIFETIME_SECS", "0"),
+            ("GRAPHITE_CONNECTION_LIFETIME_SECS", "2m"),
+        ] {
+            let e = Limits::from_lookup(with(name, value), 0).unwrap_err();
+            assert!(e.contains(name), "{name}={value}: {e}");
+        }
+
+        let policy = |name: &'static str, value: &'static str| {
+            OperatorPolicy::from_lookup(move |k: &str| (k == name).then(|| value.to_string()))
+        };
+        assert!(
+            policy("GRAPHITE_ALLOW_PERMISSIVE_PROFILES", " 1")
+                .unwrap()
+                .allow_permissive_profiles,
+            "trimmed, as every other switch is"
+        );
+        for name in [
+            "GRAPHITE_ALLOW_PERMISSIVE_PROFILES",
+            "GRAPHITE_ALLOW_DURABLE_NONCE",
+            "GRAPHITE_QUARANTINE_ON_UPGRADE",
+            "GRAPHITE_LEARN_FROM_POLICY_REFUSALS",
+        ] {
+            assert!(policy(name, "yes").is_err(), "{name}=yes");
+        }
+        assert!(policy("GRAPHITE_WALLET_PROFILE", "treasry").is_err());
+    }
+
+    /// The `Host` names a keyless instance answers to.
+    #[test]
+    fn loopback_hosts_are_recognised() {
+        for ok in [
+            "127.0.0.1",
+            "127.0.0.1:7331",
+            "127.1.2.3:80",
+            "localhost",
+            "LOCALHOST:7331",
+            "app.localhost:5173",
+            "localhost.",
+            "[::1]",
+            "[::1]:7331",
+        ] {
+            assert!(is_loopback_host(ok), "{ok}");
+        }
+        for bad in [
+            "attacker.example",
+            "attacker.example:7331",
+            "127.0.0.1.attacker.example",
+            "localhost.attacker.example",
+            "10.0.0.1",
+            "[::2]:7331",
+            "[::1]x",
+            "0.0.0.0",
+            "localhost:http",
+            "",
+        ] {
+            assert!(!is_loopback_host(bad), "{bad}");
+        }
+    }
+
+    /// L8: a keyless (dev-mode) instance is bound to loopback, but a web page
+    /// in the operator's browser reaches it through DNS rebinding with its
+    /// own name in `Host`. It is refused; loopback names and a request with
+    /// no `Host` are not. With a key configured, the key is the control.
+    #[tokio::test]
+    async fn dev_mode_refuses_requests_addressed_to_another_host() {
+        use axum::body::Body;
+        use tower::ServiceExt;
+        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+        let get = |path: &str, host: Option<&str>, key: Option<&str>| {
+            let mut b = axum::http::Request::builder().uri(path);
+            if let Some(h) = host {
+                b = b.header(header::HOST, h);
+            }
+            if let Some(k) = key {
+                b = b.header(header::AUTHORIZATION, format!("Bearer {k}"));
+            }
+            let mut req = b.body(Body::empty()).unwrap();
+            req.extensions_mut().insert(ConnectInfo(addr));
+            req
+        };
+        let (state, _dir) = test_state();
+        assert!(state.api_key.is_none(), "precondition: keyless");
+        let app = build_app(state, vec![]);
+        for path in ["/health", "/api/graph", "/manifests"] {
+            let resp = app
+                .clone()
+                .oneshot(get(path, Some("attacker.example:7331"), None))
+                .await
+                .unwrap();
+            assert_eq!(
+                resp.status(),
+                StatusCode::MISDIRECTED_REQUEST,
+                "{path} answered a rebound name"
+            );
+        }
+        for host in [
+            Some("127.0.0.1:7331"),
+            Some("localhost:7331"),
+            Some("[::1]:7331"),
+            None,
+        ] {
+            let resp = app
+                .clone()
+                .oneshot(get("/api/graph", host, None))
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::OK, "{host:?}");
+        }
+
+        let (mut state, _dir) = test_state();
+        state.api_key = Some(Arc::new(VERIFY_TEST_KEY.to_string()));
+        let app = build_app(state, vec![]);
+        let resp = app
+            .oneshot(get(
+                "/api/graph",
+                Some("graphite.internal:7331"),
+                Some(VERIFY_TEST_KEY),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::OK,
+            "a keyed instance serves any name"
+        );
+    }
+
+    /// L5: the 422 text quotes the offending input; it was logged and
+    /// returned whole, and counted nowhere. It is bounded like the audit
+    /// copy and counted as a failed verification request.
+    #[tokio::test]
+    async fn a_422_is_bounded_and_counted() {
+        let (state, _dir) = test_state();
+        let requests = Arc::clone(&state.metrics.verify_requests);
+        let errors = Arc::clone(&state.metrics.verify_errors);
+        let app = build_app(state, vec![]);
+        let field = "x".repeat(20_000);
+        let (status, body) =
+            post_json(&app, "/verify", None, serde_json::json!({ field: 1 })).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        let text = body["error"].as_str().unwrap();
+        assert!(
+            text.chars().count() <= MAX_REJECTION_TEXT_CHARS + 64,
+            "{} chars returned",
+            text.chars().count()
+        );
+        assert!(text.contains("[truncated,"), "{text}");
+        assert_eq!(requests.load(std::sync::atomic::Ordering::Relaxed), 1);
+        assert_eq!(errors.load(std::sync::atomic::Ordering::Relaxed), 1);
+        assert_eq!(bounded_rejection_text("short"), "short");
+    }
+
+    /// `/verify/execution`, `/audit/event` and `/admin/quarantine` refused
+    /// malformed requests with no counter and no audit row; probing them left
+    /// no trace where `/verify`'s probes land. Each refusal is counted and on
+    /// the trail now, naming its route.
+    #[tokio::test]
+    async fn malformed_requests_to_the_other_routes_are_counted_and_audited() {
+        let (state, _dir, admin) = keyed_state();
+        let log = state.audit.clone().unwrap();
+        let rejections = Arc::clone(&state.metrics.request_rejections);
+        let app = build_app(state, vec![]);
+
+        let (s, _) = post_json(
+            &app,
+            "/verify/execution",
+            Some(VERIFY_TEST_KEY),
+            serde_json::json!({ "signature": "not-a-signature" }),
+        )
+        .await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+        let (s, body) = post_json(
+            &app,
+            "/audit/event",
+            Some(VERIFY_TEST_KEY),
+            serde_json::json!({ "event_type": "signing", "content_hash": "x".repeat(5000) }),
+        )
+        .await;
+        assert_eq!(s, StatusCode::BAD_REQUEST, "{body}");
+        let (s, body) = post_json(
+            &app,
+            "/audit/event",
+            Some(VERIFY_TEST_KEY),
+            serde_json::json!({ "event_type": "not-an-event", "y".repeat(5000): 1 }),
+        )
+        .await;
+        assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(
+            body["error"].as_str().unwrap().chars().count() <= MAX_REJECTION_TEXT_CHARS + 64,
+            "the 422 text is bounded on every route"
+        );
+        let (s, _) = post_json(
+            &app,
+            "/admin/quarantine",
+            Some(&admin),
+            serde_json::json!({ "program_id": "not-a-program", "reason": "r" }),
+        )
+        .await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+        // Not a malformed request: refused for its credential, not counted here.
+        let (s, _) = post_json(
+            &app,
+            "/admin/quarantine",
+            Some(VERIFY_TEST_KEY),
+            serde_json::json!({ "program_id": SYSTEM, "reason": "r" }),
+        )
+        .await;
+        assert_eq!(s, StatusCode::UNAUTHORIZED);
+
+        assert_eq!(rejections.load(std::sync::atomic::Ordering::Relaxed), 4);
+        let (_, errors, _, total_errors) = log.read_tail_filtered(10, AuditSelector::All);
+        assert_eq!(total_errors, 4, "{errors:?}");
+        let routes: Vec<&str> = errors.iter().map(|e| e.instruction_name.as_str()).collect();
+        assert_eq!(
+            routes,
+            [
+                "POST /verify/execution",
+                "POST /audit/event",
+                "POST /audit/event",
+                "POST /admin/quarantine"
+            ]
+        );
+        assert_eq!(errors[2].status, 422);
+        assert_eq!(errors[2].error_type, "JsonRejection");
+        assert_eq!(errors[3].program_id, "not-a-program");
+    }
+
+    /// L7: `count` added the length of the CAPPED error list, so past
+    /// `VIOLATIONS_CAP` error records it stopped growing.
+    #[tokio::test]
+    async fn policy_violations_count_is_the_whole_trail_past_the_cap() {
+        let (state, _dir) = test_state();
+        let log = state.audit.as_ref().unwrap();
+        for i in 0..VIOLATIONS_CAP + 7 {
+            assert!(log.append_error(&crate::durable::AuditErrorRecord {
+                timestamp: crate::durable::now_utc_rfc3339(),
+                program_id: format!("probe-{i}"),
+                instruction_name: "n/a".to_string(),
+                error: "bad".to_string(),
+                error_type: "bad_input".to_string(),
+                status: 400,
+            }));
+        }
+        let app = build_app(state, vec![]);
+        let (status, json) = get_json(&app, "/api/policy-violations").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            json["error_violations"].as_array().unwrap().len(),
+            VIOLATIONS_CAP
+        );
+        assert_eq!(json["count"], VIOLATIONS_CAP + 7);
+        assert_eq!(json["error_count"], VIOLATIONS_CAP + 7);
+        assert_eq!(json["violation_count"], 0);
+    }
+
+    /// Both halves' true totals are reported apart, and `count` is their sum.
+    #[tokio::test]
+    async fn policy_violations_report_each_total() {
+        let (state, _dir) = test_state();
+        let log = state.audit.as_ref().unwrap();
+        for i in 0..3 {
+            let mut r = verification_row(&format!("{i:016x}"), false);
+            r.audit_trail_id = format!("gr-v{i}");
+            assert!(log.append(&r));
+        }
+        assert!(log.append(&verification_row("aaaaaaaaaaaaaaaa", true)));
+        assert!(log.append_error(&crate::durable::AuditErrorRecord {
+            timestamp: crate::durable::now_utc_rfc3339(),
+            program_id: "probe".to_string(),
+            instruction_name: "n/a".to_string(),
+            error: "bad".to_string(),
+            error_type: "bad_input".to_string(),
+            status: 400,
+        }));
+        let app = build_app(state, vec![]);
+        let (status, json) = get_json(&app, "/api/policy-violations").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["violation_count"], 3, "{json}");
+        assert_eq!(json["error_count"], 1, "{json}");
+        assert_eq!(json["count"], 4, "{json}");
+    }
+
+    /// `/api/protocols/top` returned a fixed 5 rows, so the dashboard could
+    /// not show any other program's verification count. `?limit=` takes up
+    /// to 500; the default is unchanged; `program_count` is the whole set.
+    #[tokio::test]
+    async fn top_protocols_takes_a_bounded_limit() {
+        let (state, _dir) = test_state();
+        let app = build_app(state, vec![]);
+        let (status, json) = get_json(&app, "/api/protocols/top").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["top"].as_array().unwrap().len(), DEFAULT_TOP_PROTOCOLS);
+        let total = json["program_count"].as_u64().unwrap() as usize;
+        assert!(
+            total > 20,
+            "precondition: more programs than the default ({total})"
+        );
+
+        let (status, json) = get_json(&app, "/api/protocols/top?limit=20").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["top"].as_array().unwrap().len(), 20);
+        let (_, json) = get_json(&app, "/api/protocols/top?limit=500").await;
+        assert_eq!(
+            json["top"].as_array().unwrap().len(),
+            total.min(MAX_TOP_PROTOCOLS)
+        );
+        for bad in ["limit=0", "limit=501", "limit=abc", "limit="] {
+            let (status, _) = get_json(&app, &format!("/api/protocols/top?{bad}")).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
+        }
+        assert_eq!(
+            top_protocols_limit(Some("other=1")),
+            Ok(DEFAULT_TOP_PROTOCOLS)
+        );
+    }
+
+    /// `/health` answers without a key, and listed the program ids of frozen
+    /// baselines. It carries the count; the list is behind the key.
+    #[tokio::test]
+    async fn frozen_baselines_are_counted_on_health_and_listed_behind_the_key() {
+        let (state, _dir, _admin) = keyed_state();
+        let app = build_app(state, vec![]);
+        let (status, health) = get_json(&app, "/health").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(health["frozen_baseline_count"], 0);
+        assert!(health.get("frozen_baselines").is_none(), "{health}");
+        let (status, _) = get_json(&app, "/api/frozen-baselines").await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+        use axum::body::Body;
+        use tower::ServiceExt;
+        let mut req = axum::http::Request::builder()
+            .uri("/api/frozen-baselines")
+            .header(header::AUTHORIZATION, format!("Bearer {VERIFY_TEST_KEY}"))
+            .body(Body::empty())
+            .unwrap();
+        req.extensions_mut()
+            .insert(ConnectInfo("127.0.0.1:9999".parse::<SocketAddr>().unwrap()));
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body: serde_json::Value = serde_json::from_slice(
+            &axum::body::to_bytes(resp.into_body(), 1 << 20)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(body["count"], 0);
+        assert!(body["frozen_baselines"].as_array().unwrap().is_empty());
+    }
+
+    /// Two quarantines of one program at once each read "not quarantined"
+    /// and each appended a record. The handler takes them one at a time.
+    #[tokio::test]
+    async fn concurrent_quarantines_of_one_program_append_one_record() {
+        let (state, _dir, admin) = keyed_state();
+        let core = state.core.clone();
+        let app = build_app(state, vec![]);
+        let body = serde_json::json!({
+            "program_id": SYSTEM,
+            "reason": QUARANTINE_RACE_WINDOW_REASON,
+        });
+        let (a, b) = tokio::join!(
+            post_json(&app, "/admin/quarantine", Some(&admin), body.clone()),
+            post_json(&app, "/admin/quarantine", Some(&admin), body.clone()),
+        );
+        assert_eq!(a.0, StatusCode::OK, "{}", a.1);
+        assert_eq!(b.0, StatusCode::OK, "{}", b.1);
+        let quarantines = core
+            .behavior_history(SYSTEM)
+            .iter()
+            .filter(|r| r.quarantined)
+            .count();
+        assert_eq!(quarantines, 1, "two quarantine records for one action");
+        assert!(
+            a.1["already_quarantined"] == true || b.1["already_quarantined"] == true,
+            "{} / {}",
+            a.1,
+            b.1
+        );
+    }
+
+    /// The L8 row stored the caller's `content_hash` untrimmed, though it was
+    /// validated and looked up trimmed, so the row never matched the hash.
+    #[tokio::test]
+    async fn the_l8_row_carries_the_trimmed_content_hash() {
+        let (state, dir) = test_state();
+        let app = build_app(state, vec![]);
+        let signature = bs58::encode([0x22u8; 64]).into_string();
+        let (s, body) = post_json(
+            &app,
+            "/verify/execution",
+            None,
+            serde_json::json!({ "signature": signature, "content_hash": "  bbbbbbbbbbbbbbbb  " }),
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK, "{body}");
+        let contents = std::fs::read_to_string(audit_path(&dir)).unwrap();
+        let row: serde_json::Value =
+            serde_json::from_str(contents.lines().last().unwrap()).unwrap();
+        assert_eq!(row["content_hash"], "bbbbbbbbbbbbbbbb", "{row}");
     }
 }
 

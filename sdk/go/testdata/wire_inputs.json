@@ -1,0 +1,75 @@
+{
+  "zero_value": {
+    "proposed_intent": {
+      "intent_type": "",
+      "raw_natural_language": "",
+      "confidence_of_parse": 0
+    },
+    "program_id": "",
+    "protocol_version": "",
+    "instruction_discriminator": "",
+    "account_addresses": [],
+    "behavior_evidence": {
+      "has_signed_manifest": false,
+      "community_verified_count": 0,
+      "battle_tested_tx_count": 0,
+      "simulation_match_count": 0
+    },
+    "compute_units": 0,
+    "account_writes": 0,
+    "cpi_hops": 0
+  },
+  "custom": {
+    "proposed_intent": {
+      "intent_type": "transfer",
+      "raw_natural_language": "send SOL",
+      "confidence_of_parse": 0.95
+    },
+    "program_id": "11111111111111111111111111111111",
+    "protocol_version": "1.0.0",
+    "instruction_discriminator": "02000000",
+    "account_addresses": [
+      "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+      "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"
+    ],
+    "wallet_profile": {
+      "Custom": {
+        "min_confidence": 0.7,
+        "min_trust_tier": "OfficialManifest"
+      }
+    },
+    "behavior_evidence": {
+      "has_signed_manifest": false,
+      "community_verified_count": 0,
+      "battle_tested_tx_count": 0,
+      "simulation_match_count": 0
+    },
+    "compute_units": 150,
+    "account_writes": 2,
+    "cpi_hops": 0
+  },
+  "preset": {
+    "proposed_intent": {
+      "intent_type": "transfer",
+      "raw_natural_language": "send SOL",
+      "confidence_of_parse": 0.95
+    },
+    "program_id": "11111111111111111111111111111111",
+    "protocol_version": "1.0.0",
+    "instruction_discriminator": "02000000",
+    "account_addresses": [
+      "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+      "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"
+    ],
+    "wallet_profile": "Gaming",
+    "behavior_evidence": {
+      "has_signed_manifest": false,
+      "community_verified_count": 0,
+      "battle_tested_tx_count": 0,
+      "simulation_match_count": 0
+    },
+    "compute_units": 150,
+    "account_writes": 2,
+    "cpi_hops": 0
+  }
+}

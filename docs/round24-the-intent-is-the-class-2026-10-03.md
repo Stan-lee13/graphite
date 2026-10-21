@@ -1,5 +1,9 @@
 # Round 24 — the intent is the class
 
+> **Historical record.** This report describes the codebase at commit `eb17aa5`
+> on 2026-10-01 to 2026-10-03, and the changes made on top of it. For the current state of
+> Graphite see [`CURRENT.md`](CURRENT.md).
+
 **Date:** 2026-10-01 to 2026-10-03 · **Base:** `eb17aa5` (R-P8 complete) · **Scope:** the external
 review's R2 and R3, and its W11–W25, each re-verified here before anything changed; two more
 agent-framework integrations; eight more manifests; four days of executed mainnet re-measured

@@ -14,18 +14,34 @@
  * only where it can be checked against the user's own text, character for
  * character.
  *
- *   - The destination must be the ONE address-shaped token in the input. Not
- *     a substring (a prefix of a longer string is a different address), and
- *     not one of two (an AI that picks the other address out of "send to A,
- *     not B" would pass a presence check).
- *   - The amount must be the ONE numeric literal in the input, and the AI's
- *     amount string must equal it exactly. It is converted to lamports by
- *     decimal arithmetic on the string, never through a float.
- *   - The token must be SOL, and "SOL" must be a word in the input. A System
- *     transfer moves lamports; "send 5 USDC" labelled as a transfer used to
- *     move 5 SOL.
+ *   - The destination must be the address the request's grammar places after
+ *     "to", exactly. Not a substring (a prefix of a longer string is a
+ *     different address), and there is no second address for an AI to pick
+ *     ("send to A, not B" is not the accepted form).
+ *   - The amount must be the number the grammar places after the verb, and
+ *     the AI's amount string must equal it exactly. It is converted to
+ *     lamports by decimal arithmetic on the string, never through a float.
+ *   - The token must be SOL, and "SOL" must be the word after the amount. A
+ *     System transfer moves lamports; "send 5 USDC" labelled as a transfer
+ *     used to move 5 SOL.
  *   - The AI layer's echoed `raw_natural_language` must be exactly what was
  *     sent (`assertEcho`), so a response to some other request is refused.
+ *
+ * Round 29 (audit 2026-10-20, H3 + M5): the checks above established WHAT a
+ * request names, never that it asks for it, in which direction, or in which
+ * unit. "Receive 5 SOL from A", "A owes me 5 SOL", "What would happen if I
+ * sent 5 SOL to A?", "Tomorrow, send …", "Hold off on sending …" and "Do n0t
+ * send …" each named one address, one number and SOL, and each was built as
+ * a transfer of 5 SOL TO A; "5000 lamports of SOL" became 5,000 SOL, "$20 of
+ * SOL" 20 SOL, "-5 SOL" 5 SOL, and "5 mSOL" 5 native SOL. Recognising each
+ * bad phrasing is a list that is never finished, so the rule is now POSITIVE:
+ * a transfer is built only from a request that is, as a whole, the imperative
+ * `[please] (send|transfer|pay) <amount> SOL to <address>` with an ASCII
+ * decimal amount of at most 9 fraction digits and nothing else but a full
+ * stop or an exclamation mark (`TRANSFER_GRAMMAR`). Everything else — a
+ * question, a condition, a deferral, a unit, a currency, a sign, a non-ASCII
+ * digit, any extra word — is refused, with the accepted form in the message.
+ * The negation check stays as defence in depth.
  *
  * Ambiguity refuses. The user can always rephrase; a transfer to the wrong
  * address cannot be taken back.
@@ -49,13 +65,10 @@ const TRAILING_PUNCTUATION = /[.,;:!?)\]"'`]+$/;
  * refused).
  */
 const LEADING_QUOTING = /^[(\["'`]+/;
-/**
- * A number standing on its own: not glued to letters or digits on either
- * side (so the digits inside an address never count), with an optional
- * fraction. A trailing sentence full stop is allowed; a trailing ".5" is part
- * of the number.
- */
-const NUMERIC_LITERAL = /(?<![0-9A-Za-z.])\d+(?:\.\d+)?(?![0-9A-Za-z]|\.\d)/g;
+// Round 29 (H3): the "exactly one number in the text" literal that stood here
+// is gone. The positive grammars (`TRANSFER_GRAMMAR`, `SPEND_FIRST`,
+// `BUY_WITH`) name where each number may stand, so counting them anywhere in
+// the text no longer decides anything.
 
 /**
  * A word that negates, cancels or withholds the request (external review,
@@ -66,8 +79,10 @@ const NUMERIC_LITERAL = /(?<![0-9A-Za-z.])\d+(?:\.\d+)?(?![0-9A-Za-z]|\.\d)/g;
  * 1 SOL to A, not B" already refused for its two addresses); guessing which
  * half of a negated sentence the user meant costs funds.
  */
+// Round 29 (H3): "refrain" and "hold off" joined the list. The positive
+// grammars below refuse them anyway; this keeps the message specific.
 const NEGATION =
-  /(?<![0-9A-Za-z])(?:not|no|never|don'?t|dont|do\s+not|won'?t|shouldn'?t|mustn'?t|cancel(?:s|led|ling)?|stop|abort|undo|instead)(?![0-9A-Za-z])|n['\u2019]t(?![0-9A-Za-z])/i;
+  /(?<![0-9A-Za-z])(?:not|no|never|don'?t|dont|do\s+not|won'?t|shouldn'?t|mustn'?t|cancel(?:s|led|ling)?|stop|abort|undo|instead|refrain(?:s|ed|ing)?|hold(?:ing)?\s+off)(?![0-9A-Za-z])|n['\u2019]t(?![0-9A-Za-z])/i;
 
 /** Refuse a request that negates, cancels or withholds what it names. */
 export function assertAffirmative(input: string): void {
@@ -165,6 +180,49 @@ export function solLiteralToLamports(text: string): bigint {
   return lamports;
 }
 
+/** The one form a transfer request may take (Round 29, H3 + M5), for messages. */
+export const TRANSFER_FORM = "[please] send|transfer|pay <amount> SOL to <address>";
+
+/**
+ * The whole request, as an imperative transfer of SOL to one address
+ * (Round 29, H3 + M5). Anchored at both ends, so a word before the verb
+ * ("Tomorrow, send …", "What would happen if I sent …") or after the address
+ * ("… if it rains") is not this form. The amount is ASCII digits with at most
+ * nine fraction digits (a lamport is 10^-9 SOL): no sign, no currency symbol,
+ * no other unit and no full-width digit can be part of it. The token is the
+ * word SOL and nothing that merely contains it ("mSOL", "jitoSOL"). The
+ * address may be quoted ("(…)", "\"…\"", "`…`") and may be followed by a full
+ * stop or an exclamation mark; a question mark is a question, and is refused.
+ */
+const TRANSFER_GRAMMAR = new RegExp(
+  "^\\s*(?:please,?\\s+)?(?:send|transfer|pay)\\s+([0-9]+(?:\\.[0-9]{1,9})?)\\s+SOL\\s+to\\s+" +
+    "[(\\[\"'`]?([1-9A-HJ-NP-Za-km-z]{32,44})(?:[)\\]\"'`]?[.!]?|[.!][)\\]\"'`])\\s*$",
+  "i",
+);
+
+/**
+ * Why a request is not the accepted form, for the refusal message only. The
+ * refusal does not depend on this: anything the grammar does not match is
+ * refused whatever this says.
+ */
+function whyNotTheForm(input: string): string {
+  if (/[^\x00-\x7f]/.test(input)) return "it contains non-ASCII characters (a full-width digit is not a digit here)";
+  if (/\?/.test(input)) return "it is a question";
+  if (/(?<![0-9A-Za-z])(?:if|when|whenever|unless|once|after|before|until)(?![0-9A-Za-z])/i.test(input)) {
+    return "it is conditional";
+  }
+  if (/(?<![0-9A-Za-z])(?:tomorrow|tonight|later|next|soon|schedule[ds]?|every|daily|weekly)(?![0-9A-Za-z])/i.test(input)) {
+    return "it defers or schedules the transfer";
+  }
+  if (/(?<![0-9A-Za-z])(?:lamports?|usd|usdc|dollars?|m?sol\w+|[a-z]+sol)(?![0-9A-Za-z])|[$€£¥]|[-+]\s*[0-9]/i.test(input)) {
+    return "it states the amount in another unit, currency or with a sign";
+  }
+  if (/(?<![0-9A-Za-z])(?:receive|from|owes?|request|refund)(?![0-9A-Za-z])/i.test(input)) {
+    return "it does not ask to send FROM this wallet TO the address";
+  }
+  return "it has words or punctuation outside that form";
+}
+
 /**
  * Check the AI layer's transfer parameters against the user's input and
  * return the values to build the transaction from. Throws on any doubt.
@@ -175,56 +233,67 @@ export function groundTransferIntent(
     | { amount?: unknown; destination?: unknown; input_token?: unknown }
     | undefined,
 ): GroundedTransfer {
+  // A typed address with a stray character is named as such before anything
+  // else (A5-02): the grammar would refuse it too, less helpfully.
+  addressTokens(input);
+  assertAffirmative(input);
+  const m = TRANSFER_GRAMMAR.exec(input);
+  if (!m) {
+    throw new IntentGroundingError(
+      `A transfer is only built from a request of the form "${TRANSFER_FORM}" (an ASCII decimal ` +
+        `amount, at most 9 decimal places, optionally ending with "." or "!"); this one is not, because ` +
+        `${whyNotTheForm(input)}.`,
+    );
+  }
+  const [, writtenAmount, writtenAddress] = m;
+
   const destination = params?.destination;
   if (typeof destination !== "string" || !ADDRESS_SHAPE.test(destination)) {
     throw new IntentGroundingError("The transfer has no well-formed destination address.");
   }
-  const addresses = addressTokens(input);
-  const distinct = [...new Set(addresses)];
-  if (distinct.length !== 1) {
-    throw new IntentGroundingError(
-      `The request contains ${distinct.length} address-shaped tokens; a transfer is only built ` +
-        "when it names exactly one.",
-    );
-  }
-  if (distinct[0] !== destination) {
+  if (destination !== writtenAddress) {
     throw new IntentGroundingError(
       `The destination ${destination} does not appear in the request as written.`,
     );
   }
-
   const amountText = params?.amount;
   if (typeof amountText !== "string") {
     throw new IntentGroundingError("The transfer has no amount.");
   }
-  const numbers = [...new Set(input.match(NUMERIC_LITERAL) ?? [])].filter(
-    (n) => !distinct.includes(n),
-  );
-  if (numbers.length !== 1) {
-    throw new IntentGroundingError(
-      `The request contains ${numbers.length} distinct numbers; a transfer is only built when ` +
-        "it names exactly one amount.",
-    );
-  }
-  if (numbers[0] !== amountText) {
+  if (amountText !== writtenAmount) {
     throw new IntentGroundingError(
       `The amount "${amountText}" does not appear in the request as written.`,
     );
   }
-  const lamports = solLiteralToLamports(amountText);
-
   const token = params?.input_token;
   if (typeof token !== "string" || token.toUpperCase() !== "SOL") {
     throw new IntentGroundingError(
       `A System transfer moves SOL; the parsed token is ${JSON.stringify(token ?? null)}.`,
     );
   }
-  if (!/(?<![0-9A-Za-z])SOL(?![0-9A-Za-z])/i.test(input)) {
-    throw new IntentGroundingError("The request does not name SOL as the token to transfer.");
-  }
-  assertAffirmative(input);
-
+  const lamports = solLiteralToLamports(amountText);
   return { destination, amountText, lamports };
+}
+
+/** The labels the AI layer may give a transfer request (`intent_parser.py`). */
+const TRANSFER_CLASS_LABELS: ReadonlySet<string> = new Set(["transfer"]);
+
+/**
+ * The intent class the Core is told for a transfer: always `"transfer"`, the
+ * method's class, never the AI layer's label (audit 2026-10-20, Info: the
+ * label went to the Core unchanged). A label that disagrees refuses, as on
+ * the swap path.
+ */
+export function groundTransferClass(aiIntentType: unknown): "transfer" {
+  if (aiIntentType !== undefined && aiIntentType !== null && aiIntentType !== "") {
+    if (typeof aiIntentType !== "string" || !TRANSFER_CLASS_LABELS.has(aiIntentType)) {
+      throw new IntentGroundingError(
+        `The AI layer labelled a transfer request as ${JSON.stringify(aiIntentType)}; a transfer is ` +
+          "only built when every reading of the request agrees it is one.",
+      );
+    }
+  }
+  return "transfer";
 }
 
 /** A verb that asks for a swap, as a whole word (the AI layer's own vocabulary). */
@@ -249,7 +318,8 @@ const SWAP_CLASS_LABELS: ReadonlySet<string> = new Set(["swap", "trade", "exchan
  * answering `approve` to "Swap 1 SOL for USDC" switched off the Approve check
  * for an Approve payload. The method defines the class; the text must ask for
  * it; the AI's label, when it gives one, must agree; and the program must be
- * one the Core treats as a swap program (`swap-programs.ts`).
+ * one whose swap instruction the guard decodes (`swap-programs.ts`; Round 29,
+ * L3: a subset of the Core's swap set).
  */
 export function groundSwapIntent(input: string, aiIntentType: unknown, programId: unknown): "swap" {
   if (!SWAP_VERB.test(input)) {
@@ -268,8 +338,9 @@ export function groundSwapIntent(input: string, aiIntentType: unknown, programId
   }
   if (typeof programId !== "string" || !SWAP_PROGRAM_IDS.has(programId)) {
     throw new IntentGroundingError(
-      `The swap payload is addressed to ${JSON.stringify(programId ?? null)}, which no seed ` +
-        "manifest tags as a swap program; a swap is only built against a program that swaps.",
+      `The swap payload is addressed to ${JSON.stringify(programId ?? null)}, which is not one of ` +
+        "the swap programs whose instruction data the guard decodes (swap-programs.ts); a swap is " +
+        "only built against a program whose minimum output the guard can read.",
     );
   }
   assertAffirmative(input);
@@ -320,23 +391,57 @@ export interface GroundedSwap {
   input: NamedToken;
   /** What must arrive. */
   output: NamedToken;
+  /**
+   * The least the request accepts in return, exactly as written ("for at
+   * least 140 USDC"), in units of `output`. Round 29 (H2): a price floor the
+   * route's own minimum must meet.
+   */
+  minOutText?: string;
+  /**
+   * The slippage the request states ("with 0.5% slippage"), in basis points.
+   * Round 29 (H2): the route's minimum must sit within it of what was
+   * simulated. Absent: the operator's default applies (swap-economics.ts).
+   */
+  slippageBps?: number;
 }
 
 /** A token word: a symbol of 2-10 letters and digits, or a mint address. */
-const TOKEN_WORD = "([A-Za-z][A-Za-z0-9]{1,9}|[1-9A-HJ-NP-Za-km-z]{32,44})";
-const AMOUNT = "(\\d+(?:\\.\\d+)?)";
-/** "swap 1 SOL for USDC" — the amount is what is spent. */
+const TOKEN_WORD = "[A-Za-z][A-Za-z0-9]{1,9}|[1-9A-HJ-NP-Za-km-z]{32,44}";
+/** An ASCII decimal amount (Round 29, M5: no sign, no unit, no full-width digit). */
+const AMOUNT = "[0-9]+(?:\\.[0-9]+)?";
+/** A percentage of at most two decimals: exactly a whole number of basis points. */
+const PERCENT = "[0-9]+(?:\\.[0-9]{1,2})?";
+/**
+ * The optional constraints after the swap itself, in this order: a minimum to
+ * receive ("for at least 140 USDC") and a slippage ("with 0.5% slippage").
+ */
+const SWAP_TAIL =
+  `(?:,?\\s+(?:for|receiving|and\\s+receive|to\\s+receive|getting)\\s+at\\s+least\\s+(?<min2>${AMOUNT})(?:\\s+(?<minToken>${TOKEN_WORD}))?)?` +
+  `(?:,?\\s+with\\s+(?:a\\s+)?(?:max(?:imum)?\\s+)?(?<slip>${PERCENT})\\s*%\\s+(?:max(?:imum)?\\s+)?slippage)?` +
+  "\\s*[.!]?\\s*$";
+const SWAP_HEAD = "^\\s*(?:please,?\\s+)?";
+/**
+ * "[please] swap <amount> <token> for [at least <amount>] <token> [tail]" —
+ * the amount is what is spent. Round 29 (H3 for swaps): the WHOLE request, so
+ * "Should I swap 1 SOL for USDC?" (a question) and "If BONK moons, swap 1 SOL
+ * for BONK" (a condition) are not this form.
+ */
 const SPEND_FIRST = new RegExp(
-  `(?<![0-9A-Za-z])(?:swap|trade|exchange|convert|sell)\\s+${AMOUNT}\\s+${TOKEN_WORD}\\s+(?:for|to|into)\\s+${TOKEN_WORD}(?![0-9A-Za-z])`,
-  "gi",
+  SWAP_HEAD +
+    `(?:swap|trade|exchange|convert|sell)\\s+(?<amount>${AMOUNT})\\s+(?<in>${TOKEN_WORD})\\s+(?:for|to|into)\\s+` +
+    `(?:at\\s+least\\s+(?<min1>${AMOUNT})\\s+)?(?<out>${TOKEN_WORD})` +
+    SWAP_TAIL,
+  "i",
 );
-/** "buy USDC with 1 SOL" — the amount is still what is spent. */
+/** "[please] buy <token> with <amount> <token> [tail]" — the amount is still what is spent. */
 const BUY_WITH = new RegExp(
-  `(?<![0-9A-Za-z])buy\\s+${TOKEN_WORD}\\s+(?:with|using)\\s+${AMOUNT}\\s+${TOKEN_WORD}(?![0-9A-Za-z])`,
-  "gi",
+  SWAP_HEAD + `buy\\s+(?<out>${TOKEN_WORD})\\s+(?:with|using)\\s+(?<amount>${AMOUNT})\\s+(?<in>${TOKEN_WORD})` + SWAP_TAIL,
+  "i",
 );
-/** A percentage ("with 1% slippage") is a constraint, never an amount. */
-const PERCENTAGE = /(?<![0-9A-Za-z.])\d+(?:\.\d+)?\s*%/g;
+/** The forms a swap request may take, for messages. */
+export const SWAP_FORMS =
+  '"[please] swap <amount> <token> for <token>" or "[please] buy <token> with <amount> <token>", ' +
+  'optionally followed by "for at least <amount> <token>" and "with <n>% slippage"';
 
 function namedToken(word: string): NamedToken {
   if (ADDRESS_SHAPE.test(word)) return { mint: word, written: word };
@@ -369,28 +474,38 @@ export function groundSwapRequest(
   params: { amount?: unknown; input_token?: unknown; output_token?: unknown } | undefined,
 ): GroundedSwap {
   assertAffirmative(input);
-  const matches: { amountText: string; inWord: string; outWord: string }[] = [];
-  for (const m of input.matchAll(SPEND_FIRST)) matches.push({ amountText: m[1], inWord: m[2], outWord: m[3] });
-  for (const m of input.matchAll(BUY_WITH)) matches.push({ amountText: m[2], inWord: m[3], outWord: m[1] });
-  if (matches.length !== 1) {
+  const m = SPEND_FIRST.exec(input) ?? BUY_WITH.exec(input);
+  if (!m?.groups) {
     throw new IntentGroundingError(
-      matches.length === 0
-        ? 'The request does not state what it spends: write "swap <amount> <token> for <token>" or ' +
-            '"buy <token> with <amount> <token>".'
-        : `The request describes ${matches.length} swaps; a swap is only built when it describes one.`,
+      `A swap is only built from a request of the form ${SWAP_FORMS}, with ASCII decimal amounts, ` +
+        `optionally ending with "." or "!"; this one is not, because ${whyNotTheForm(input)}.`,
     );
   }
-  const numbers = [...new Set(input.replace(PERCENTAGE, " ").match(NUMERIC_LITERAL) ?? [])];
-  if (numbers.length !== 1) {
-    throw new IntentGroundingError(
-      `The request contains ${numbers.length} distinct amounts; a swap is only built when it names exactly one.`,
-    );
+  const g = m.groups;
+  const amountText = g.amount;
+  const inWord = g.in;
+  const outWord = g.out;
+  if (g.min1 !== undefined && g.min2 !== undefined) {
+    throw new IntentGroundingError("The request states its minimum to receive twice; state it once.");
   }
-  const { amountText, inWord, outWord } = matches[0];
+  const minOutText = g.min1 ?? g.min2;
   const inputToken = namedToken(inWord);
   const outputToken = namedToken(outWord);
   if (inputToken.mint === outputToken.mint) {
     throw new IntentGroundingError(`The request swaps ${inWord} for ${outWord}, the same token.`);
+  }
+  if (g.minToken !== undefined && namedToken(g.minToken).mint !== outputToken.mint) {
+    throw new IntentGroundingError(
+      `The request asks for ${outWord} but states its minimum in ${g.minToken}; the minimum is in the token received.`,
+    );
+  }
+  let slippageBps: number | undefined;
+  if (g.slip !== undefined) {
+    const [whole, frac = ""] = g.slip.split(".");
+    slippageBps = Number(whole) * 100 + Number(frac.padEnd(2, "0"));
+    if (!Number.isSafeInteger(slippageBps) || slippageBps > 10_000) {
+      throw new IntentGroundingError(`The stated slippage ${g.slip}% is not a slippage.`);
+    }
   }
   if (params?.amount !== amountText) {
     throw new IntentGroundingError(
@@ -407,7 +522,13 @@ export function groundSwapRequest(
       `The AI layer read the token received as ${JSON.stringify(params?.output_token ?? null)}; the request asks for ${outWord}.`,
     );
   }
-  return { amountText, input: inputToken, output: outputToken };
+  return {
+    amountText,
+    input: inputToken,
+    output: outputToken,
+    ...(minOutText !== undefined ? { minOutText } : {}),
+    ...(slippageBps !== undefined ? { slippageBps } : {}),
+  };
 }
 
 /**
@@ -423,6 +544,14 @@ export interface WalletEffect {
   solOut: bigint;
   /** Every other mint's net change across the wallet's token accounts (positive = received). */
   tokenDelta: ReadonlyMap<string, bigint>;
+  /**
+   * The net change of wrapped SOL in the wallet's token accounts alone
+   * (positive = received), already counted in `solOut`. Round 29 (H2): a
+   * route's minimum for SOL out is enforced on the wrapped-SOL account it
+   * credits, so that is the amount compared with it — not the wallet's net
+   * lamports, from which the fee and rent have already been taken.
+   */
+  wrappedSolDelta?: bigint;
   /** Each mint's decimals, as the simulation reports them. */
   decimals: ReadonlyMap<string, number>;
 }
@@ -457,8 +586,15 @@ export function tokenAmountToBaseUnits(text: string, decimals: number): bigint {
  * Refuse a swap transaction that does not do what the request asked: spend
  * no more than the requested amount of the requested token (plus
  * `SWAP_SOL_OVERHEAD_LAMPORTS` of SOL), spend no other token, and deliver the
- * requested token. The output amount is not compared: a request rarely states
- * one, and the route's own minimum is the Core's to read.
+ * requested token.
+ *
+ * HOW MUCH is delivered is not this function's question, and is not the
+ * Core's either. Round 29 (audit 2026-10-20, H2): this comment used to say
+ * "the route's own minimum is the Core's to read"; nothing in the Core reads
+ * a route's minimum output, so a route delivering one base unit passed. The
+ * minimum is now decoded from the instruction's own data and held to what
+ * was simulated, to the request's or the operator's price floor and to the
+ * slippage allowed — `assertSwapEconomics` in swap-economics.ts.
  */
 export function assertSwapEffectMatches(grounded: GroundedSwap, effect: WalletEffect): void {
   const inMint = grounded.input.mint;

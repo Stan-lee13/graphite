@@ -1,6 +1,16 @@
-# Known HIGH/CRITICAL npm advisories in integrations/mcp-server/package-lock.json (the MCP server).
+# Known MODERATE/HIGH/CRITICAL npm advisories in integrations/mcp-server/package-lock.json (the MCP server).
 # Read by gate.mjs in the CI supply-chain job. One `GHSA-id@package` per line.
+# The guard these tools sign through is audited separately (agent-guard.allow).
 #
-# Recorded 2026-10-02: `npm audit` reports 0 vulnerabilities at any level, so the
-# list is empty and any high/critical advisory fails CI. The guard these tools
-# sign through is audited separately (agent-guard.allow).
+# Recorded 2026-10-02: `npm audit` reported 0 vulnerabilities at any level.
+#
+# Re-checked 2026-10-20: `npm audit` now reports two advisories in
+# @modelcontextprotocol/sdk <1.32.0, both with a fix npm marks non-breaking:
+#   - GHSA-22jm-h49p-29qw (high): experimental tasks not tied to the session
+#     that created them.
+#   - GHSA-6prh-2h8m-c8cw (moderate): the SDK's HTTP client transports and
+#     OAuth requests followed cross-origin redirects with custom headers and
+#     bodies.
+# Neither is listed: a fix exists, so the remedy is the upgrade (bump
+# @modelcontextprotocol/sdk to >=1.32.0 in integrations/mcp-server), not an
+# entry here. Until that lands this package fails the gate, as it should.

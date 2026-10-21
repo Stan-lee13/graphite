@@ -1,6 +1,10 @@
 # C27 — Drift + Kamino Lending on-boarding: official IDLs, live-verified discriminators, source-scoped PDA grounding
 
 > **Historical record.** This report describes the codebase as it was when it was written and is kept unedited as evidence. For what is true now, read [CURRENT.md](CURRENT.md).
+>
+> **Correction (Round 29, 2026-10-21).** Drift's repository is
+> github.com/drift-labs/protocol-v2. The velocity-exchange path this report cites for
+> Drift's IDL is wrong; the report is otherwise unedited.
 
 **Date:** 2026-08-09 · **Round Six** · Supersedes nothing; adds two BattleTested manifests.
 

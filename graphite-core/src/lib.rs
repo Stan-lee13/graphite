@@ -1,8 +1,11 @@
 #![allow(clippy::too_many_arguments)]
 //! Graphite Core — Transaction verification for Solana AI agents.
 //!
-//! Phase 1 MVP: Account Resolution + Transaction Construction + Verification Engine
-//! + Risk Engine + Confidence Engine + Unknown Protocol Mode + Protocol Manifests.
+//! The engine behind the gate: account resolution, transaction-artifact
+//! parsing, the Risk Engine, simulation and state-diff checks (with an RPC
+//! client), the Confidence and Policy Engines, protocol manifests, the
+//! append-only audit trail and L8 execution reconciliation — plus the HTTP
+//! server and CLI behind the `server` and `cli` features.
 //!
 //! Public API: `GraphiteCore::verify()` takes a `VerificationInput` and returns
 //! a `VerificationResult` with confidence score, risk assessment, and policy decision.
@@ -13,6 +16,7 @@ pub mod durable;
 pub mod live_corpus;
 pub mod manifest;
 pub mod manifest_registry;
+pub mod operator_boundary;
 pub mod plugin_orchestrator;
 pub mod plugins;
 pub mod policy_engine;

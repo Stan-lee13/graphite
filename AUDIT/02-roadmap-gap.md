@@ -1,4 +1,4 @@
-# AUDIT 02 — Roadmap gap: what the roadmap asks for vs. what the code does (2026-09-30, updated 2026-10-03)
+# AUDIT 02 — Roadmap gap: what the roadmap asks for vs. what the code does (2026-09-30, updated 2026-10-21)
 
 This compares the goals in the engineering-skill repository (ROADMAP phase exit criteria, FEATURES rows, CONSTITUTION checks, TESTING, BENCHMARK) and this repository's own `ROADMAP.md` and `docs/CURRENT.md` against the code at `3327fcf`. It then records what this round implemented. The full evidence table from the audit is in `graphite-audit-work/a6/roadmap_gap.md`, outside the repository.
 
@@ -42,12 +42,27 @@ Each has named tests; see the audit table.
 | R2 / R3 / R3-b | A declared intent cannot clear an instruction of another class; control changes cannot escape as unclassed names, undescribed siblings, switch names or admin-signed instructions | **Done.** One table (`manifest::INTENT_DECLARES`) read by L5 and the Risk Engine; the name, delegation, switch and admin-signer rules in `InstructionDef::security_class` | `tests/audit_review_r2_r3_intent_cannot_clear_danger.rs`; breaks B60–B73, B99–B102 |
 | R-P8 | Building v1 transactions in the bridge | **Done** (phases 1–4) | see the row below |
 | — | Agent frameworks | **Advanced.** SolanaAgentKit, the Vercel AI SDK and an MCP server, all signing through `integrations/agent-guard`, whose spend cap now bounds swaps by their simulated outflow | `integrations/*/` tests |
-| — | Registry coverage | **Advanced.** 137 manifests / 3,504 instructions; 113 measured `BattleTested` | `docs/protocol-coverage.md`, `tests/battle_tested_evidence.rs` |
+| — | Registry coverage | **Advanced.** 137 manifests / 3,541 instructions; 113 measured `BattleTested` | `docs/protocol-coverage.md`, `tests/battle_tested_evidence.rs` |
 | R-P2 (part) | Reproducible mainnet numbers | **Advanced.** Samples by slot list with SHA-256; the test prints the hash it measured | `tools/mainnet-sample/SAMPLES.md` |
 | R-P2 / R-P3 / A6-35 | A committed mainnet subset gated in CI; ≥1,000 real regression fixtures | **Done (Round 26, 2026-10-16).** Two whole finalized blocks of the 2026-09-23 sample (2,284 executed transactions, legacy, v0 and v1; 2.5 MB) committed and run through the whole pipeline on every `cargo test`, no network, no `#[ignore]`: 0 parse failures, 0 verify errors, two runs identical, the verdict file's SHA-256 pinned and cross-checked against the full-sample run (same 2,277 rows, same hash). The full samples stay uncommitted and are refetched by slot list | `tests/mainnet_conformance.rs::the_committed_mainnet_blocks_give_the_recorded_verdicts_every_run`, `tools/mainnet-sample/make_committed_subset.py`; break B108 |
 | R-M11 / W10 | Persisted archive index (L8 and lifecycle lookups into rotated archives) | **Done (Round 28, 2026-10-17).** Each archive has a binary, sorted index at `<log>-index/<archive>.idx`, searched by seeking and never loaded into memory. It is checked against the archive's length and SHA-256 once per process and rebuilt when it does not check. A record is read back and matched before it is returned; an index that cannot be written leaves its archive scanned, without a rebuild on every lookup. Rotation writes the index from the active file's indexes without a parse; the server checks every archive in the background at start; pruning removes the index. Measured on three 64 MiB archives: a count went from 822 ms to 2.2 ms | `durable::tests` (seven tests, including `archive_lookups_answer_from_a_persisted_index_across_restart`); breaks B112–B120 |
 | R-P14 | P9: a lifecycle transition without an audit emission fails the build | **Done (Round 28).** `LifecycleEvent::emission`, a `match` with no wildcard, names each event's emitter; `is_self_observed` is read from it; `LifecycleEvent::ALL` is checked against the variants serde derives; every emitter is driven and its row read back. Construction and simulation are recorded on the verification row, not as rows of their own (a recorded choice) | `server::tests::every_lifecycle_event_reaches_the_trail`; breaks B121–B123 |
 | R-M2 | P13 schema and version gate between releases | **Done (Round 28).** Both published schemas are diffed against the last release tag, with rules set by who writes each document; a break needs a version bump and a CHANGELOG section naming the path. Its first run found two breaks since `v0.2.0-beta` under the same version (R28-1), so the crate is `0.3.0-beta`; tagging stays with the owner | `tests/contract_version_gate.rs`; breaks B124, B125 |
+
+## Closed or advanced in Round 29 (2026-10-21, the audit of 2026-10-20)
+
+| # | Goal | Status now | Proof |
+|---|---|---|---|
+| R-P13 | Every public number linked to its source (P16) | **Extended.** The registry's size ("N manifests / M instructions" wherever stated) and the committed corpus size are pinned too; CONTRIBUTING and ROADMAP are scanned; test counts, which change every commit, are stated only in `docs/CURRENT.md` and a test fails if another live document states one | `tests/docs_numbers_match_the_code.rs` |
+| R-P6 (part) | Community submissions with reviewer independence (G5) | **Advanced.** The registry owns its regression corpus (a submission cannot remove fixtures), enforces lineage, verifies a domain-tagged signature over canonical JSON, validates every submission fully, and can revoke a reviewer. The independence design and a PR-based workflow remain | `manifest_registry::tests`, `regression_engine::tests` |
+| R-P2 (part) | Reproducible mainnet numbers | **Advanced.** `verify_sample.py` compares a refetch row by row; `fetch_mainnet.py --slots` fails on a missing slot. The committed blocks were re-pinned with 3 of 2,277 rows attributed | `tools/mainnet-sample/test_mainnet_sample.py`, `tests/mainnet_conformance.rs` |
+| A6-04 / R-M3 (part) | Corpus drift check | **Hermetic.** The corpus test compares against the committed corpus from a temporary directory and writes nothing into `fixtures/` unless `GRAPHITE_REGENERATE_CORPUS=1` | `tests/regression_corpus.rs` |
+| R-M2 | P13 schema and version gate | **Runs in any checkout.** It compares against a committed snapshot of `v0.2.0-beta` instead of needing the tag | `tests/contract_version_gate.rs`; break B127 |
+| A6-05 | Supply-chain coverage | **Tightened.** The npm gate covers six lockfiles and fails on unlisted moderate advisories too | CI; `.github/npm-audit/` |
+| — | The approval path through the guard | **Tested.** An approved transfer and an approved swap are driven through the whole lifecycle against a loopback Core that approves with the real digests | `integrations/agent-guard/guard-round29.test.ts` |
+
+Not closed by Round 29, and still in the tables below: R-P1, R-P7, R-P10, R-P11/12/15, R-P16/17,
+R-P18, A2-08, R-M4, R-M5, R-M6, R-M7/8, R-M9, R-M10, R-M12, R-M13, R-M14, R-M15.
 
 ## Still partial (what is missing)
 

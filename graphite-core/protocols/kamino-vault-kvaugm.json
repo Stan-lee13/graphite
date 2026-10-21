@@ -97,7 +97,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: adminAuthority, vaultState, tokenVault, sharesMint, adminTokenAccount",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -105,7 +105,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "updateReserveAllocation",
@@ -1518,14 +1518,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: vaultAdminAuthority, vaultState, reserve, tokenVault, ctokenVault, baseVaultAuthority, tokenAta, tokenMint, reserveLiquiditySupply, reserveCollateralMint",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "updateAdmin",
@@ -1582,14 +1582,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: vaultAdminAuthority, vaultState",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "initializeSharesMetadata",
@@ -1654,7 +1654,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: vaultAdminAuthority, sharesMetadata",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -1662,7 +1662,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "updateSharesMetadata",
@@ -1854,14 +1854,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: vaultAdminAuthority, vaultState",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "initGlobalConfig",
@@ -1905,7 +1905,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, globalConfig",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -1913,7 +1913,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "updateGlobalConfig",
@@ -2011,7 +2011,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: globalAdmin, reserveWhitelistEntry",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -2019,7 +2019,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "topupRewards",
@@ -2135,14 +2135,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: vaultAdminAuthority, vaultState, tokenVault, withdrawTokenAccount",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "redeemInKind",

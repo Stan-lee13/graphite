@@ -137,13 +137,13 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, protocol_position",
-    "closes the position or account and transfers remaining funds back to the user"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
    ],
    "risk_rules": [],
-   "risk_class": "close"
+   "risk_class": "authority"
   },
   {
    "name": "collect_fund_fee",
@@ -455,13 +455,13 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: owner, amm_config",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "create_customizable_pool",
@@ -633,13 +633,13 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: owner, dynamic_fee_config",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "create_operation_account",
@@ -2877,14 +2877,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: owner, permission",
-    "closes the position or account and transfers remaining funds back to the user"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "close"
+   "risk_class": "authority"
   },
   {
    "name": "close_support_mint_associated",
@@ -2964,7 +2964,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: owner, permission",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -2972,7 +2972,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "create_permissioned_pool",

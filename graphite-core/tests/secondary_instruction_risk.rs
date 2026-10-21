@@ -309,17 +309,35 @@ fn unknown_program_secondary_instruction_fails_safely() {
     // false Block on the mere fact of being unmanifested (P12 — unknown is
     // not itself proof of harm) — a genuinely dangerous unmanifested
     // secondary is still caught by the structural checks that don't require
-    // a manifest (Check 2's unconditional discriminator table, Check 10a
-    // impersonation); this fixture has neither, so it should approve, with
-    // the gap disclosed.
+    // impersonation); this fixture has neither, so the Risk Engine clears
+    // it, with the gap disclosed.
+    //
+    // Audit 2026-10-20 (M2): clearing the Risk Engine no longer makes it an
+    // approval. The verdict's trust tier is the lowest of every top-level
+    // program, and an unmanifested one is Unknown — refused by policy, with
+    // the reason, never as a risk finding (P12).
     assert!(
         result.summary.contains("unmanifested program"),
         "an unmanifested secondary program must be surfaced, not silently ignored: {}",
         result.summary
     );
+    refused_by_tier_not_by_risk(&result);
+}
+
+/// Not a false risk block (P12: unknown is not proof of harm) and not an
+/// approval either: the unmanifested program's Unknown tier is the verdict's
+/// (audit 2026-10-20, M2), and no built-in profile admits it.
+fn refused_by_tier_not_by_risk(result: &graphite_core::VerificationResult) {
+    assert_eq!(
+        result.risk_verdict.status, "Clear",
+        "an unmanifested secondary with no structural risk signal must not be falsely blocked: {:?}",
+        result.risk_verdict.findings
+    );
+    assert_eq!(result.trust_tier, "Unknown", "{}", result.summary);
+    assert!(!result.approved, "{}", result.summary);
     assert!(
-        result.approved,
-        "an unmanifested secondary with no structural risk signal must not be falsely blocked: {}",
+        result.summary.contains("lowest of every program"),
+        "the tier's source must be named: {}",
         result.summary
     );
 }
@@ -368,6 +386,7 @@ fn cpi_trace_child_with_no_discriminator_is_not_falsely_blocked() {
 }
 
 // ── 7. Repeated unmanifested secondary program → disclosed, never blocked ──
+// (by the Risk Engine; the verdict is refused by its Unknown tier — M2)
 //
 // P1 fix (2026-09-05 audit, "duplicate-instruction abuse"): an unmanifested
 // secondary instruction only ever produces a per-occurrence warning — Check
@@ -393,12 +412,7 @@ fn repeated_unmanifested_secondary_program_is_disclosed_not_blocked() {
 
     let result = core.verify(&input).unwrap();
 
-    assert!(
-        result.approved,
-        "repeated unmanifested secondaries with no structural risk signal must not be falsely blocked: {}",
-        result.summary
-    );
-    assert_eq!(result.risk_verdict.status, "Clear");
+    refused_by_tier_not_by_risk(&result);
     assert!(
         result
             .summary
@@ -419,7 +433,7 @@ fn two_unmanifested_secondary_calls_stay_below_the_repetition_disclosure_thresho
 
     let result = core.verify(&input).unwrap();
 
-    assert!(result.approved);
+    refused_by_tier_not_by_risk(&result);
     assert!(
         !result.summary.contains("was invoked"),
         "2 occurrences must stay below the disclosure threshold (mirrors the mass-sweep >= 3 floor): {}",
@@ -442,7 +456,7 @@ fn different_unmanifested_secondary_programs_are_counted_separately() {
 
     let result = core.verify(&input).unwrap();
 
-    assert!(result.approved);
+    refused_by_tier_not_by_risk(&result);
     assert!(
         result
             .summary

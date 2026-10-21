@@ -292,10 +292,17 @@ fn the_two_artifacts_are_distinguishable() {
     let endpoint = serve_table();
     let readonly = rt.block_on(verify(&endpoint, "target_arrives_readonly"));
     let writable = rt.block_on(verify(&endpoint, "target_arrives_writable"));
+    // Compared on the privilege finding, not the risk status: this mock fails
+    // every simulation honestly, and since the 2026-10-20 audit (H1) an
+    // artifact Graphite could not simulate with an RPC attached is refused as
+    // `VerificationIncomplete` — both verdicts are Blocked, and only one of
+    // them for the escalation.
     assert_ne!(
-        readonly.risk_verdict.status, writable.risk_verdict.status,
+        blocked_on_privilege(&readonly),
+        blocked_on_privilege(&writable),
         "the only difference between these transactions is a privilege escalation"
     );
+    assert!(blocked_on_privilege(&writable));
 }
 
 /// With no table to resolve from, the flags are not invented.

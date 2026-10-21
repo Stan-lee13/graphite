@@ -46,6 +46,19 @@ const ZERO_VARIANCE_EPSILON: f64 = 1e-6;
 /// history that has only ever seen one value is treated as a band of
 /// ±25% around it rather than a point: with the 2σ threshold, a deviation
 /// beyond 50% of the centre still flags, a variation within it does not.
+///
+/// THE DETECTION FLOOR this sets (Round 29, audit 2026-10-20, S2), stated
+/// exactly: a signal is flagged only when
+/// `|value − centre| > threshold × max(measured spread, 0.25 × |centre|, 1)`,
+/// for the mean/std statistic and the median/MAD one alike. With the
+/// pipeline's threshold of 2.0 (`verification.rs`), NO deviation of 50% of
+/// the centre or less is ever flagged, however tight the program's history
+/// is: a program centred on 100,000 CU is flagged above 150,000 or below
+/// 50,000 and not between. Deliberate: a baseline is kept per PROGRAM, not
+/// per instruction, and one program's instructions legitimately differ by
+/// that much — a tighter floor flagged honest traffic as spoofing. A
+/// simulation-aware program that stays within the band is not caught by this
+/// layer; the state diff (L4) judges what it does, not how much it costs.
 pub const MIN_RELATIVE_SPREAD: f64 = 0.25;
 /// Absolute floor on the spread, for the small integer signals (writes,
 /// hops) whose centre may be 1 or 2: one write more or fewer than an
@@ -81,7 +94,9 @@ pub struct ComputeUsage {
 /// accumulator starts; `update_baseline` grows it from there.
 ///
 /// C28: in addition to the Welford mean/std pairs, the baseline keeps a bounded
-/// window of RECENT raw samples per signal so the integrity check can compute
+/// window of RECENT samples per signal (each winsorized against the window's
+/// own median once it holds `MIN_SAMPLES`, Round 29 S1 — see
+/// `update_baseline`) so the integrity check can compute
 /// robust median/MAD statistics. The window is what makes the baseline
 /// poison-resistant: a few extreme samples affect mean/std immediately but can
 /// only shift the median/MAD by a bounded amount (they need >50% of the window
@@ -169,6 +184,39 @@ fn median(samples: &[f64]) -> Option<f64> {
     })
 }
 
+/// A window sample: compute units are `u64`, writes and hops `u32`.
+trait WindowSample: Copy {
+    fn as_f64(self) -> f64;
+}
+impl WindowSample for u64 {
+    fn as_f64(self) -> f64 {
+        self as f64
+    }
+}
+impl WindowSample for u32 {
+    fn as_f64(self) -> f64 {
+        f64::from(self)
+    }
+}
+
+/// The most recent `ROBUST_WINDOW` samples of a window, as `f64` (S5).
+fn recent_window<T: WindowSample>(samples: &[T]) -> Vec<f64> {
+    samples[samples.len().saturating_sub(ROBUST_WINDOW)..]
+        .iter()
+        .map(|&v| v.as_f64())
+        .collect()
+}
+
+/// Drop the oldest samples until at most `ROBUST_WINDOW` remain (S5). One
+/// element per update used to come off, so a window persisted longer than
+/// the bound never shrank back to it.
+fn trim_window<T>(samples: &mut Vec<T>) {
+    let excess = samples.len().saturating_sub(ROBUST_WINDOW);
+    if excess > 0 {
+        samples.drain(..excess);
+    }
+}
+
 /// Median absolute deviation (MAD) of a slice: median(|x_i - median|).
 /// Empty => None. This is the robust scale estimator used for the C28
 /// poison-resistant z-score.
@@ -211,9 +259,27 @@ fn robust_z(x: f64, samples: &[f64]) -> Option<f64> {
 /// maximum-signal divergence; an identical usage is perfectly consistent.
 /// A fully degenerate baseline (mean == 0 AND std == 0) is rejected
 /// fail-closed — there are no meaningful statistics at all.
+///
+/// Round 29 (audit 2026-10-20, S4): the threshold must be finite and
+/// positive. A NaN compared false with every z-score, so it could never flag;
+/// a negative or zero one flagged everything. Both are a misconfiguration,
+/// and an `Err` here is a FLAG at the caller (verification.rs maps any error
+/// to `flagged: true`), so a broken threshold fails closed.
+///
+/// S5: only the last `ROBUST_WINDOW` samples of each window are judged. A
+/// persisted baseline can carry a longer one (written by hand, or by a build
+/// that trimmed one element per update); it is not trusted to be recent.
 pub fn check_simulation_integrity(
     input: &SimulationIntegrityInput,
 ) -> Result<SimulationIntegrityResult, SimulationIntegrityError> {
+    if !input.divergence_threshold.is_finite() || input.divergence_threshold <= 0.0 {
+        return Err(SimulationIntegrityError::InvalidData {
+            reason: format!(
+                "divergence threshold {} is not a finite positive number",
+                input.divergence_threshold
+            ),
+        });
+    }
     if input.baseline.sample_count < MIN_SAMPLES {
         return Err(SimulationIntegrityError::NoBaseline {
             program_id: input.program_id.clone(),
@@ -249,12 +315,7 @@ pub fn check_simulation_integrity(
     }
     if let Some(z) = robust_signal_z(
         input.simulation_usage.compute_units as f64,
-        &input
-            .baseline
-            .recent_compute_units
-            .iter()
-            .map(|&v| v as f64)
-            .collect::<Vec<_>>(),
+        &recent_window(&input.baseline.recent_compute_units),
         input.divergence_threshold,
         "Compute usage (robust median/MAD)",
     ) {
@@ -265,7 +326,7 @@ pub fn check_simulation_integrity(
     if signal_is_observed(
         input.baseline.mean_account_writes,
         input.baseline.std_account_writes,
-        input.baseline.recent_account_writes.len(),
+        recent_window(&input.baseline.recent_account_writes).len(),
     ) {
         if let Some(z) = mean_std_z(
             input.simulation_usage.account_writes as f64,
@@ -278,12 +339,7 @@ pub fn check_simulation_integrity(
         }
         if let Some(z) = robust_signal_z(
             input.simulation_usage.account_writes as f64,
-            &input
-                .baseline
-                .recent_account_writes
-                .iter()
-                .map(|&v| v as f64)
-                .collect::<Vec<_>>(),
+            &recent_window(&input.baseline.recent_account_writes),
             input.divergence_threshold,
             "Account write (robust median/MAD)",
         ) {
@@ -295,7 +351,7 @@ pub fn check_simulation_integrity(
     if signal_is_observed(
         input.baseline.mean_cpi_hops,
         input.baseline.std_cpi_hops,
-        input.baseline.recent_cpi_hops.len(),
+        recent_window(&input.baseline.recent_cpi_hops).len(),
     ) {
         if let Some(z) = mean_std_z(
             input.simulation_usage.cpi_hops as f64,
@@ -308,12 +364,7 @@ pub fn check_simulation_integrity(
         }
         if let Some(z) = robust_signal_z(
             input.simulation_usage.cpi_hops as f64,
-            &input
-                .baseline
-                .recent_cpi_hops
-                .iter()
-                .map(|&v| v as f64)
-                .collect::<Vec<_>>(),
+            &recent_window(&input.baseline.recent_cpi_hops),
             input.divergence_threshold,
             "CPI hop (robust median/MAD)",
         ) {
@@ -405,11 +456,6 @@ fn robust_signal_z(
     None
 }
 
-/// Update baseline with new execution data.
-///
-/// Updates all three tracked signals: compute units, account writes, and CPI hops.
-/// Uses Welford's online algorithm for numerically stable mean/variance updates,
-/// and appends to the bounded recent-sample windows for the C28 robust stats.
 /// Solana's hard per-transaction compute ceiling (`MAX_COMPUTE_UNIT_LIMIT`).
 ///
 /// No execution can report more, so a larger figure did not come from one.
@@ -460,12 +506,66 @@ fn signal_is_observed(mean: f64, std: f64, window_samples: usize) -> bool {
     !(std == 0.0 && mean == 0.0)
 }
 
+/// Update baseline with new execution data.
+///
+/// Updates all three tracked signals: compute units, account writes, and CPI hops.
+/// Uses Welford's online algorithm for numerically stable mean/variance updates,
+/// and appends to the bounded recent-sample windows for the C28 robust stats.
+///
+/// THE BOOTSTRAP (Round 29, audit 2026-10-20, S3), stated exactly: while the
+/// baseline holds fewer than `MIN_SAMPLES` (10) samples there is no verdict
+/// (`check_simulation_integrity` returns `NoBaseline`) and nothing to hold an
+/// observation to, so each of the first 10 recorded observations is learned
+/// exactly as measured — into the mean/std AND the windows — with no clamp.
+/// Those 10 set the centre and the spread every later observation is
+/// winsorized against and every later simulation is judged against. Whoever
+/// supplies a new program's first 10 RPC-verified, error-free simulations
+/// therefore chooses its initial band (bounded only by the 1,400,000 CU
+/// ceiling, the trace limits and the RPC being the one measuring); from the
+/// 11th on, one observation can move the centre by at most one spread / n.
+/// An operator who needs a different start seeds the baseline instead.
 pub fn update_baseline(
     baseline: &mut ComputeBaseline,
     new_compute_units: u64,
     new_account_writes: u32,
     new_cpi_hops: u32,
 ) {
+    // S1: the robust windows are winsorized too, against their OWN centre
+    // and spread (median ± one effective MAD-spread) — computed before this
+    // observation is added, from the same window the check reads.
+    let window_learned = |samples: Vec<f64>, v: f64| -> f64 {
+        if samples.len() < MIN_SAMPLES as usize {
+            return v;
+        }
+        match (median(&samples), mad(&samples)) {
+            (Some(m), Some(d)) => {
+                let s = effective_spread(m, d * 1.4826);
+                let (lo, hi) = ((m - s).max(0.0), m + s);
+                if lo <= hi {
+                    v.clamp(lo, hi)
+                } else {
+                    v
+                }
+            }
+            _ => v,
+        }
+    };
+    let window_cu = window_learned(
+        recent_window(&baseline.recent_compute_units),
+        new_compute_units as f64,
+    )
+    .round() as u64;
+    let window_aw = window_learned(
+        recent_window(&baseline.recent_account_writes),
+        f64::from(new_account_writes),
+    )
+    .round() as u32;
+    let window_ch = window_learned(
+        recent_window(&baseline.recent_cpi_hops),
+        f64::from(new_cpi_hops),
+    )
+    .round() as u32;
+
     let n = baseline.sample_count as f64;
     let new_n = n + 1.0;
 
@@ -548,18 +648,25 @@ pub fn update_baseline(
     // push then truncate, so old samples age out and the median/MAD always
     // reflects recent behavior). Old serialized baselines have empty windows;
     // they fill in as new observations arrive.
-    baseline.recent_compute_units.push(new_compute_units);
-    if baseline.recent_compute_units.len() > ROBUST_WINDOW {
-        baseline.recent_compute_units.remove(0);
-    }
-    baseline.recent_account_writes.push(new_account_writes);
-    if baseline.recent_account_writes.len() > ROBUST_WINDOW {
-        baseline.recent_account_writes.remove(0);
-    }
-    baseline.recent_cpi_hops.push(new_cpi_hops);
-    if baseline.recent_cpi_hops.len() > ROBUST_WINDOW {
-        baseline.recent_cpi_hops.remove(0);
-    }
+    //
+    // Round 29 (audit 2026-10-20, S1): what is pushed is the WINSORIZED value.
+    // The raw one used to be, so A2-06's bound on how far one observation
+    // pulls the baseline held for the mean/std and not for the median/MAD:
+    // 129 one-sided observations at the edge of the band — each accepted by
+    // the check — made the edge the window's median outright, a jump of two
+    // spreads in one window's time. Clamped to one spread of the window's own
+    // median, the same drift moves the median at most one spread per window,
+    // the rate the Welford centre is held to. The window is clamped against
+    // itself, not against the mean/std, so it stays the independent check
+    // C28 made it: a poisoned mean/std cannot drag the window with it. A
+    // sustained, one-sided drift is still learned — slowly, as every adaptive
+    // baseline must learn a program that really changes.
+    baseline.recent_compute_units.push(window_cu);
+    trim_window(&mut baseline.recent_compute_units);
+    baseline.recent_account_writes.push(window_aw);
+    trim_window(&mut baseline.recent_account_writes);
+    baseline.recent_cpi_hops.push(window_ch);
+    trim_window(&mut baseline.recent_cpi_hops);
 
     baseline.sample_count += 1;
 }
@@ -1156,6 +1263,113 @@ mod tests {
             r.is_none(),
             "below MIN_SAMPLES the mean/std path must cover it"
         );
+    }
+
+    fn judge(baseline: &ComputeBaseline, cu: u64, threshold: f64) -> SimulationIntegrityResult {
+        check_simulation_integrity(&SimulationIntegrityInput {
+            program_id: "P".to_string(),
+            simulation_usage: ComputeUsage {
+                compute_units: cu,
+                account_writes: 2,
+                cpi_hops: 1,
+            },
+            baseline: baseline.clone(),
+            divergence_threshold: threshold,
+        })
+        .unwrap()
+    }
+
+    /// Round 29 (S1): one-sided drift at the edge of the band. Every
+    /// observation passes the check, so the pipeline records every one; the
+    /// window used to keep them raw, and 129 of them made the edge its
+    /// median. Winsorized, the robust centre moves at most one spread.
+    #[test]
+    fn one_sided_edge_drift_moves_the_robust_centre_at_most_one_spread() {
+        let mut b = ComputeBaseline::default();
+        for i in 0..ROBUST_WINDOW as u64 {
+            update_baseline(&mut b, 99_500 + (i % 11) * 100, 2, 1);
+        }
+        let centre = median(&recent_window(&b.recent_compute_units)).unwrap();
+        assert!((centre - 100_000.0).abs() <= 500.0, "{centre}");
+        for _ in 0..(ROBUST_WINDOW / 2 + 1) {
+            let edge = 149_000;
+            assert!(
+                !judge(&b, edge, 2.0).flagged,
+                "the edge observation passes the check, so it is recorded"
+            );
+            update_baseline(&mut b, edge, 2, 1);
+        }
+        let drifted = median(&recent_window(&b.recent_compute_units)).unwrap();
+        assert!(
+            drifted <= centre + 25_000.0 + 1.0,
+            "the window's median moved from {centre} to {drifted}: more than one spread (25,000) in one window of one-sided edge traffic"
+        );
+        assert!(
+            b.recent_compute_units.iter().all(|&v| v < 149_000),
+            "no window sample sits further from its window's centre than one spread"
+        );
+    }
+
+    /// S1: the window is winsorized against ITSELF, so a poisoned mean/std
+    /// does not drag it (the C28 independence the window exists for).
+    #[test]
+    fn the_window_is_not_winsorized_against_a_poisoned_mean() {
+        let mut b = poisoned_baseline();
+        update_baseline(&mut b, 1000, 10, 2);
+        assert_eq!(b.recent_compute_units.last(), Some(&1000));
+    }
+
+    /// Round 29 (S4): a threshold that is not a finite positive number is an
+    /// error, and the pipeline maps an error to a flag.
+    #[test]
+    fn a_non_finite_or_non_positive_threshold_is_refused() {
+        let mut b = ComputeBaseline::default();
+        for _ in 0..MIN_SAMPLES {
+            update_baseline(&mut b, 1_000, 2, 1);
+        }
+        for threshold in [f64::NAN, f64::INFINITY, -1.0, 0.0] {
+            let r = check_simulation_integrity(&SimulationIntegrityInput {
+                program_id: "P".to_string(),
+                simulation_usage: ComputeUsage {
+                    compute_units: 1_000_000,
+                    account_writes: 2,
+                    cpi_hops: 1,
+                },
+                baseline: b.clone(),
+                divergence_threshold: threshold,
+            });
+            assert!(
+                matches!(r, Err(SimulationIntegrityError::InvalidData { .. })),
+                "threshold {threshold}: {r:?}"
+            );
+        }
+        assert!(judge(&b, 1_000_000, 2.0).flagged);
+    }
+
+    /// Round 29 (S5): a persisted window longer than `ROBUST_WINDOW` is
+    /// judged on its newest samples and trimmed to the bound in one update.
+    #[test]
+    fn an_overlong_window_is_judged_recent_and_trimmed_at_once() {
+        let mut b = ComputeBaseline {
+            mean_compute_units: 1_000.0,
+            std_compute_units: 10.0,
+            sample_count: 1_000,
+            mean_account_writes: 2.0,
+            mean_cpi_hops: 1.0,
+            ..Default::default()
+        };
+        b.recent_compute_units = vec![50_000; 300];
+        b.recent_compute_units.extend(vec![1_000; ROBUST_WINDOW]);
+        b.recent_account_writes = vec![2; 300 + ROBUST_WINDOW];
+        b.recent_cpi_hops = vec![1; 300 + ROBUST_WINDOW];
+        assert!(
+            !judge(&b, 1_000, 2.0).flagged,
+            "only the newest {ROBUST_WINDOW} samples describe the program now"
+        );
+        update_baseline(&mut b, 1_000, 2, 1);
+        assert_eq!(b.recent_compute_units.len(), ROBUST_WINDOW);
+        assert_eq!(b.recent_account_writes.len(), ROBUST_WINDOW);
+        assert_eq!(b.recent_cpi_hops.len(), ROBUST_WINDOW);
     }
 
     #[test]

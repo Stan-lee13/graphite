@@ -525,10 +525,11 @@ struct FrameLayout {
 
 /// Locate a frame's signatures and message. Refuses what `parse_transaction`
 /// refuses about the frame: the size bound for its format and a signature
-/// array that runs past the input. For a v1
-/// frame the signatures can only be found by walking the message to its end,
-/// so a v1 frame must parse in full — anything less would be guessing where
-/// the slots are.
+/// array that runs past the input. For a v1 frame the signatures can only be
+/// found by walking the message to its end, so a v1 frame must parse in full
+/// — anything less would be guessing where the slots are. A legacy or v0
+/// frame's message is NOT parsed: see the pre-parse contract on
+/// `unsigned_artifact`.
 fn frame_layout(bytes: &[u8]) -> Result<FrameLayout, ArtifactParseError> {
     check_frame_size(bytes)?;
     let first = *bytes.first().ok_or(ArtifactParseError::Empty)?;
@@ -569,6 +570,16 @@ fn frame_layout(bytes: &[u8]) -> Result<FrameLayout, ArtifactParseError> {
 /// signature array that runs past the input. For a v1 frame the slots are
 /// the trailing `num_required_signatures × 64` bytes, and the frame must
 /// parse in full to find them (Round 19, F-19-V1).
+///
+/// PRE-PARSE HELPER (Round 29, audit 2026-10-20, parser). For a legacy or v0
+/// frame this reads the signature array only: `Ok` says where the slots
+/// are, NOT that the message after them parses — a frame whose message is
+/// garbage still has slots. Callers rely on that: the verify path refuses a
+/// pre-signed artifact (`filled_signature_slots`) and digests the unsigned
+/// frame (`unsigned_artifact`) before, and independently of, the parse.
+/// Whoever needs a real transaction calls `parse_transaction` as well (as
+/// `simulation_identity` and `bound_artifact_sha256` do). A v1 frame parses
+/// in full here, because its slots can only be found at the message's end.
 pub fn unsigned_artifact(bytes: &[u8]) -> Result<Vec<u8>, ArtifactParseError> {
     let layout = frame_layout(bytes)?;
     let mut out = bytes.to_vec();
@@ -583,6 +594,10 @@ pub fn unsigned_artifact(bytes: &[u8]) -> Result<Vec<u8>, ArtifactParseError> {
 /// empty slots; a filled slot means the bytes were signed first (Round 17,
 /// F-16-01). Refuses what `unsigned_artifact` refuses about the frame, and
 /// finds a v1 frame's slots at its end (Round 19, F-19-V1).
+///
+/// PRE-PARSE HELPER: for a legacy or v0 frame, `Ok` does not mean the
+/// message parses — only the signature array is read (the contract is on
+/// `unsigned_artifact`). Call `parse_transaction` for a real transaction.
 pub fn filled_signature_slots(bytes: &[u8]) -> Result<usize, ArtifactParseError> {
     let layout = frame_layout(bytes)?;
     // The range is `count × 64` bytes by construction, so `as_chunks` leaves
@@ -762,6 +777,10 @@ pub fn bound_artifact_sha256(
 /// which writes `V1_PREFIX` and then the message body, and that is exactly
 /// the frame minus its signatures (Round 19, F-19-V1). The frame must parse
 /// in full, since only the parse knows where the message ends.
+///
+/// PRE-PARSE HELPER: for a legacy or v0 frame, `Ok` does not mean the
+/// message parses — only the signature array is read (the contract is on
+/// `unsigned_artifact`). Call `parse_transaction` for a real transaction.
 pub fn message_bytes(bytes: &[u8]) -> Result<&[u8], ArtifactParseError> {
     let layout = frame_layout(bytes)?;
     Ok(&bytes[layout.message])
@@ -1010,12 +1029,33 @@ pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseE
 
 /// Keys the runtime never lets a transaction write, whatever its header says:
 /// the entries of agave's reserved-account-key set that are active with no
-/// feature gate (`ReservedAccount::new_active`). Keys reserved behind
-/// `add_new_reserved_account_keys` — among them the EpochRewards and
-/// LastRestartSlot sysvars — are deliberately NOT here: whether a cluster demotes them depends on a
-/// feature the bytes do not show, and a key left out is treated as writable,
-/// the stricter reading. The runtime oracle (`tools/runtime-oracle`) checks
-/// this list and the demotion against agave's `is_maybe_writable`.
+/// feature gate (`ReservedAccount::new_active` in agave's
+/// `reserved-account-keys`).
+///
+/// FEATURE-GATED KEYS ARE LEFT WRITABLE, on purpose. agave reserves these
+/// only behind a feature (`ReservedAccount::new_pending`):
+///
+/// - behind `add_new_reserved_account_keys`: the AddressLookupTable,
+///   ComputeBudget, Ed25519, LoaderV4, Secp256k1, ZkElGamalProof and
+///   ZkTokenProof programs, the EpochRewards and LastRestartSlot sysvars, and
+///   the Sysvar owner id (`Sysvar1111111111111111111111111111111111111`);
+/// - behind `enable_secp256r1_precompile`: the Secp256r1 program.
+///
+/// Whether a cluster demotes them depends on a feature the bytes do not show.
+/// Left out, such a key reads as writable when its header says so — the
+/// stricter reading: Graphite may call a key writable that the runtime
+/// demotes, never the reverse. What changes when a feature activates on
+/// mainnet: nothing becomes unsafe (the runtime only gets stricter than this
+/// list), but `writable` then over-reports those keys, and a key reported
+/// writable that a manifest declares read-only is refused as a privilege
+/// mismatch. On activation, move the ids here (in the same order agave
+/// lists them) and rerun the runtime oracle, whose `always_reserved` set
+/// must move with them.
+///
+/// The runtime oracle (`tools/runtime-oracle`) checks this list and the
+/// demotion against the crates' own `is_maybe_writable`, and checks that
+/// every program and sysvar id the id crate defines is classified as either
+/// always reserved or not.
 const ALWAYS_DEMOTED_KEYS: &[&str] = &[
     "Config1111111111111111111111111111111111111",
     "Feature111111111111111111111111111111111111",
@@ -1468,6 +1508,19 @@ pub const ADDRESS_LOOKUP_TABLE_PROGRAM: &str = "AddressLookupTab1e11111111111111
 /// A slot value meaning "not deactivating". Anything else means the table is on
 /// its way out, and a table that is being retired is not one to resolve
 /// security-relevant identities against.
+///
+/// `last_extended_slot` and `last_extended_slot_start_index` are NOT read
+/// (Round 29, audit 2026-10-20, parser: documented here, not changed). The
+/// runtime's `AddressLookupTable::get_active_addresses_len(current_slot, ..)`
+/// excludes the addresses appended at `last_extended_slot` while the
+/// current slot is still that slot: an index into them fails to load. So
+/// for a table extended in the very slot a transaction lands, Graphite can
+/// resolve an index the runtime refuses — the transaction then fails at
+/// load (`InvalidAddressLookupTableIndex`) and executes nothing, so the
+/// resolved identities describe no execution. Reading the field would need
+/// the slot the transaction will land in, which an offline parse cannot
+/// know; a later slot makes the addresses active, and that is the case a
+/// verdict is about.
 const NOT_DEACTIVATING: u64 = u64::MAX;
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -1568,9 +1621,24 @@ pub fn runtime_account_list(
         return Some(message.static_keys.clone());
     }
     let resolved = lookups?;
-    if resolved.len() != message.alt_account_count() {
-        // The resolution does not describe this message. Refuse rather than
-        // index into a list of the wrong length.
+    // The resolution must describe this message: as many writable addresses
+    // as its lookups' writable indexes, and as many readonly as its readonly
+    // ones. Refuse rather than index into a list of the wrong shape. Round 29
+    // (audit 2026-10-20, parser): only the total was compared, so a
+    // resolution with the split moved (one writable fewer, one readonly
+    // more) passed, and every loaded index from the boundary on named its
+    // neighbour.
+    let writable: usize = message
+        .lookups
+        .iter()
+        .map(|l| l.writable_indexes.len())
+        .sum();
+    let readonly: usize = message
+        .lookups
+        .iter()
+        .map(|l| l.readonly_indexes.len())
+        .sum();
+    if resolved.writable.len() != writable || resolved.readonly.len() != readonly {
         return None;
     }
     let mut all = message.static_keys.clone();
@@ -1704,6 +1772,15 @@ pub const COMPUTE_BUDGET_PROGRAM: &str = "ComputeBudget1111111111111111111111111
 /// `solana-transaction`'s `MAX_TX_ACCOUNT_LOCKS` (128). It is not active on
 /// mainnet: across the 48,946 transactions of the four mainnet samples
 /// (2026-09-23 to 2026-09-30) the largest executed one locks exactly 64.
+///
+/// Hard-coded, not read from the cluster (Round 29, audit 2026-10-20,
+/// parser): the parse is offline and a feature's state is not in the bytes.
+/// While the feature is inactive this is exactly the bank's refusal. Once it
+/// activates, a transaction locking 65 to 128 accounts executes and is
+/// refused here as `TooManyAccountLocks` — an outage for those transactions
+/// (stricter, never looser), not a bypass. On activation raise this to 128;
+/// the 256-key `TooManyAccounts` bound above it is the sanitizer's and does
+/// not move.
 pub const MAX_TX_ACCOUNT_LOCKS: usize = 64;
 /// The runtime's ceiling on a transaction's compute-unit limit.
 pub const MAX_COMPUTE_UNIT_LIMIT: u32 = 1_400_000;
@@ -1986,9 +2063,9 @@ pub fn durable_nonce(message: &ArtifactMessage) -> Option<DurableNonce> {
 /// What a fetched nonce account says, decoded from the runtime's layout.
 ///
 /// Layout (`NonceVersions`/`NonceState`, bincode): `u32` version — `0` is
-/// the legacy layout, `1` the current — then `u32` state (`0` uninitialized,
-/// `1` initialized), then for an initialized account the 32-byte authority,
-/// the 32-byte durable nonce and a `u64` fee calculator.
+/// `Versions::Legacy`, `1` `Versions::Current` — then `u32` state (`0`
+/// uninitialized, `1` initialized), then for an initialized account the
+/// 32-byte authority, the 32-byte durable nonce and a `u64` fee calculator.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NonceAccountState {
     pub authority: String,
@@ -1997,6 +2074,15 @@ pub struct NonceAccountState {
 
 /// Decode a nonce account's data. `Err` explains why the bytes are not an
 /// initialized nonce account the runtime would honour.
+///
+/// Only `Versions::Current` is honoured. Round 29 (audit 2026-10-20,
+/// parser): version 0 (`Versions::Legacy`) was accepted, but agave's
+/// `Versions::verify_recent_blockhash` answers `None` for every legacy
+/// account ("legacy durable nonces are invalid and should not allow durable
+/// transactions"), so a transaction advancing one is refused at load as
+/// `BlockhashNotFound`. A verdict about it would be a verdict about a
+/// transaction that cannot run. (`UpgradeNonceAccount` re-stores a legacy
+/// account as version 1, after which it is honoured.)
 pub fn decode_nonce_account(owner: &str, data: &[u8]) -> Result<NonceAccountState, String> {
     if owner != SYSTEM_PROGRAM {
         return Err(format!(
@@ -2010,6 +2096,12 @@ pub fn decode_nonce_account(owner: &str, data: &[u8]) -> Result<NonceAccountStat
         ));
     }
     let version = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+    if version == 0 {
+        return Err(
+            "nonce account version 0 (Legacy): the runtime refuses a legacy durable nonce (Versions::verify_recent_blockhash), so this transaction would fail as BlockhashNotFound; the account must be upgraded (UpgradeNonceAccount) first"
+                .to_string(),
+        );
+    }
     if version > 1 {
         return Err(format!(
             "nonce account version {version} is not one the runtime defines"
@@ -2076,4 +2168,577 @@ pub fn check_durable_nonce(
         ));
     }
     Ok(())
+}
+
+// Round 29 (audit 2026-10-20, parser): this module had no tests of its own;
+// every one lived in `tests/`, which reaches only the public surface. These
+// pin the reader and the rules at their source, with frames built byte by
+// byte here so each test says exactly which byte it is about.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(n: u8) -> [u8; 32] {
+        [n; 32]
+    }
+
+    fn b58(k: [u8; 32]) -> String {
+        Pubkey::from_bytes(k).to_base58()
+    }
+
+    fn cu16(mut n: usize, out: &mut Vec<u8>) {
+        loop {
+            let byte = (n & 0x7f) as u8;
+            n >>= 7;
+            if n == 0 {
+                out.push(byte);
+                return;
+            }
+            out.push(byte | 0x80);
+        }
+    }
+
+    struct Ix {
+        program: u8,
+        accounts: Vec<u8>,
+        data: Vec<u8>,
+    }
+
+    fn ix(program: u8, accounts: &[u8], data: &[u8]) -> Ix {
+        Ix {
+            program,
+            accounts: accounts.to_vec(),
+            data: data.to_vec(),
+        }
+    }
+
+    type Lookup = ([u8; 32], Vec<u8>, Vec<u8>);
+
+    /// A legacy (`version == None`) or v0 frame with `sigs` zeroed slots.
+    fn frame(
+        version: Option<u8>,
+        sigs: usize,
+        header: [u8; 3],
+        keys: &[[u8; 32]],
+        ixs: &[Ix],
+        lookups: &[Lookup],
+    ) -> Vec<u8> {
+        let mut out = Vec::new();
+        cu16(sigs, &mut out);
+        out.resize(out.len() + 64 * sigs, 0);
+        if let Some(v) = version {
+            out.push(0x80 | v);
+        }
+        out.extend_from_slice(&header);
+        cu16(keys.len(), &mut out);
+        for k in keys {
+            out.extend_from_slice(k);
+        }
+        out.extend_from_slice(&[9u8; 32]);
+        cu16(ixs.len(), &mut out);
+        for i in ixs {
+            out.push(i.program);
+            cu16(i.accounts.len(), &mut out);
+            out.extend_from_slice(&i.accounts);
+            cu16(i.data.len(), &mut out);
+            out.extend_from_slice(&i.data);
+        }
+        if version == Some(0) {
+            cu16(lookups.len(), &mut out);
+            for (table, w, r) in lookups {
+                out.extend_from_slice(table);
+                cu16(w.len(), &mut out);
+                out.extend_from_slice(w);
+                cu16(r.len(), &mut out);
+                out.extend_from_slice(r);
+            }
+        }
+        out
+    }
+
+    /// payer (1), a writable account (2), a program (3, readonly unsigned).
+    fn simple(version: Option<u8>) -> Vec<u8> {
+        frame(
+            version,
+            1,
+            [1, 0, 1],
+            &[key(1), key(2), key(3)],
+            &[ix(2, &[0, 1], &[7, 7])],
+            &[],
+        )
+    }
+
+    /// A v1 frame (no lookups, signatures last).
+    fn v1(header: [u8; 3], mask: u32, config: &[u8], keys: &[[u8; 32]], ixs: &[Ix]) -> Vec<u8> {
+        let mut out = vec![V1_PREFIX];
+        out.extend_from_slice(&header);
+        out.extend_from_slice(&mask.to_le_bytes());
+        out.extend_from_slice(&[9u8; 32]);
+        out.push(ixs.len() as u8);
+        out.push(keys.len() as u8);
+        for k in keys {
+            out.extend_from_slice(k);
+        }
+        out.extend_from_slice(config);
+        for i in ixs {
+            out.push(i.program);
+            out.push(i.accounts.len() as u8);
+            out.extend_from_slice(&(i.data.len() as u16).to_le_bytes());
+        }
+        for i in ixs {
+            out.extend_from_slice(&i.accounts);
+            out.extend_from_slice(&i.data);
+        }
+        out.resize(out.len() + 64 * usize::from(header[0]), 0);
+        out
+    }
+
+    fn read_cu16(bytes: &[u8]) -> Result<usize, ArtifactParseError> {
+        Reader::new(bytes).compact_u16("test length")
+    }
+
+    #[test]
+    fn compact_u16_reads_exactly_the_canonical_u16_encodings() {
+        assert_eq!(read_cu16(&[0x00]), Ok(0));
+        assert_eq!(read_cu16(&[0x7f]), Ok(127));
+        assert_eq!(read_cu16(&[0x80, 0x01]), Ok(128));
+        assert_eq!(read_cu16(&[0xff, 0x7f]), Ok(16_383));
+        assert_eq!(read_cu16(&[0x80, 0x80, 0x01]), Ok(16_384));
+        assert_eq!(read_cu16(&[0xff, 0xff, 0x03]), Ok(65_535));
+        // Every encoding the writer produces reads back as its value.
+        for n in [0usize, 1, 127, 128, 255, 16_383, 16_384, 65_535] {
+            let mut out = Vec::new();
+            cu16(n, &mut out);
+            assert_eq!(read_cu16(&out), Ok(n), "{n}");
+        }
+        // Past a u16: the three groups can say it, the field cannot mean it.
+        assert_eq!(
+            read_cu16(&[0x80, 0x80, 0x04]),
+            Err(ArtifactParseError::LengthNotU16 {
+                offset: 0,
+                value: 65_536
+            })
+        );
+        // Aliases: a zero final group is a second spelling.
+        for alias in [&[0x80u8, 0x00][..], &[0x81, 0x00], &[0x80, 0x80, 0x00]] {
+            assert_eq!(
+                read_cu16(alias),
+                Err(ArtifactParseError::NonCanonicalLength { offset: 0 }),
+                "{alias:?}"
+            );
+        }
+        // A continuation bit on the third byte: no fourth group exists.
+        assert_eq!(
+            read_cu16(&[0x80, 0x80, 0x80]),
+            Err(ArtifactParseError::NonCanonicalLength { offset: 0 })
+        );
+        assert!(matches!(
+            read_cu16(&[0x80]),
+            Err(ArtifactParseError::Truncated { offset: 1, .. })
+        ));
+        assert!(matches!(
+            read_cu16(&[]),
+            Err(ArtifactParseError::Truncated { offset: 0, .. })
+        ));
+    }
+
+    #[test]
+    fn a_well_formed_frame_parses_with_positional_privileges() {
+        for version in [None, Some(0)] {
+            let m = parse_transaction(&simple(version)).expect("parses");
+            assert_eq!(m.version, version);
+            assert_eq!(m.fee_payer, b58(key(1)));
+            assert_eq!(m.signers, vec![b58(key(1))]);
+            assert_eq!(m.header_writable, vec![b58(key(1)), b58(key(2))]);
+            assert_eq!(m.instructions.len(), 1);
+            assert_eq!(m.instructions[0].program_id, b58(key(3)));
+            assert_eq!(m.recent_blockhash, b58([9u8; 32]));
+        }
+    }
+
+    #[test]
+    fn header_arithmetic_the_runtime_refuses_is_refused() {
+        let keys = [key(1), key(2), key(3)];
+        let ixs = [ix(2, &[0], &[])];
+        let impossible = |header: [u8; 3], keys: &[[u8; 32]]| {
+            matches!(
+                parse_transaction(&frame(
+                    None,
+                    usize::from(header[0]),
+                    header,
+                    keys,
+                    &ixs,
+                    &[]
+                )),
+                Err(ArtifactParseError::ImpossibleHeader { .. })
+            )
+        };
+        assert!(impossible([4, 0, 0], &keys), "more signers than keys");
+        assert!(impossible([1, 1, 0], &keys), "no writable signer");
+        assert!(impossible([0, 0, 0], &keys), "no signer at all");
+        assert!(
+            impossible([1, 0, 3], &keys),
+            "readonly-unsigned overlaps signers"
+        );
+        assert!(impossible([1, 0, 0], &[]), "no keys");
+        assert_eq!(
+            parse_transaction(&frame(None, 2, [1, 0, 1], &keys, &ixs, &[])),
+            Err(ArtifactParseError::SignatureCountMismatch {
+                declared: 2,
+                required: 1
+            })
+        );
+        assert_eq!(
+            parse_transaction(&frame(None, 1, [1, 0, 1], &keys, &[ix(0, &[], &[])], &[])),
+            Err(ArtifactParseError::ProgramIsFeePayer { index: 0 })
+        );
+        assert!(matches!(
+            parse_transaction(&frame(None, 1, [1, 0, 1], &keys, &[ix(3, &[], &[])], &[])),
+            Err(ArtifactParseError::ProgramIndexOutOfRange {
+                program_index: 3,
+                ..
+            })
+        ));
+        assert!(matches!(
+            parse_transaction(&frame(None, 1, [1, 0, 1], &keys, &[ix(2, &[3], &[])], &[])),
+            Err(ArtifactParseError::AccountIndexOutOfRange {
+                account_index: 3,
+                ..
+            })
+        ));
+        assert!(matches!(
+            parse_transaction(&frame(
+                None,
+                1,
+                [1, 0, 1],
+                &[key(1), key(2), key(2)],
+                &ixs,
+                &[]
+            )),
+            Err(ArtifactParseError::DuplicateAccountKey {
+                first: 1,
+                second: 2,
+                ..
+            })
+        ));
+        let mut trailing = simple(None);
+        trailing.push(0);
+        assert_eq!(
+            parse_transaction(&trailing),
+            Err(ArtifactParseError::TrailingBytes { trailing: 1 })
+        );
+        // A versioned message other than v0 behind a signature count.
+        let mut v2 = simple(Some(0));
+        v2[65] = 0x82;
+        assert_eq!(
+            parse_transaction(&v2),
+            Err(ArtifactParseError::UnsupportedVersion(2))
+        );
+        assert_eq!(parse_transaction(&[]), Err(ArtifactParseError::Empty));
+    }
+
+    #[test]
+    fn instruction_and_account_limits_are_the_runtimes() {
+        let keys = [key(1), key(2), key(3)];
+        let many: Vec<Ix> = (0..MAX_INSTRUCTION_TRACE_LENGTH + 1)
+            .map(|_| ix(2, &[], &[]))
+            .collect();
+        assert_eq!(
+            parse_transaction(&frame(None, 1, [1, 0, 1], &keys, &many, &[])),
+            Err(ArtifactParseError::TooManyInstructions {
+                count: 65,
+                max: MAX_INSTRUCTION_TRACE_LENGTH
+            })
+        );
+        assert!(
+            parse_transaction(&frame(None, 1, [1, 0, 1], &keys, &many[..64], &[])).is_ok(),
+            "64 top-level instructions is the trace's limit, not past it"
+        );
+        let ixs = [ix(2, &[0], &[])];
+        let loaded = |n: usize| -> Vec<Lookup> { vec![(key(8), (0..n as u8).collect(), vec![])] };
+        assert!(parse_transaction(&frame(Some(0), 1, [1, 0, 1], &keys, &ixs, &loaded(61))).is_ok());
+        assert_eq!(
+            parse_transaction(&frame(Some(0), 1, [1, 0, 1], &keys, &ixs, &loaded(62))),
+            Err(ArtifactParseError::TooManyAccountLocks {
+                total: 65,
+                max: MAX_TX_ACCOUNT_LOCKS
+            })
+        );
+        let two: Vec<Lookup> = vec![
+            (key(8), (0..=255u8).collect(), vec![]),
+            (key(9), vec![0], vec![]),
+        ];
+        assert_eq!(
+            parse_transaction(&frame(Some(0), 1, [1, 0, 1], &keys, &ixs, &two)),
+            Err(ArtifactParseError::TooManyAccounts { total: 260 })
+        );
+        assert_eq!(
+            parse_transaction(&frame(
+                Some(0),
+                1,
+                [1, 0, 1],
+                &keys,
+                &ixs,
+                &[(key(8), vec![], vec![])]
+            )),
+            Err(ArtifactParseError::EmptyLookup { table: b58(key(8)) })
+        );
+    }
+
+    #[test]
+    fn v1_limits_are_the_formats_own() {
+        let keys = [key(1), key(2), key(3)];
+        let ixs = [ix(2, &[0, 1], &[1])];
+        let ok = v1([1, 0, 1], 0, &[], &keys, &ixs);
+        let m = parse_transaction(&ok).expect("v1 parses");
+        assert_eq!(m.version, Some(1));
+        assert_eq!(m.v1_config, Some(V1Config::default()));
+        assert!(m.lookups.is_empty());
+
+        let refused = |bytes: Vec<u8>| match parse_transaction(&bytes) {
+            Err(ArtifactParseError::V1Refused(v)) => v,
+            other => panic!("expected a v1 refusal, got {other:?}"),
+        };
+        let signers: Vec<[u8; 32]> = (1..=13).map(key).chain([key(50)]).collect();
+        assert_eq!(
+            refused(v1([13, 0, 0], 0, &[], &signers, &[ix(13, &[], &[])])),
+            V1Violation::TooManySignatures { count: 13, max: 12 }
+        );
+        let many_keys: Vec<[u8; 32]> = (1..=65).map(key).collect();
+        assert_eq!(
+            refused(v1([1, 0, 0], 0, &[], &many_keys, &ixs)),
+            V1Violation::TooManyAddresses { count: 65, max: 64 }
+        );
+        let many_ixs: Vec<Ix> = (0..65).map(|_| ix(2, &[], &[])).collect();
+        assert_eq!(
+            refused(v1([1, 0, 1], 0, &[], &keys, &many_ixs)),
+            V1Violation::TooManyInstructions { count: 65, max: 64 }
+        );
+        assert!(parse_transaction(&v1([1, 0, 1], 0, &[], &keys, &many_ixs[..64])).is_ok());
+        assert_eq!(
+            refused(v1([1, 0, 1], 1 << 5, &[], &keys, &ixs)),
+            V1Violation::ConfigMaskUnknownBits { mask: 1 << 5 }
+        );
+        assert_eq!(
+            refused(v1([1, 0, 1], 0b01, &[0; 8], &keys, &ixs)),
+            V1Violation::ConfigMaskPartialPriorityFee { mask: 0b01 }
+        );
+        for heap in [31 * 1024, 257 * 1024, 33 * 1024 + 1] {
+            assert_eq!(
+                refused(v1(
+                    [1, 0, 1],
+                    0b1_0000,
+                    &u32::to_le_bytes(heap),
+                    &keys,
+                    &ixs
+                )),
+                V1Violation::InvalidHeapSize { heap_size: heap }
+            );
+        }
+        let all = v1(
+            [1, 0, 1],
+            0b1_1111,
+            &[
+                &5u64.to_le_bytes()[..],
+                &200_000u32.to_le_bytes(),
+                &65_536u32.to_le_bytes(),
+                &(64 * 1024u32).to_le_bytes(),
+            ]
+            .concat(),
+            &keys,
+            &ixs,
+        );
+        assert_eq!(
+            parse_transaction(&all).unwrap().v1_config,
+            Some(V1Config {
+                priority_fee: Some(5),
+                compute_unit_limit: Some(200_000),
+                loaded_accounts_data_size_limit: Some(65_536),
+                heap_size: Some(64 * 1024),
+            })
+        );
+        // The signature array is exactly the header's count.
+        let mut short = ok.clone();
+        short.pop();
+        assert!(parse_transaction(&short).is_err());
+    }
+
+    #[test]
+    fn lookups_resolve_writable_first_across_tables_then_readonly() {
+        let keys = [key(1), key(2), key(3)];
+        // Indexes 3.. are loaded: A.w[1], B.w[0], A.r[0], B.r[2].
+        let lookups: Vec<Lookup> = vec![(key(10), vec![1], vec![0]), (key(11), vec![0], vec![2])];
+        let bytes = frame(
+            Some(0),
+            1,
+            [1, 0, 1],
+            &keys,
+            &[ix(2, &[3, 4, 5, 6, 0], &[])],
+            &lookups,
+        );
+        let m = parse_transaction(&bytes).unwrap();
+        assert_eq!(m.alt_account_count(), 4);
+        assert!(m.instructions[0].accounts[..4].iter().all(Option::is_none));
+        let table = |prefix: u8, n: u8| -> Vec<u8> {
+            let mut d = vec![0u8; LOOKUP_TABLE_META_SIZE];
+            d[0] = 1;
+            d[4..12].copy_from_slice(&u64::MAX.to_le_bytes());
+            for i in 0..n {
+                d.extend_from_slice(&key(prefix + i));
+            }
+            d
+        };
+        let tables: std::collections::HashMap<String, Vec<u8>> =
+            [(b58(key(10)), table(100, 3)), (b58(key(11)), table(200, 3))]
+                .into_iter()
+                .collect();
+        let resolved = resolve_lookups(&m, &tables).unwrap();
+        assert_eq!(resolved.writable, vec![b58(key(101)), b58(key(200))]);
+        assert_eq!(resolved.readonly, vec![b58(key(100)), b58(key(202))]);
+        assert_eq!(
+            resolve_instruction_accounts(&m, &m.instructions[0], Some(&resolved)).unwrap(),
+            vec![
+                b58(key(101)),
+                b58(key(200)),
+                b58(key(100)),
+                b58(key(202)),
+                b58(key(1))
+            ]
+        );
+        // A resolution of the right size but the wrong shape describes a
+        // different message: refused, not indexed into (Round 29).
+        let shifted = ResolvedLookups {
+            writable: vec![b58(key(101))],
+            readonly: vec![b58(key(200)), b58(key(100)), b58(key(202))],
+        };
+        assert_eq!(shifted.len(), resolved.len());
+        assert_eq!(runtime_account_list(&m, Some(&shifted)), None);
+        assert_eq!(runtime_account_list(&m, None), None);
+        // Index past a table, and a deactivating table.
+        let mut short = tables.clone();
+        short.insert(b58(key(11)), table(200, 2));
+        assert!(matches!(
+            resolve_lookups(&m, &short),
+            Err(LookupResolveError::IndexOutOfRange { index: 2, .. })
+        ));
+        let mut retiring = tables.clone();
+        let mut t = table(200, 3);
+        t[4..12].copy_from_slice(&7u64.to_le_bytes());
+        retiring.insert(b58(key(11)), t);
+        assert!(matches!(
+            resolve_lookups(&m, &retiring),
+            Err(LookupResolveError::TableDeactivating { slot: 7, .. })
+        ));
+        // A loaded address that is also a static key loads it twice.
+        let mut dup = tables.clone();
+        let mut t = table(200, 3);
+        let at = LOOKUP_TABLE_META_SIZE;
+        t[at..at + 32].copy_from_slice(&key(2));
+        dup.insert(b58(key(11)), t);
+        assert!(matches!(
+            resolve_lookups(&m, &dup),
+            Err(LookupResolveError::DuplicateAccount { .. })
+        ));
+    }
+
+    /// payer (1, signer), nonce account (2, writable), System (0, readonly).
+    fn nonce_frame(data: &[u8], nonce_writable: bool) -> Vec<u8> {
+        let header = if nonce_writable { [1, 0, 1] } else { [1, 0, 2] };
+        frame(
+            None,
+            1,
+            header,
+            &[key(1), key(2), [0u8; 32]],
+            &[ix(2, &[1, 2, 0], data), ix(2, &[0, 1], &[2, 0, 0, 0])],
+            &[],
+        )
+    }
+
+    #[test]
+    fn a_durable_nonce_is_detected_by_the_runtimes_rule() {
+        let m = parse_transaction(&nonce_frame(&ADVANCE_NONCE_ACCOUNT, true)).unwrap();
+        let d = durable_nonce(&m).expect("nonce transaction");
+        assert_eq!(d.nonce_account, b58(key(2)));
+        assert_eq!(d.nonce_authority, Some(b58(key(1))));
+        assert!(d.authority_is_signer);
+        assert!(d.nonce_account_writable);
+        assert_eq!(d.nonce_value, b58([9u8; 32]));
+        // Trailing bytes after the discriminator: the runtime still reads an
+        // advance, so this does too.
+        let m = parse_transaction(&nonce_frame(&[4, 0, 0, 0, 1, 2], true)).unwrap();
+        assert!(durable_nonce(&m).is_some());
+        // A read-only nonce account is detected, and flagged.
+        let m = parse_transaction(&nonce_frame(&ADVANCE_NONCE_ACCOUNT, false)).unwrap();
+        assert!(!durable_nonce(&m).unwrap().nonce_account_writable);
+        // Not an advance: three bytes, another System instruction.
+        for data in [&[4u8, 0, 0][..], &[2, 0, 0, 0]] {
+            let m = parse_transaction(&nonce_frame(data, true)).unwrap();
+            assert!(durable_nonce(&m).is_none(), "{data:?}");
+        }
+        // The advance as the SECOND instruction is not a nonce transaction.
+        let m = parse_transaction(&frame(
+            None,
+            1,
+            [1, 0, 1],
+            &[key(1), key(2), [0u8; 32]],
+            &[
+                ix(2, &[0, 1], &[2, 0, 0, 0]),
+                ix(2, &[1, 2, 0], &ADVANCE_NONCE_ACCOUNT),
+            ],
+            &[],
+        ))
+        .unwrap();
+        assert!(durable_nonce(&m).is_none());
+    }
+
+    #[test]
+    fn only_a_current_initialized_system_owned_nonce_account_is_honoured() {
+        let mut data = vec![0u8; NONCE_ACCOUNT_SIZE];
+        data[0..4].copy_from_slice(&1u32.to_le_bytes());
+        data[4..8].copy_from_slice(&1u32.to_le_bytes());
+        data[8..40].copy_from_slice(&key(1));
+        data[40..72].copy_from_slice(&[9u8; 32]);
+        let state = decode_nonce_account(SYSTEM_PROGRAM, &data).unwrap();
+        assert_eq!(state.authority, b58(key(1)));
+        assert_eq!(state.nonce_value, b58([9u8; 32]));
+        // Round 29: version 0 (Legacy) is refused, as the runtime refuses it.
+        let mut legacy = data.clone();
+        legacy[0..4].copy_from_slice(&0u32.to_le_bytes());
+        let why = decode_nonce_account(SYSTEM_PROGRAM, &legacy).unwrap_err();
+        assert!(why.contains("Legacy"), "{why}");
+        let mut future = data.clone();
+        future[0..4].copy_from_slice(&2u32.to_le_bytes());
+        assert!(decode_nonce_account(SYSTEM_PROGRAM, &future).is_err());
+        let mut uninit = data.clone();
+        uninit[4..8].copy_from_slice(&0u32.to_le_bytes());
+        assert!(decode_nonce_account(SYSTEM_PROGRAM, &uninit).is_err());
+        assert!(decode_nonce_account(SYSTEM_PROGRAM, &data[..79]).is_err());
+        assert!(decode_nonce_account(&b58(key(5)), &data).is_err());
+    }
+
+    #[test]
+    fn pre_parse_helpers_read_slots_without_parsing_the_message() {
+        // A legacy frame whose message is garbage: the slots are still
+        // found — the documented pre-parse contract.
+        let mut garbage = vec![1u8];
+        garbage.extend_from_slice(&[5u8; 64]);
+        garbage.extend_from_slice(&[0xff; 10]);
+        assert!(parse_transaction(&garbage).is_err());
+        assert_eq!(filled_signature_slots(&garbage), Ok(1));
+        let unsigned = unsigned_artifact(&garbage).unwrap();
+        assert_eq!(&unsigned[1..65], &[0u8; 64][..]);
+        assert_eq!(message_bytes(&garbage), Ok(&[0xffu8; 10][..]));
+        // The helpers that promise a transaction parse it.
+        assert!(simulation_identity(&garbage).is_err());
+        // A v1 frame must parse in full for its slots to be found.
+        let mut broken_v1 = v1(
+            [1, 0, 1],
+            0,
+            &[],
+            &[key(1), key(2), key(3)],
+            &[ix(2, &[], &[])],
+        );
+        broken_v1[4] = 0xff; // unknown mask bits
+        assert!(filled_signature_slots(&broken_v1).is_err());
+    }
 }

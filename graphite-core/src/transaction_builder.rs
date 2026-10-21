@@ -1,8 +1,24 @@
 //! Transaction Construction Engine — ARCHITECTURE.md 3.2
 //!
-//! Builds a verified transaction plan from resolved accounts and a protocol
-//! manifest's instruction definition. Produces a canonical serialization
-//! that the verification pipeline can check against expected behavior.
+//! Turns a verified instruction plan — resolved accounts plus the manifest's
+//! instruction definition — into a `BuiltTransaction`: a validated SUMMARY of
+//! the one instruction being verified (its accounts with their privileges,
+//! counts, the payload as hex, a compute estimate) that the verdict reports.
+//!
+//! It produces no serialization. Round 29 (audit 2026-10-20): this header
+//! said it "produces a canonical serialization that the verification
+//! pipeline can check"; nothing here ever built wire bytes, and nothing
+//! checks against any. The bytes that are signed are the caller's artifact,
+//! read by `tx_artifact::parse_transaction`, and a verdict binds to their
+//! digest (`scope.transaction_sha256`) — not to anything built here.
+//!
+//! Duplicate accounts are NOT refused. An instruction may legitimately name
+//! one account in several positions (a token transfer to its own source, an
+//! Anchor program passing the same account for two optional slots); the
+//! runtime de-duplicates keys at the message level, not per instruction. The
+//! counts below are therefore counts of POSITIONS: an account named twice as
+//! a signer is two of `signer_count`. Whether a repeated account is allowed
+//! where it appears is the manifest's and L2's question, not the builder's.
 
 use crate::account_resolution::ResolvedAccount;
 use crate::solana_types::{AccountMeta, Pubkey};
@@ -69,8 +85,10 @@ pub fn build_transaction(
         return Err(TransactionBuilderError::MissingAccounts);
     }
 
-    // Validate discriminator is valid hex
-    let disc_bytes = hex::decode(&plan.instruction_discriminator)
+    // The discriminator must be hex; its bytes are not used further. (A copy
+    // of discriminator || payload used to be built below and thrown away —
+    // dead work removed in Round 29.)
+    hex::decode(&plan.instruction_discriminator)
         .map_err(|e| TransactionBuilderError::InvalidDiscriminator(e.to_string()))?;
 
     // Build account metas from resolved accounts
@@ -89,13 +107,6 @@ pub fn build_transaction(
     let _program_pk = Pubkey::from_base58(&plan.program_id).map_err(|e| {
         TransactionBuilderError::InvalidProgramId(format!("{}: {}", plan.program_id, e))
     })?;
-
-    // Validate instruction data can be constructed (fail-fast on malformed data)
-    let _instruction_data = {
-        let mut data = disc_bytes.clone();
-        data.extend_from_slice(&plan.instruction_data);
-        data
-    };
 
     let signer_count = account_metas.iter().filter(|a| a.is_signer).count();
     let writable_count = account_metas.iter().filter(|a| a.is_writable).count();
@@ -228,6 +239,33 @@ mod tests {
             instruction_data: vec![],
         };
         assert!(build_transaction(&plan).is_err());
+    }
+
+    /// An account in two positions is two positions: the plan builds, and
+    /// the counts are per position (Round 29: documented, not refused).
+    #[test]
+    fn an_account_named_twice_is_counted_per_position() {
+        let payer = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
+        let plan = TransactionPlan {
+            program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
+            protocol_version: "1.0".to_string(),
+            instruction_discriminator: "03".to_string(),
+            instruction_name: "Transfer".to_string(),
+            resolved_accounts: vec![
+                make_account(payer, false, true),
+                make_account(payer, false, true),
+                make_account(payer, true, false),
+            ],
+            expected_state_changes: vec![],
+            allowed_cpis: vec![],
+            instruction_data: vec![1, 0, 0, 0, 0, 0, 0, 0],
+        };
+        let built = build_transaction(&plan).unwrap();
+        assert_eq!(built.account_count, 3);
+        assert_eq!(built.writable_count, 2);
+        assert_eq!(built.signer_count, 1);
+        assert_eq!(built.data_hex, "0100000000000000");
+        assert_eq!(built.data_len, 8);
     }
 
     #[test]

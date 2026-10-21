@@ -240,7 +240,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify trader signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "PlaceLimitOrderWithFreeFunds",
@@ -290,7 +290,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify trader signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "ReduceOrder",
@@ -374,7 +374,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify trader signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "ReduceOrderWithFreeFunds",
@@ -417,7 +417,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify trader signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "CancelAllOrders",
@@ -501,7 +501,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify trader signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "CancelAllOrdersWithFreeFunds",
@@ -544,7 +544,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify trader signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "CancelUpTo",
@@ -628,7 +628,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify trader signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "CancelUpToWithFreeFunds",
@@ -671,7 +671,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify trader signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "CancelMultipleOrdersById",
@@ -755,7 +755,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify trader signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "CancelMultipleOrdersByIdWithFreeFunds",
@@ -798,7 +798,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify trader signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "WithdrawFunds",
@@ -1037,7 +1037,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify payer signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "create"
   },
   {
    "name": "Log",
@@ -1059,7 +1059,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify logAuthority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "inert"
   },
   {
    "name": "PlaceMultiplePostOnlyOrders",
@@ -1150,7 +1150,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify trader signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "PlaceMultiplePostOnlyOrdersWithFreeFunds",
@@ -1200,7 +1200,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify trader signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "InitializeMarket",
@@ -1382,7 +1382,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify marketAuthority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "ChangeMarketStatus",
@@ -1425,7 +1425,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify marketAuthority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "ChangeSeatStatus",
@@ -1475,7 +1475,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify marketAuthority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "RequestSeatAuthorized",
@@ -1551,7 +1551,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify marketAuthority, payer signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "EvictSeat",
@@ -1649,7 +1649,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify marketAuthority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "ForceCancelOrders",
@@ -1747,7 +1747,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify marketAuthority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "CollectFees",
@@ -1817,7 +1817,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify sweeper signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "ChangeFeeRecipient",
@@ -1867,7 +1867,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify marketAuthority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   }
  ],
  "trust_tier": "BattleTested",

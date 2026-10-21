@@ -121,7 +121,8 @@
    ],
    "risk_rules": [
     "borrow must match the declared intent and the owner must sign"
-   ]
+   ],
+   "risk_class": "withdraw"
   },
   {
    "name": "borrowObligationLiquidityV2",
@@ -251,7 +252,8 @@
    "allowed_cpis": [],
    "risk_rules": [
     "borrow must match the declared intent and the owner must sign"
-   ]
+   ],
+   "risk_class": "withdraw"
   },
   {
    "name": "deleteReferrerStateAndShortUrl",
@@ -300,7 +302,8 @@
     "closes the referrer_state_and_short_url account and reclaims rent"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "close"
   },
   {
    "name": "depositAndWithdraw",
@@ -564,7 +567,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "depositObligationCollateral",
@@ -638,7 +642,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "depositObligationCollateralV2",
@@ -742,7 +747,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "depositReserveLiquidity",
@@ -852,7 +858,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "depositReserveLiquidityAndObligationCollateral",
@@ -977,7 +984,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "depositReserveLiquidityAndObligationCollateralV2",
@@ -1122,7 +1130,8 @@
     "credits obligation collateral"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "fillBorrowOrder",
@@ -1259,7 +1268,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "flashBorrowReserveLiquidity",
@@ -1369,7 +1379,8 @@
    ],
    "risk_rules": [
     "a flash borrow must be repaid in the same transaction"
-   ]
+   ],
+   "risk_class": "withdraw"
   },
   {
    "name": "flashRepayReserveLiquidity",
@@ -1478,7 +1489,8 @@
    ],
    "risk_rules": [
     "flash repay must settle a prior flash borrow"
-   ]
+   ],
+   "risk_class": "transfer"
   },
   {
    "name": "idlMissingTypes",
@@ -1517,7 +1529,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initFarmsForReserve",
@@ -1601,7 +1614,8 @@
     "initializes farms for a reserve"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initGlobalConfig",
@@ -1647,7 +1661,8 @@
     "initializes the global config account for the protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initLendingMarket",
@@ -1696,7 +1711,8 @@
     "initializes a lending market"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "initObligation",
@@ -1780,7 +1796,8 @@
     "initializes an obligation account for the owner"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "initObligationFarmsForReserve",
@@ -1874,7 +1891,8 @@
     "initializes obligation farms for a reserve"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "initReferrerStateAndShortUrl",
@@ -1930,7 +1948,8 @@
     "initializes the referrer state and short url account for the protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "initReferrerTokenState",
@@ -1993,7 +2012,8 @@
     "initializes the referrer token state account for the protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "initReserve",
@@ -2128,7 +2148,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initUserMetadata",
@@ -2188,7 +2209,8 @@
     "initializes user metadata for the owner"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "liquidateObligationAndRedeemReserveCollateral",
@@ -2359,7 +2381,8 @@
    ],
    "risk_rules": [
     "liquidation must target a delinquent obligation"
-   ]
+   ],
+   "risk_class": "withdraw"
   },
   {
    "name": "liquidateObligationAndRedeemReserveCollateralV2",
@@ -2560,7 +2583,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "markObligationForDeleveraging",
@@ -2599,7 +2623,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "redeemFees",
@@ -2669,7 +2694,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "redeemReserveCollateral",
@@ -2779,7 +2805,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "refreshObligation",
@@ -2805,7 +2832,8 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": "inert"
   },
   {
    "name": "refreshObligationFarmsForReserve",
@@ -2886,7 +2914,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "inert"
   },
   {
    "name": "refreshReserve",
@@ -2943,7 +2972,8 @@
     "updates reserve state from current oracle prices"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "inert"
   },
   {
    "name": "refreshReservesBatch",
@@ -2954,7 +2984,8 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": "inert"
   },
   {
    "name": "repayAndWithdrawAndRedeem",
@@ -3178,7 +3209,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "repayObligationLiquidity",
@@ -3261,7 +3293,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "repayObligationLiquidityV2",
@@ -3374,7 +3407,8 @@
     "decreases obligation borrows"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "requestElevationGroup",
@@ -3406,7 +3440,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "seedDepositOnInitReserve",
@@ -3473,7 +3508,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "setBorrowOrder",
@@ -3547,7 +3583,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setObligationOrder",
@@ -3579,7 +3616,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "socializeLoss",
@@ -3625,7 +3663,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "socializeLossV2",
@@ -3704,7 +3743,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateGlobalConfig",
@@ -3729,7 +3769,8 @@
     "updates the global configuration"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateGlobalConfigAdmin",
@@ -3754,7 +3795,8 @@
     "updates the global config admin"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateLendingMarket",
@@ -3786,7 +3828,8 @@
     "updates lending market configuration"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateLendingMarketOwner",
@@ -3813,7 +3856,8 @@
    "allowed_cpis": [],
    "risk_rules": [
     "changing the market owner must match the declared intent"
-   ]
+   ],
+   "risk_class": "authority"
   },
   {
    "name": "updateReserveConfig",
@@ -3852,7 +3896,8 @@
     "updates reserve configuration"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "withdrawObligationCollateral",
@@ -3939,7 +3984,8 @@
    ],
    "risk_rules": [
     "withdrawal must match the declared intent and the owner must sign"
-   ]
+   ],
+   "risk_class": "withdraw"
   },
   {
    "name": "withdrawObligationCollateralAndRedeemReserveCollateral",
@@ -4063,7 +4109,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "withdrawObligationCollateralAndRedeemReserveCollateralV2",
@@ -4207,7 +4254,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "withdrawObligationCollateralV2",
@@ -4311,7 +4359,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "withdrawProtocolFee",
@@ -4388,7 +4437,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "withdrawReferrerFees",
@@ -4472,7 +4522,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "cloneReserveConfig",
@@ -4516,14 +4567,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: targetReserve",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "topupReserveRewards",
@@ -4850,14 +4901,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: rolloverAccounts_obligation, rolloverAccounts_sourceBorrowReserve, rolloverAccounts_targetBorrowReserve, rolloverAccounts_sourceBorrowReserveLiquidity, rolloverAccounts_targetBorrowReserveLiquidity, sourceFarmsAccounts_obligationFarmUserState, sourceFarmsAccounts_reserveFarmState, targetFarmsAccounts_obligationFarmUserState, targetFarmsAccounts_reserveFarmState",
-    "transfers funds between the protocol and the involved accounts"
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "withdraw"
   },
   {
    "name": "fillBorrowOrderV2",
@@ -5022,7 +5073,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: obligation",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -5030,7 +5081,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "approveObligationOwnershipTransfer",
@@ -5142,14 +5193,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: obligation",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "enqueueToWithdraw",

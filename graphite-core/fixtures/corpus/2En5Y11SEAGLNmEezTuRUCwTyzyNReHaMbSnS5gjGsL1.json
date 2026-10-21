@@ -73,7 +73,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "419995818d8cbf9942c2d1a74deb5e912a0939dd525f353d87234263ba2643cd"
   },
   {
     "program_id": "2En5Y11SEAGLNmEezTuRUCwTyzyNReHaMbSnS5gjGsL1",
@@ -149,7 +150,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "721086bd9b074b81cdc5cffc63071224a424bf7f1122f15dd97a20f07d979d39"
   },
   {
     "program_id": "2En5Y11SEAGLNmEezTuRUCwTyzyNReHaMbSnS5gjGsL1",
@@ -225,7 +227,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "36a1bcf05d772b63291c72d52263931fcf6919fa49d2323f124e6e79cd6a5dea"
   },
   {
     "program_id": "2En5Y11SEAGLNmEezTuRUCwTyzyNReHaMbSnS5gjGsL1",
@@ -309,7 +312,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "2ae385f6b4cb66d7a16943d6026ad517ab9319d44c26d65f84e1163128f0b38c"
   },
   {
     "program_id": "2En5Y11SEAGLNmEezTuRUCwTyzyNReHaMbSnS5gjGsL1",
@@ -356,6 +360,7 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "372fda4c49e1684c67e1299c7a5f0e7d94b98393a71fe9efdc7c04397c48a7ec"
   }
 ]

@@ -120,7 +120,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: funder, vaultAuthority",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -128,7 +128,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "drainVault",
@@ -179,14 +179,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: vault, tokensTo",
-    "transfers funds between the protocol and the involved accounts"
+    "transfers the funds held by the protocol account to the destination account"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "drain"
   }
  ],
  "trust_tier": "BattleTested"

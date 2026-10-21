@@ -49,7 +49,10 @@ only on its approval.
    export SOLANA_RPC_URL="https://api.devnet.solana.com"
    export GRAPHITE_CORE_URL="http://127.0.0.1:7331"
    export GRAPHITE_API_KEY="<the Core's key>"
+   export GRAPHITE_MAX_TRANSFER_LAMPORTS=100000000   # required (Round 29): 0.1 SOL per transaction
    ```
+   Every variable the guard reads is listed in
+   [`../solana-agent-kit/.env.example`](../solana-agent-kit/.env.example).
 
 ## Installation
 
@@ -130,8 +133,47 @@ submitted — and nothing is signed under a residual the operator has not accept
   spend no other token, and deliver the requested token (`assertSwapEffectMatches`), before
   the Core is asked. A request that says what it receives but not what it spends is refused.
 - **A request that negates or cancels what it names is refused** (`assertAffirmative`):
-  "Don't send 1 SOL to …", "Never swap …", "Cancel the transfer …". Grounding establishes
-  what a request names; this establishes that it asks for it. Rephrase to act.
+  "Don't send 1 SOL to …", "Never swap …", "Cancel the transfer …", "Hold off …", "Please
+  refrain …". Grounding establishes what a request names; this establishes that it asks
+  for it. Rephrase to act.
+- **Only the accepted form is acted on (Round 29, audit 2026-10-20, H3/M5).** A transfer
+  is built only from a request that is, as a whole, `[please] send|transfer|pay <amount>
+  SOL to <address>` (ASCII decimal amount, at most 9 decimal places, optionally ending
+  with "." or "!"). Grounding used to check one address, one number and the word SOL, so
+  "Receive 5 SOL from A", "A owes me 5 SOL", "What would happen if I sent 5 SOL to A?",
+  "Tomorrow, send …", "Do n0t send …" were transfers TO A, and "5000 lamports of SOL",
+  "$20 of SOL", "-5 SOL" and "5 mSOL" were that many SOL. Questions, conditions,
+  deferrals, other units, currencies, signs, non-ASCII digits and extra words are now
+  refused with the accepted form named. Swaps have the same positive grammar ("swap
+  <amount> <token> for <token>" / "buy <token> with <amount> <token>", optionally "for at
+  least <amount> <token>" and "with <n>% slippage"). The class sent to the Core is the
+  method's (`transfer` / `swap`), never the AI layer's label, and only grounded values
+  travel in `proposed_intent`.
+- **A swap is held to its own minimum (Round 29, H2/H4).** The Core does not read a
+  route's minimum output; the guard does. A swap is built only from an exact-in
+  instruction whose data `swap-instructions.ts` decodes, every byte, from the IDLs
+  committed under `graphite-core/scripts`: Jupiter v6 `route` / `shared_accounts_route`
+  (platform fee 0), Orca Whirlpools `swap` / `swapV2`, Raydium CPMM `swap_base_input`,
+  Raydium CLMM `swap` / `swap_v2`, Raydium AMM v4 `SwapBaseIn`, Meteora DLMM `swap` /
+  `swap2` — `SWAP_PROGRAM_IDS` is exactly these programs (it used to be 46, DCA, limit
+  orders, perps, a bridge and lockers among them). Exact-out forms are refused by name;
+  Jupiter `route_v2` is refused because no committed IDL carries its deployed layout. The
+  route may spend no more than the request names; its minimum must be above zero, at most
+  what the simulation delivered, and within the allowed slippage of it (the request's
+  "with n% slippage", else `GRAPHITE_SWAP_MAX_SLIPPAGE_BPS`, default 100, never above
+  500); and it must meet a price floor — the request's "for at least …" or the operator's
+  `GRAPHITE_SWAP_MIN_RATES` ("SOL/USDC=100", output units per input unit). With neither,
+  the swap is refused unless `GRAPHITE_SWAP_ALLOW_UNPRICED=1`, logged at startup as an
+  accepted risk (`swap-economics.ts`).
+- **The envelope around a swap is the guard's (Round 29, L4).** Optionally a ComputeBudget
+  limit and price (`GRAPHITE_SWAP_COMPUTE_UNIT_LIMIT`, `GRAPHITE_SWAP_COMPUTE_UNIT_PRICE`;
+  at most 0.005 SOL of priority fee, added to the measured outflow) and an idempotent
+  creation of the wallet's own associated account for the output mint
+  (`GRAPHITE_SWAP_CREATE_OUTPUT_ATA=1`, only when the route writes to it). Built from
+  configuration and the wallet's key, never from the payload, and declared to the Core as
+  siblings. Wrapping and unwrapping SOL is not built: the Core's risk engine refuses SPL
+  Token CloseAccount outright, so an unwrap would block every SOL-output swap
+  (`swap-envelope.ts`).
 - Durable-nonce shapes are refused at build: `lastValidBlockHeight` does not bound them.
 - **The operator's spend limits (`spend-policy.ts`, Round 24).** Graphite cannot know
   whether a person wanted a request; the amount bounds the damage when a model was talked
@@ -146,6 +188,33 @@ submitted — and nothing is signed under a residual the operator has not accept
   swap that spends any other token is refused because a lamport cap cannot price it, and
   with an allowlist but no cap every swap is refused, because a swap has no destination
   to check. Limits only narrow; nothing here can make a refused transaction executable.
+  Since Round 29 (M6) the guard **refuses to start without a per-transaction cap** unless
+  `GRAPHITE_ALLOW_UNCAPPED=1`, logs the policy in force at startup, and can bound a
+  rolling window: `GRAPHITE_MAX_TOTAL_LAMPORTS` per `GRAPHITE_SPEND_WINDOW_SECONDS`
+  (default 3600) across executed transactions — reserved before signing, kept once the
+  bytes may have left, in memory and per process.
+- **A last say before signing (Round 29, M7).** `executeTransfer(request, { confirm })`
+  and `executeSwap(request, payload, { confirm })` call `confirm(summary)` after
+  grounding, the spend policy, the build, the simulation, Graphite's verdict and the
+  residual policy, immediately before signing. The summary is the resolved transaction:
+  destination and lamports (or the route's decoded amount in, minimum out, simulated out,
+  slippage and floor), the program, the simulated wallet effect and the verdict. Anything
+  but `true` throws `ConfirmationDeclined`; nothing is signed or sent. The MCP server
+  elicits here.
+- **An ambiguous submission is not retried blind (Round 29, L2).** The transaction id is
+  computed from the signed bytes before sending; if `sendRawTransaction` fails, the attempt
+  is recorded on the trail with that signature and `SubmissionOutcomeUnknown` carries it.
+  A repeat of the same request is refused while that signature can still land, and
+  refused once, naming it, if it did. Callers must check the signature before retrying
+  anything else.
+- **Same-process integrity (Round 29, M8).** Every collaborator that takes part in a
+  decision (Core client, RPC connection and simulator, residual, spend and swap policies,
+  AI layer URL, wallet profile) is an ES private field; the instance and its prototype are
+  frozen; `SOLANA_PRIVATE_KEY` is deleted from `process.env` once read; and
+  `getGraphiteClient()` returns the Core's read-only endpoints, not the client and its key.
+- **Transport (Round 29, M3).** `SOLANA_RPC_URL` is held to the Core's rule (https://, or
+  http:// to loopback), and no RPC request follows a redirect. The AI layer's answer is
+  read through a 64 KiB bound.
 - **Version 0 through lookup tables (Round 22).** `BoundTransaction.build({ version: 0,
   addressLookupTables })` compiles a v0 message reading accounts through tables the
   caller has already fetched; `executeSwap` does so when the payload names
@@ -198,15 +267,19 @@ import { GraphiteGuard } from "./guard.js";
 
 const guard = await GraphiteGuard.create({
   // or SOLANA_PRIVATE_KEY / SOLANA_RPC_URL / GRAPHITE_CORE_URL / GRAPHITE_API_KEY /
-  // GRAPHITE_AI_LAYER_URL / GRAPHITE_WALLET_PROFILE / GRAPHITE_TRANSACTION_VERSION
+  // GRAPHITE_AI_LAYER_URL / GRAPHITE_WALLET_PROFILE / GRAPHITE_TRANSACTION_VERSION /
+  // GRAPHITE_MAX_TRANSFER_LAMPORTS / GRAPHITE_SWAP_MIN_RATES / …
   graphiteCoreUrl: "http://127.0.0.1:7331",
   graphiteApiKey: process.env.GRAPHITE_API_KEY,
   transactionVersion: 1, // or "legacy" (the default)
+  spendPolicy: { maxTransferLamports: 100_000_000n }, // required
 });
 
 // The transaction is built once, verified as those exact bytes, and signed only on an
-// artifact_bound approval whose digest matches.
-const outcome = await guard.executeTransfer("Transfer 0.05 SOL to <address>");
+// artifact_bound approval whose digest matches — and, here, a person's yes.
+const outcome = await guard.executeTransfer("Transfer 0.05 SOL to <address>", {
+  confirm: async (summary) => askAPerson(summary), // destination, lamports, effect, verdict
+});
 
 if (!outcome.verifiedExecution) {
   console.log("Blocked by Graphite:", outcome.verification.risk_verdict.findings);
@@ -233,10 +306,13 @@ verdict on what actually landed.
 
 ```bash
 npm run typecheck
-npm test                 # 170 tests: the guard end to end, its CLI, BoundTransaction gate (legacy, v0, v1), execution-boundary fuzz,
-                         # TOCTOU signing boundary, AuditBind, artifact, nonces,
-                         # residual policy, execution lifecycle (incl. the Round 12
-                         # submission-report retry)
+npm test                 # (counts: docs/CURRENT.md) the guard end to end (incl. an APPROVED transfer and swap
+                         # driven through the whole lifecycle against a loopback Core that
+                         # approves with the real digests), its CLI, BoundTransaction gate
+                         # (legacy, v0, v1), execution-boundary fuzz, TOCTOU signing boundary,
+                         # AuditBind, artifact, nonces, residual policy, execution lifecycle,
+                         # grounding grammars, swap decoders (checked against the committed
+                         # IDLs), swap economics, spend policy and aggregate, envelope
 npm run emit:corpus      # regenerates graphite-core/fixtures/artifacts/sak_bridge_corpus.json
                          # (15 shapes incl. two v1 + 2,897 byte-level mutations); CI fails on drift
 npm run emit:artifact-fixture

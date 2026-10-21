@@ -89,6 +89,15 @@ RUN groupadd -g 10001 graphite \
     && chown -R graphite:graphite /data
 VOLUME ["/data"]
 ENV GRAPHITE_DATA_DIR=/data
+# Round 29 (audit 2026-10-20, K1): the image had no WORKDIR, so the server's
+# default Manifest Registry state path, `registry_state.json` relative to the
+# working directory, resolved to `/registry_state.json` — off the volume, and
+# unwritable under compose's read-only root filesystem, so accepted community
+# submissions and reviewer reputations did not survive a restart. The state
+# file is named on the volume explicitly, and the working directory is the
+# volume, so any other relative path an operator configures lands there too.
+ENV GRAPHITE_REGISTRY_STATE=/data/registry_state.json
+WORKDIR /data
 
 USER 10001:10001
 EXPOSE 7331

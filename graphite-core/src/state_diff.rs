@@ -72,6 +72,11 @@ const T22_TYPE_ACCOUNT: u8 = 2;
 /// An all-zero pubkey means "none" in every COption-style field on-chain.
 const NULL_PUBKEY: &str = "11111111111111111111111111111111";
 
+/// How `ExtensionScan::malformed` begins when what could not be read is the
+/// BASE token layout rather than the extension region (F8). The finding is
+/// then `TokenLayoutUndecodable`, which also applies to classic SPL Token.
+const TOKEN_LAYOUT_UNDECODABLE: &str = "the base token layout does not decode: ";
+
 /// Where a diff came from. Only `RpcSimulated` may certify a clean layer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -119,6 +124,7 @@ pub struct MintView {
 
 /// The state of one account at one point in time.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct AccountSnapshot {
     pub pubkey: String,
     pub lamports: u64,
@@ -139,6 +145,12 @@ pub struct AccountSnapshot {
     /// transfer-fee pair is MODELLED (Round 20) — see `transfer_fee_withheld`
     /// and `transfer_fee_config` — and every other extension that can alter a
     /// transfer still blocks.
+    ///
+    /// Round 29 (F8): for an account of EITHER token program whose data has
+    /// the layout of a token account or a mint but does not decode as one (a
+    /// COption tag other than 0 or 1, a state or `is_initialized` byte out of
+    /// range), `malformed` says so, prefixed "the base token layout does not
+    /// decode: ", and the layer reports `TokenLayoutUndecodable`.
     #[serde(default)]
     pub extensions: ExtensionScan,
     /// `TransferFeeAmount.withheld_amount` of a Token-2022 token account: the
@@ -232,6 +244,10 @@ pub struct Token2022Powers {
 /// (22), ScaledUiAmount (25), Pausable (26).
 const EXT_AUTHORITY_FIRST: [u16; 11] = [4, 10, 14, 16, 18, 19, 20, 21, 22, 25, 26];
 const EXT_PAUSABLE: u16 = 26;
+/// Every extension `Token2022Powers` reads an authority (or the paused flag)
+/// out of: the authority-first ones, MintCloseAuthority and PermanentDelegate
+/// (F5).
+const EXT_AUTHORITY_BEARING: [u16; 13] = [3, 4, 10, 12, 14, 16, 18, 19, 20, 21, 22, 25, 26];
 
 /// Read the extension values in `Token2022Powers`, exactly or not at all.
 pub fn decode_token2022_powers(data: &[u8]) -> Option<Token2022Powers> {
@@ -471,6 +487,11 @@ fn single_extension_value(data: &[u8], discriminant: u16) -> Option<&[u8]> {
     let mut offset = T22_TLV_START;
     while offset < data.len() {
         if offset + 4 > data.len() {
+            // M11: a short tail ends the region exactly when the program's
+            // own walk ends there; see `short_tlv_tail_ends_region`.
+            if short_tlv_tail_ends_region(&data[offset..]) {
+                break;
+            }
             return None;
         }
         let d = u16::from_le_bytes([data[offset], data[offset + 1]]);
@@ -543,6 +564,15 @@ impl AccountSnapshot {
             (None, None)
         };
         let is_token_2022 = owner == SPL_TOKEN_2022_PROGRAM;
+        // F8: data with the layout of a token account or a mint whose fields
+        // do not decode is recorded as unreadable, not as an account with no
+        // token view — the latter is what an ordinary non-token account
+        // looks like, and none of the authority checks would see it.
+        let layout_error = if is_token_program {
+            token_layout_error(data)
+        } else {
+            None
+        };
         Self {
             pubkey: pubkey.to_string(),
             lamports,
@@ -550,7 +580,12 @@ impl AccountSnapshot {
             data_len: data.len(),
             token,
             mint,
-            extensions: if is_token_2022 {
+            extensions: if let Some(why) = layout_error {
+                ExtensionScan {
+                    found: Vec::new(),
+                    malformed: Some(format!("{TOKEN_LAYOUT_UNDECODABLE}{why}")),
+                }
+            } else if is_token_2022 {
                 detect_token2022_extensions(data)
             } else {
                 // Classic SPL Token has no extension region. Looking for one
@@ -607,7 +642,9 @@ impl AccountSnapshot {
 /// - a System nonce account (80 bytes: version u32, state u32 = 1
 ///   Initialized, authority 8..40), whose authority can withdraw it;
 /// - a vote account (`VoteState` u32 tag 1 V1_14_11 or 2 Current:
-///   node 4..36, authorized withdrawer 36..68);
+///   node 4..36, authorized withdrawer 36..68; tag 3 V4 adds the inflation
+///   rewards and block revenue collectors at 68..100 and 100..132, and any
+///   other version is recorded by its data's SHA-256 — Round 29, F6);
 /// - an address lookup table (u32 type 1, `Option<Pubkey>` authority: tag
 ///   byte 21, key 22..54).
 ///
@@ -677,6 +714,30 @@ fn native_authorities(owner: &str, data: &[u8]) -> Vec<(String, String)> {
                 out.push(("vote authorized withdrawer".to_string(), k));
             }
         }
+        // Round 29 (audit 2026-10-20, F6): `VoteStateVersions::V4` (tag 3,
+        // SIMD-0185) keeps `node_pubkey` (4..36) and `authorized_withdrawer`
+        // (36..68) where V3 has them, then adds the two accounts the
+        // validator's revenue is paid to: `inflation_rewards_collector`
+        // (68..100) and `block_revenue_collector` (100..132). It was not
+        // decoded, so a withdrawer handed over in a V4 account was invisible.
+        ("Vote111111111111111111111111111111111111111", Some(3)) => {
+            if let (Some(withdrawer), Some(inflation), Some(revenue)) =
+                (key(36..68), key(68..100), key(100..132))
+            {
+                out.push(("vote authorized withdrawer".to_string(), withdrawer));
+                out.push(("vote inflation rewards collector".to_string(), inflation));
+                out.push(("vote block revenue collector".to_string(), revenue));
+            } else {
+                out.push(vote_state_undecodable(data));
+            }
+        }
+        // Any other vote-state version (V0_23_5, or one newer than this
+        // build) is not decoded, and not taken as having no authorities
+        // either: its whole data is recorded, so a vote account whose bytes
+        // changed is a finding the manifest has to account for (F6).
+        ("Vote111111111111111111111111111111111111111", _) if !data.is_empty() => {
+            out.push(vote_state_undecodable(data));
+        }
         ("AddressLookupTab1e1111111111111111111111111", Some(1)) => match data.get(21) {
             Some(0) => out.push(("lookup table authority".to_string(), "none".to_string())),
             Some(1) => {
@@ -689,6 +750,16 @@ fn native_authorities(owner: &str, data: &[u8]) -> Vec<(String, String)> {
         _ => {}
     }
     out
+}
+
+/// The stand-in authority of a vote account this build cannot decode: its
+/// data's SHA-256, so any change to it compares unequal (F6).
+fn vote_state_undecodable(data: &[u8]) -> (String, String) {
+    use sha2::Digest;
+    (
+        "vote state (version not decoded; sha256)".to_string(),
+        hex::encode(sha2::Sha256::digest(data)),
+    )
 }
 
 /// How an authority that may or may not exist is written in a finding.
@@ -706,20 +777,38 @@ fn pubkey_at(data: &[u8], offset: usize) -> Option<String> {
 }
 
 /// An on-chain COption<Pubkey>: a 4-byte little-endian tag followed by the key.
-/// Tag 0 is None; anything else is Some. A Some whose key is all zeroes is
-/// still treated as None, because that is what it means in practice.
-fn coption_pubkey(data: &[u8], tag_offset: usize) -> Option<String> {
-    let tag = u32::from_le_bytes(data.get(tag_offset..tag_offset + 4)?.try_into().ok()?);
-    if tag == 0 {
-        return None;
-    }
-    let key = pubkey_at(data, tag_offset + 4)?;
-    if key == NULL_PUBKEY {
-        None
-    } else {
-        Some(key)
+/// Tag 0 is None and tag 1 is Some. A Some whose key is all zeroes is still
+/// treated as None, because that is what it means in practice.
+///
+/// Round 29 (audit 2026-10-20, F8): every other tag is UNDECODABLE, the outer
+/// `Err`. `COption::unpack` in spl-token refuses tags 2..=u32::MAX, so no
+/// account the program wrote carries one; a tag of 7 used to read as Some,
+/// and the 32 bytes after it — whatever they were — as a delegate, a close
+/// authority, a mint authority. What only a broken or hostile source can
+/// produce is refused, never interpreted.
+fn coption_pubkey(data: &[u8], tag_offset: usize) -> Result<Option<String>, String> {
+    let tag = data
+        .get(tag_offset..tag_offset + 4)
+        .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+        .ok_or_else(|| format!("the COption at offset {tag_offset} is cut short"))?;
+    match tag {
+        0 => Ok(None),
+        1 => {
+            let key = pubkey_at(data, tag_offset + 4)
+                .ok_or_else(|| format!("the COption at offset {tag_offset} is cut short"))?;
+            Ok(if key == NULL_PUBKEY { None } else { Some(key) })
+        }
+        other => Err(format!(
+            "the COption tag at offset {tag_offset} is {other}; only 0 (None) and 1 (Some) are valid"
+        )),
     }
 }
+
+/// `spl_token::state::Multisig::LEN`. Token-2022 pads an extended account
+/// that would be exactly this long by two bytes (`adjust_len_for_multisig`),
+/// so data of this length owned by either token program is a Multisig and
+/// never an account or a mint — whatever byte 165 happens to hold.
+const MULTISIG_LEN: usize = 355;
 
 fn u64_at(data: &[u8], offset: usize) -> Option<u64> {
     Some(u64::from_le_bytes(
@@ -728,35 +817,55 @@ fn u64_at(data: &[u8], offset: usize) -> Option<u64> {
 }
 
 /// Decode the 165-byte SPL token account layout, shared by Token and
-/// Token-2022. Returns `None` when the data is not a token account.
+/// Token-2022. Returns `None` when the data is not a token account, or has
+/// the layout of one and does not decode (`token_layout_error` says why).
 pub fn decode_token_account(data: &[u8]) -> Option<TokenAccountView> {
-    if data.len() < TOKEN_ACCOUNT_LEN {
-        return None;
+    decode_token_account_checked(data).ok().flatten()
+}
+
+/// `Ok(None)`: not a token account (wrong length or type byte, or
+/// uninitialized). `Err`: the layout says token account and a field does not
+/// decode (F8).
+fn decode_token_account_checked(data: &[u8]) -> Result<Option<TokenAccountView>, String> {
+    if data.len() < TOKEN_ACCOUNT_LEN || data.len() == MULTISIG_LEN {
+        return Ok(None);
     }
     // A Token-2022 account longer than the base layout carries an explicit
     // type byte; anything longer that does NOT say "account" is a mint or an
     // unknown extension, and must not be decoded as an account.
-    if data.len() > TOKEN_ACCOUNT_LEN {
-        match data.get(T22_TYPE_OFFSET) {
-            Some(&T22_TYPE_ACCOUNT) => {}
-            _ => return None,
-        }
+    if data.len() > TOKEN_ACCOUNT_LEN && data.get(T22_TYPE_OFFSET) != Some(&T22_TYPE_ACCOUNT) {
+        return Ok(None);
     }
-    let view = TokenAccountView {
-        mint: pubkey_at(data, 0)?,
-        owner: pubkey_at(data, 32)?,
-        amount: u64_at(data, 64)?,
-        delegate: coption_pubkey(data, 72),
-        state: *data.get(108)?,
-        delegated_amount: u64_at(data, 121)?,
-        close_authority: coption_pubkey(data, 129),
-    };
+    let short = || "the token account layout is cut short".to_string();
+    let state = *data.get(108).ok_or_else(short)?;
     // An uninitialized account is not a token account in any meaningful sense;
     // treating it as one would report a spurious 0-amount balance.
-    if view.state == 0 {
-        return None;
+    if state == 0 {
+        return Ok(None);
     }
-    Some(view)
+    // `AccountState` is 0, 1 or 2; anything else is not one (F8).
+    if state > 2 {
+        return Err(format!("the token account state byte is {state}"));
+    }
+    Ok(Some(TokenAccountView {
+        mint: pubkey_at(data, 0).ok_or_else(short)?,
+        owner: pubkey_at(data, 32).ok_or_else(short)?,
+        amount: u64_at(data, 64).ok_or_else(short)?,
+        delegate: coption_pubkey(data, 72)?,
+        state,
+        delegated_amount: u64_at(data, 121).ok_or_else(short)?,
+        close_authority: coption_pubkey(data, 129)?,
+    }))
+}
+
+/// Why data with the layout of a token account or a mint does not decode as
+/// one, or `None` when it decodes or is not such a layout (F8). An account
+/// whose fields cannot be read is not an account with no delegate, no close
+/// authority and no mint authority — it is one Graphite cannot reason about.
+fn token_layout_error(data: &[u8]) -> Option<String> {
+    decode_token_account_checked(data)
+        .err()
+        .or_else(|| decode_mint_checked(data).err())
 }
 
 // -- Token-2022 extensions: detected and classified, not modelled -----------
@@ -908,8 +1017,11 @@ pub fn detect_token2022_extensions(data: &[u8]) -> ExtensionScan {
     let mut offset = T22_TLV_START;
     while offset < data.len() {
         if offset + 4 > data.len() {
+            if short_tlv_tail_ends_region(&data[offset..]) {
+                break;
+            }
             scan.malformed = Some(format!(
-                "{} trailing byte(s) at offset {offset} are too short to be a TLV header",
+                "{} trailing byte(s) at offset {offset} are too short to be a TLV header and are not the zero padding Token-2022 leaves",
                 data.len() - offset
             ));
             return scan;
@@ -944,31 +1056,59 @@ pub fn detect_token2022_extensions(data: &[u8]) -> ExtensionScan {
     scan
 }
 
+/// Whether `tail` — fewer than the four bytes of a TLV header, left at the
+/// end of a Token-2022 extension region — ends the region cleanly.
+///
+/// Round 29 (audit 2026-10-20, M11/F1): it used to be malformed whatever it
+/// held, and that blocked real accounts. Token-2022 never sizes an extended
+/// account at exactly `Multisig::LEN` (355): `adjust_len_for_multisig` adds
+/// two zero bytes, so a mint or account whose extensions total 189 bytes is
+/// 357 bytes long and ends in two zeros — and Graphite answered every such
+/// account with a Critical "region unreadable". The program's own walk
+/// (`get_extension_types`) ends at a tail too short for a type, and at a
+/// type of 0 (`Uninitialized`) however short the rest; it refuses a non-zero
+/// type with no room for its length.
+///
+/// Accepted here: a tail whose first two bytes are a zero type, or a tail of
+/// zeros. Refused: a non-zero type cut short, and a single non-zero byte —
+/// which the program tolerates (its comment allows a realloc to leave one)
+/// but which no size Token-2022 computes produces, so it stays the
+/// fail-closed answer.
+fn short_tlv_tail_ends_region(tail: &[u8]) -> bool {
+    tail.iter().all(|b| *b == 0) || (tail.len() >= 2 && tail[0] == 0 && tail[1] == 0)
+}
+
 /// Decode the 82-byte SPL mint layout. Returns `None` when the data is not a
-/// mint.
+/// mint, or has the layout of one and does not decode.
 pub fn decode_mint(data: &[u8]) -> Option<MintView> {
-    if data.len() < MINT_LEN {
-        return None;
+    decode_mint_checked(data).ok().flatten()
+}
+
+/// `Ok(None)`: not a mint. `Err`: the layout says mint and a field does not
+/// decode (F8).
+fn decode_mint_checked(data: &[u8]) -> Result<Option<MintView>, String> {
+    if data.len() < MINT_LEN || data.len() == MULTISIG_LEN {
+        return Ok(None);
     }
     // Exactly-82 is a classic mint. Longer data must carry the Token-2022 type
     // byte saying "mint" — otherwise a 165-byte token account would decode as
     // a mint too, and its owner field would be misread as a supply.
-    if data.len() != MINT_LEN {
-        match data.get(T22_TYPE_OFFSET) {
-            Some(&T22_TYPE_MINT) => {}
-            _ => return None,
-        }
+    if data.len() != MINT_LEN && data.get(T22_TYPE_OFFSET) != Some(&T22_TYPE_MINT) {
+        return Ok(None);
     }
-    let is_initialized = *data.get(45)? != 0;
-    if !is_initialized {
-        return None;
+    let short = || "the mint layout is cut short".to_string();
+    // `is_initialized` is a bool: 0 or 1 (F8).
+    match *data.get(45).ok_or_else(short)? {
+        0 => return Ok(None),
+        1 => {}
+        other => return Err(format!("the mint's is_initialized byte is {other}")),
     }
-    Some(MintView {
-        mint_authority: coption_pubkey(data, 0),
-        supply: u64_at(data, 36)?,
-        decimals: *data.get(44)?,
-        freeze_authority: coption_pubkey(data, 46),
-    })
+    Ok(Some(MintView {
+        mint_authority: coption_pubkey(data, 0)?,
+        supply: u64_at(data, 36).ok_or_else(short)?,
+        decimals: *data.get(44).ok_or_else(short)?,
+        freeze_authority: coption_pubkey(data, 46)?,
+    }))
 }
 
 /// What changed for one account between pre-state and post-state.
@@ -976,6 +1116,7 @@ pub fn decode_mint(data: &[u8]) -> Option<MintView> {
 /// `None` on either side means the account did not exist at that point:
 /// `before: None` is a creation, `after: None` is a full close.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct AccountDelta {
     pub pubkey: String,
     #[serde(default)]
@@ -1021,6 +1162,23 @@ impl AccountDelta {
         let b = self.before.as_ref()?.token.as_ref()?;
         let a = self.after.as_ref()?.token.as_ref()?;
         Some(i128::from(a.amount) - i128::from(b.amount))
+    }
+    /// The SPL token amount this account gave up, when it was a token
+    /// account before the transaction.
+    ///
+    /// Round 29 (audit 2026-10-20, F2): `token_delta` needs a token view on
+    /// BOTH sides, so a balance moved out and the account closed in the same
+    /// transaction — or wiped, or reinitialised for another mint — had no
+    /// delta and was no debit: draining a token account and then closing it
+    /// produced a smaller finding than draining it alone. An account that
+    /// ends the transaction as no token account of the same mint has given
+    /// up its whole pre-state balance.
+    pub fn token_debit(&self) -> Option<u64> {
+        let b = self.before.as_ref()?.token.as_ref()?;
+        Some(match self.after.as_ref().and_then(|s| s.token.as_ref()) {
+            Some(a) if a.mint == b.mint => b.amount.saturating_sub(a.amount),
+            _ => b.amount,
+        })
     }
     /// Signed mint supply movement, when both sides decode as mints.
     pub fn supply_delta(&self) -> Option<i128> {
@@ -1168,8 +1326,24 @@ impl AccountDelta {
 /// fee that size deserves a human's attention on its own merits.
 pub const MAX_PLAUSIBLE_FEE_LAMPORTS: u64 = 100_000_000;
 
+/// The rent-exempt minimum balance of an account holding `data_len` bytes,
+/// under the cluster's rent parameters (`Rent::default()`: 3,480 lamports per
+/// byte-year, a 2-year exemption threshold, 128 bytes of per-account
+/// overhead) — 890,880 lamports for an empty account, 2,039,280 for a token
+/// account (F7). It bounds what an account creation may be said to cost a
+/// signer: lamports put into a new account beyond it are a transfer.
+fn rent_exempt_minimum(data_len: usize) -> i128 {
+    const LAMPORTS_PER_BYTE_YEAR: i128 = 3_480;
+    const EXEMPTION_THRESHOLD_YEARS: i128 = 2;
+    const ACCOUNT_STORAGE_OVERHEAD: i128 = 128;
+    (ACCOUNT_STORAGE_OVERHEAD + data_len as i128)
+        * LAMPORTS_PER_BYTE_YEAR
+        * EXEMPTION_THRESHOLD_YEARS
+}
+
 /// A complete pre/post picture of a transaction's effect on account state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct StateDiff {
     pub deltas: Vec<AccountDelta>,
     #[serde(default)]
@@ -1779,7 +1953,13 @@ fn fee_side(snapshot: Option<&AccountSnapshot>, mint: &str) -> Result<(u64, u64)
     }
 }
 
-fn model_transfer_fees(diff: &StateDiff, declared: &DeclaredEffects) -> TransferFeeModel {
+/// `authority_declared_for(mint)`: whether the manifest declares an authority
+/// change that covers that mint account, by the same scoped rule as every
+/// other authority check (`DeclaredEffects::covers`).
+fn model_transfer_fees(
+    diff: &StateDiff,
+    authority_declared_for: &dyn Fn(&str) -> bool,
+) -> TransferFeeModel {
     use std::collections::BTreeMap;
     let mut model = TransferFeeModel::default();
 
@@ -1866,7 +2046,12 @@ fn model_transfer_fees(diff: &StateDiff, declared: &DeclaredEffects) -> Transfer
                     );
                     continue;
                 };
-                if b.terms() != a.terms() && !declared.authority {
+                // Round 29 (audit 2026-10-20, F4): scoped. This asked whether
+                // an authority change was declared ANYWHERE, so "sets
+                // accounts.account owner" on one account excused rewriting
+                // the fee terms of every mint in the transaction — the one
+                // authority check A2-01 left global.
+                if b.terms() != a.terms() && !authority_declared_for(&md.pubkey) {
                     model.findings.push(StateDiffFinding::critical(
                         "Token2022TransferFeeConfigChanged",
                         Some(md.pubkey.as_str()),
@@ -3140,7 +3325,25 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
     // way. On an account the model accounted for exactly, TransferFeeConfig
     // and TransferFeeAmount no longer block and the fee is disclosed; on any
     // other account they block as before, with the model's reason.
-    let fee_model = model_transfer_fees(input.diff, &declared);
+    // The manifest slot names each account holds in this instruction, for
+    // the scoped per-account checks (A2-01): an effect the manifest states
+    // about `accounts.<name>` excuses that account and no other.
+    let mut names_of: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
+    for a in input.resolved_accounts {
+        if !a.name.is_empty() {
+            names_of
+                .entry(a.address.as_str())
+                .or_default()
+                .push(a.name.as_str());
+        }
+    }
+    let declares_for = |account: &str, effect: &str| {
+        declared.covers(
+            effect,
+            names_of.get(account).map(Vec::as_slice).unwrap_or(&[]),
+        )
+    };
+    let fee_model = model_transfer_fees(input.diff, &|mint: &str| declares_for(mint, "authority"));
     findings.extend(fee_model.findings.iter().cloned());
     findings.extend(permanent_delegate_exercises(input.diff));
     let is_fee_extension = |e: &DetectedExtension| {
@@ -3151,27 +3354,61 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
     };
     for delta in input.diff.deltas.iter() {
         let fee_modelled = fee_model.modelled.contains(&delta.pubkey);
-        let scan = delta
-            .after
-            .as_ref()
-            .or(delta.before.as_ref())
-            .map(|snap| snap.extensions.clone())
-            .unwrap_or_default();
+        // Round 29 (audit 2026-10-20, F3): BOTH sides. Only the post-state was
+        // scanned (the pre-state when there was none), so an account the
+        // transaction closed — or stripped, or rewrote — was judged on what
+        // it became: a TransferHookAccount, a permanent delegate or a
+        // confidential balance on the account as it ENTERED the transaction
+        // was never looked at, and neither was an unreadable pre-state region.
+        let scans: Vec<&ExtensionScan> = [delta.after.as_ref(), delta.before.as_ref()]
+            .into_iter()
+            .flatten()
+            .map(|snap| &snap.extensions)
+            .collect();
         // A region that could not be read is not a region with nothing in it.
         // Checked FIRST, so a corrupt length byte in front of a transfer hook
         // cannot turn the hook into silence.
-        if let Some(why) = &scan.malformed {
-            findings.push(StateDiffFinding::critical(
-                "Token2022ExtensionRegionUnreadable",
-                Some(delta.pubkey.as_str()),
-                format!(
-                    "the extension region of this Token-2022 account could not be read ({why}); {} extension(s) were read before the walk stopped and whatever follows is unknown — an account Graphite cannot read is not an account it can approve",
-                    scan.found.len()
+        if let Some(scan) = scans.iter().find(|s| s.malformed.is_some()) {
+            let why = scan.malformed.as_deref().unwrap_or_default();
+            findings.push(match why.strip_prefix(TOKEN_LAYOUT_UNDECODABLE) {
+                // F8: the base layout itself, on either token program.
+                Some(base) => StateDiffFinding::critical(
+                    "TokenLayoutUndecodable",
+                    Some(delta.pubkey.as_str()),
+                    format!(
+                        "this account has the layout of an SPL token account or mint, but its fields do not decode ({base}); no program-written account carries such a value, so its balance and authorities are unknown — an account Graphite cannot read is not an account it can approve"
+                    ),
                 ),
-            ));
+                None => StateDiffFinding::critical(
+                    "Token2022ExtensionRegionUnreadable",
+                    Some(delta.pubkey.as_str()),
+                    format!(
+                        "the extension region of this Token-2022 account could not be read ({why}); {} extension(s) were read before the walk stopped and whatever follows is unknown — an account Graphite cannot read is not an account it can approve",
+                        scan.found.len()
+                    ),
+                ),
+            });
             continue;
         }
-        let extensions = scan.found;
+        // Every extension found on either side, once per discriminant
+        // present, in the order first seen (post-state first).
+        let mut extensions: Vec<DetectedExtension> = Vec::new();
+        for scan in &scans {
+            for e in &scan.found {
+                let seen_here = scan
+                    .found
+                    .iter()
+                    .filter(|x| x.discriminant == e.discriminant)
+                    .count();
+                let kept = extensions
+                    .iter()
+                    .filter(|x| x.discriminant == e.discriminant)
+                    .count();
+                if kept < seen_here {
+                    extensions.push(e.clone());
+                }
+            }
+        }
         if extensions.is_empty() {
             continue;
         }
@@ -3352,7 +3589,21 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
 
     // ── Undeclared effects ──────────────────────────────────────────────────
 
-    let mut net_lamport_out: i128 = 0;
+    // Lamports that left accounts in the diff whose balance fell, summed
+    // account by account (the fee payer's fee excepted). GROSS, not net
+    // (Round 29, audit 2026-10-20, F7): over a diff that covers every account
+    // the transaction writes, the net is the fee and nothing else — lamports
+    // are conserved — so a net figure could never report anything. It was
+    // named `net_lamport_out` and worded as lamports that "left the
+    // transaction's accounts", which they had not; they left the accounts
+    // that fell, for accounts that rose.
+    let mut gross_lamport_out: i128 = 0;
+    // What the transaction's SIGNERS lost, net (F7): each signer's balance
+    // change, its fee excepted, offset by what arrived in token accounts a
+    // signer holds and by the rent-exempt minimum of accounts the
+    // transaction created. This is the user's value, and the net is right
+    // for it: lamports a signer wraps into its own wSOL account are not lost.
+    let mut signer_net_loss: i128 = 0;
     let mut token_debit = false;
     // A token debit on a signer's account that a NAMED debit declaration does
     // not cover (F2, review of the 2026-09-29 audit's fix).
@@ -3373,18 +3624,6 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
             .collect(),
     };
 
-    // The manifest slot names each account holds in this instruction, for
-    // the scoped per-account checks (A2-01): an effect the manifest states
-    // about `accounts.<name>` excuses that account and no other.
-    let mut names_of: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
-    for a in input.resolved_accounts {
-        if !a.name.is_empty() {
-            names_of
-                .entry(a.address.as_str())
-                .or_default()
-                .push(a.name.as_str());
-        }
-    }
     for d in &changed {
         let acct = Some(d.pubkey.as_str());
         let names: &[&str] = names_of
@@ -3587,6 +3826,40 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
                 ));
             }
         }
+        // Round 29 (audit 2026-10-20, F5): the comparison above needs the
+        // powers decoded on BOTH sides, and was silently skipped when one
+        // side carried an authority-bearing extension whose value could not
+        // be read exactly (a wrong length, a duplicate entry) — an
+        // undecodable side compared as "no change". Unless the data is
+        // byte-for-byte unchanged, such a side is a finding.
+        let powers_unreadable = |s: &AccountSnapshot| {
+            s.owner == SPL_TOKEN_2022_PROGRAM
+                && s.extensions.malformed.is_none()
+                && s.token2022_powers.is_none()
+                && s.extensions
+                    .found
+                    .iter()
+                    .any(|e| EXT_AUTHORITY_BEARING.contains(&e.discriminant))
+        };
+        let data_unchanged = match (d.before.as_ref(), d.after.as_ref()) {
+            (Some(b), Some(a)) => b.data_sha256.is_some() && b.data_sha256 == a.data_sha256,
+            _ => false,
+        };
+        let unreadable_side = [("before", d.before.as_ref()), ("after", d.after.as_ref())]
+            .into_iter()
+            .find(|(_, s)| s.is_some_and(powers_unreadable))
+            .map(|(side, _)| side);
+        if let Some(side) = unreadable_side {
+            if !data_unchanged && !declares("authority") {
+                findings.push(StateDiffFinding::critical(
+                    "Token2022AuthoritiesUnreadable",
+                    acct,
+                    format!(
+                        "this Token-2022 account carries an authority-bearing extension whose value could not be read exactly {side} the transaction, and its data changed; whether an authority or the paused flag changed cannot be established, and the manifest declares no authority change"
+                    ),
+                ));
+            }
+        }
         if let Some((from, to)) = d.freeze_authority_change() {
             // A freeze authority change is an authority change; it is also the
             // thing that decides whether a freeze can ever happen, so a
@@ -3677,11 +3950,32 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
         // Value movement, accumulated and judged once below. The fee payer's
         // fee-sized outflow is expected on every transaction and is excluded.
         let lam = d.lamport_delta();
+        let fee = i128::from(fee_lamports);
+        let is_signer = signers.contains(d.pubkey.as_str());
+        if is_signer {
+            signer_net_loss += -lam - if is_fee_payer { fee } else { 0 };
+        } else if lam > 0 {
+            // A signer's value that only changed form: lamports arriving in a
+            // token account a signer holds (wrapping SOL), or funding an
+            // account this transaction created, up to the rent-exempt
+            // minimum of its data — rent a signer pays to own an account is
+            // a cost of the account, not a transfer of value away.
+            let held_by_signer = d
+                .after
+                .as_ref()
+                .and_then(|s| s.token.as_ref())
+                .is_some_and(|t| signers.contains(t.owner.as_str()));
+            if held_by_signer {
+                signer_net_loss -= lam;
+            } else if d.was_created() && (gained_data || left_system) {
+                let rent = rent_exempt_minimum(d.after.as_ref().map_or(0, |s| s.data_len));
+                signer_net_loss -= lam.min(rent);
+            }
+        }
         if lam < 0 {
             let magnitude = -lam;
-            let fee = i128::from(fee_lamports);
             if !(is_fee_payer && magnitude <= fee) {
-                net_lamport_out += magnitude - if is_fee_payer { fee } else { 0 };
+                gross_lamport_out += magnitude - if is_fee_payer { fee } else { 0 };
             }
             // W19 (external review): a debit declared about named accounts
             // says nothing about the signer's own wallet. Disclosed, not
@@ -3704,7 +3998,8 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
                 }
             }
         }
-        if d.token_delta().is_some_and(|t| t < 0) {
+        // F2: a closure that took a balance with it is a debit too.
+        if d.token_debit().is_some_and(|t| t > 0) {
             token_debit = true;
             // A debit declared about named accounts (`debits accounts.vault`)
             // excuses those accounts. A token account a SIGNER owns that the
@@ -3763,7 +4058,32 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
                     format!("{detail} — and none of its declared changes could be interpreted, so this is reported rather than blocked"),
                 )
             });
-        } else if net_lamport_out > 0 && !declared.create && !declared.close {
+        }
+        // F7: the signers' own lamports are value too. A token debit under a
+        // manifest that declares no debit is Critical, and so — by the same
+        // rule, observed but undeclared — is a signer's net lamport loss
+        // beyond the fee and the rent of accounts this transaction created.
+        // It used to be at most a Warning ("UnexplainedLamportOutflow"), and
+        // switched off entirely when the manifest declared any creation or
+        // closure: an instruction promising to close an account could carry
+        // a sibling that emptied the signer's wallet, and L4 said nothing.
+        // Scope (P14): the declaration judged is the located instruction's,
+        // so a tip or transfer made by a SIBLING instruction under a primary
+        // that declares no debit now blocks; the finding names the amount.
+        if signer_net_loss > 0 {
+            let detail = format!(
+                "the transaction's signers lose {signer_net_loss} lamports beyond the fee and the rent of the accounts it creates, but the manifest declares no debit"
+            );
+            findings.push(if declared.is_interpretable() {
+                StateDiffFinding::critical("UndeclaredSignerLamportDebit", None, detail)
+            } else {
+                StateDiffFinding::warning(
+                    "UninterpretableDeclarationWithSignerLamportDebit",
+                    None,
+                    format!("{detail} — and none of its declared changes could be interpreted, so this is reported rather than blocked"),
+                )
+            });
+        } else if !token_debit && gross_lamport_out > 0 && !declared.create && !declared.close {
             // Account creation legitimately debits the payer for rent, and a
             // closure legitimately moves the whole balance out, so neither is
             // reported as an unexplained outflow.
@@ -3771,7 +4091,7 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
                 "UnexplainedLamportOutflow",
                 None,
                 format!(
-                    "{net_lamport_out} lamports left the transaction's accounts beyond the fee; the manifest declares no debit"
+                    "{gross_lamport_out} lamports left accounts in this diff (summed over every account whose balance fell, beyond the fee); the manifest declares no debit"
                 ),
             ));
         }

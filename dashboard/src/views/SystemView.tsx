@@ -5,7 +5,7 @@
 
 import { api, type Health, type Metrics } from "../api";
 import { usePolling } from "../usePolling";
-import { Empty, Fault, Figure, PageHead, Section, Skeleton, State, fmt } from "../ui";
+import { Empty, Fault, Figure, Freshness, PageHead, Section, Skeleton, State, fmt, pollFault } from "../ui";
 
 interface Counter {
   metric: string;
@@ -62,8 +62,8 @@ export function SystemView() {
   const health = usePolling<Health>(() => api.health(), 5000);
   const metrics = usePolling<Metrics>(() => api.metrics(), 5000);
 
-  if (health.error) return <Fault error={health.error} />;
-  if (metrics.error) return <Fault error={metrics.error} />;
+  const fault = pollFault(health, metrics);
+  if (fault) return <Fault error={fault} />;
   const h = health.data;
   const m = metrics.data;
   const loading = !h || !m;
@@ -73,6 +73,8 @@ export function SystemView() {
   return (
     <>
       <PageHead title="System" desc="What the Core reports about itself, and what it has counted since it started." />
+
+      <Freshness sources={[health, metrics]} />
 
       <div className="figures">
         <Figure label="Status" value={loading ? "—" : h.degraded ? "Degraded" : "Operational"} tone={loading ? undefined : h.degraded ? "warn" : "pass"} sub={h ? `${h.service} v${h.version}` : undefined} />

@@ -157,15 +157,26 @@ fn parse_account_value(
     // parser — unreadable input is ABSENT, never zero — and it was missing
     // here (found in an independent review of `main`, 2026-09-08).
     //
-    // `executable`, `rentEpoch` and `data` keep their defaults: they are
-    // genuinely optional in some response shapes, and a wrong value for them
-    // cannot manufacture or conceal a state delta on its own.
+    // `executable` and `rentEpoch` keep their defaults: they are genuinely
+    // optional in some response shapes, and a wrong value for them cannot
+    // manufacture or conceal a state delta on its own.
+    //
+    // `data` is mandatory too (Round 29, audit 2026-10-20, R2). It used to
+    // default to empty when it was missing, an object, a number, or an array
+    // whose first element was not a string — and an empty pre-state and an
+    // empty post-state compare EQUAL, so a provider failing both reads the
+    // same way concealed every token balance, delegate, authority and
+    // extension change on that account. The comment above it said a wrong
+    // `data` could not conceal a delta; it could. Every request here asks for
+    // `encoding: base64`, which every RPC answers as `[<base64>, "base64"]`
+    // (an empty account is `["", "base64"]`), so anything else is refused
+    // rather than read.
     let lamports = value
         .get("lamports")
         .and_then(|v| v.as_u64())
         .ok_or_else(|| {
             RpcError::InvalidResponse(format!(
-                "account {pubkey}: `lamports` is missing or not an unsigned integer — refusing to                  substitute a default, because an invented balance is indistinguishable from a                  measured one once it reaches the state diff"
+                "account {pubkey}: `lamports` is missing or not an unsigned integer — refusing to substitute a default, because an invented balance is indistinguishable from a measured one once it reaches the state diff"
             ))
         })?;
     let owner = value
@@ -173,7 +184,7 @@ fn parse_account_value(
         .and_then(|v| v.as_str())
         .ok_or_else(|| {
             RpcError::InvalidResponse(format!(
-                "account {pubkey}: `owner` is missing or not a string — refusing to substitute the                  System Program, because that turns an unreadable response into a specific claim                  about who controls the account"
+                "account {pubkey}: `owner` is missing or not a string — refusing to substitute the System Program, because that turns an unreadable response into a specific claim about who controls the account"
             ))
         })?
         .to_string();
@@ -182,23 +193,24 @@ fn parse_account_value(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let rent_epoch = value.get("rentEpoch").and_then(|v| v.as_u64()).unwrap_or(0);
-    let data_base64 = value
-        .get("data")
-        .and_then(|d| {
-            if let Some(arr) = d.as_array() {
-                arr.first().and_then(|s| s.as_str())
-            } else {
-                d.as_str()
-            }
-        })
-        .unwrap_or("");
-    let data = if data_base64.is_empty() {
-        Vec::new()
-    } else {
-        base64::engine::general_purpose::STANDARD
-            .decode(data_base64)
-            .map_err(|e| RpcError::InvalidResponse(format!("invalid base64 account data: {}", e)))?
-    };
+    let data_base64 = match value.get("data").and_then(|d| d.as_array()) {
+        Some(pair) if pair.len() == 2 && pair[1].as_str() == Some("base64") => {
+            pair[0].as_str()
+        }
+        _ => None,
+    }
+    .ok_or_else(|| {
+        RpcError::InvalidResponse(format!(
+            "account {pubkey}: `data` is missing or not a [<base64>, \"base64\"] pair — refusing to read it as empty, because an empty pre-state and an empty post-state compare equal and would hide every change to the account's data"
+        ))
+    })?;
+    let data = base64::engine::general_purpose::STANDARD
+        .decode(data_base64)
+        .map_err(|e| {
+            RpcError::InvalidResponse(format!(
+                "account {pubkey}: invalid base64 account data: {e}"
+            ))
+        })?;
     Ok(Some(AccountState {
         pubkey: pubkey.to_string(),
         lamports,
@@ -425,6 +437,38 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
     // balances it sent in the same response has contradicted itself, and that
     // is worth putting in front of an operator.
     let mut provider_anomalies: Vec<String> = Vec::new();
+
+    // Round 29 (audit 2026-10-20, R9): the parsers above read the COMPILED
+    // form of an inner instruction — `programIdIndex`, `accounts` as indexes,
+    // `data` in base58 — and nothing in the request can guarantee that form.
+    // `encoding: base64` governs how the transaction and the requested
+    // accounts are encoded; agave's `simulateTransaction` documents its
+    // `innerInstructions` as "jsonParsed where possible", and a node that
+    // does so answers a System or SPL Token CPI as `{program, programId,
+    // parsed, stackHeight}` (or `{programId, accounts: [<address>…], data}`
+    // for a program it cannot parse), with no index at all. Such an answer
+    // already leaves the callee set and the CPI tree unknown above — the
+    // fail-closed outcome — but silently, which reads like a broken RPC.
+    // Saying which form arrived is what lets an operator tell the two apart.
+    let parsed_form = value
+        .get("innerInstructions")
+        .and_then(|v| v.as_array())
+        .is_some_and(|groups| {
+            groups
+                .iter()
+                .filter_map(|g| g.get("instructions").and_then(|i| i.as_array()))
+                .flatten()
+                .any(|ix| {
+                    ix.get("programIdIndex").is_none()
+                        && (ix.get("programId").is_some() || ix.get("parsed").is_some())
+                })
+        });
+    if parsed_form {
+        provider_anomalies.push(
+            "the RPC returned inner instructions in parsed (jsonParsed) form, which carries no `programIdIndex`; Graphite reads only the compiled form, so the CPI callees and the executed CPI tree of this simulation are unobserved".to_string(),
+        );
+    }
+
     let mut compare = |name: &str, provider: Option<u64>, derived: Option<u64>| {
         if let Some(claimed) = provider {
             match derived {
@@ -492,25 +536,28 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
         }
     });
 
-    // Unreadable entries are dropped rather than silently stringified: an
-    // address Graphite cannot read is not an address it can compare against
-    // the caller's account list.
-    let str_list = |v: Option<&serde_json::Value>| -> Vec<String> {
-        v.and_then(|a| a.as_array())
-            .map(|a| {
-                a.iter()
-                    .filter_map(|x| x.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default()
+    // One unreadable entry makes the whole set unknown (Round 29, audit
+    // 2026-10-20, R3). Entries used to be DROPPED, and these lists are not a
+    // set but a sequence: the account list the inner instructions index into
+    // is the static keys, then `writable`, then `readonly`. Dropping one entry
+    // shifted every later address down by one, so an inner instruction's
+    // `programIdIndex` resolved to the NEIGHBOURING account — a callee
+    // misnamed, which is worse than a callee unknown. A missing or non-array
+    // list is unreadable for the same reason: the length is part of the
+    // indexing.
+    let str_list = |v: Option<&serde_json::Value>| -> Option<Vec<String>> {
+        v?.as_array()?
+            .iter()
+            .map(|x| x.as_str().map(str::to_string))
+            .collect()
     };
     let loaded_addresses = value.get("loadedAddresses").and_then(|la| {
         if la.is_null() {
             None
         } else {
             Some(LoadedAddresses {
-                writable: str_list(la.get("writable")),
-                readonly: str_list(la.get("readonly")),
+                writable: str_list(la.get("writable"))?,
+                readonly: str_list(la.get("readonly"))?,
             })
         }
     });
@@ -971,14 +1018,165 @@ fn json_value_count_within(body: &[u8], limit: usize) -> Option<usize> {
 /// the same way `AuditErrorRecord` bounds its fields, and for the same reason.
 const MAX_RPC_ERROR_CHARS: usize = 256;
 
+/// Peer-written text, made safe to carry in an `RpcError`: credential-shaped
+/// content removed first, then bounded.
+///
+/// Round 29 (audit 2026-10-20, R4): the text was bounded but not redacted. A
+/// JSON-RPC `error` object is whatever the peer — or a proxy, gateway or load
+/// balancer in front of it — chose to write, and providers do echo the
+/// request URL ("invalid api key for https://…?api-key=…") into it. That
+/// string reaches the L3 `reason` in the `/verify` response body, the same
+/// leak `redact_transport_error` closes for transport errors. Scrubbing runs
+/// on the WHOLE text before it is cut: cutting first could leave a key's
+/// prefix too short to be recognised as one.
 fn bound_rpc_text(value: &str) -> String {
+    let value = scrub_rpc_text(value);
     if value.chars().count() <= MAX_RPC_ERROR_CHARS {
-        return value.to_string();
+        return value;
     }
     let kept: String = value.chars().take(MAX_RPC_ERROR_CHARS).collect();
     // Say what was dropped: a silently shortened diagnostic reads as the whole
     // one.
     format!("{kept}… [truncated, {} chars total]", value.chars().count())
+}
+
+/// Replace anything credential-shaped in `value` (R4).
+///
+/// Tokens are split on whitespace, quotes and brackets, and a token is
+/// replaced when it is:
+/// - URL-like: it has a scheme (`://`), starts with `www.`, or names a host
+///   and a path (a `.` and a `/`) — a managed provider's key lives in the
+///   URL's path or query;
+/// - a key-shaped assignment: `api-key=…`, `token:…`, `secret=…`, … — the
+///   value is replaced, and a key name followed by nothing (`apikey: <v>`)
+///   or `Bearer` replaces the next token;
+/// - opaque: 24 or more characters of letters, digits, `-` and `_`, with
+///   both letters and digits — the shape of every provider key, and of a
+///   base58 address or signature, which are replaced too: the operator can
+///   read those from the request, and a rule that let them through would let
+///   a key of the same shape through.
+fn scrub_rpc_text(value: &str) -> String {
+    const KEY_NAMES: [&str; 7] = [
+        "key",
+        "token",
+        "secret",
+        "auth",
+        "passw",
+        "credential",
+        "session",
+    ];
+    let is_delimiter = |c: char| {
+        c.is_whitespace()
+            || matches!(
+                c,
+                '"' | '\'' | '`' | ',' | '(' | ')' | '[' | ']' | '{' | '}' | '<' | '>'
+            )
+    };
+    let mut out = String::with_capacity(value.len());
+    let mut redact_next = false;
+    let mut scrub_token = |token: &str, out: &mut String| {
+        if token.is_empty() {
+            return;
+        }
+        let lower = token.to_ascii_lowercase();
+        if std::mem::take(&mut redact_next) {
+            out.push_str("[redacted]");
+            return;
+        }
+        if lower.contains("://")
+            || lower.starts_with("www.")
+            || (lower.contains('/') && lower.contains('.'))
+        {
+            out.push_str("[redacted url]");
+            return;
+        }
+        if let Some(at) = token.find(['=', ':']) {
+            let name = &lower[..at];
+            if KEY_NAMES.iter().any(|k| name.contains(k)) {
+                out.push_str(&token[..=at]);
+                if at + 1 < token.len() {
+                    out.push_str("[redacted]");
+                } else {
+                    redact_next = true;
+                }
+                return;
+            }
+        }
+        if lower == "bearer" {
+            redact_next = true;
+        }
+        let opaque = token.chars().count() >= 24
+            && token
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            && token.chars().any(|c| c.is_ascii_digit())
+            && token.chars().any(|c| c.is_ascii_alphabetic());
+        if opaque {
+            out.push_str("[redacted]");
+        } else {
+            out.push_str(token);
+        }
+    };
+    let mut start = 0;
+    for (i, c) in value.char_indices() {
+        if is_delimiter(c) {
+            scrub_token(&value[start..i], &mut out);
+            out.push(c);
+            start = i + c.len_utf8();
+        }
+    }
+    scrub_token(&value[start..], &mut out);
+    out
+}
+
+/// The `result` of one JSON-RPC 2.0 response envelope, or why there is none.
+///
+/// Round 29 (audit 2026-10-20, R6): an `"error": null` member was read as an
+/// error — `get("error")` is `Some(Null)` — so a peer that always writes both
+/// members failed every call with the reason "null". `null` is absence. The
+/// envelope is also checked for being one: an object, `jsonrpc` "2.0" when
+/// stated, and an `id` that is the request's when stated (a JSON-RPC peer
+/// sends `id: null` only with an error it could not attribute to a request).
+/// An answer to some other request is not an answer to this one.
+fn jsonrpc_result(
+    json: serde_json::Value,
+    request_id: Option<&serde_json::Value>,
+) -> Result<serde_json::Value, RpcError> {
+    let serde_json::Value::Object(mut envelope) = json else {
+        return Err(RpcError::InvalidResponse(
+            "the RPC response is not a JSON-RPC object".to_string(),
+        ));
+    };
+    match envelope.get("jsonrpc") {
+        None => {}
+        Some(v) if v.as_str() == Some("2.0") => {}
+        Some(v) => {
+            return Err(RpcError::InvalidResponse(format!(
+                "the RPC response states jsonrpc {}, not \"2.0\"",
+                bound_rpc_text(&v.to_string())
+            )))
+        }
+    }
+    let error = envelope.remove("error").filter(|e| !e.is_null());
+    match (envelope.get("id"), request_id) {
+        (None, _) | (_, None) => {}
+        (Some(serde_json::Value::Null), _) if error.is_some() => {}
+        (Some(got), Some(sent)) if got == sent => {}
+        (Some(got), Some(_)) => {
+            return Err(RpcError::InvalidResponse(format!(
+                "the RPC response answers request id {}, not the one sent",
+                bound_rpc_text(&got.to_string())
+            )))
+        }
+    }
+    if let Some(err) = error {
+        // Bounded and scrubbed: this string reaches the L3 reason and the
+        // audit trail, and the peer wrote it (R4).
+        return Err(RpcError::RequestFailed(bound_rpc_text(&err.to_string())));
+    }
+    envelope
+        .remove("result")
+        .ok_or_else(|| RpcError::InvalidResponse("missing result".to_string()))
 }
 
 /// Read a response body with a hard ceiling, streaming so an oversized one is
@@ -1052,9 +1250,15 @@ pub struct EndpointFacts {
 /// `http` and `https` are accepted: `reqwest` refuses other schemes at
 /// request time, but the point is to refuse them before the process claims
 /// to be simulating (Round 12).
+///
+/// Round 29 (audit 2026-10-20, R7): the string validated is the string the
+/// client posts to — `SolanaRpcClient::new` trims its endpoint the same way
+/// (`normalize_endpoint`) — and loopback is read from the parsed host, so an
+/// IPv4-mapped IPv6 loopback (`[::ffff:127.0.0.1]`) and the fully-qualified
+/// `localhost.` count as loopback like the forms they are equivalent to.
 pub fn validate_endpoint(endpoint: &str) -> Result<EndpointFacts, EndpointError> {
-    let url =
-        reqwest::Url::parse(endpoint.trim()).map_err(|e| EndpointError::NotAUrl(e.to_string()))?;
+    let url = reqwest::Url::parse(normalize_endpoint(endpoint))
+        .map_err(|e| EndpointError::NotAUrl(e.to_string()))?;
     let scheme = url.scheme().to_ascii_lowercase();
     if scheme != "http" && scheme != "https" {
         return Err(EndpointError::Scheme(scheme));
@@ -1065,12 +1269,13 @@ pub fn validate_endpoint(endpoint: &str) -> Result<EndpointFacts, EndpointError>
     if url.fragment().is_some() {
         return Err(EndpointError::Fragment);
     }
+    // The URL parser has already normalised the host: an IPv6 literal comes
+    // back bracketed and compressed (`[::ffff:7f00:1]`), an IPv4 one dotted.
     let bare = host.trim_start_matches('[').trim_end_matches(']');
-    let loopback = bare.eq_ignore_ascii_case("localhost")
-        || bare
-            .parse::<std::net::IpAddr>()
-            .map(|ip| ip.is_loopback())
-            .unwrap_or(false);
+    let loopback = match bare.parse::<std::net::IpAddr>() {
+        Ok(ip) => ip.to_canonical().is_loopback(),
+        Err(_) => bare.eq_ignore_ascii_case("localhost") || bare.eq_ignore_ascii_case("localhost."),
+    };
     Ok(EndpointFacts {
         scheme,
         loopback,
@@ -1079,13 +1284,45 @@ pub fn validate_endpoint(endpoint: &str) -> Result<EndpointFacts, EndpointError>
     })
 }
 
+/// The form of an endpoint string that is both validated and posted to
+/// (R7): surrounding whitespace removed, nothing else changed.
+fn normalize_endpoint(endpoint: &str) -> &str {
+    endpoint.trim()
+}
+
+/// What `Debug` prints in place of an endpoint (R5): its scheme and whether
+/// it parsed, never the host, path, query or userinfo.
+fn redacted_endpoint(endpoint: &str) -> String {
+    match validate_endpoint(endpoint) {
+        Ok(facts) => format!("<redacted {} endpoint>", facts.scheme),
+        Err(_) => "<redacted unusable endpoint>".to_string(),
+    }
+}
+
 /// Configuration for RPC client
-#[derive(Debug, Clone)]
+///
+/// `Debug` is written by hand (Round 29, audit 2026-10-20, R5): a derived one
+/// printed `endpoint` in full, and a managed provider's endpoint carries the
+/// operator's API key — so any `{:?}` of a config, of a client, or of any
+/// struct holding one (a `tracing` field, a panic message, a test failure)
+/// wrote the key out.
+#[derive(Clone)]
 pub struct RpcConfig {
     pub endpoint: String,
     pub commitment: String,
     pub timeout: Duration,
     pub max_retries: u32,
+}
+
+impl std::fmt::Debug for RpcConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RpcConfig")
+            .field("endpoint", &redacted_endpoint(&self.endpoint))
+            .field("commitment", &self.commitment)
+            .field("timeout", &self.timeout)
+            .field("max_retries", &self.max_retries)
+            .finish()
+    }
 }
 
 impl Default for RpcConfig {
@@ -1100,15 +1337,34 @@ impl Default for RpcConfig {
 }
 
 /// Solana RPC client
-#[derive(Debug, Clone)]
+///
+/// `Debug` by hand, for the reason on `RpcConfig` (R5).
+#[derive(Clone)]
 pub struct SolanaRpcClient {
     config: RpcConfig,
     http_client: Option<HttpClient>,
 }
 
+impl std::fmt::Debug for SolanaRpcClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SolanaRpcClient")
+            .field("config", &self.config)
+            .field("http_client", &self.http_client.is_some())
+            .finish()
+    }
+}
+
 impl SolanaRpcClient {
     /// Create new RPC client with given configuration
-    pub fn new(config: RpcConfig) -> Self {
+    ///
+    /// The endpoint is trimmed exactly as `validate_endpoint` trims it before
+    /// judging it (R7), so the string that was validated is the string that
+    /// is posted to.
+    pub fn new(mut config: RpcConfig) -> Self {
+        let trimmed = normalize_endpoint(&config.endpoint);
+        if trimmed.len() != config.endpoint.len() {
+            config.endpoint = trimmed.to_string();
+        }
         // Build the HTTP client BEFORE moving `config` into the struct
         // (field init uses the value first — a use-after-move otherwise).
         //
@@ -1157,11 +1413,12 @@ impl SolanaRpcClient {
     /// - HTTP 429 → `RpcError::RateLimited` (retried up to `max_retries`;
     ///   if it never clears, surfaces as `RateLimited`).
     /// - HTTP 5xx → transient server error, retried.
-    /// - HTTP 2xx with a JSON-RPC `error` field → definitive `RequestFailed`.
+    /// - HTTP 2xx with a non-null JSON-RPC `error` → definitive `RequestFailed`.
     /// - Other non-2xx → `RequestFailed`.
     ///
-    /// Returns the JSON-RPC `result` value on success.
+    /// Returns the JSON-RPC `result` value on success (see `jsonrpc_result`).
     async fn post_rpc(&self, body: serde_json::Value) -> Result<serde_json::Value, RpcError> {
+        let request_id = body.get("id").cloned();
         let client = self
             .http_client
             .as_ref()
@@ -1202,15 +1459,7 @@ impl SolanaRpcClient {
                     }
                     let json: serde_json::Value = serde_json::from_slice(&body)
                         .map_err(|e| RpcError::InvalidResponse(bound_rpc_text(&e.to_string())))?;
-                    if let Some(err) = json.get("error") {
-                        // Bounded: this string reaches the L3 reason and the
-                        // audit trail, and the peer wrote it.
-                        return Err(RpcError::RequestFailed(bound_rpc_text(&err.to_string())));
-                    }
-                    return json
-                        .get("result")
-                        .cloned()
-                        .ok_or_else(|| RpcError::InvalidResponse("missing result".to_string()));
+                    return jsonrpc_result(json, request_id.as_ref());
                 }
                 Err(e) => {
                     // Network/transport failure — retryable. NEVER stringify
@@ -1606,9 +1855,30 @@ impl SolanaRpcClient {
     pub async fn get_transaction(&self, signature: &str) -> Result<serde_json::Value, RpcError> {
         let body = serde_json::json!({
             "jsonrpc": "2.0", "id": 1, "method": "getTransaction",
-            "params": [signature, {"encoding": "json", "maxSupportedTransactionVersion": 1}]
+            "params": [signature, {
+                "encoding": "json",
+                "commitment": self.transaction_commitment(),
+                "maxSupportedTransactionVersion": 1
+            }]
         });
         self.post_rpc(body).await
+    }
+
+    /// The commitment `getTransaction` is asked at: the configured one, raised
+    /// to `confirmed` when it is `processed`, which the method refuses.
+    ///
+    /// Round 29 (audit 2026-10-20, R1/M9): the call sent NO commitment, so the
+    /// node answered at its default, `finalized`. For the ~13 seconds or more
+    /// a transaction is confirmed but not yet rooted, `getSignatureStatuses`
+    /// (which reports any level) said it was included while `getTransaction`
+    /// said it did not exist — L8 could not bind the chain's bytes to a
+    /// verification and fell back to the caller's keys, and an
+    /// executed-after-block alarm waited for finalization.
+    fn transaction_commitment(&self) -> &str {
+        match self.config.commitment.as_str() {
+            "processed" => "confirmed",
+            other => other,
+        }
     }
 
     /// The serialized bytes of one confirmed transaction (`getTransaction`,
@@ -1641,7 +1911,11 @@ impl SolanaRpcClient {
     ) -> Result<Option<ChainTransaction>, RpcError> {
         let body = serde_json::json!({
             "jsonrpc": "2.0", "id": 1, "method": "getTransaction",
-            "params": [signature, {"encoding": "base64", "maxSupportedTransactionVersion": 1}]
+            "params": [signature, {
+                "encoding": "base64",
+                "commitment": self.transaction_commitment(),
+                "maxSupportedTransactionVersion": 1
+            }]
         });
         let result = self.post_rpc(body).await?;
         if result.is_null() {
@@ -1805,21 +2079,39 @@ async fn sleep_backoff(attempt: u32) {
 ///   asserted; a wrong-owner account returns `true` to block execution
 ///   rather than silently approve, per P12 fail-closed).
 /// - the state byte is read from the correct offset 108.
+///
+/// Round 29 (audit 2026-10-20, R8): only classic Tokenkeg was recognised, so
+/// every Token-2022 account read as frozen; and the LAYOUT was never checked,
+/// so a 82-byte mint failed closed only by accident of length, while a
+/// 355-byte Multisig — whose byte 108 is inside a signer key — answered with
+/// whatever that key byte was. Now an account answers only when it IS a
+/// token account: owned by Token or Token-2022, exactly the 165-byte base
+/// layout (or, for Token-2022, longer and typed `Account` at byte 165), and
+/// decoding as one (`state_diff::decode_token_account`, which also refuses
+/// an invalid COption tag). Anything else — including state 0
+/// (Uninitialized), which no transfer can use either — is `true`.
 pub fn token_account_frozen_flag(account: &AccountState) -> bool {
-    const TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-    const STATE_OFFSET: usize = 108;
+    use crate::state_diff::{SPL_TOKEN_2022_PROGRAM, SPL_TOKEN_PROGRAM};
+    const TOKEN_ACCOUNT_LEN: usize = 165;
 
-    if account.owner != TOKEN_PROGRAM_ID {
+    let layout_ok = match account.owner.as_str() {
+        SPL_TOKEN_PROGRAM => account.data.len() == TOKEN_ACCOUNT_LEN,
+        // `decode_token_account` checks the account-type byte of a longer
+        // Token-2022 account and refuses the Multisig length.
+        SPL_TOKEN_2022_PROGRAM => account.data.len() >= TOKEN_ACCOUNT_LEN,
         // Not a token account — the caller asked a question this account
         // cannot answer. Fail-closed (P12): treat as frozen/inconclusive
         // rather than silently approving.
+        _ => false,
+    };
+    if !layout_ok {
         return true;
     }
-    if account.data.len() <= STATE_OFFSET {
-        // Truncated data — cannot determine state. Fail-closed.
-        return true;
+    match crate::state_diff::decode_token_account(&account.data) {
+        Some(view) => view.state != 1,
+        // Uninitialized, or not decodable as an account. Fail-closed.
+        None => true,
     }
-    account.data[STATE_OFFSET] == 2
 }
 
 #[cfg(test)]

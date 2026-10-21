@@ -103,7 +103,8 @@
     "RISK: verify output amount matches expected within slippage tolerance",
     "RISK: verify route does not include unknown/unverified DEX programs"
    ],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "sharedAccountsRoute",
@@ -228,7 +229,8 @@
     "RISK: verify output amount matches expected within slippage tolerance",
     "RISK: platform_fee_account should be verified as legitimate Jupiter fee account"
    ],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "exactOutRoute",
@@ -333,7 +335,8 @@
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
    ],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "sharedAccountsExactOutRoute",
@@ -453,7 +456,8 @@
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
    ],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "accountCompressionRoute",
@@ -485,7 +489,8 @@
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
    ],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "sharedAccountsAccountCompressionRoute",
@@ -517,7 +522,8 @@
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
    ],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "exactOutAccountCompressionRoute",
@@ -549,7 +555,8 @@
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
    ],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "sharedAccountsExactOutAccountCompressionRoute",
@@ -581,7 +588,8 @@
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
    ],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "routeCheck",
@@ -665,7 +673,8 @@
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
    ],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "sharedAccountsRouteCheck",
@@ -782,7 +791,8 @@
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
    ],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "exactOutRouteCheck",
@@ -883,7 +893,8 @@
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
    ],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "sharedAccountsExactOutRouteCheck",
@@ -1000,7 +1011,8 @@
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
    ],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "accountCompressionRouteCheck",
@@ -1031,7 +1043,8 @@
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
    ],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "sharedAccountsAccountCompressionRouteCheck",
@@ -1062,7 +1075,8 @@
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
    ],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "exactOutAccountCompressionRouteCheck",
@@ -1093,7 +1107,8 @@
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
    ],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "sharedAccountsExactOutAccountCompressionRouteCheck",
@@ -1124,7 +1139,8 @@
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
    ],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "setTokenLedger",
@@ -1154,7 +1170,8 @@
     "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "inert"
   },
   {
    "name": "claimToken",
@@ -1243,7 +1260,8 @@
     "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "closeTokenLedger",
@@ -1273,7 +1291,8 @@
     "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "close"
   },
   {
    "name": "route_v2",
@@ -1377,7 +1396,8 @@
     "RISK: verify output amount matches expected within slippage tolerance",
     "RISK: verify route does not include unknown/unverified DEX programs"
    ],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "shared_accounts_route_v2",
@@ -1495,7 +1515,8 @@
     "RISK: verify output amount matches expected within slippage tolerance",
     "RISK: platform_fee_account should be verified as legitimate Jupiter fee account"
    ],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "exact_out_route_v2",
@@ -1595,7 +1616,8 @@
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
    ],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "shared_accounts_exact_out_route_v2",
@@ -1708,7 +1730,8 @@
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
    ],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "route_with_token_ledger_v2",
@@ -1804,7 +1827,8 @@
     "RISK: verify output amount matches expected within slippage tolerance",
     "RISK: verify route does not include unknown/unverified DEX programs"
    ],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "shared_accounts_route_with_token_ledger_v2",
@@ -1934,7 +1958,8 @@
     "RISK: verify output amount matches expected within slippage tolerance",
     "RISK: platform_fee_account should be verified as legitimate Jupiter fee account"
    ],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "routeWithTokenLedger",
@@ -2032,7 +2057,8 @@
     "RISK: verify output amount matches expected within slippage tolerance",
     "RISK: verify route does not include unknown/unverified DEX programs"
    ],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "sharedAccountsRouteWithTokenLedger",
@@ -2164,7 +2190,8 @@
     "RISK: verify output amount matches expected within slippage tolerance",
     "RISK: platform_fee_account should be verified as legitimate Jupiter fee account"
    ],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": ""
   },
   {
    "name": "claim",

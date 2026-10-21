@@ -5,7 +5,7 @@
   "program_id": "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny",
   "website": "",
   "github": "",
-  "category": "staking"
+  "category": "oracle"
  },
  "version": {
   "label": "1.0.0",
@@ -116,14 +116,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: feed",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "acceptFeedOwnership",
@@ -360,14 +360,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: store",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "acceptStoreOwnership",

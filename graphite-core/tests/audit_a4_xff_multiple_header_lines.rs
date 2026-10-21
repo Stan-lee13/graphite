@@ -90,11 +90,13 @@ fn start_server(extra_env: &[(&str, &str)]) -> SocketAddr {
     panic!("server did not start");
 }
 
-/// One `GET /health` with the given raw header lines; returns the status.
-fn health_status(addr: SocketAddr, header_lines: &[&str]) -> u16 {
+/// One `GET /metrics` with the given raw header lines; returns the status.
+/// (`/health` is exempt from the rate limiter since the 2026-10-20 audit,
+/// L3, so the limiter is observed on a route it governs.)
+fn limited_status(addr: SocketAddr, header_lines: &[&str]) -> u16 {
     let mut s = TcpStream::connect(addr).unwrap();
     s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
-    let mut req = String::from("GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n");
+    let mut req = String::from("GET /metrics HTTP/1.1\r\nHost: 127.0.0.1\r\n");
     for h in header_lines {
         req.push_str(h);
         req.push_str("\r\n");
@@ -122,9 +124,12 @@ fn a_second_forwarded_for_line_cannot_choose_the_rate_limit_bucket() {
 
     // Control: the proxy's line alone. The limiter works — the second request
     // from the client the proxy observed is refused.
-    assert_eq!(health_status(addr, &["X-Forwarded-For: 198.51.100.7"]), 200);
     assert_eq!(
-        health_status(addr, &["X-Forwarded-For: 198.51.100.7"]),
+        limited_status(addr, &["X-Forwarded-For: 198.51.100.7"]),
+        200
+    );
+    assert_eq!(
+        limited_status(addr, &["X-Forwarded-For: 198.51.100.7"]),
         429,
         "control: the limiter must refuse the same client's second request"
     );
@@ -135,7 +140,7 @@ fn a_second_forwarded_for_line_cannot_choose_the_rate_limit_bucket() {
     let mut statuses = Vec::new();
     for i in 1..=5 {
         let forged = format!("X-Forwarded-For: 203.0.113.{i}");
-        statuses.push(health_status(
+        statuses.push(limited_status(
             addr,
             &[forged.as_str(), "X-Forwarded-For: 198.51.100.8"],
         ));

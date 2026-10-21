@@ -12,7 +12,9 @@ import {
   Waypoints,
   X,
 } from "lucide-react";
-import { api, getConnection, onConnectionChange, type Health } from "./api";
+import { api, getConnection, onConnectionChange, storageGet, storageSet, type Health } from "./api";
+import { ErrorBoundary } from "./ErrorBoundary";
+import { refusalTotals } from "./figures";
 import { hrefFor, navigate, useRoute, type View } from "./router";
 import { useLayout, usePolling } from "./usePolling";
 import { CommandPalette } from "./CommandPalette";
@@ -86,6 +88,10 @@ export const TITLE: Record<View, string> = {
 
 export type CoreState = "ok" | "degraded" | "unauthorized" | "down" | "connecting";
 
+const SAW_CONNECT = "graphite.sawConnect";
+/** In-memory twin of the sessionStorage flag, for when storage is blocked. */
+let sawConnect = false;
+
 export function App() {
   const route = useRoute();
   const layout = useLayout();
@@ -99,7 +105,9 @@ export function App() {
   // verdict on the key from every view at once.
   const health = usePolling<Health>(() => api.health(), 10000);
   const blocked = usePolling(() => api.policyViolations(), 5000);
-  const blockedCount = blocked.data?.violations.length ?? 0;
+  // Round 29 (audit 2026-10-20, D1): the badge counted the returned window,
+  // which the Core caps at 200; it is the whole-trail refusal total now.
+  const blockedCount = blocked.data ? refusalTotals(blocked.data).refused : 0;
 
   const core: CoreState = health.error
     ? "down"
@@ -112,10 +120,14 @@ export function App() {
           : "ok";
 
   // First run with nothing configured and nothing answering: go straight to
-  // the connection screen rather than to seven empty panels.
+  // the connection screen rather than to seven empty panels. Round 29 (D5):
+  // sessionStorage can throw (blocked storage, sandboxed frames); the
+  // wrapped accessors degrade to "redirect once per page load".
   useEffect(() => {
-    if (core === "down" && !conn.base && route.view !== "connect" && !sessionStorage.getItem("graphite.sawConnect")) {
-      sessionStorage.setItem("graphite.sawConnect", "1");
+    const session = () => window.sessionStorage;
+    if (core === "down" && !conn.base && route.view !== "connect" && !storageGet(session, SAW_CONNECT) && !sawConnect) {
+      sawConnect = true;
+      storageSet(session, SAW_CONNECT, "1");
       navigate("connect");
     }
   }, [core, conn.base, route.view]);
@@ -215,7 +227,9 @@ export function App() {
                     {n.icon}
                     <span className="nav-label">{n.label}</span>
                     {n.id === "blocked" && blockedCount > 0 && (
-                      <span className="nav-count">{blockedCount}</span>
+                      <span className="nav-count" title={`${blockedCount.toLocaleString()} refused on the whole trail`}>
+                        {blockedCount.toLocaleString()}
+                      </span>
                     )}
                   </a>
                 ))}
@@ -237,7 +251,9 @@ export function App() {
               </a>
             </div>
           )}
-          {page}
+          <ErrorBoundary key={route.view} where={TITLE[route.view]}>
+            {page}
+          </ErrorBoundary>
         </main>
       </div>
 

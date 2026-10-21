@@ -65,10 +65,14 @@ fn request(label: &str, data: Vec<u8>, accounts: &[&str]) -> VerificationInput {
     }
 }
 
+/// An instruction of a described program that its manifest does not
+/// describe. It was Token-2022 `UpdateTransferHook` (0x24, 0x01) until the
+/// manifest described it (audit 2026-10-20, LOW-3); ConfidentialMintBurn
+/// (0x2a) is still undescribed, because its layout is not modelled.
 fn hook_update() -> VerificationInput {
-    let mut data = vec![0x24, 0x01];
+    let mut data = vec![0x2a, 0x00];
     data.extend_from_slice(Pubkey::from_base58(ATTACKER_HOOK).unwrap().as_bytes());
-    request("2401", data, &[MINT, VICTIM])
+    request("2a00", data, &[MINT, VICTIM])
 }
 
 fn known_transfer() -> VerificationInput {

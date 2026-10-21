@@ -5,7 +5,7 @@ other file in `docs/` is a dated record of what was true when it was written;
 each carries a banner pointing here. When this file and a report disagree,
 this file is current and the report is history.
 
-Updated: 2026-10-17, after Round 28 — persisted archive indexes, the lifecycle emission table, the P13 contract gate and version `0.3.0-beta` (see `git log -1 -- docs/CURRENT.md`).
+Updated: 2026-10-21, after Round 29 — the full-repository audit of 2026-10-20 remediated: a failed or incomplete simulation refuses with an RPC attached, a swap is held to its route's own minimum, refusals no longer train confidence, the registry owns its corpus (see `git log -1 -- docs/CURRENT.md`).
 If that commit is not HEAD, later commits may have moved things;
 `git log --oneline -- docs/CURRENT.md` shows when this page last changed.
 
@@ -70,9 +70,11 @@ Measured on real mainnet:        19,458 transactions fetched 2026-09-23 (12,134 
                                  by slot list and their SHA-256 is recorded in tools/mainnet-sample/SAMPLES.md,
                                  so a re-run can be checked against these files. Since Round 26 two of the
                                  blocks (2,284 transactions) ARE committed and run on every cargo test with
-                                 the verdict file's SHA-256 pinned (equal to the full run's for those rows)
-Manifest coverage of the chain:  137 manifests / 3,504 instructions (129 / 3,195 when the sample below was measured). On a 10,617-transaction mainnet sample
-                                 fetched on 2026-09-23 (not in the repo),
+                                 the verdict file's SHA-256 pinned (equal to the full run's for those rows).
+                                 Round 29 re-pinned them on 2026-10-21: 3 of 2,277 rows changed, each attributed
+                                 to the manifest reclassification in the test's comment; 0 approvals before and after
+Manifest coverage of the chain:  137 manifests / 3,541 instructions (129 / 3,195 when the sample below was measured). On a 10,617-transaction mainnet sample
+                                 fetched on 2026-09-22 (not in the repo; 1,829 of it, 17.2%, version 1),
                                  44.0% of non-vote transactions have a manifested primary program, up from 20.8%
                                  for the same sample before Round 18. The rest still meet the drainer heuristic
                                  (>=3 accounts, no declared state changes), which is the fail-closed posture at
@@ -82,7 +84,19 @@ Manifest coverage of the chain:  137 manifests / 3,504 instructions (129 / 3,195
 Trust tier a manifest declares:  checked, not believed - `BattleTested` is lowered to `OfficialManifest` at load
                                  unless protocols/battle_tested_evidence.json shows an executable program, >=1,000
                                  successful transactions over a stated window, and >=90% of really-observed
-                                 instructions named by the manifest (Round 18)
+                                 instructions named by the manifest (Round 18). The measured tier is registry and
+                                 display information: the verdict path caps every manifest at OfficialManifest, and
+                                 a verdict reaches BattleTested only through operator-seeded graph evidence
+Verdict trust tier:              the MINIMUM over every top-level program the transaction invokes (primary,
+                                 declared siblings, artifact instructions), each tiered like the primary; an
+                                 unmanifested sibling makes it Unknown, refused on every built-in profile (Round 29).
+                                 The evidence signals stay the primary's
+Simulation as a gate:            with an RPC client and an artifact, an errored simulation is SimulationFailed (L3
+                                 Failed) and one that could not be obtained or is incomplete (RPC error, timeout,
+                                 budget, implausible answer, unreadable callee report, unrebuildable CPI tree,
+                                 missing pre/post diff) is VerificationIncomplete; both refuse (Round 29). WITHOUT an
+                                 RPC client nothing is simulated: L3 Inconclusive, `not_simulated` residual, and the
+                                 Core does not refuse for that alone (the agent guard's ResidualPolicy does)
 Message version 1:               parsed since Round 19 (17.0% of the sample): never looser than agave's wincode
                                  decoder + sanitize (runtime oracle, ~628,500 frames per CI seed, 0 looser);
                                  3,302 of 3,302 real v1 transactions read and bound; ≤ 4,096 bytes; the config
@@ -114,7 +128,10 @@ What trains the baseline:        only a sound, risk-clear, successfully simulate
                                  its third ask before); identities remembered exactly per program (16,384, never
                                  forgotten; a full memory routes to the shadow); a uniform history is a ±25% band;
                                  refused-but-clean executions accumulate in a shadow /health reports and an
-                                 operator can promote (Round 17)
+                                 operator can promote (Round 17). Since Round 29 a request refused ONLY by the
+                                 policy threshold trains nothing unless GRAPHITE_LEARN_FROM_POLICY_REFUSALS=1 (on,
+                                 any verify-key holder can raise a program's confidence for every caller: three
+                                 byte-distinct transfers take an OfficialManifest program from 0.44 to 0.64)
 Observed CPI targets:            read from the simulation's innerInstructions and judged by the same rules as a
                                  declaration; declaring nothing switches nothing off (Round 17). Since Round 19 the
                                  whole observed call TREE (by stackHeight, with accounts and data) is judged by the
@@ -135,7 +152,20 @@ L8 inclusion evidence:           commitment read (processed proves nothing); an 
 Parser vs the runtime:           never looser than agave's decoder + sanitize, proven in CI over the corpus and
                                  seeded generated frames — bincode and wincode, legacy, v0 and v1; frames naming
                                  one account twice, lookups resolving a named address and non-table lookup
-                                 accounts refused (tools/runtime-oracle, Rounds 12 and 19)
+                                 accounts refused (tools/runtime-oracle, Rounds 12 and 19). The oracle runs the
+                                 Anza SDK crates (solana-transaction, solana-message); since Round 29 it also
+                                 generates frames either side of the 64-instruction, 64-lock and 256-account limits
+                                 and cross-checks the 32 reserved ids. Legacy (version 0) nonce accounts are
+                                 refused, as the runtime refuses them; PDA derivation tries bumps 255..1
+SDKs and schema:                 both SDKs validate every verdict against the v1 schema's rules (the schema
+                                 requires scope; a verdict without it is refused) and allow plain http only to
+                                 loopback; VerificationResult has 21 fields, at parity across Rust, the schema,
+                                 TypeScript and Go; Go bounds bodies (16 MiB) and has a 30 s no-redirect default
+                                 client (Round 29)
+Operator console and AI layer:   the dashboard shows the server's whole-trail totals, labels window figures "last
+                                 N", shows a failed /metrics read as unknown, keeps the key per tab by default and
+                                 ships a strict CSP and no source maps; the advisory AI layer answers 400/408/413/
+                                 415/403, has a 15 s request deadline and at most 32 connections (Round 29)
 Lifecycle sequence:              every report checked against the rows on record — duplicate / out of order /
                                  unpreceded / signature conflict — recorded, never refused (Round 12)
 One writer per data directory:   an exclusive lock on graphite.lock, taken by the server AND by every CLI command
@@ -148,7 +178,9 @@ Lifecycle on the trail:          the bridge records signing before submission an
 Server authentication:           required by default, ≥ 32 characters; GRAPHITE_DEV_MODE=1 permits keyless on loopback only.
                                  /admin/* takes a separate operator key (GRAPHITE_ADMIN_API_KEY, ≥ 32 characters, not
                                  the verify key) and is disabled without one (Round 19); the concurrency permit is
-                                 taken after rate limiting, authentication and receipt of the body (5 s)
+                                 taken after rate limiting, authentication and receipt of the body (2 s). Every
+                                 GRAPHITE_* variable is parsed strictly: a value that does not parse refuses to start;
+                                 a keyless dev instance answers 421 to a non-loopback Host (Round 29)
 Signing before the verdict:      never, in the reference bridge (Round 19): the pre-verdict simulation is unsigned by
                                  construction, and SolanaAgentKit holds a wallet that cannot sign
 Request path:                    no per-request deep copy of state (/health ~1 ms; 960 verifies/s in-process with
@@ -157,15 +189,30 @@ Request path:                    no per-request deep copy of state (/health ~1 m
                                  the blocking pool, so a slow disk flush holds a blocking thread, not an async
                                  worker; HTTP/1.1 only, a request head within 5 s, a body within 2 s, at most
                                  GRAPHITE_MAX_CONNECTIONS (1,024) connections open, at most
-                                 GRAPHITE_MAX_CONNECTIONS_PER_IP (64; none behind a trusted proxy) per peer
+                                 GRAPHITE_MAX_CONNECTIONS_PER_IP (64; none behind a trusted proxy) per peer (per /64;
+                                 a /48 at most four times that), each for at most 120 s; verifications draw on
+                                 GRAPHITE_MAX_CONCURRENT permits, every other route on a fixed pool of 16, and
+                                 /health on neither and is exempt from rate limiting (Round 29)
 Container health:                `graphite healthcheck` (the image's HEALTHCHECK) passes any 2xx from /health;
                                  `--strict` also fails on `degraded: true`, for an orchestrator that should
                                  replace a node whose audit trail is failing. The image keeps the default
 Repository integrity:            CI token read-only; actions pinned by commit SHA; base images pinned by digest;
                                  toolchain 1.98.1 in CI and in the container; Go, cargo-audit and Python (hash-locked) pinned;
                                  runner image (ubuntu-24.04) and Node (20.20.2, 22.23.3) exact; npm installs run no
-                                 dependency install scripts; all five lockfiles audited (npm against a named allowlist
-                                 of known advisories in .github/npm-audit/); every job time-bounded
+                                 dependency install scripts; the Cargo and Python lockfiles audited, and six npm
+                                 lockfiles through a gate that fails on any moderate, high or critical advisory not
+                                 listed with its reachability reasoning in .github/npm-audit/ (Round 29); every job
+                                 time-bounded; CI runs on pushes to main and v* tags and on pull requests
+Audit trail integrity:           corruption-evident, NOT tamper-evident: records, archive indexes and fixture
+                                 hashes are unkeyed and unchained, so the data directory must be writable only by
+                                 the Graphite process. Archive order no longer follows the wall clock, only exact
+                                 archive names count, a failed append is undone or appends stop (Round 29)
+Request objects:                 every nested request object refuses unknown fields, not only the top level (Round 29)
+Agent guard (the signing side):  a transfer must match one grammar ([please] send|transfer|pay <amount> SOL to
+                                 <address>); a swap runs only on six decoded programs, exact-in, its route's own
+                                 minimum held to the simulated delivery, a slippage bound and a price floor; a
+                                 per-transaction cap is required in every adapter; a confirm hook shows the resolved
+                                 transaction before signing (Round 29)
 Independent third-party audit:   NOT PERFORMED — every campaign report is internal engineering work
 Branch protection on main:       ABSENT — an owner decision; see "Not yet done"
 ```
@@ -200,7 +247,7 @@ transaction under the stated threat model, and no external party has yet tried.
 | L8 reconciliation sees the whole trail | `AuditLog::find_verification` by `audit_trail_id` / `transaction_sha256` / `content_hash`: indexed active file, archives newest-first. `count_verifications` (the verdicts on record beside it): per-key counts of the active file, trusted only while they account for its exact length, else recounted; archives scanned | `durable::tests::read_path_covers_every_archive_after_rotation`, `last_verification_index_tracks_rotation_and_reopen`, `verdict_counts_are_indexed_across_open_append_and_rotation`, `a_verdict_count_the_active_file_contradicts_is_recounted`, `verdict_counts_account_for_a_terminated_torn_tail`, `tests/round10_attribution.rs` |
 | An executed blocked transaction is attributed to ITS verification, not to a same-instruction approval | `audit_execution`: `getTransaction` bytes → `bound_artifact_sha256` → digest → `find_verification(TransactionSha256)`; caller keys most-exact-first with no fallback; `caller_keys_disagree` | `tests/round10_attribution.rs` (approved A newest, blocked B executed → `BlockedButExecuted`, attribution `chain`) |
 | The chain's bytes are the signature's, not merely the RPC's | `tx_artifact::bound_artifact_sha256`: first slot equals the signature; ed25519 `verify_strict` over the message under the fee payer's key; rejected bytes → `Unavailable`, `chain_bytes_rejected`, no fallback to caller keys | `tests/round10_attribution.rs::{chain_bytes_are_accepted_only_when_bound_to_the_signature, an_rpc_that_substitutes_bytes_cannot_attribute_the_execution}`; `tests/l8_live_mainnet.rs::l8_real_chain_bytes_are_bound_to_their_signature` (public devnet, ignored by default) |
-| A frame the runtime would not sanitize is not a transaction | `parse_transaction`: `SignatureCountMismatch`, `ImpossibleHeader` (no writable signer), `ProgramIsFeePayer`, `AccountIndexOutOfRange` (legacy and v0), `EmptyLookup`, `TooManyAccounts` | `tests/round12_runtime_sanitize.rs`; `tests/sak_bridge_corpus.rs`; **`tools/runtime-oracle`** against agave's decoder + `sanitize` over the corpus and 600,000 generated frames, in CI (job `runtime-oracle`) |
+| A frame the runtime would not sanitize is not a transaction | `parse_transaction`: `SignatureCountMismatch`, `ImpossibleHeader` (no writable signer), `ProgramIsFeePayer`, `AccountIndexOutOfRange` (legacy and v0), `EmptyLookup`, `TooManyAccounts` | `tests/round12_runtime_sanitize.rs`; `tests/sak_bridge_corpus.rs`; **`tools/runtime-oracle`** against the Anza SDK decoder (`solana-transaction`, `solana-message`) + `sanitize` over the corpus and ~628,500 frames per CI seed (300,000 legacy/v0, 300,000 v1, a systematic pass and the corpus), with frames either side of the 64-instruction / 64-lock / 256-account limits and a cross-check of the 32 reserved ids (Round 29), in CI (job `runtime-oracle`) |
 | L8 draws no positive conclusion from one node's view, a self-contradicting RPC, or a malformed status | `rpc_client::InclusionCommitment`; `get_signature_status` strict; `ChainTransaction` slot/outcome held against the status → `chain_inconsistent` | `tests/round12_rpc_equivocation.rs::{a_processed_status_is_not_a_positive_conclusion, an_rpc_that_contradicts_itself_gets_no_positive_conclusion, a_malformed_status_is_never_a_conclusion, a_status_without_bytes_is_disclosed_as_caller_attributed}` |
 | Redirects from an RPC are never followed | `SolanaRpcClient::new` → `Policy::none()` | `tests/round12_rpc_equivocation.rs::a_redirecting_rpc_is_not_followed` (the target records zero hits) |
 | An approval is reported executed only when two independent RPCs agree; a blocked transaction seen by either alarms | `GraphiteCore::attach_inclusion_witness`, `compare_witness`, `ExecutionAudit.inclusion_witness` | `tests/round12_rpc_equivocation.rs::{a_positive_conclusion_needs_the_witness_to_agree, either_endpoint_seeing_a_blocked_transaction_alarms, a_witness_that_is_the_primary_is_refused}`; the probe with a mock witness |
@@ -223,7 +270,7 @@ transaction under the stated threat model, and no external party has yet tried.
 | L8 names a cited verdict about OTHER bytes, and alarms when it was a refusal | Round 17 (F-16-01): `ExecutionReconciliation::RecordedForDifferentBytes { recorded_approved, .. }`, a discrepancy when `!recorded_approved`; `recorded_verdicts {approved, refused}` for the chain digest (F-16-11) | `round17_remediations::a_cited_verdict_about_other_bytes_is_reported_and_a_cited_refusal_alarms`, `::l8_reports_every_verdict_recorded_for_the_chain_digest` |
 | Only a SOUND transaction trains the baseline, and the same bytes are one observation | Round 17 (F-16-03 / F-15-01 / F-15-02): recording after the verdict, gated on `rpc_sim_ok` (now `err == null`), no structural failure, risk Clear; keyed on the artifact digest (`record_simulation_keyed`) — since Round 19 on the simulation identity, which ignores the blockhash the simulator replaces | `round17_remediations::an_l2_refused_request_does_not_grow_the_baseline`, `::an_errored_simulation_is_not_evidence_and_is_named`, `::identical_approved_bytes_are_one_observation`, `::the_same_request_is_not_approved_on_the_second_call` |
 | A failed simulation is named, never "clean" | Round 17 (F-16-04): `UnobservedCode::SimulationFailed`; L3 reports "FAILED" | `round17_remediations::an_errored_simulation_is_not_evidence_and_is_named` |
-| A uniform history is a band, not a point | Round 17 (F-16-02): `simulation_integrity::effective_spread` (25% of centre, floor 1.0) on both the mean/std and robust paths; flagged-but-clean executions go to the shadow accumulator; `/health.frozen_baselines`; `graphite evidence promote-shadow` | `round17_remediations::ten_identical_samples_do_not_refuse_the_eleventh_at_plus_one_cu`, `simulation_integrity::tests::test_zero_variance_baseline_is_a_band_not_a_point` |
+| A uniform history is a band, not a point | Round 17 (F-16-02): `simulation_integrity::effective_spread` (25% of centre, floor 1.0) on both the mean/std and robust paths; flagged-but-clean executions go to the shadow accumulator; `/health.frozen_baseline_count` (the list at the authenticated `GET /api/frozen-baselines` since Round 29); `graphite evidence promote-shadow` | `round17_remediations::ten_identical_samples_do_not_refuse_the_eleventh_at_plus_one_cu`, `simulation_integrity::tests::test_zero_variance_baseline_is_a_band_not_a_point` |
 | Approval is conditioned on lookup-table resolution | Round 17 (F-15-05): an unresolved primary position fails L2; `SiblingCoverage.unresolved_positions` fails L2 | existing ALT tests; `tests/alt_*.rs` |
 | Manifest risk metadata is keyed on the bytes | Round 17 (F-15-03): `manifest_risk_class` / expected count / variable flag looked up with `effective_discriminator` | `tests/mislabelled_discriminator.rs`, `tests/truncated_discriminator.rs` |
 | Observed CPI targets are judged like declared ones | Round 17 (F-16-05): `rpc_client::SimulationResult.inner_program_indexes` → `observed_cpi_callees` → `assess_with_warnings` | `round17_remediations::an_observed_cpi_target_the_caller_omitted_is_judged_like_a_declared_one` |
@@ -269,6 +316,21 @@ transaction under the stated threat model, and no external party has yet tried.
 | Native manifests match their interfaces | Round 22 (F-22-07/08/09): Stake and BPF Upgradeable Loader rebuilt; alternate layouts for `CreateAccountWithSeed` and the stake pool's SOL authorities | `round22_remaining::native_manifests` (4), `create_account_with_seed_has_its_two_account_layout` |
 | Remaining-account interfaces are declared | Round 22 (F-22-06): `variable_accounts` on sixteen instructions whose own traffic passes variable account lists | `remaining_account_interfaces_are_declared_variable` |
 | The priority fee is read | Round 21 (F-21-10): `tx_artifact::compute_budget_request` → `scope.compute_budget`; `ExcessivePriorityFee` | `round21_open_list::compute_budget` (3), `round19_v1_transactions::the_v1_header_is_the_compute_budget` |
+| With an RPC, a failed or incomplete simulation refuses | Round 29 (audit H1): `SimulationFailed` (L3 Failed) and `VerificationIncomplete` risk findings; a simulation plugin's Block refuses | `tests/audit_2026_10_20_simulation_gate.rs` (`an_errored_simulation_is_refused`, `an_unobtainable_simulation_is_refused_as_incomplete`, `an_incomplete_simulation_response_is_refused`, `a_simulation_without_a_diff_is_refused`), `audit_2026_10_20_core_gates::a_simulation_plugin_block_refuses_the_verdict`; without an RPC the verdict is unchanged: `::without_an_rpc_client_an_artifact_verdict_is_unchanged` |
+| A refusal does not train confidence | Round 29 (M1): `GraphiteCore::set_learn_from_policy_refusals`, off unless `GRAPHITE_LEARN_FROM_POLICY_REFUSALS=1` | `audit_2026_10_20_simulation_gate::policy_refusals_teach_nothing_unless_the_operator_opts_in` |
+| The verdict's tier is the weakest program's | Round 29 (M2): every top-level program tiered by `program_trust_tier`; the minimum is the verdict's | `audit_2026_10_20_core_gates::{an_unmanifested_sibling_sets_the_verdicts_tier, an_earned_primary_tier_is_held_to_its_siblings}` |
+| A misspelt nested field is refused, not dropped | Round 29: `deny_unknown_fields` on every nested request type | `audit_2026_10_20_core_gates::an_intent_with_an_unknown_field_is_refused`, `round29_state_diff::a_supplied_diff_with_an_unknown_field_is_refused` |
+| L8 records what it saw | Round 29 (M4, M9): an `execution_check` row unless inclusion was seen at a cluster-backed commitment; `getTransaction` at the configured commitment; a contradicted citation is `caller_keys_disagree`, never a discrepancy | `server::tests::an_l8_check_that_saw_nothing_is_not_a_confirmation`, `round29_rpc_client::get_transaction_asks_at_the_configured_commitment`, `audit_2026_10_20_simulation_gate::a_cited_refusal_of_other_bytes_is_not_an_alarm` |
+| A signer's undeclared lamport loss is Critical | Round 29: `UndeclaredSignerLamportDebit` beyond the fee and created accounts' rent under an interpretable no-debit manifest; Token-2022 padding, both-sides extensions, mint-scoped fee terms, `TokenLayoutUndecodable`, Multisig length, Vote V4 | `tests/round29_state_diff.rs` (17) |
+| The RPC client fails closed on what it cannot read | Round 29: account `data` must be `[base64, "base64"]`; error text redacted; `Debug` never prints the endpoint | `tests/round29_rpc_client.rs` |
+| The CLI decides as the server does | Round 29: `operator_boundary`, shared; `graphite execution` exit codes 0/1/3/4/5/6 | `audit_2026_10_20_cli_reproduces_server::{verify_applies_the_servers_boundary_settings, an_execution_check_that_cannot_run_is_not_a_pass}` |
+| A configuration the server cannot honour refuses to start | Round 29: strict parsing of every `GRAPHITE_*` variable, CORS `*`, an unopenable events file, a corrupt registry state | `audit_2026_10_20_startup_refusals::configuration_the_server_cannot_honour_refuses_to_start` |
+| The registry is a boundary against its submitters | Round 29 (M3): registry-owned corpus, lineage, domain-tagged signature over canonical JSON, full runtime validation, reviewer revocation, fixture integrity over the expected outcome | `manifest_registry::tests::{lineage_is_enforced_and_a_refused_version_stays_refused, a_signature_over_the_bare_hash_does_not_verify, the_content_hash_covers_canonical_json, a_submission_the_runtime_would_refuse_is_refused, a_revoked_reviewer_stops_counting, a_registry_acceptance_keeps_operator_evidence}`, `regression_engine::tests::an_edited_outcome_or_deprecation_is_refused_and_old_fixtures_migrate` |
+| The System Program manifest is the runtime's | Round 29 (MED-4): `TransferWithSeed` layout corrected, `UpgradeNonceAccount` added | `tests/system_program_manifest.rs` |
+| A swap is held to its route's own minimum | Round 29 (H2, H4), agent guard: `swap-instructions.ts` decodes six programs' exact-in instructions; `swap-economics.ts` holds the minimum to the simulated delivery, the slippage and a price floor; exact-output forms refused | `integrations/agent-guard/swap-instructions.test.ts`, `swap-economics.test.ts`, `guard-round29.test.ts` |
+| A transfer request is one sentence the guard can parse | Round 29 (H3, M5): a positive grammar, anything else refused with the accepted form | `intent-grounding.test.ts` ("H3: the accepted form, and only it, is grounded") |
+| A person sees the resolved transaction; the key leaves the environment | Round 29 (M7, M8): `confirm(summary)`; `SOLANA_PRIVATE_KEY` deleted once read; ES-private collaborators | `guard-round29.test.ts` (M7, M8 cases) |
+| The documented numbers are the code's | Round 29: risk checks, the registry's size, the corpus size, mutations, residual codes and dashboard views derived and scanned in README, ARCHITECTURE, CURRENT, CONTRIBUTING, ROADMAP and two package READMEs; test counts allowed only on this page | `tests/docs_numbers_match_the_code.rs` |
 
 ## What is NOT enforced (documented limitations)
 
@@ -278,11 +340,16 @@ transaction under the stated threat model, and no external party has yet tried.
   carry: 219 of 48,855 executed mainnet transactions (roadmap R-M14).
 - **The Core does not bind amounts; the agent guard does.** `ExtractedParameters.amount`
   is carried, not compared, by the Core; lamports leaving the signer's wallet under a
-  declared debit are disclosed (`SignerLamportsOutsideDeclaredDebit`), not refused. The
+  declared debit are disclosed (`SignerLamportsOutsideDeclaredDebit`), not refused (a
+  signer's loss under a manifest that declares NO debit is Critical since Round 29). The
   agent guard binds a transfer to the amount and destination in the user's text, and a
   swap to the amount and both tokens in it, checked against a simulation of the exact
-  bytes (Round 25); its spend cap bounds both. A direct `/verify` caller binds them
-  itself. A swap's output amount is not compared with a minimum.
+  bytes (Round 25); since Round 29 it also decodes the route's own minimum output and
+  holds it to the simulated delivery, a slippage bound and a price floor; its spend cap
+  bounds both. A direct `/verify` caller binds them itself. **Correction:** the Round 25
+  report says the Core reads a route's minimum for the protocols it models. It reads
+  none; the guard does. Swaps run only on six decoded programs, exact-in; wSOL wrapping
+  and unwrapping are not supported (the Risk Engine refuses `CloseAccount`).
 - **A lookup table's freshness and a registry record's signatures are not
   checked** (Round 24, W17-c, W11-c); see `SECURITY.md`.
 - **The Token-2022 model replays what the simulator reports it executed.**
@@ -374,7 +441,45 @@ transaction under the stated threat model, and no external party has yet tried.
   already earned, or on evidence an operator seeded (`graphite evidence seed` /
   `baseline`), confidence can clear a profile's threshold with no simulation.
   An integration other than the reference bridge must refuse `not_simulated`
-  itself if it wants that guarantee.
+  itself if it wants that guarantee. (With an RPC attached, a failed or
+  incomplete simulation refuses since Round 29.)
+- **L3 does not flag deviations of 50% of the centre or less.** A signal is
+  flagged only beyond 2.0 × max(spread, 0.25·|centre|, 1); the first 10
+  RPC-verified observations are learned unclamped and decide nothing. Deliberate:
+  baselines are per program.
+- **Without a witness, the primary RPC decides L8.** Without
+  `GRAPHITE_RPC_WITNESS_URL` a hostile or broken primary can turn
+  `BlockedButExecuted` into `BlockedAndNotExecuted`, `NotFound` or `Unavailable`.
+- **The audit trail is corruption-evident, not tamper-evident.** Unkeyed hashes,
+  no hash chain; the data directory must be writable only by Graphite.
+- **The address-poisoning rule has a residual false positive (Round 29, R-4).**
+  The Risk Engine stopped judging the signing authority of an SPL transfer and
+  judges a destination at four trailing `1`s. Judging no source at all would have
+  approved five documented address-poisoning sends in the holdout (from a
+  phisher's vanity address to a victim), so a source is still judged at the
+  pre-audit five. A user's own wallet ending in five or more `1`s — about one
+  random address in 656 million — is refused when it sends.
+- **`approve` is a recognised intent that never verifies anything.** A delegate
+  grant is an authority change, which no intent declares, so Check 2 refuses every
+  `Approve` / `ApproveChecked` under any label.
+- **The measured `BattleTested` tier does not reach a verdict.** It is registry and
+  display information (the verdict path caps every manifest at `OfficialManifest`);
+  the bar behind it is thin — across the 113 records that carry it, 21 observed
+  instructions at the least and 54 at the median, 70 records naming three or fewer
+  distinct instructions, 30 at exactly 1,000 successes from one signature page,
+  measured 2026-09-22 to 2026-10-03.
+- **The holdout is 38 rows, and its one benign row is refused.** 37 real exploits,
+  all refused (recall 1.0, 0 false negatives), and one real successful Jupiter
+  swap, refused offline because its lookup tables cannot be resolved (1 false
+  positive; precision 0.974). The exploits run descriptively on request evidence
+  the engine ignores. Two rows the holdout used to score as benign had failed on
+  chain and are no longer scored.
+- **The benchmark is 24 hand-built descriptive cases** (7 safe, 15 malicious, 2
+  unscored unknown-protocol), compared against an approve-all baseline. Its five
+  REAL-RECONSTRUCTED cases take program ids, accounts and CPI targets from real
+  exploits and reconstruct the rest; the Wormhole case is refused by the drainer
+  ratio (Check 3), not by anything about the Wormhole exploit's mechanism. Its
+  latency figure has no run artifact in the repository.
 - **Lifecycle events reported by callers are attestations.** `POST
   /audit/event` records what the caller said with `reported_by`; Graphite
   cannot witness a signing it did not perform and does not claim to. What it
@@ -393,8 +498,11 @@ transaction under the stated threat model, and no external party has yet tried.
 | Rounds 15–16 findings | **Closed in Round 17** (every item, each with a regression test; see the Round 17 report and `SECURITY.md`) | — |
 | Identity mismatches on declared slots | **Diagnosed and mostly closed (Round 20)**: the fee payer's structural writable flag was read as an escalation, blocking every self-paid token transfer. Over the 19,458-transaction sample, identity/privilege blocks fell from 1,355 to 519 and 156 executed transactions went from Blocked to Clear; no other verdict loosened. The remainder is mostly declared read-only slots the transaction marks writable (247) — writability is per message, so a program really can write them — and fixed-address mismatches (156). Measured, not loosened | Engineering |
 | Manifests for the traffic that publishes no on-chain IDL | Measured (Round 22): the programs behind 71% of the drainer refusals are signed by five or fewer fee payers and publish no IDL — bots' own programs, not a wallet user's; the programs with an IDL and real users were already manifested and their refusals were fixed | Engineering |
-| Five manifests below the decode bar | Open (Round 18): Metaplex Token Metadata (0.67 — the unified V2 instruction set is not modelled), Bubblegum, Light System Program, Coinflow and Pump Fees. Each is recorded in `battle_tested_evidence.json` with the unnamed leading bytes | Engineering |
-| Branch protection on `main` (required CI, no force-push) | Absent; conflicts with the standing push-to-main workflow | Owner |
+| Manifests below the decode bar | Open: 13 records measure a decode rate under 90% after Round 29 recomputed every rate against the loaded manifests (Bubblegum, Light System Program, Coinflow, Pump Fees, Account Compression, Doorcash, Main, Merkle Distributor, Ocr2, Oridion, Rush, Timelock, Zeta). Metaplex Token Metadata reached 100% in Round 29. Each is recorded in `battle_tested_evidence.json` with the unnamed leading bytes | Engineering |
+| Branch protection on `main` (required CI, no force-push) | Absent; conflicts with the standing push-to-main workflow. Until it is on, every CI gate is advisory | Owner |
+| GitHub private vulnerability reporting | Not enabled; once it is, link it from `.github/ISSUE_TEMPLATE/config.yml` | Owner |
+| The crate's publish flag; tagging `0.3.0-beta`; deployment | Owner decisions, unchanged by Round 29 | Owner |
+| The 2026-10-20 audit (4 HIGH, 16 MEDIUM, LOW and informational items by area) | **Closed in Round 29**: every finding fixed, documented above as a limitation, or listed here as an owner decision; see the Round 29 report and `AUDIT/01-findings.md` | — |
 | Version-1 transaction format | **Done (Round 19)**: parsed, never looser than agave, 3,302 of 3,302 real mainnet v1 transactions read and bound; config values surfaced in `scope.compute_budget` (Round 21) | — |
 | Token-2022 `TransferFee` modelling | **Done (Rounds 20–22)**: replayed exactly against the executed instructions (Round 21), a pending schedule always judged (Round 22) | — |
 | Transfer hooks that run a program | **Done where the bytes bound them (Round 22)**; a hook handed a signer or another program's writable account blocks | — |
@@ -407,35 +515,57 @@ transaction under the stated threat model, and no external party has yet tried.
 
 ## Numbers (as of this page's commit)
 
-1,934 Rust tests passing in the all-features build (137 binaries; 13 ignored:
-network- or sample-dependent, plus two soak benchmarks; for Round 24 the mainnet
-conformance test was run on four days of samples against `eb17aa5` and this
-round, under both label sets); 363 in the featureless library build; 1,654 in
-the cli-only build; 195 TypeScript tests in the agent guard, 6 in the SAK
-adapter, 7 in the Vercel AI adapter, 8 in the MCP server; 38 in the TypeScript
-SDK (34 hermetic, 4 against a live server — run in CI's container job); 45 Go;
-35 Python; 7 dashboard; the runtime oracle over the corpus and ~628,500 frames
-per CI seed, bincode and wincode, legacy, v0 and v1, never looser than agave.
-Clippy `-D warnings` (all three feature legs) and fmt clean on rustc 1.98.1.
+**This is the one place the repository states test counts**; every other
+document links here, and `tests/docs_numbers_match_the_code.rs` fails if a live
+document states one elsewhere.
+
+Rust, from the final runs of Round 29 on 2026-10-21 (release builds; logs kept
+outside the repository), plus the 3 tests this page's commit adds to
+`tests/docs_numbers_match_the_code.rs`:
+
+- all features: **2,100 Rust tests pass**, 13 ignored (network- or
+  sample-dependent, plus two soak benchmarks), across 146 test targets;
+- the featureless library (`--no-default-features --lib`): **428 passed, 2 ignored**;
+- the cli-only build (`--no-default-features --features cli`): **1,780 passed, 4 ignored**.
+
+That run reported four failures, all since resolved: three Round 21/22 tests that
+expected a field the Core keeps for itself to be dropped rather than refused
+(updated in `d766a85`), and
+`docs_numbers_match_the_code::the_risk_check_count_is_the_engine`, which found
+that ARCHITECTURE still said there were twenty-three risk checks, and passes with this page's commit. On this
+commit only the three documentation tests were re-run, not the full suite.
+Clippy `-D warnings` (all three feature legs) and fmt clean.
+
+TypeScript: agent guard 249; SolanaAgentKit adapter 9; MCP server 9; Vercel AI
+adapter 9; TypeScript SDK 50 (46 hermetic, 4 against a live server — run in
+CI's container job); dashboard 20. Go SDK: 52 top-level test functions, plus 5
+behind the `liveserver` tag. Python: AI layer 44; `tools/mainnet-sample` 7. The
+runtime oracle: ~628,500 frames per CI seed, bincode and wincode, legacy, v0
+and v1, never looser than the runtime.
+
+The holdout (`tests/regression_corpus.rs`): n = 38, 37 true positives, 1 false
+positive, 0 false negatives — precision 0.974, recall 1.000. The committed
+corpus: 13,013 fixtures (12,943 dev, 32 regression, 38 holdout).
+
 Reproduced from `cargo test` / `npm test` / `go test` / `pytest` output on
-2026-10-17, not estimated. CI for the
-commit is the GitHub Actions run for that SHA — the runs endpoint, not the
-combined-status endpoint.
+2026-10-21, not estimated. CI for the commit is the GitHub Actions run for that
+SHA — the runs endpoint, not the combined-status endpoint.
 
 ## Report index (newest first)
 
 | Date | Report | What it records |
 |---|---|---|
+| 2026-10-21 | [round29-the-audit-remediated-2026-10-21.md](round29-the-audit-remediated-2026-10-21.md) | A full-repository audit of `19a2974` (4 HIGH, 16 MEDIUM) answered in one round: with an RPC a failed or incomplete simulation now refuses (H1); the agent guard decodes six swap programs and holds a route's own minimum to the simulated delivery, a slippage bound and a price floor (H2, H4), and grounds a transfer in one grammar (H3); refusals no longer train confidence (M1); the verdict's tier is the weakest program's (M2); the registry owns its corpus and signs a domain-tagged message (M3); L8 writes an `execution_check` unless it saw inclusion (M4, M9); every adapter requires a cap and a person sees the resolved transaction (M6–M8); 16 risk checks; 3,541 instructions with corrected classes; an honest holdout (37/37 exploits refused, the one benign swap refused offline) and the mainnet pin moved on 3 of 2,277 rows, each attributed. Deliberate breaks run and caught for the core pipeline, server and CLI, RPC and state diff (28 failures on the reverted code), audit trail and parser, agent guard, SDKs and schema, dashboard, AI layer and contract gate; not run for the risk engine, registry, protocol data and attack suites |
 | 2026-10-17 | [round28-archive-index-lifecycle-contract-2026-10-17.md](round28-archive-index-lifecycle-contract-2026-10-17.md) | Each rotated audit archive has a persisted index, checked against the archive's SHA-256, and a count over three 64 MiB archives went from 822 ms to 2.2 ms (R-M11, W10); every lifecycle event names its emitter in an exhaustive `match` a test drives end to end, and `operator_action` is now pinned as unforgeable (R-P14, R28-2); the published schemas are diffed against the last release tag, whose first run found two caller-side breaks since `v0.2.0-beta` under the same version, so the crate is `0.3.0-beta` (R-M2, R28-1) |
 | 2026-10-16 | [round26-27-real-traffic-and-upgrades-2026-10-16.md](round26-27-real-traffic-and-upgrades-2026-10-16.md) | Two finalized mainnet blocks (2,284 executed transactions) committed and run through the whole pipeline on every `cargo test`, the verdict file's SHA-256 pinned and equal to the full measurement's (R-P2/R-P3); protocol upgrades noticed: with an RPC, a manifested program redeployed or handed to a new upgrade authority since last seen is reported on the verdict, on `/health` and in the metrics, and quarantined if the operator set `GRAPHITE_QUARANTINE_ON_UPGRADE` (R-M1); advisories published after Round 24 fixed (`quinn-proto`, `rustls`, three npm) |
 | 2026-10-16 | [round25-the-swap-is-the-one-asked-for-2026-10-16.md](round25-the-swap-is-the-one-asked-for-2026-10-16.md) | A second external review (E1–E10): the guard grounded that a request asked for a swap, not which one — now the amount and both tokens come from the user's text and the simulated transaction is held to them; negated requests refused; the spend cap reads one simulation snapshot; the guard's RPC reads bounded and its lamports exact; L8 asks the witness for the bytes, so neither a primary without them nor one serving substituted bytes can silence a blocked transaction's alarm; more than 64 top-level instructions refused in every format. One item (the legacy 12-signature limit) not a finding |
-| 2026-10-03 | [round24-the-intent-is-the-class-2026-10-03.md](round24-the-intent-is-the-class-2026-10-03.md) | External review R2/R3 reproduced on `eb17aa5` (a `transfer` label got L5 Passed and L7 Clear for Squads drains, Bubblegum `delegate`, `MintTo`/`Burn`) and fixed with one intent-to-class table; control changes by name, delegation, switch and admin signer; W11–W25 verified and fixed or documented; the Vercel AI SDK and MCP integrations; eight more manifests (137 / 3,504, 113 battle-tested). Four days of mainnet: 302 newly refused, 0 freed, 0 approved; one more P1 (R3-b) found by that measurement and fixed |
+| 2026-10-03 | [round24-the-intent-is-the-class-2026-10-03.md](round24-the-intent-is-the-class-2026-10-03.md) | External review R2/R3 reproduced on `eb17aa5` (a `transfer` label got L5 Passed and L7 Clear for Squads drains, Bubblegum `delegate`, `MintTo`/`Burn`) and fixed with one intent-to-class table; control changes by name, delegation, switch and admin signer; W11–W25 verified and fixed or documented; the Vercel AI SDK and MCP integrations; eight more manifests (137, then 3,504 instructions; 113 battle-tested). Four days of mainnet: 302 newly refused, 0 freed, 0 approved; one more P1 (R3-b) found by that measurement and fixed |
 | 2026-10-01 | [round23-the-audit-closed-at-the-root-2026-09-30.md](round23-the-audit-closed-at-the-root-2026-09-30.md) | A six-area audit of the whole repository at `3327fcf` (`AUDIT/`): no P0, four P1s (a close with a trailing byte, hand-overs as primary and as sibling, quarantine of the primary only), 20 P2s and 54 P3s, each fixed at its root with a test that fails on `3327fcf`. A review of the fixes found what they broke (F1–F15), and the full suite and a native-manifest sweep found three more: staking refused as a hand-over (F16), a fixture without account names (F17), and a durable-nonce opt-in that could never approve (F18). Four days of mainnet against `3327fcf`: 461 transactions freed, 9 newly refused. Verdict in `AUDIT/FINAL.md`: a supervised pilot, not independently audited |
 | 2026-09-27 | [round22-the-rest-of-the-list-2026-09-27.md](round22-the-rest-of-the-list-2026-09-27.md) | Round 21's open items, each measured first. A transfer hook that runs a program is bounded by the bytes (nothing Token-2022 can hand it signs; every writable one is its own) and no longer blocks on sight; the fee landing margin is removed — a pending schedule is always judged; privileges are the runtime's (agave's demotion); Anchor's absent optional accounts recognised (676 slots from IDLs and traffic); every manifest grounded in 2,998 of its programs' own transactions — Jupiter's token-account pins, a placeholder Stake manifest and a swapped BPF Loader layout rebuilt from their interfaces, sixteen remaining-account interfaces declared (45,253 of 45,282 executed instructions clean); declared siblings counted by their writable extras like the primary (live mainnet RPC: risk Clear 24 → 33 of 40). The bridge builds v0. 71% of drainer refusals are bots' own IDL-less programs; the heuristic stays. Three days of mainnet: 230 Blocked → Clear, 0 the other way |
 | 2026-09-27 | [round21-what-happened-not-what-could-2026-09-27.md](round21-what-happened-not-what-could-2026-09-27.md) | The open list closed by observation. Graphite refused on what an account, flag or extension COULD do rather than what the transaction DID: the fee model now replays the executed Token-2022 instructions (withdrawals, several transfers, send-and-receive; 31 of 31 real transactions reproduced exactly) with the epoch read; a writable flag is judged by a sibling's declared write or Graphite's own diff; a null hook, untouched confidential state and unchanged issuer powers are inert and a permanent delegate's exercise is Critical; a self-refunding `CloseAccount` and read-only remaining accounts are no longer drains; the priority fee is read and bounded. 105 manifest instructions rebuilt or corrected where the programs' IDLs AND executed traffic agree. L4 measured at one slot and against the whole transaction (live L4 failures 10 → 2 of 40). Three days of mainnet (39,857 verified): 2,553 executed transactions Blocked → Clear on risk, 0 the other way. 25 of 25 deliberate breaks caught |
 | 2026-09-25 | [round20-the-fee-is-modelled-2026-09-25.md](round20-the-fee-is-modelled-2026-09-25.md) | Token-2022 `TransferFee` modelled: the mint's schedule read by Graphite (a TransferChecked names its mint read-only, so it was never diffed), every withheld amount required to be Token-2022's exact fee on what arrived, value conserved, the fee and the arrival stated, a majority fee blocked; checked against the upstream arithmetic and against real fee-bearing mints (6 isolated real transfers, 0 mismatches). Building it exposed that every self-paid SPL / Token-2022 transfer was already refused — the fee payer's structural writable flag read as a privilege escalation (the cause of Round 18's undiagnosed identity cluster: 1,355 → 519 blocks, 156 real transactions Blocked → Clear, nothing else loosened) and left out of L4's diff — and that a request could label its own state diff as Graphite's |
 | 2026-09-24 | [round19-what-one-observation-is-2026-09-24.md](round19-what-one-observation-is-2026-09-24.md) | An external review of `453dd01` checked and widened, every part of Graphite run live, v1 parsed. The baseline counted a fresh blockhash as a new observation — reproduced on the `a1db51f` release binary as a refused transfer **approved on its third ask** with nothing else changed — and simulated and certified descriptive requests; the reviewer's 256-key window forgot. Also: the CPI-trace rules never ran on real traffic; an undescribed instruction was diffed on one account; the verify key was the operator key; 40 trickling unauthenticated connections shed all traffic; the CLI wrote beside a running server and a corrupt snapshot lifted every quarantine; the reference bridge signed before the verdict (P0, client side). Version 1 parsed, never looser than agave, 3,302 of 3,302 real ones bound. 19,458 real mainnet transactions through the pipeline and 40 against the live mainnet RPC; two false-refusal classes found and fixed; 13 of 13 deliberate breaks caught; the release binary passes 22 of 22 live checks that `a1db51f` fails 17 of |
-| 2026-09-23 | [round18-the-registry-is-measured-2026-09-23.md](round18-the-registry-is-measured-2026-09-23.md) | `trust_tier` was a string nothing checked: eight manifests declared `BattleTested` and the engine believed all eight. A mainnet measurement now backs every seed manifest (executable account; >=1,000 successful transactions over a stated window; >=90% of >=20 really-observed instructions named), and `load_seed_manifests` lowers an unsupported declaration. The registry went from 33 manifests / 803 instructions to 129 / 3,186 (106 of them battle-tested on the evidence), ranked by what mainnet runs and generated from each program's own on-chain Anchor IDL; 216 instructions merged into six manifests that had fallen behind. Running that registry against real blocks found two pre-existing defects blocking legitimate traffic — an undeclared extra account had a privilege to mismatch (1,036 blocks across four programs), and the Wormhole manifest named the wrong instruction for two bytes — plus one introduced and fixed in the round (PDAs grounded under the wrong program). Non-vote mainnet transactions whose primary program Graphite can name: 20.8% -> 44.0% on the same sample. 544 identity mismatches remain, measured and left open rather than loosened |
+| 2026-09-23 | [round18-the-registry-is-measured-2026-09-23.md](round18-the-registry-is-measured-2026-09-23.md) | `trust_tier` was a string nothing checked: eight manifests declared `BattleTested` and the engine believed all eight. A mainnet measurement now backs every seed manifest (executable account; >=1,000 successful transactions over a stated window; >=90% of >=20 really-observed instructions named), and `load_seed_manifests` lowers an unsupported declaration. The registry went from 803 instructions in 33 manifests to 3,186 in 129 (106 of them battle-tested on the evidence), ranked by what mainnet runs and generated from each program's own on-chain Anchor IDL; 216 instructions merged into six manifests that had fallen behind. Running that registry against real blocks found two pre-existing defects blocking legitimate traffic — an undeclared extra account had a privilege to mismatch (1,036 blocks across four programs), and the Wormhole manifest named the wrong instruction for two bytes — plus one introduced and fixed in the round (PDAs grounded under the wrong program). Non-vote mainnet transactions whose primary program Graphite can name: 20.8% -> 44.0% on the same sample. 544 identity mismatches remain, measured and left open rather than loosened |
 | 2026-09-22 | [round17-what-counts-as-evidence-2026-09-22.md](round17-what-counts-as-evidence-2026-09-22.md) | Every Round 15 and Round 16 finding closed, each with a regression test that fails on `e95857d`: pre-signed artifacts refused at `/verify` and L8 reporting `RecordedForDifferentBytes` (F-16-01) and `recorded_verdicts` (F-16-11); baseline eligibility — sound and risk-clear only, `err == null` part of completeness, one observation per artifact digest (F-16-03, F-15-01, F-15-02) — with a `simulation_failed` residual (F-16-04); a variance floor, a shadow accumulator, `/health.frozen_baselines` and `graphite evidence promote-shadow` (F-16-02); L2 fails on unresolved lookup positions (F-15-05); Check 10 keyed on the bytes (F-15-03); observed CPI targets judged (F-16-05); the PDA template grammar closed at load and at verify (F-16-06); blocking plugins fail closed on panic (F-16-07); `min_confidence > 1` a 400 and the tier axis clamped (F-16-08, F-15-07); framed `content_hash` v2 in all four implementations (F-16-09); http(s)-only manifest links (F-16-10); lifecycle merged across a rotation (F-15-09); the devnet demo through `executeBoundTransaction` and the Go doc with the residual check (F-16-12); `--locked` in CI, `go.mod` pinned (F-16-13/16); finite rate limit (F-16-15); mismatches by slot (F-16-14). Live-probed on a loopback Core; CI green |
 | 2026-09-21 | [round16-signed-before-it-was-shown-2026-09-21.md](round16-signed-before-it-was-shown-2026-09-21.md) | The full 43-section forensic brief run against `e95857d` (code identical to `21c0a7b`), report only. The exact-byte boundary held under every mutation tried, and 2 of 2 deliberate breaks (L8 signature binding, sibling coverage) were caught. New: a pre-signed artifact is approved as `artifact_bound` but its refusal cannot be found by L8 when the chain's bytes are available — the stronger evidence path yields the weaker alarm (F-16-01); ten identical-CU requests, none of which need to be approved, freeze a program's baseline and refuse every honest transaction at any other CU (F-16-02/03); plus measured CPI targets, PDA template grammar, Risk-plugin panic semantics, a 500 on `min_confidence > 1`, unframed `content_hash`, console link schemes, last-wins L8 attribution, and `--locked` in CI. Round 15's three P2 findings re-measured and still open; twelve historical classes CONFIRMED CLOSED; 14 missing tests named |
 | 2026-09-20 | [round15-earned-by-asking-2026-09-20.md](round15-earned-by-asking-2026-09-20.md) | A full forensic re-audit of `21c0a7b`, report only. The exact-byte boundary and all twelve historical classes re-checked and confirmed closed. Three new confirmed defects, none an approval bypass through the reference bridge: confidence is earned by repetition — the same refused request is approved under Gaming on its second call because the `SimulationMatch` signal is the baseline sample count (F-15-01); a failed simulation with non-zero compute units is recorded as trusted evidence and certified "integrity clean" by L3 (F-15-02); an empty caller label switches the manifest risk-class hard gate off for non-native programs while the confidence floor still refuses (F-15-03). Plus the unresolved-ALT approval path and the deactivating-table discrepancy (F-15-05), two digests for one artifact (F-15-04), two in-repo executors without the residual policy (F-15-06), and three hardening items. 1 of 1 deliberate break caught; 11 missing tests named |
@@ -452,10 +582,17 @@ combined-status endpoint.
 | 2026-09-08 | [production-readiness-audit-2026-09-08.md](production-readiness-audit-2026-09-08.md) | Server, audit trail, CI, deployment |
 | 2026-09-08 | [rpc-validation-campaign-2026-09-08.md](rpc-validation-campaign-2026-09-08.md) | RPC trust boundary, budget, provider precedence |
 | 2026-09-06 | [adversarial-campaign-2026-09-06.md](adversarial-campaign-2026-09-06.md) | Early adversarial hardening |
-| earlier | `phase1-internal-validation-report-2026-08.md` (formerly the root `GRAPHITE_FINAL_CERTIFICATION_REPORT.md`), `final-forensic-report.md`, `forensic-audit-report.md`, `clean-room-revalidation-C26.md`, `phase2-certification-report.md`, `release-evaluation-report.md`, `independent-gap-audit.md`, `p16-mainnet-benchmark.md`, `drift-kamino-onboarding-C27.md` | Phase 1/2 milestones. Their descriptions of L8, benchmark sizes, test counts and protocol counts are **historical** and superseded here. |
+| earlier | `phase1-internal-validation-report-2026-08.md` (formerly the root `GRAPHITE_FINAL_CERTIFICATION_REPORT.md`), `final-forensic-report.md`, `forensic-audit-report.md`, `clean-room-revalidation-C26.md`, `phase2-certification-report.md`, `release-evaluation-report.md`, `independent-gap-audit.md`, `p16-mainnet-benchmark.md`, `drift-kamino-onboarding-C27.md` (its Drift repository path is corrected in a note at its top) | Phase 1/2 milestones. Their descriptions of L8, benchmark sizes, test counts and protocol counts are **historical** and superseded here. |
+| 2026-08-12 | [evidence/Graphite_Full_Colosseum_Copilot_Deep_Dive.pdf](evidence/Graphite_Full_Colosseum_Copilot_Deep_Dive.pdf) | **Historical, superseded.** A Colosseum Copilot "deep dive" prepared on 2026-08-12, when Graphite had 28 manifests, 11 risk patterns and 999 tests; its figures and its market claims describe that moment, not the code today. |
 
-`phase2-plan.md`, `phase2-branch-strategy.md` and the two grant proposals are
-plans and proposals, not status.
+`phase2-plan.md`, `phase2-branch-strategy.md` and the grant proposal
+(`solana-foundation-grant-proposal.md`) are plans and proposals, not status.
+
+`docs/protocol-coverage.md` is generated by `graphite-core/scripts/render_coverage.py`
+from the manifests, the evidence file and recorded measurements, and carries no
+render date: the same inputs give the same page. Its transaction-version shares are
+the 80-block census's (version 1: 15.8%); in the 10,617-transaction full-pipeline
+sample version 1 is 17.2%.
 
 ## Language discipline
 

@@ -340,14 +340,16 @@ fn r3_controls_still_refused_as_a_sibling() {
 
 #[test]
 fn r3_an_undescribed_instruction_of_a_described_program_is_refused_as_a_sibling() {
-    // Token-2022 instructions the seed manifest does not describe: CPI Guard
-    // Disable (0x22, 0x01), Reallocate (0x1d), WithdrawExcessLamports (0x26).
+    // Token-2022 instructions the seed manifest does not describe. Until the
+    // audit of 2026-10-20 (LOW-3) these were CPI Guard Disable, Reallocate
+    // and WithdrawExcessLamports, which it now describes; the confidential
+    // extensions, whose layouts are not modelled, still are not.
     let registry = load_seed_manifests();
     let t22 = registry.get(TOKEN_2022).unwrap();
     for (disc, what) in [
-        ("2201", "CPI Guard Disable"),
-        ("1d", "Reallocate"),
-        ("26", "WithdrawExcessLamports"),
+        ("1b00", "ConfidentialTransfer"),
+        ("2500", "ConfidentialTransferFee"),
+        ("2a00", "ConfidentialMintBurn"),
     ] {
         assert!(
             t22.instruction_for(disc).is_none(),
@@ -557,15 +559,22 @@ fn w14_findings(r: &VerificationResult) -> Vec<&str> {
 /// External review W14 (verified 2026-10-03, on `eb17aa5` and on the R3 fix):
 /// Squads `spendingLimitUse` pays out of a vault, `batchAccountsClose` moves
 /// the funds of the accounts it closes, `proposalApprove` casts a governance
-/// vote; none has a class in the manifest, so as a declared sibling each was
+/// vote; none had a class in the manifest, so as a declared sibling each was
 /// judged with no class and no intent and came back Clear beside a 0.001 SOL
-/// transfer. Each is refused now, for the reason the primary would be.
+/// transfer. Since the audit of 2026-10-20 (LOW-1) each carries a class
+/// (withdraw, close, authority) that a transfer intent cannot declare, and
+/// each is still refused as a sibling. The W14 rule itself is held to an
+/// instruction that is unclassed by rule: Jupiter's `route`, which only the
+/// swap intent declares.
 #[test]
 fn w14_an_unclassed_sibling_needs_an_intent_that_describes_it() {
     let core = GraphiteCore::new();
     for name in ["spendingLimitUse", "batchAccountsClose", "proposalApprove"] {
         let (disc, n, class) = ix(SQUADS, name);
-        assert_eq!(class, "", "{name} is unclassed in the manifest");
+        assert_ne!(
+            class, "transfer",
+            "{name} must not be declarable by a transfer"
+        );
         let r = core
             .verify(&transfer_with_sibling(SQUADS, &disc, n))
             .unwrap();
@@ -574,9 +583,17 @@ fn w14_an_unclassed_sibling_needs_an_intent_that_describes_it() {
             "{name}: {:?}",
             r.risk_verdict
         );
-        assert_eq!(w14_findings(&r).len(), 1, "{name}: {:?}", r.risk_verdict);
         assert!(!r.approved);
     }
+    let jupiter = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+    let (disc, n, class) = ix(jupiter, "route");
+    assert_eq!(class, "", "route is unclassed by rule");
+    let r = core
+        .verify(&transfer_with_sibling(jupiter, &disc, n))
+        .unwrap();
+    assert_eq!(r.risk_verdict.status, "Blocked", "{:?}", r.risk_verdict);
+    assert_eq!(w14_findings(&r).len(), 1, "{:?}", r.risk_verdict);
+    assert!(!r.approved);
 }
 
 /// What every transaction carries is classed, not unclassed: a compute

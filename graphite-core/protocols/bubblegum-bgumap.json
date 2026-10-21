@@ -5,7 +5,7 @@
   "program_id": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY",
   "website": "",
   "github": "",
-  "category": "staking"
+  "category": "nft"
  },
  "version": {
   "label": "0.12.0",
@@ -788,14 +788,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: merkleTree, collectionMetadata",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "setDecompressibleState",

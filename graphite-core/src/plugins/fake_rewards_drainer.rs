@@ -14,6 +14,15 @@
 //! The block is a real hard-block: the orchestrator converts a `Block` verdict
 //! into a risk finding on L7, which fails the transaction regardless of
 //! confidence (risk findings are binary-and-blocking by design).
+//!
+//! What it keys on, stated plainly (audit 2026-10-20, P-1): the declared
+//! `intent_type` and `raw_natural_language` are REQUEST-CONTROLLED text. An
+//! author who controls the request can always leave the reward words out, so
+//! this plugin is no defence against an adversarial request author; it
+//! catches the case it was built for — an honest agent relaying a user's (or a
+//! scam page's) "claim your airdrop" wording onto a transaction that debits.
+//! Since plugins can only veto, request-controlled text can make it block and
+//! never make anything pass.
 
 use crate::plugin_orchestrator::{
     LayerId, PluginContext, PluginManifest, PluginVerdict, ReviewStatus, RiskPlugin,
@@ -34,6 +43,40 @@ const REWARDS_INTENT_KEYWORDS: [&str; 5] = ["claim", "airdrop", "reward", "bonus
 /// which appear legitimately in everyday text ("send my bonus to…") and would
 /// false-positive a hard, policy-non-overridable block.
 const REWARDS_NL_KEYWORDS: [&str; 2] = ["claim", "airdrop"];
+
+/// Whether `text` contains one of `keywords` as a WORD — or a plural or
+/// inflection of one (`rewards`, `claimed`, `airdrops`, `claiming`). Words are
+/// split on non-alphanumerics and at lower-to-upper case changes, so the
+/// intent `ClaimRewards` is the words `claim` and `rewards`; `reclaim`,
+/// `disclaimer` and `mintage` contain no keyword word.
+fn names_any(text: &str, keywords: &[&str]) -> bool {
+    let mut words: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut prev_lower = false;
+    for c in text.chars() {
+        if !c.is_alphanumeric() {
+            if !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
+            prev_lower = false;
+            continue;
+        }
+        if c.is_uppercase() && prev_lower && !current.is_empty() {
+            words.push(std::mem::take(&mut current));
+        }
+        prev_lower = c.is_lowercase();
+        current.extend(c.to_lowercase());
+    }
+    if !current.is_empty() {
+        words.push(current);
+    }
+    words.iter().any(|w| {
+        keywords.iter().any(|k| {
+            w.strip_prefix(k)
+                .is_some_and(|rest| matches!(rest, "" | "s" | "es" | "ed" | "ing" | "able"))
+        })
+    })
+}
 
 /// State-change signals that money is moving OUT of the user's account.
 /// "withdraw" is deliberately EXCLUDED: staking withdrawals are legitimate
@@ -78,13 +121,19 @@ impl RiskPlugin for FakeRewardsDrainerRiskPlugin {
     }
 
     fn assess_risk(&self, ctx: &PluginContext) -> PluginVerdict {
-        let intent = ctx.proposed_intent.intent_type.to_lowercase();
-        let raw_nl = ctx.proposed_intent.raw_natural_language.to_lowercase();
         // Rewards-shaped = the structured intent claims rewards, OR the raw
-        // natural language asks to claim/airdrop/bonus (which the parser may
-        // have normalized into a transfer intent).
-        let rewards_shaped = REWARDS_INTENT_KEYWORDS.iter().any(|k| intent.contains(k))
-            || REWARDS_NL_KEYWORDS.iter().any(|k| raw_nl.contains(k));
+        // natural language asks to claim/airdrop (which the parser may have
+        // normalized into a transfer intent).
+        //
+        // By WORD, not substring (Round 29, audit 2026-10-20, P-1): "claim"
+        // matched inside "reclaim" and "disclaimer", and "mint" inside
+        // "mintage" — so "reclaim the rent from my empty account" on a
+        // debit-shaped transaction was blocked as a fake reward claim.
+        let rewards_shaped = names_any(&ctx.proposed_intent.intent_type, &REWARDS_INTENT_KEYWORDS)
+            || names_any(
+                &ctx.proposed_intent.raw_natural_language,
+                &REWARDS_NL_KEYWORDS,
+            );
         if !rewards_shaped {
             return PluginVerdict::NoFinding;
         }
@@ -244,6 +293,44 @@ mod tests {
             ));
             assert_eq!(v, PluginVerdict::NoFinding, "raw NL '{}'", raw);
         }
+    }
+
+    /// Round 29 (P-1): reward words are matched as words. "reclaim",
+    /// "disclaimer" and "mintage" are not claims; inflections still are.
+    #[test]
+    fn reward_words_match_whole_words_only() {
+        let p = FakeRewardsDrainerRiskPlugin::new();
+        let debit = &["debits accounts.from by data.amount lamports"];
+        for raw in [
+            "Reclaim the rent from my empty token account",
+            "Send 1 SOL to Bob (disclaimer: test funds)",
+        ] {
+            assert_eq!(
+                p.assess_risk(&ctx_with_raw("transfer", raw, debit)),
+                PluginVerdict::NoFinding,
+                "{raw}"
+            );
+        }
+        assert_eq!(
+            p.assess_risk(&ctx_with("reclaim_rent", debit)),
+            PluginVerdict::NoFinding
+        );
+        assert_eq!(
+            p.assess_risk(&ctx_with("mintage_report", debit)),
+            PluginVerdict::NoFinding
+        );
+        for raw in ["Claimed airdrops are waiting", "claiming my AIRDROP now"] {
+            assert!(
+                matches!(
+                    p.assess_risk(&ctx_with_raw("transfer", raw, debit)),
+                    PluginVerdict::Block { .. }
+                ),
+                "{raw}"
+            );
+        }
+        assert!(names_any("claim_rewards", &REWARDS_INTENT_KEYWORDS));
+        assert!(names_any("ClaimRewards", &REWARDS_INTENT_KEYWORDS));
+        assert!(!names_any("reclaimRent", &REWARDS_INTENT_KEYWORDS));
     }
 
     #[test]

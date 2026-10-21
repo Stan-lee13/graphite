@@ -10,8 +10,8 @@
 //! decision — `quarantine()` appends a new record with `quarantined: true`
 //! and a forced `TrustTier::Unknown`, never mutating the pre-quarantine
 //! history (P4) and never letting a caller assign a trust tier directly (P7)
-//! even in the quarantine path.
-//! for the full detect → quarantine → tier-reflects-it flow.
+//! even in the quarantine path. See `SemanticGraphStore::quarantine` for the
+//! full detect → quarantine → tier-reflects-it flow.
 //!
 //! This reference implementation demonstrates the append-only storage SHAPE and
 //! the trust tier computation logic. The actual storage backend is a design
@@ -181,13 +181,23 @@ pub struct Behavior {
 }
 
 /// Evidence contributing to trust tier computation.
+///
+/// Unknown fields are refused (Round 29, audit 2026-10-20, F4): a misspelled
+/// field in an operator's seed or a snapshot is an error, not silently absent.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct BehaviorEvidence {
     /// Whether manifest is signed
     pub has_signed_manifest: bool,
     /// Number of independent community verifications
     pub community_verified_count: u32,
-    /// Number of battle-tested transactions
+    /// Number of battle-tested transactions — OPERATOR-ASSERTED (audit
+    /// 2026-10-20, G-2). Nothing in the verification pipeline increments it:
+    /// it holds whatever an operator seeded (`GraphiteCore::seed_behavior`,
+    /// the `graphite evidence` CLI) or a snapshot restored. It is evidence an
+    /// operator vouches for, not volume Graphite has observed, and the
+    /// `BattleTested` tier it unlocks is an operator's assertion to the same
+    /// degree.
     pub battle_tested_tx_count: u64,
     /// Simulation match count
     pub simulation_match_count: u64,
@@ -199,7 +209,9 @@ pub mod thresholds {
     pub const SIMULATION_MATCH: u64 = 3;
     /// Minimum community verifications for CommunityVerified tier
     pub const COMMUNITY_VERIFIED: u32 = 2;
-    /// Minimum battle-tested transactions for BattleTested tier
+    /// Minimum battle-tested transactions for BattleTested tier — counted
+    /// from operator-asserted evidence (see
+    /// `BehaviorEvidence::battle_tested_tx_count`).
     pub const BATTLE_TESTED_TX: u64 = 1000;
 }
 
@@ -249,10 +261,19 @@ pub fn compute_trust_tier(evidence: &BehaviorEvidence) -> TrustTier {
 /// are earned/accumulated here, never accepted from a request body).
 ///
 /// The whole store is serializable so it can be snapshotted to disk
-/// (durability) and reloaded on startup.
+/// (durability) and reloaded on startup. Reading a snapshot goes through
+/// [`StoreSnapshot`], which recomputes every record's tier and rebuilds the
+/// per-program index (Round 29, audit 2026-10-20, G-4).
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(from = "StoreSnapshot")]
 pub struct SemanticGraphStore {
     behaviors: Vec<Behavior>,
+    /// Position in `behaviors` of each program's LATEST record (Round 29,
+    /// audit 2026-10-20). `get` — on the verdict path, once per verification
+    /// — scanned the whole unbounded history backwards for every lookup.
+    /// Derived from `behaviors`, so never written to a snapshot.
+    #[serde(skip)]
+    latest: HashMap<String, usize>,
     /// Trusted simulation baselines keyed by program ID. Updated ONLY via
     /// `record_simulation` (RPC-verified usage) or `seed_simulation_baseline`
     /// (operator API). Raw request bodies can never write here.
@@ -279,6 +300,53 @@ pub struct SemanticGraphStore {
     /// after it. Omitted from the snapshot while empty.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     deployments: HashMap<String, ObservedDeployment>,
+}
+
+/// A snapshot of [`SemanticGraphStore`] as written — every persisted field,
+/// read before the store is rebuilt from it.
+#[derive(serde::Deserialize)]
+struct StoreSnapshot {
+    behaviors: Vec<Behavior>,
+    #[serde(default)]
+    baselines: HashMap<String, ComputeBaseline>,
+    #[serde(default)]
+    shadow_baselines: HashMap<String, ComputeBaseline>,
+    #[serde(default)]
+    observed: HashMap<String, ObservationMemory>,
+    #[serde(default)]
+    shadow_observed: HashMap<String, ObservationMemory>,
+    #[serde(default)]
+    deployments: HashMap<String, ObservedDeployment>,
+}
+
+impl From<StoreSnapshot> for SemanticGraphStore {
+    /// G-4 (Round 29, audit 2026-10-20): a restored record's `trust_tier`
+    /// was taken from the snapshot as written, so a tier the evidence does
+    /// not support — a hand-edited snapshot, or one written before a
+    /// threshold changed — came back into force. P7 says a tier is computed,
+    /// never asserted, and a snapshot is a document like any other: every
+    /// record's tier is recomputed from its evidence (a quarantined record
+    /// stays `Unknown`), and the index is rebuilt.
+    fn from(s: StoreSnapshot) -> Self {
+        let mut store = SemanticGraphStore {
+            behaviors: Vec::with_capacity(s.behaviors.len()),
+            latest: HashMap::new(),
+            baselines: s.baselines,
+            shadow_baselines: s.shadow_baselines,
+            observed: s.observed,
+            shadow_observed: s.shadow_observed,
+            deployments: s.deployments,
+        };
+        for mut b in s.behaviors {
+            b.trust_tier = if b.quarantined {
+                TrustTier::Unknown
+            } else {
+                compute_trust_tier(&b.evidence)
+            };
+            store.push_behavior(b);
+        }
+        store
+    }
 }
 
 /// A program's code as Graphite last saw it (roadmap R-M1).
@@ -361,7 +429,7 @@ impl SemanticGraphStore {
         }
 
         // Append (never mutate existing)
-        self.behaviors.push(behavior);
+        self.push_behavior(behavior);
         Ok(())
     }
 
@@ -391,7 +459,7 @@ impl SemanticGraphStore {
             });
         }
 
-        self.behaviors.push(Behavior {
+        self.push_behavior(Behavior {
             trust_tier: compute_trust_tier(&latest.evidence),
             quarantined: false,
             quarantine_reason: None,
@@ -453,7 +521,7 @@ impl SemanticGraphStore {
             ..base
         };
 
-        self.behaviors.push(quarantined_record);
+        self.push_behavior(quarantined_record);
         Ok(())
     }
 
@@ -493,10 +561,47 @@ impl SemanticGraphStore {
     /// quarantine if `quarantine()` was ever called for this program, since
     /// quarantine appends a new, newer record).
     pub fn get(&self, program_id: &str) -> Option<&Behavior> {
-        self.behaviors
-            .iter()
-            .rev()
-            .find(|b| b.program_id == program_id)
+        self.latest
+            .get(program_id)
+            .and_then(|&i| self.behaviors.get(i))
+    }
+
+    /// The one way a record enters the history: appended, and indexed as its
+    /// program's latest.
+    fn push_behavior(&mut self, behavior: Behavior) {
+        self.latest
+            .insert(behavior.program_id.clone(), self.behaviors.len());
+        self.behaviors.push(behavior);
+    }
+
+    /// Append a Behavior whose evidence is the REGISTRY's — a signature and
+    /// attestations for one manifest version — keeping the evidence the
+    /// registry does not speak to (Round 29, audit 2026-10-20, G-3).
+    ///
+    /// `manifest_registry::submit` appended a record carrying only what the
+    /// submission evidenced, so accepting a manifest reset the program's
+    /// operator-seeded `battle_tested_tx_count` and `simulation_match_count`
+    /// to zero: a program at `BattleTested` dropped to `OfficialManifest` the
+    /// moment its manifest was corrected. Those counts are facts about the
+    /// program, not about a manifest version, and carry forward from the
+    /// program's latest record. The signature and attestation fields are
+    /// facts about the version being accepted and come from `behavior`.
+    pub fn append_registry_evidence(
+        &mut self,
+        behavior: Behavior,
+    ) -> Result<(), SemanticGraphError> {
+        let mut behavior = behavior;
+        if let Some(prev) = self.get(&behavior.program_id) {
+            behavior.evidence.battle_tested_tx_count = behavior
+                .evidence
+                .battle_tested_tx_count
+                .max(prev.evidence.battle_tested_tx_count);
+            behavior.evidence.simulation_match_count = behavior
+                .evidence
+                .simulation_match_count
+                .max(prev.evidence.simulation_match_count);
+        }
+        self.append(behavior)
     }
 
     /// Get all Behavior records for a program ID (all versions, append-only
@@ -514,8 +619,6 @@ impl SemanticGraphStore {
         self.baselines.get(program_id)
     }
 
-    /// Record observed simulation usage for a program (Welford update).
-    ///
     /// Read-only view of the shadow accumulators (Round 17, F-16-02).
     pub fn shadow_baselines(&self) -> &HashMap<String, ComputeBaseline> {
         &self.shadow_baselines
@@ -618,6 +721,8 @@ impl SemanticGraphStore {
         Ok(shadow)
     }
 
+    /// Record observed simulation usage for a program (Welford update).
+    ///
     /// SECURITY: this is the ONLY trusted write path for baselines. Call it
     /// with RPC-verified usage (simulateTransaction results), never with
     /// raw request-body values — otherwise an attacker who controls the
@@ -707,9 +812,10 @@ impl SemanticGraphStore {
     /// (fail-closed: a corrupt snapshot must not silently lose data, but a
     /// fresh store is still safe — tiers and baselines are re-earned).
     ///
-    /// Defensively DROPS any baseline that fails validation (e.g. a poisoned
-    /// snapshot written by an older, pre-validation build). An invalid
-    /// baseline must never reach the integrity layer.
+    /// Every record's tier is recomputed from its evidence (G-4, see
+    /// `StoreSnapshot`). Defensively DROPS any baseline that fails validation
+    /// (e.g. a poisoned snapshot written by an older, pre-validation build).
+    /// An invalid baseline must never reach the integrity layer.
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         let mut store: SemanticGraphStore = serde_json::from_str(json)?;
         store.baselines.retain(|_, b| validate_baseline(b).is_ok());
@@ -1112,9 +1218,9 @@ mod tests {
         assert_eq!(post_quarantine.trust_tier, TrustTier::Unknown);
     }
 
-    /// Quarantining a program with no existing record is an error, not a
-    /// silent no-op or an implicitly-created record — there's nothing to
-    /// quarantine, and pretending otherwise would hide a caller bug.
+    /// A program with no existing record CAN be quarantined: the quarantine
+    /// creates its first record (no evidence, forced `Unknown`), and lifting
+    /// it leaves no evidence behind.
     #[test]
     fn a_program_with_no_history_can_be_quarantined_pre_emptively() {
         // This asserted `NotFound` until 2026-09-05. But the operator reaching
@@ -1249,6 +1355,105 @@ mod tests {
             store.lift_quarantine("clean-program"),
             Err(SemanticGraphError::InvalidRecord { .. })
         ));
+    }
+
+    /// Round 29 (G-3): registry evidence for a new manifest version does not
+    /// wipe the program's operator-seeded volume and simulation counts.
+    #[test]
+    fn registry_evidence_keeps_the_programs_other_evidence() {
+        let mut store = SemanticGraphStore::new();
+        store
+            .append(sample_behavior(
+                "p",
+                "1.0",
+                BehaviorEvidence {
+                    has_signed_manifest: true,
+                    battle_tested_tx_count: 5000,
+                    simulation_match_count: 7,
+                    ..Default::default()
+                },
+            ))
+            .unwrap();
+        assert_eq!(store.get("p").unwrap().trust_tier, TrustTier::BattleTested);
+        store
+            .append_registry_evidence(sample_behavior(
+                "p",
+                "2.0",
+                BehaviorEvidence {
+                    has_signed_manifest: true,
+                    ..Default::default()
+                },
+            ))
+            .unwrap();
+        let latest = store.get("p").unwrap();
+        assert_eq!(latest.version, "2.0");
+        assert_eq!(latest.evidence.battle_tested_tx_count, 5000);
+        assert_eq!(latest.evidence.simulation_match_count, 7);
+        assert_eq!(latest.trust_tier, TrustTier::BattleTested);
+    }
+
+    /// Round 29 (G-4): a restored snapshot's tiers are recomputed, not taken
+    /// as written.
+    #[test]
+    fn restoring_a_snapshot_recomputes_every_tier() {
+        let mut store = SemanticGraphStore::new();
+        store
+            .append(sample_behavior(
+                "p",
+                "1.0",
+                BehaviorEvidence {
+                    has_signed_manifest: true,
+                    ..Default::default()
+                },
+            ))
+            .unwrap();
+        let json = store.to_json().unwrap();
+        assert!(json.contains("\"OfficialManifest\""));
+        let forged = json.replace("\"OfficialManifest\"", "\"BattleTested\"");
+        let restored = SemanticGraphStore::from_json(&forged).unwrap();
+        assert_eq!(
+            restored.get("p").unwrap().trust_tier,
+            TrustTier::OfficialManifest
+        );
+        // The same holds for a plain serde read of the snapshot.
+        let raw: SemanticGraphStore = serde_json::from_str(&forged).unwrap();
+        assert_eq!(
+            raw.get("p").unwrap().trust_tier,
+            TrustTier::OfficialManifest
+        );
+    }
+
+    /// The latest-per-program index answers exactly as a reverse scan would,
+    /// across interleaved programs, quarantine, and a snapshot round trip.
+    #[test]
+    fn the_latest_record_index_matches_a_reverse_scan() {
+        let mut store = SemanticGraphStore::new();
+        for i in 0..50u64 {
+            let program = format!("p{}", i % 7);
+            store
+                .append(sample_behavior(
+                    &program,
+                    &i.to_string(),
+                    BehaviorEvidence {
+                        simulation_match_count: i,
+                        ..Default::default()
+                    },
+                ))
+                .unwrap();
+        }
+        store.quarantine("p3", "x".into()).unwrap();
+        store.quarantine("never-seen", "y".into()).unwrap();
+        let restored = SemanticGraphStore::from_json(&store.to_json().unwrap()).unwrap();
+        for s in [&store, &restored] {
+            for p in (0..7)
+                .map(|i| format!("p{i}"))
+                .chain(["never-seen".to_string()])
+            {
+                let scan = s.behaviors().iter().rev().find(|b| b.program_id == p);
+                assert_eq!(s.get(&p), scan, "{p}");
+            }
+            assert!(s.get("absent").is_none());
+        }
     }
 
     #[test]

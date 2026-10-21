@@ -15,6 +15,16 @@
  * advisory its `@solana/spl-token` 0.4 tree brings (native addon never built:
  * installs run with `--ignore-scripts`). The guard, and every other adapter,
  * does not carry it.
+ *
+ * Round 29 (audit 2026-10-20, M6 / S1): this adapter used to start without a
+ * per-transaction cap while the MCP and Vercel adapters refused to. The guard
+ * itself now refuses to start without one (unless GRAPHITE_ALLOW_UNCAPPED=1),
+ * so every adapter, this one included, is bounded the same way.
+ *
+ * Keys (M8): the wallet key and the Core API key are not reachable through
+ * this object or the guard. `SolanaAgentKit` keeps the OpenAI key in its own
+ * `config` because it calls a model with it; that is SAK's design, and the
+ * OpenAI key is the only secret the SAK agent holds.
  */
 
 import { SolanaAgentKit } from "solana-agent-kit";
@@ -118,6 +128,11 @@ export class VerifiedSakAgent {
     return this.#sakAgent;
   }
 
+  /**
+   * The Core's read-only endpoints (health, manifests). Round 29 (audit
+   * 2026-10-20, M8): this returned the guard's `GraphiteClient`, and with it
+   * the Core API key; the guard now hands out a read-only facade.
+   */
   getGraphiteClient(): ReturnType<GraphiteGuard["getGraphiteClient"]> {
     return this.#guard.getGraphiteClient();
   }

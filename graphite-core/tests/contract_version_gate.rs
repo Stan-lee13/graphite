@@ -7,10 +7,9 @@
 //! already holds every emitted field to the schema, so the schema is the
 //! surface.
 //!
-//! The gate compares each schema with the same file at the last release tag
-//! (`git describe --tags --abbrev=0`). A change breaks the contract when a
-//! client written against the tag stops working, so the rule depends on who
-//! writes the document:
+//! The gate compares each schema with the same file as last released. A
+//! change breaks the contract when a client written against the release
+//! stops working, so the rule depends on who writes the document:
 //!
 //! - **Output** (Graphite writes it): removing a field, widening a type or
 //!   an enum, dropping a required field, loosening a bound, opening a closed
@@ -22,9 +21,22 @@
 //! the CHANGELOG's section for the crate's version must name every broken
 //! path. Descriptions and titles are not part of the surface.
 //!
-//! The tag is read with `git`. Without the history (a source tarball, a
-//! shallow clone) the gate cannot run and says so, and CI sets
-//! `GRAPHITE_CONTRACT_GATE_REQUIRED=1` so that it fails there instead.
+//! The released schemas are a committed snapshot,
+//! `tests/fixtures/contract/<tag>/`, byte for byte the files at the release
+//! tag `RELEASED` and pinned here by SHA-256. Round 29 (audit 2026-10-20,
+//! C3): the gate used to read the tag with `git` at test time, and without
+//! the history — a source tarball, a shallow clone, which is what this very
+//! audit ran in — it printed "CONTRACT GATE NOT RUN" and passed, so every
+//! test count that included it counted a gate that had not run. The
+//! comparison now runs everywhere, from the snapshot.
+//!
+//! Where `git` and the tags ARE available, two more checks run: the
+//! snapshot must be byte-identical to the tag's files (so it cannot be
+//! edited to hide a break — the SHA-256 pins catch that without git too),
+//! and no release tag may be newer than the snapshot (a release must move
+//! the snapshot with it). CI fetches the tags and sets
+//! `GRAPHITE_CONTRACT_GATE_REQUIRED=1`, which makes those two checks
+//! mandatory there instead of best-effort.
 
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -264,6 +276,52 @@ fn breaking(old: &Value, new: &Value, direction: Direction) -> Vec<(String, Stri
     out
 }
 
+/// The last release, whose schemas are the contract.
+const RELEASED: &str = "v0.2.0-beta";
+
+/// SHA-256 of each snapshot file, as fetched from `RELEASED`
+/// (commit 39c501604864dae8002e1ef0769af34e41c42f94; git blobs
+/// ac20443e1e8e4bd5faaf863a09445da6bfbf282f and
+/// d98876a48a7be25c5a7aae13f00d7d76a13d5267).
+const RELEASED_SHA256: &[(&str, &str)] = &[
+    (
+        "verification-result-v1.json",
+        "084b11ff36b45a343193bde3cd5f1f2116637aeb6eea9d2d494a8128113cd1bf",
+    ),
+    (
+        "proposed-intent-v1.json",
+        "a07db3ee45a03aa999520d8aabae2d84a18cae695fcbd149fe31c5c55bed5f13",
+    ),
+];
+
+fn snapshot_dir() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("contract")
+        .join(RELEASED)
+}
+
+/// The released schema `file`, from the committed snapshot, after checking
+/// it against its pinned hash.
+fn released_schema(file: &str) -> Option<String> {
+    let pinned = RELEASED_SHA256.iter().find(|(f, _)| *f == file)?.1;
+    let text = std::fs::read_to_string(snapshot_dir().join(file)).unwrap_or_else(|e| {
+        panic!(
+            "the released contract snapshot {} is missing: {e}",
+            snapshot_dir().join(file).display()
+        )
+    });
+    use sha2::Digest;
+    let actual = hex::encode(sha2::Sha256::digest(text.as_bytes()));
+    assert_eq!(
+        actual, pinned,
+        "the committed snapshot of {RELEASED}:schemas/{file} was edited; it must stay \
+         byte-identical to the release"
+    );
+    Some(text)
+}
+
 fn repo_root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -291,27 +349,19 @@ fn changelog_section<'a>(changelog: &'a str, version: &str) -> Option<&'a str> {
     Some(&rest[..end])
 }
 
-/// The gate itself: every schema against the last release tag.
+/// The gate itself: every schema against the released snapshot.
 #[test]
 fn the_contract_breaks_only_with_a_version_bump_and_a_changelog_entry() {
-    let required = std::env::var("GRAPHITE_CONTRACT_GATE_REQUIRED").as_deref() == Ok("1");
-    let Some(tag) = git(&["describe", "--tags", "--abbrev=0", "--match", "v*"]) else {
-        assert!(
-            !required,
-            "the contract gate needs the repository's tags (fetch-depth: 0)"
-        );
-        eprintln!("CONTRACT GATE NOT RUN: no release tag is reachable (no git history here)");
-        return;
-    };
     let version = env!("CARGO_PKG_VERSION");
     let changelog = include_str!("../CHANGELOG.md");
     let mut broken = Vec::new();
     for (file, direction) in SCHEMAS {
-        let Some(old) = git(&["show", &format!("{tag}:schemas/{file}")]) else {
-            // A schema first published after the tag has no prior contract.
+        let Some(old) = released_schema(file) else {
+            // A schema first published after the release has no prior
+            // contract (and no snapshot entry).
             continue;
         };
-        let old: Value = serde_json::from_str(&old).expect("the tagged schema is JSON");
+        let old: Value = serde_json::from_str(&old).expect("the released schema is JSON");
         let new: Value = serde_json::from_str(
             &std::fs::read_to_string(repo_root().join("schemas").join(file)).unwrap(),
         )
@@ -324,16 +374,16 @@ fn the_contract_breaks_only_with_a_version_bump_and_a_changelog_entry() {
         return;
     }
     let listed: Vec<String> = broken.iter().map(|(p, w)| format!("{p} ({w})")).collect();
-    let released = tag.trim_start_matches('v');
+    let released = RELEASED.trim_start_matches('v');
     assert_ne!(
         version,
         released,
-        "the contract broke since {tag} without a version bump:\n  {}",
+        "the contract broke since {RELEASED} without a version bump:\n  {}",
         listed.join("\n  ")
     );
     let section = changelog_section(changelog, version).unwrap_or_else(|| {
         panic!(
-            "the contract broke since {tag}; CHANGELOG.md needs a `## [{version}]` section naming:\n  {}",
+            "the contract broke since {RELEASED}; CHANGELOG.md needs a `## [{version}]` section naming:\n  {}",
             listed.join("\n  ")
         )
     });
@@ -345,7 +395,7 @@ fn the_contract_breaks_only_with_a_version_bump_and_a_changelog_entry() {
         .collect();
     assert!(
         unnamed.is_empty(),
-        "the `## [{version}]` CHANGELOG section must name every break since {tag}; missing:\n  {}",
+        "the `## [{version}]` CHANGELOG section must name every break since {RELEASED}; missing:\n  {}",
         unnamed
             .iter()
             .map(|s| s.as_str())
@@ -354,8 +404,60 @@ fn the_contract_breaks_only_with_a_version_bump_and_a_changelog_entry() {
     );
 }
 
+/// The snapshot is the release: byte-identical to the tag's files, and no
+/// release is newer than it. Needs the tags; best-effort without them,
+/// mandatory where `GRAPHITE_CONTRACT_GATE_REQUIRED=1` (CI).
+#[test]
+fn the_contract_snapshot_is_the_last_release() {
+    let required = std::env::var("GRAPHITE_CONTRACT_GATE_REQUIRED").as_deref() == Ok("1");
+    if git(&[
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        &format!("{RELEASED}^{{commit}}"),
+    ])
+    .is_none()
+    {
+        assert!(
+            !required,
+            "GRAPHITE_CONTRACT_GATE_REQUIRED=1 but tag {RELEASED} is not reachable \
+             (fetch the tags: fetch-depth: 0)"
+        );
+        // The comparison itself ran from the snapshot, pinned by SHA-256;
+        // only the provenance cross-check needs the tag.
+        eprintln!(
+            "contract snapshot provenance not cross-checked: tag {RELEASED} is not reachable here"
+        );
+        return;
+    }
+    for (file, _) in RELEASED_SHA256 {
+        let at_tag = git(&["show", &format!("{RELEASED}:schemas/{file}")])
+            .unwrap_or_else(|| panic!("{RELEASED} has no schemas/{file}"));
+        let snapshot = released_schema(file).unwrap();
+        // `git` output is trimmed; compare the documents' bytes the same way.
+        assert_eq!(
+            snapshot.trim_end(),
+            at_tag,
+            "tests/fixtures/contract/{RELEASED}/{file} differs from {RELEASED}:schemas/{file}"
+        );
+    }
+    // A newer release tag means the contract moved; the snapshot must move
+    // with it, or every later break is judged against a stale release.
+    if let Some(latest) = git(&["describe", "--tags", "--abbrev=0", "--match", "v*"]) {
+        if latest != RELEASED {
+            let newer = git(&["merge-base", "--is-ancestor", RELEASED, &latest]).is_some();
+            assert!(
+                !newer,
+                "release {latest} is newer than the committed contract snapshot ({RELEASED}): \
+                 snapshot its schemas into tests/fixtures/contract/{latest}/ and update RELEASED \
+                 and RELEASED_SHA256"
+            );
+        }
+    }
+}
+
 /// The rules, on schemas written for the purpose, so the gate's judgement
-/// is tested whether or not a tag is reachable.
+/// is tested on its own.
 #[test]
 fn the_breaking_rules_follow_who_writes_the_document() {
     let base = serde_json::json!({

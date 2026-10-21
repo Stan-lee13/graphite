@@ -123,14 +123,16 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "oracleB",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "collectFeeAdmin",
@@ -144,21 +146,24 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "consumeEventsAdmin",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "closeMarketAdmin",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "eventAuthority",
@@ -378,7 +383,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "openOrdersIndexer",
@@ -502,7 +508,8 @@
      "role": "signer",
      "is_writable": false,
      "is_signer": true,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "userTokenAccount",
@@ -551,14 +558,16 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "oracleB",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "tokenProgram",
@@ -582,7 +591,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify signer, openOrdersAdmin signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "edit_order",
@@ -607,7 +616,8 @@
      "role": "signer",
      "is_writable": false,
      "is_signer": true,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "userTokenAccount",
@@ -656,14 +666,16 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "oracleB",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "tokenProgram",
@@ -687,7 +699,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify signer, openOrdersAdmin signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "edit_order_pegged",
@@ -712,7 +724,8 @@
      "role": "signer",
      "is_writable": false,
      "is_signer": true,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "userTokenAccount",
@@ -761,14 +774,16 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "oracleB",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "tokenProgram",
@@ -792,7 +807,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify signer, openOrdersAdmin signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "place_orders",
@@ -817,7 +832,8 @@
      "role": "signer",
      "is_writable": false,
      "is_signer": true,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "userQuoteAccount",
@@ -880,14 +896,16 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "oracleB",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "tokenProgram",
@@ -911,7 +929,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify signer, openOrdersAdmin signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "cancel_all_and_place_orders",
@@ -936,7 +954,8 @@
      "role": "signer",
      "is_writable": false,
      "is_signer": true,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "userQuoteAccount",
@@ -999,14 +1018,16 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "oracleB",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "tokenProgram",
@@ -1030,7 +1051,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify signer, openOrdersAdmin signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "place_order_pegged",
@@ -1055,7 +1076,8 @@
      "role": "signer",
      "is_writable": false,
      "is_signer": true,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "userTokenAccount",
@@ -1104,14 +1126,16 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "oracleB",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "tokenProgram",
@@ -1135,7 +1159,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify signer, openOrdersAdmin signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "place_take_order",
@@ -1223,14 +1247,16 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "oracleB",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "tokenProgram",
@@ -1258,7 +1284,8 @@
      "role": "signer",
      "is_writable": false,
      "is_signer": true,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     }
    ],
    "expected_state_changes": [
@@ -1272,7 +1299,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify signer, penaltyPayer, openOrdersAdmin signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "consume_events",
@@ -1309,7 +1336,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify consumeEventsAdmin signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "consume_given_events",
@@ -1320,7 +1347,8 @@
      "role": "signer",
      "is_writable": false,
      "is_signer": true,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "market",
@@ -1345,7 +1373,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify consumeEventsAdmin signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "cancel_order",
@@ -1395,7 +1423,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify signer signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "cancel_order_by_client_order_id",
@@ -1445,7 +1473,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify signer signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "cancel_all_orders",
@@ -1495,7 +1523,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify signer signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "deposit",
@@ -1724,7 +1752,8 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "tokenProgram",
@@ -1759,7 +1788,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify owner, penaltyPayer signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "withdraw"
   },
   {
    "name": "settle_funds_expired",
@@ -1840,7 +1869,8 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "tokenProgram",
@@ -1875,7 +1905,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify closeMarketAdmin, owner, penaltyPayer signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "sweep_fees",
@@ -1938,7 +1968,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify collectFeeAdmin signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "set_delegate",
@@ -1963,7 +1993,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     }
    ],
    "expected_state_changes": [
@@ -1974,7 +2005,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify owner signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "set_market_expired",
@@ -2003,7 +2034,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify closeMarketAdmin signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "prune_orders",
@@ -2053,7 +2084,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify closeMarketAdmin signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "stub_oracle_create",
@@ -2186,7 +2217,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify owner signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   }
  ],
  "trust_tier": "BattleTested",

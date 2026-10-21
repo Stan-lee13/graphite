@@ -14,7 +14,7 @@ use crate::confidence_engine::{
 use crate::manifest::{load_seed_manifests, ManifestRegistry};
 use crate::plugin_orchestrator::{LayerId, PluginContext, PluginVerdict};
 use crate::policy_engine::{evaluate_policy, PolicyInput, PolicyVerdict, WalletProfile};
-use crate::risk_engine::{assess_with_warnings, RiskAssessmentInput, RiskPattern, RiskVerdict};
+use crate::risk_engine::{assess_with_warnings_in, RiskAssessmentInput, RiskPattern, RiskVerdict};
 #[cfg(feature = "rpc")]
 use crate::rpc_client::SolanaRpcClient;
 use crate::semantic_graph_store::{Behavior, BehaviorEvidence, SemanticGraphStore};
@@ -27,7 +27,16 @@ use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
+/// The agent's statement of what the transaction is for.
+///
+/// A field this type does not have is refused, not ignored (audit 2026-10-20,
+/// F4), as for `VerificationInput` and `ExtractedParameters`: a misspelled
+/// `extractedParameters` used to be dropped silently, and with it the output
+/// token the FakeSwap check compares — the check switched off by a typo. Every
+/// client sends exactly these four fields; the agent guard rebuilds the
+/// intent from them rather than forwarding the AI layer's response.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct ProposedIntent {
     pub intent_type: String,
     pub raw_natural_language: String,
@@ -599,19 +608,6 @@ pub const MAX_CPI_TRACE_DEPTH: usize = 16;
 /// The most nodes a declared CPI trace may carry.
 pub const MAX_CPI_TRACE_NODES: usize = 4096;
 
-/// Every identifier a caller supplies — program ids, account addresses,
-/// discriminators, in the primary, the declared siblings and the declared
-/// trace — is ASCII with no control characters, and at most as long as a
-/// pubkey (A1-03/A3-09, 2026-09-29 audit).
-///
-/// Only the primary's fields were bounded. A sibling or trace program id of
-/// `"€€€€"` reached code that shortens ids for reason strings by byte index
-/// and panicked, so the request died with no verdict and no audit row. The
-/// shortening is now character-safe too; this refuses such a request at the
-/// door, with a 400 that names the field and never echoes the value (a
-/// newline or control character in an id would otherwise reach the text
-/// log). The declared trace is bounded in depth and size for the same
-/// reason the declaration list is.
 /// The words L5's refuse-only vocabulary condition looks for, per canonical
 /// intent (see `GraphiteCore::intent_describes_instruction`).
 pub(crate) fn intent_vocabulary(canonical_intent: &str) -> &'static [&'static str] {
@@ -627,6 +623,19 @@ pub(crate) fn intent_vocabulary(canonical_intent: &str) -> &'static [&'static st
     }
 }
 
+/// Every identifier a caller supplies — program ids, account addresses,
+/// discriminators, in the primary, the declared siblings and the declared
+/// trace — is ASCII with no control characters, and at most as long as a
+/// pubkey (A1-03/A3-09, 2026-09-29 audit).
+///
+/// Only the primary's fields were bounded. A sibling or trace program id of
+/// `"€€€€"` reached code that shortens ids for reason strings by byte index
+/// and panicked, so the request died with no verdict and no audit row. The
+/// shortening is now character-safe too; this refuses such a request at the
+/// door, with a 400 that names the field and never echoes the value (a
+/// newline or control character in an id would otherwise reach the text
+/// log). The declared trace is bounded in depth and size for the same
+/// reason the declaration list is.
 fn validate_identifiers(input: &VerificationInput) -> Result<(), VerificationError> {
     const MAX_ID: usize = 44;
     const MAX_DISC: usize = 128;
@@ -1465,8 +1474,10 @@ fn siblings_keyed_on_their_bytes(
 /// hold. Three calls each safely under the deadline can still exceed it
 /// together, so every call is issued against a shared deadline and gets only
 /// the time that is left. When it runs out the pipeline continues with no
-/// simulation and no diff — which is the same fail-closed path an unreachable
-/// RPC already takes, and it says so in the layer report.
+/// simulation and no diff — the same path an unreachable RPC takes — and a
+/// verification that supplied an artifact is REFUSED as incomplete, with the
+/// reason in its risk findings and the L3 report (audit 2026-10-20, H1: it
+/// used to be approvable, with a `not_simulated` residual as the only sign).
 #[derive(Debug, Clone, Copy)]
 pub struct RpcBudget {
     started: std::time::Instant,
@@ -1659,11 +1670,22 @@ pub enum ExecutionReconciliation {
     NoVerificationOnRecord,
     /// The chain's bytes digest to something no verification was recorded
     /// under, but the `audit_trail_id` the caller supplied names a
-    /// verification — of DIFFERENT bytes. The caller is presenting a verdict
-    /// about one transaction as the verdict for another. A discrepancy when
-    /// the cited verdict was a refusal: something carrying this signature
-    /// executed while the caller's own account of it is a refusal of
-    /// something else (Round 17, F-16-01).
+    /// verification of DIFFERENT bytes (Round 17, F-16-01).
+    ///
+    /// No longer produced by `audit_execution`, and never a discrepancy
+    /// (audit 2026-10-20, F5). It was an alarm when the cited verdict was a
+    /// refusal, so anyone holding a verify key could raise a page by citing
+    /// any refused `audit_trail_id` beside any landed signature — the claim
+    /// joined is the caller's, and the chain's bytes contradict it. The
+    /// F-16-01 case it was built for (a refused artifact that was signed
+    /// before it was shown, digested differently) cannot reach the trail any
+    /// more: filled signature slots are refused at `/verify`. The chain's
+    /// answer now stands (`NoVerificationOnRecord`) and the contradicted
+    /// citation is reported in `caller_keys_disagree`. The alarm stays where
+    /// the evidence is the chain's or there is no chain evidence: a BLOCKED
+    /// record found by the chain's own digest, or — with no chain bytes — by
+    /// the caller's key (`BlockedButExecuted`). The variant is kept so
+    /// payloads recorded before this change still parse.
     RecordedForDifferentBytes {
         recorded_approved: bool,
         recorded_transaction_sha256: Option<String>,
@@ -1675,16 +1697,11 @@ pub enum ExecutionReconciliation {
 }
 
 impl ExecutionReconciliation {
-    /// True when this outcome should page someone.
+    /// True when this outcome should page someone: a refused transaction
+    /// executed. `RecordedForDifferentBytes` is not one (audit 2026-10-20,
+    /// F5 — see the variant).
     pub fn is_discrepancy(&self) -> bool {
-        matches!(
-            self,
-            Self::BlockedButExecuted
-                | Self::RecordedForDifferentBytes {
-                    recorded_approved: false,
-                    ..
-                }
-        )
+        matches!(self, Self::BlockedButExecuted)
     }
 }
 
@@ -1839,20 +1856,6 @@ pub struct ExecutionKeys<'a> {
     pub audit_trail_id: Option<&'a str>,
 }
 
-/// What this verdict is actually BOUND to.
-///
-/// Graphite's product promise is one sentence: the thing it approved is the
-/// thing that gets signed and executed, and every security-relevant property of
-/// that thing was either independently verified or explicitly identified as
-/// unverified. Until 2026-09-08 a caller had no way to tell which half of that
-/// sentence applied to the verdict in their hands.
-///
-/// Both modes are legitimate and both are used. What was missing was the label.
-/// A `/verify` response describing caller-supplied metadata and a `/verify`
-/// response bound to a real signed blob were the same shape, so an integration
-/// could gate on `approved` without ever learning that Graphite had not seen a
-/// transaction at all — which is exactly how the SAK swap path ended up
-/// executing an instruction nothing had examined.
 /// A machine-readable name for one entry of `scope.unobserved`.
 ///
 /// The prose in `unobserved` is for people; a consumer that has to DECIDE
@@ -1979,6 +1982,20 @@ impl Residuals {
     }
 }
 
+/// What this verdict is actually BOUND to.
+///
+/// Graphite's product promise is one sentence: the thing it approved is the
+/// thing that gets signed and executed, and every security-relevant property of
+/// that thing was either independently verified or explicitly identified as
+/// unverified. Until 2026-09-08 a caller had no way to tell which half of that
+/// sentence applied to the verdict in their hands.
+///
+/// Both modes are legitimate and both are used. What was missing was the label.
+/// A `/verify` response describing caller-supplied metadata and a `/verify`
+/// response bound to a real signed blob were the same shape, so an integration
+/// could gate on `approved` without ever learning that Graphite had not seen a
+/// transaction at all — which is exactly how the SAK swap path ended up
+/// executing an instruction nothing had examined.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum VerificationScope {
@@ -1993,8 +2010,10 @@ pub enum VerificationScope {
         transaction_bytes: usize,
         /// Whether a simulator actually executed those bytes. False means the
         /// blob was supplied and hashed but never run (no RPC, budget
-        /// exhausted, or the simulation errored), so the verdict still rests on
-        /// static analysis of the described instruction.
+        /// exhausted, or the simulation errored), so the verdict rests on
+        /// static analysis of the described instruction. With an RPC client
+        /// attached such a verdict is never an approval (audit 2026-10-20,
+        /// H1); without one it is approvable and carries `not_simulated`.
         simulated: bool,
         /// Security-relevant properties of the artifact that were still not
         /// independently observed. Empty is a strong claim and is not made
@@ -2063,8 +2082,14 @@ impl VerificationScope {
 /// describes — and a disclosure that contradicts the result is worse than none,
 /// because a reader trusts it. `lookups` carries how many accounts the tables
 /// resolved to, why resolution failed, or `None` for a transaction using none.
+///
+/// `parsed` is the pipeline's one parse of the artifact (audit 2026-10-20,
+/// F17: this function used to parse it twice more); `None` only when there
+/// is no artifact, in which case it is parsed here.
+#[allow(clippy::too_many_arguments)]
 fn verification_scope(
     input: &VerificationInput,
+    parsed: Option<Result<&crate::tx_artifact::ArtifactMessage, &str>>,
     simulated: bool,
     simulation_error: Option<&str>,
     diff_built: bool,
@@ -2075,6 +2100,19 @@ fn verification_scope(
     match &input.signed_transaction {
         Some(bytes) if !bytes.is_empty() => {
             use sha2::{Digest, Sha256};
+            let parsed_here = match parsed {
+                Some(_) => None,
+                None => {
+                    Some(crate::tx_artifact::parse_transaction(bytes).map_err(|e| e.to_string()))
+                }
+            };
+            let parsed: Result<&crate::tx_artifact::ArtifactMessage, &str> =
+                match (parsed, &parsed_here) {
+                    (Some(parsed), _) => parsed,
+                    (None, Some(Ok(message))) => Ok(message),
+                    (None, Some(Err(e))) => Err(e.as_str()),
+                    (None, None) => Err("not parsed"),
+                };
             let mut r = Residuals::default();
             if let Some(err) = simulation_error {
                 r.push(
@@ -2121,7 +2159,7 @@ fn verification_scope(
             // disclosure that understates what was established is as misleading
             // as one that overstates it. A reader who acts on a stale caveat
             // rebuilds a control Graphite already has.
-            match crate::tx_artifact::parse_transaction(bytes) {
+            match parsed {
                 Ok(message) => {
                     // Parsed. When L2 located the described instruction it has
                     // established that exactly one instruction under the
@@ -2192,7 +2230,7 @@ fn verification_scope(
                     );
                 }
             }
-            let parsed = crate::tx_artifact::parse_transaction(bytes).ok();
+            let parsed = parsed.ok();
             VerificationScope::ArtifactBound {
                 // The digest of the UNSIGNED frame — identical to the raw bytes
                 // now that filled slots are refused upstream, and the same
@@ -2206,10 +2244,8 @@ fn verification_scope(
                 simulated,
                 unobserved: r.prose,
                 unobserved_codes: r.codes,
-                compute_budget: parsed
-                    .as_ref()
-                    .map(crate::tx_artifact::compute_budget_request),
-                message_version: parsed.as_ref().map(|m| match m.version {
+                compute_budget: parsed.map(crate::tx_artifact::compute_budget_request),
+                message_version: parsed.map(|m| match m.version {
                     None => "legacy".to_string(),
                     Some(v) => format!("v{v}"),
                 }),
@@ -2258,9 +2294,13 @@ pub struct VerificationResult {
     pub risk_verdict: RiskVerdictSummary,
     pub policy_verdict: String,
     pub audit_trail_id: String,
-    /// Deterministic SHA-256 hash of the transaction configuration (same input → same hash).
-    /// Unlike audit_trail_id (which includes a per-call sequence counter), content_hash is
-    /// fully reproducible and satisfies Constitution P2 (deterministic/reproducible).
+    /// Deterministic identifier of the described instruction (same input →
+    /// same value): the first 64 bits of a framed SHA-256 over program,
+    /// discriminator, accounts, data and CPI targets. A 64-bit identifier,
+    /// not a collision-resistant digest (audit 2026-10-20, F7);
+    /// `scope.transaction_sha256` is the full digest of the artifact. Unlike
+    /// audit_trail_id (which includes a per-call sequence counter),
+    /// content_hash is fully reproducible and satisfies Constitution P2.
     pub content_hash: String,
     pub transaction: BuiltTransaction,
     /// What this verdict is bound to, and what it did not observe. See
@@ -2383,21 +2423,6 @@ impl PipelineLayerResult {
 /// File name of the semantic-graph snapshot inside the data directory.
 const SEMANTIC_GRAPH_FILENAME: &str = "semantic_graph.json";
 
-/// Atomically write `json` to `path` via a uniquely-named temp file + rename.
-///
-/// Never fatal to verification — a snapshot that cannot be written must not
-/// stop the gate from answering — but never silent either: the outcome is
-/// returned so the core can count it and /health can say the node is
-/// degraded. Before 2026-09-12 a failure was a `tracing::warn!` and nothing
-/// else, so a node whose data volume had filled kept earning trust tiers and
-/// baselines in memory that vanished on the next restart, with no signal an
-/// operator could alert on.
-///
-/// A unique temp name (`pid` + monotonic counter) means concurrent writers
-/// can't clobber each other's temp files; the temp file is synced before the
-/// rename so the committed snapshot is complete on the device, not only in
-/// the page cache; and the rename is atomic, so readers only ever see
-/// complete documents.
 /// The name of the lock file one process holds on its data directory.
 pub const DATA_DIR_LOCK: &str = "graphite.lock";
 
@@ -2485,6 +2510,21 @@ where
     .await
 }
 
+/// Atomically write `json` to `path` via a uniquely-named temp file + rename.
+///
+/// Never fatal to verification — a snapshot that cannot be written must not
+/// stop the gate from answering — but never silent either: the outcome is
+/// returned so the core can count it and /health can say the node is
+/// degraded. Before 2026-09-12 a failure was a `tracing::warn!` and nothing
+/// else, so a node whose data volume had filled kept earning trust tiers and
+/// baselines in memory that vanished on the next restart, with no signal an
+/// operator could alert on.
+///
+/// A unique temp name (`pid` + monotonic counter) means concurrent writers
+/// can't clobber each other's temp files; the temp file is synced before the
+/// rename so the committed snapshot is complete on the device, not only in
+/// the page cache; and the rename is atomic, so readers only ever see
+/// complete documents.
 pub(crate) fn persist_json_atomic(path: &std::path::Path, json: &str) -> Result<(), String> {
     use std::io::Write as _;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -2662,6 +2702,10 @@ pub struct GraphiteCore {
     quarantine_on_upgrade: bool,
     /// Roadmap R-M1: upgrades noticed since this core started.
     program_upgrades_detected: Arc<std::sync::atomic::AtomicU64>,
+    /// Whether a request refused ONLY by the policy threshold may train the
+    /// simulation baseline. Off by default; see
+    /// `set_learn_from_policy_refusals`.
+    learn_from_policy_refusals: bool,
 }
 
 /// A program redeployed, or handed to a new upgrade authority, since Graphite
@@ -2838,6 +2882,7 @@ impl GraphiteCore {
             pending_observations: None,
             quarantine_on_upgrade: false,
             program_upgrades_detected: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            learn_from_policy_refusals: false,
             plugins: crate::plugin_orchestrator::PluginOrchestrator::with_builtin_plugins(),
         }
     }
@@ -2862,6 +2907,7 @@ impl GraphiteCore {
             pending_observations: None,
             quarantine_on_upgrade: false,
             program_upgrades_detected: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            learn_from_policy_refusals: false,
             plugins: crate::plugin_orchestrator::PluginOrchestrator::new(),
         }
     }
@@ -2883,38 +2929,47 @@ impl GraphiteCore {
             pending_observations: None,
             quarantine_on_upgrade: false,
             program_upgrades_detected: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            learn_from_policy_refusals: false,
             plugins: crate::plugin_orchestrator::PluginOrchestrator::with_builtin_plugins(),
         }
     }
 
     /// Create with durability enabled: the semantic graph, trust tiers, and
     /// simulation baselines are snapshotted to `data_dir` on every mutation
-    /// and reloaded on startup. Fail-closed: a corrupt snapshot logs an error
-    /// and starts fresh (state is re-earned) rather than panicking.
+    /// and reloaded on startup. Takes no lock on the directory — a process
+    /// that writes beside a server uses `open_data_dir`.
+    ///
+    /// # Panics
+    ///
+    /// When the snapshot exists and cannot be read or parsed, or the
+    /// directory cannot be created — see [`Self::try_with_data_dir`], which
+    /// returns those as errors. Fail-closed (audit 2026-10-20, F9): this used
+    /// to log the corruption and start FRESH, which lifts every quarantine the
+    /// snapshot holds without a word and lets the next snapshot overwrite the
+    /// evidence — the outcome `open_data_dir` has refused since Round 19
+    /// (F-19-12), while this doc called starting fresh "fail-closed".
     pub fn with_data_dir(data_dir: PathBuf) -> Self {
+        Self::try_with_data_dir(data_dir).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// `with_data_dir`, returning a corrupt or unreadable snapshot (and a
+    /// directory that cannot be created) as an error instead of panicking.
+    /// Never starts fresh over a snapshot it could not read.
+    pub fn try_with_data_dir(data_dir: PathBuf) -> Result<Self, String> {
+        std::fs::create_dir_all(&data_dir)
+            .map_err(|e| format!("creating data directory {}: {e}", data_dir.display()))?;
         let mut core = Self::new();
-        core.data_dir = Some(data_dir.clone());
-        if let Err(e) = std::fs::create_dir_all(&data_dir) {
-            tracing::warn!("failed to create data dir {}: {}", data_dir.display(), e);
-        }
         // Stale temp files are cleared only by `open_data_dir`, which holds
         // the directory's lock; without it they may be a live writer's.
-        let path = data_dir.join("semantic_graph.json");
-        match std::fs::read_to_string(&path) {
-            Ok(json) => match SemanticGraphStore::from_json(&json) {
-                Ok(store) => {
-                    core.semantic_graph = Arc::new(Mutex::new(store));
-                    tracing::info!("restored semantic graph from {}", path.display());
-                }
-                Err(e) => tracing::error!(
-                    "corrupt semantic graph snapshot at {} — starting fresh: {}",
-                    path.display(),
-                    e
-                ),
-            },
-            Err(_) => { /* no snapshot yet — fresh store */ }
+        if let Some(store) = load_snapshot_strict(&data_dir)? {
+            core.semantic_graph = Arc::new(Mutex::new(store));
+            tracing::info!(
+                "restored semantic graph from {}",
+                data_dir.join(SEMANTIC_GRAPH_FILENAME).display()
+            );
         }
-        core
+        core.data_dir = Some(data_dir);
+        Ok(core)
     }
 
     /// Open a data directory for WRITING: take its exclusive lock, clear the
@@ -3074,13 +3129,6 @@ impl GraphiteCore {
         GraphSnapshot { nodes, edges }
     }
 
-    /// Snapshot graph state to disk (best-effort; never fatal).
-    ///
-    /// Uses a UNIQUE temp file per call (`semantic_graph.json.tmp.<pid>.<n>`)
-    /// so concurrent snapshots can never overwrite each other's in-flight temp
-    /// files — the final rename is atomic, so the committed snapshot is always
-    /// one complete JSON document. The static `.tmp` path this replaces meant
-    /// two racing writers could interleave on the same temp file.
     /// The current state, serialized, with its generation — taken under the
     /// graph lock so generations follow state order (see
     /// `PersistenceCounters`). `None` without a data directory.
@@ -3100,8 +3148,16 @@ impl GraphiteCore {
         Some(Ok((dir.join(SEMANTIC_GRAPH_FILENAME), json, generation)))
     }
 
-    /// Snapshot now, synchronously. `Ok` also when there is no data directory
-    /// (nothing to persist to); `Err` names why the state is not durable.
+    /// Snapshot graph state to disk now, synchronously (never fatal to
+    /// verification). `Ok` also when there is no data directory (nothing to
+    /// persist to); `Err` names why the state is not durable.
+    ///
+    /// The write goes through `persist_json_atomic`: a UNIQUE temp file per
+    /// call (`semantic_graph.json.tmp.<pid>.<n>`), so concurrent snapshots can
+    /// never overwrite each other's in-flight temp files, then an atomic
+    /// rename, so the committed snapshot is always one complete JSON document.
+    /// The static `.tmp` path this replaced meant two racing writers could
+    /// interleave on the same temp file.
     fn persist_state(&self) -> Result<(), String> {
         match self.snapshot_for_persist() {
             None => Ok(()),
@@ -3153,17 +3209,54 @@ impl GraphiteCore {
         }
     }
 
-    /// Attach an RPC client for Phase 2 features (simulation, on-chain checks).
+    /// Attach the RPC client the pipeline simulates with and L8 confirms
+    /// against.
+    ///
+    /// Audit 2026-10-20 (F10): the "a witness must not be the primary" rule
+    /// was checked only by `attach_inclusion_witness`, so attaching the
+    /// witness FIRST and then the same endpoint as the primary produced the
+    /// self-witness the rule exists to refuse. Here, an inclusion witness that
+    /// is the same endpoint as `client` is detached — no witness is honest, a
+    /// witness that is the party being witnessed is not — and the conflict is
+    /// logged; `has_inclusion_witness` then says so. `try_attach_rpc_client`
+    /// refuses instead.
     #[cfg(feature = "rpc")]
     pub fn attach_rpc_client(&mut self, client: SolanaRpcClient) {
+        if self
+            .inclusion_witness
+            .as_ref()
+            .is_some_and(|w| same_endpoint(w.endpoint(), client.endpoint()))
+        {
+            tracing::error!(
+                "the inclusion witness is the same endpoint as the primary RPC being attached; the witness is detached — a witness must be an independent second source"
+            );
+            self.inclusion_witness = None;
+        }
         self.rpc_client = Some(client);
+    }
+
+    /// `attach_rpc_client`, refusing — and attaching nothing — when the
+    /// client is the same endpoint as the inclusion witness already attached.
+    #[cfg(feature = "rpc")]
+    pub fn try_attach_rpc_client(&mut self, client: SolanaRpcClient) -> Result<(), String> {
+        if let Some(witness) = &self.inclusion_witness {
+            if same_endpoint(witness.endpoint(), client.endpoint()) {
+                return Err(
+                    "the primary RPC is the same endpoint as the inclusion witness; a witness must be an independent second source"
+                        .to_string(),
+                );
+            }
+        }
+        self.rpc_client = Some(client);
+        Ok(())
     }
 
     /// Attach a second RPC as L8's inclusion witness (Round 12).
     ///
     /// Refused when it is the same endpoint as the primary: a witness that
     /// is the party being witnessed adds a call and no evidence, and an
-    /// operator who set it believes they have a second source.
+    /// operator who set it believes they have a second source. The rule holds
+    /// whichever is attached first (`attach_rpc_client` checks it too).
     #[cfg(feature = "rpc")]
     pub fn attach_inclusion_witness(&mut self, client: SolanaRpcClient) -> Result<(), String> {
         if let Some(primary) = &self.rpc_client {
@@ -3184,12 +3277,6 @@ impl GraphiteCore {
         self.inclusion_witness.is_some()
     }
 
-    /// Set the total wall-clock budget one verification may spend on RPC.
-    ///
-    /// The caller owns this because only the caller knows its own deadline: a
-    /// server has a request timeout, a CLI run has a human waiting. See
-    /// `RpcBudget` for why the total, rather than the per-call timeout, is the
-    /// number that has to fit.
     /// Permit durable-nonce transactions (operator decision, P14).
     ///
     /// A durable-nonce transaction does not expire: once signed it stays
@@ -3302,8 +3389,40 @@ impl GraphiteCore {
         upgrades
     }
 
+    /// Set the total wall-clock budget one verification may spend on RPC.
+    ///
+    /// The caller owns this because only the caller knows its own deadline: a
+    /// server has a request timeout, a CLI run has a human waiting. See
+    /// `RpcBudget` for why the total, rather than the per-call timeout, is the
+    /// number that has to fit.
     pub fn set_rpc_budget(&mut self, budget: std::time::Duration) {
         self.rpc_budget = budget;
+    }
+
+    /// Let a request refused ONLY by the policy threshold train the program's
+    /// simulation baseline (operator decision, P14). Off by default.
+    ///
+    /// Audit 2026-10-20 (M1): this was always on, as the "bootstrap" — a
+    /// program with a manifest and no history sits at 0.44, below every
+    /// built-in floor, and its own refused-but-sound traffic was how it
+    /// climbed. But `SimulationMatch` saturates at three observations, one
+    /// observation is one distinct artifact, and simulation needs no
+    /// signature: anyone holding a verify key could send three byte-distinct
+    /// transfers and lift an OfficialManifest program from 0.44 to 0.64 —
+    /// past Gaming's 0.55 — for every caller of the node. Off, only an
+    /// APPROVED verdict's observation is evidence, and a fresh program's
+    /// baseline comes from the operator (`seed_simulation_baseline`,
+    /// `graphite evidence`) or from traffic approved under a profile that
+    /// already admits it. On, the bootstrap returns with that exposure; the
+    /// server reads `GRAPHITE_LEARN_FROM_POLICY_REFUSALS`.
+    pub fn set_learn_from_policy_refusals(&mut self, enabled: bool) {
+        self.learn_from_policy_refusals = enabled;
+    }
+
+    /// Whether policy-threshold refusals train the baseline
+    /// (`set_learn_from_policy_refusals`).
+    pub fn learn_from_policy_refusals(&self) -> bool {
+        self.learn_from_policy_refusals
     }
 
     /// The configured RPC budget.
@@ -3381,6 +3500,16 @@ impl GraphiteCore {
     ///
     /// Fail-closed throughout: with no RPC client, an RPC failure, or no audit
     /// log to read, the result is `Unavailable`, never a confirmation.
+    ///
+    /// The limit of a single source (audit 2026-10-20, F6, documented by
+    /// design): without an inclusion witness (`GRAPHITE_RPC_WITNESS_URL`),
+    /// everything L8 knows about the chain comes from the primary RPC. A
+    /// hostile or broken primary that answers "unknown signature" for a
+    /// transaction that executed, or withholds its bytes, turns a
+    /// `BlockedButExecuted` into `BlockedAndNotExecuted`, `NotFound` or
+    /// `Unavailable` — and nothing inside one source's answers can show it.
+    /// The witness is the control for that; with it, any sighting of a
+    /// blocked transaction by either source alarms.
     #[cfg(feature = "rpc")]
     pub async fn audit_execution(
         &self,
@@ -3539,7 +3668,7 @@ impl GraphiteCore {
                 }
                 Ok(None) => {
                     chain_bytes_unavailable = Some(format!(
-                        "{who}'s getSignatureStatuses reports {signature} as included but its getTransaction returned null for it"
+                        "{who}'s getSignatureStatuses reports {signature} as included, but its getTransaction at the configured commitment (confirmed at least) returned null: no record of it yet"
                     ));
                 }
                 Err(e) => {
@@ -3565,7 +3694,8 @@ impl GraphiteCore {
         // Round 17 (F-16-01): when the chain's digest resolves nothing and the
         // caller cited an exact `audit_trail_id`, that record is fetched too —
         // not to attribute the execution to it, but to say that the caller's
-        // verdict is about other bytes (`RecordedForDifferentBytes`).
+        // verdict is about other bytes — in `caller_keys_disagree` since the
+        // 2026-10-20 audit (F5), no longer as a reconciliation of its own.
         //
         // Round 19 (F-19-18): these lookups read the audit trail — the active
         // file and, for a key it does not hold, every archive — so they run on
@@ -3629,15 +3759,26 @@ impl GraphiteCore {
         };
         // A scan that did not complete is an internal failure, and L8 does not
         // answer "nothing on record" for a trail it could not read.
+        let mut trail_unread: Option<String> = None;
         let (recorded, attribution, recorded_verdicts, cited_for_other_bytes) = match lookup {
             None => (None, ExecutionAttribution::None, None, None),
             Some(Ok(found)) => found,
-            // Only a panic inside the scan gets here. It is re-raised, so the
-            // server answers 500 (CatchPanicLayer) rather than a verdict built
-            // on a trail it did not read.
+            // A panic inside the scan is re-raised, so the server answers 500
+            // (CatchPanicLayer) rather than a verdict built on a trail it did
+            // not read.
             Some(Err(join)) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
+            // Audit 2026-10-20 (F19): a scan that was CANCELLED (the runtime
+            // shutting down) panicked here, turning an orderly shutdown into a
+            // crash. It is the same "the trail was not read" — answered as
+            // `Unavailable` with the reason, never as "nothing on record".
             Some(Err(join)) => {
-                panic!("the audit trail lookup for {signature} did not complete: {join}")
+                tracing::error!(
+                    "L8: the audit trail lookup for {signature} did not complete: {join}"
+                );
+                trail_unread = Some(format!(
+                    "the audit trail lookup did not complete ({join}), so the recorded verdict could not be read"
+                ));
+                (None, ExecutionAttribution::None, None, None)
             }
         };
 
@@ -3680,6 +3821,22 @@ impl GraphiteCore {
                 ));
             }
         }
+        // Audit 2026-10-20 (F5): the caller cited a verdict the chain's bytes
+        // contradict — a verdict about OTHER bytes. Reported here, as the
+        // caller's attestation being wrong, not as a discrepancy: whether that
+        // verdict was a refusal is the caller's choice of citation, and it
+        // let anyone page the operator with any landed signature.
+        if let (Some(cited), Some(digest)) = (&cited_for_other_bytes, &chain_transaction_sha256) {
+            caller_keys_disagree.push(format!(
+                "audit_trail_id {} was supplied; it names a verification {} of {}, and the chain's bytes for this signature digest to {digest}, for which no verification is on record",
+                cited.audit_trail_id,
+                if cited.approved { "approved" } else { "refused" },
+                match cited.transaction_sha256.as_deref() {
+                    Some(other) => format!("the transaction {other}"),
+                    None => "a description (no artifact)".to_string(),
+                }
+            ));
+        }
 
         let no_keys = keys.content_hash.is_none()
             && keys.transaction_sha256.is_none()
@@ -3692,6 +3849,9 @@ impl GraphiteCore {
             .is_some_and(|w| w.seen == Some(true));
         let witness_dissents = inclusion_witness.as_ref().is_some_and(|w| !w.agrees);
         let reconciliation = match (&chain_status, &recorded) {
+            _ if trail_unread.is_some() => ExecutionReconciliation::Unavailable {
+                reason: trail_unread.clone().unwrap_or_default(),
+            },
             // A4-01 (2026-09-29 audit): the witness exists for exactly the
             // case where the primary cannot be relied on, and a primary that
             // is DOWN is the plainest such case. The Unavailable arm below
@@ -3723,16 +3883,9 @@ impl GraphiteCore {
             (_, None) if audit.is_none() => ExecutionReconciliation::Unavailable {
                 reason: "no audit log available to read the recorded verdict from".to_string(),
             },
-            (_, None) if cited_for_other_bytes.is_some() => {
-                let cited = cited_for_other_bytes.as_ref().expect("checked");
-                ExecutionReconciliation::RecordedForDifferentBytes {
-                    recorded_approved: cited.approved,
-                    recorded_transaction_sha256: cited.transaction_sha256.clone(),
-                    chain_transaction_sha256: chain_transaction_sha256
-                        .clone()
-                        .unwrap_or_default(),
-                }
-            }
+            // The chain's digest resolves no verification. A cited verdict
+            // about other bytes does not change that answer (F5): it is in
+            // `caller_keys_disagree`.
             (_, None) => ExecutionReconciliation::NoVerificationOnRecord,
             (ExecutionVerification::UnknownSignature(_), Some(rec)) => {
                 if !rec.approved && witness_saw_it {
@@ -4300,10 +4453,16 @@ impl GraphiteCore {
         let ix = match matching_ix {
             Some(ix) => ix,
             None => {
-                // P12: Unknown instruction on known protocol = soft pass (fail open).
-                // The instruction is unknown but the protocol is trusted.
-                // Confidence will be lower (no InstructionMatch signal).
-                // Risk Engine still checks for malicious patterns.
+                // P12: Unknown instruction on known protocol = soft pass (fail
+                // open): not a Failed layer, so neither a penalty nor the
+                // structural hard gate. The Risk Engine still checks for
+                // malicious patterns, and the verdict takes the Unknown tier
+                // (A3-04), so no built-in profile approves it.
+                //
+                // Inconclusive, not Passed (audit 2026-10-20, F14): the layer
+                // did not confirm the instruction matches a known shape — the
+                // manifest does not describe it at all — and GAP-2026-08-06-3
+                // reserves Passed for a check that ran and confirmed.
                 //
                 // Reported by the BYTES, because that is what was looked up
                 // (GFX-101). Naming the caller's label here would tell an
@@ -4311,9 +4470,9 @@ impl GraphiteCore {
                 // since GFX-101 the label is not consulted for this at all.
                 return PipelineLayerResult::new(
                     layer_name,
-                    LayerStatus::Passed,
+                    LayerStatus::Inconclusive,
                     format!(
-                        "Unknown instruction '{}' on known protocol {} — P12 soft pass (reduced confidence)",
+                        "Unknown instruction '{}' on known protocol {} — not described by the manifest, instruction shape not confirmed (P12 soft pass: reduced confidence, Unknown tier)",
                         effective_discriminator, manifest.protocol.name
                     ),
                 );
@@ -4474,12 +4633,12 @@ impl GraphiteCore {
         }
     }
 
-    // L4: State Verification
+    /// L4's structural fallback: the declared state changes against the
+    /// resolved accounts' flags, for when there is no pre/post diff.
     fn verify_state(
         &self,
         expected_state_changes: &[String],
         resolved_accounts: &[ResolvedAccount],
-        _manifest_found: bool,
     ) -> PipelineLayerResult {
         let layer_name = "L4_StateVerification";
 
@@ -4571,9 +4730,11 @@ impl GraphiteCore {
         // built — so "Passed" said more than the layer knew: the check reads
         // the manifest's prose against account flags, not what the
         // transaction does to state. Approval was never gated on it (only a
-        // Failed L4 moves the verdict, and the missing diff is its own
-        // residual), but the layer's word must be as weak as its evidence
-        // (Round 21). A structural contradiction above still fails the layer.
+        // Failed L4 moves the verdict; a missing diff is its own residual and,
+        // with an RPC client attached, refuses the verdict — audit
+        // 2026-10-20, H1), but the layer's word must be as weak as its
+        // evidence (Round 21). A structural contradiction above still fails
+        // the layer.
         PipelineLayerResult::new(
             layer_name,
             LayerStatus::Inconclusive,
@@ -4611,9 +4772,16 @@ impl GraphiteCore {
         // of soft-pass. An unknown discriminator with a swap intent was a free
         // approval vector (FakeSwap was skipped, L5 was soft-passed).
         if instruction_name == "unknown_instruction" {
+            // On the CANONICAL intent (audit 2026-10-20, F14), the form every
+            // other intent comparison reads: keyed on the raw string, "trade",
+            // "exchange" or "Swap" was a low-risk intent here while "swap" was
+            // high-risk — the same declaration, a different gate. "delegate"
+            // is canonically "stake", so both are high-risk, as "delegate"
+            // always was.
+            let canonical = proposed_intent.intent_type.trim().to_lowercase();
             let high_risk = matches!(
-                proposed_intent.intent_type.as_str(),
-                "swap" | "bridge" | "withdraw" | "delegate" | "mint"
+                crate::risk_engine::canonical_intent(&canonical),
+                "swap" | "bridge" | "withdraw" | "stake" | "mint"
             );
             if high_risk {
                 return PipelineLayerResult::new(
@@ -4634,7 +4802,8 @@ impl GraphiteCore {
             );
         }
 
-        match Self::intent_describes_instruction(
+        match Self::intent_describes_instruction_in(
+            &self.registry,
             &proposed_intent.intent_type,
             program_id,
             instruction_name,
@@ -4653,6 +4822,48 @@ impl GraphiteCore {
     /// honest agent could declare for an instruction (the mainnet conformance
     /// harness) ask the same function rather than a copy of it.
     pub fn intent_describes_instruction(
+        intent_type: &str,
+        program_id: &str,
+        instruction_name: &str,
+        security_class: &str,
+        expected_state_changes: &[String],
+    ) -> Result<String, String> {
+        Self::intent_describes_instruction_with(
+            &|program, intent| crate::risk_engine::program_supports_intent(program, intent),
+            intent_type,
+            program_id,
+            instruction_name,
+            security_class,
+            expected_state_changes,
+        )
+    }
+
+    /// `intent_describes_instruction` judged against `registry` rather than
+    /// the seed manifests alone (audit 2026-10-20, R-8): a community manifest
+    /// tagged `swap` serves the swap intent in L5 exactly as it does in the
+    /// Risk Engine's Check 9.
+    pub fn intent_describes_instruction_in(
+        registry: &ManifestRegistry,
+        intent_type: &str,
+        program_id: &str,
+        instruction_name: &str,
+        security_class: &str,
+        expected_state_changes: &[String],
+    ) -> Result<String, String> {
+        Self::intent_describes_instruction_with(
+            &|program, intent| {
+                crate::risk_engine::program_supports_intent_in(registry, program, intent)
+            },
+            intent_type,
+            program_id,
+            instruction_name,
+            security_class,
+            expected_state_changes,
+        )
+    }
+
+    fn intent_describes_instruction_with(
+        program_supports_intent: &dyn Fn(&str, &str) -> bool,
         intent_type: &str,
         program_id: &str,
         instruction_name: &str,
@@ -4729,7 +4940,7 @@ impl GraphiteCore {
         // enough: a `stake` intent declares the `transfer` class (a liquid
         // staking deposit is one), and without this a System Transfer would
         // pass L5 as a stake.
-        if !crate::risk_engine::program_supports_intent(program_id, intent) {
+        if !program_supports_intent(program_id, intent) {
             return Err(format!(
                     "a '{raw_intent}' intent does not describe {instruction_name}: program {program_id} does not serve that intent"
                 ),
@@ -4769,6 +4980,62 @@ impl GraphiteCore {
                 if security_class.is_empty() { "(none)" } else { security_class }
             ),
         )
+    }
+
+    /// One program's trust tier for a verdict, from what Graphite itself
+    /// holds about it — the program's manifest and the Semantic Graph —
+    /// never from the request.
+    ///
+    /// With a manifest: the manifest's `trust_tier` is the protocol team's
+    /// self-assessment, so per Constitution P7 it is capped at
+    /// OfficialManifest (Tier 2) — tiers 3+ (SimulationValidated,
+    /// CommunityVerified, BattleTested) must be EARNED through accumulated
+    /// evidence in the Semantic Graph, not self-asserted. The graph's earned
+    /// tier is then `max`'d in: deliberately one-directional, it lets EARNED
+    /// evidence raise a tier above the manifest's own claim and stops a low
+    /// graph tier from dragging a manifested protocol down. But a quarantine
+    /// is a downgrade, and `max` discarded it — the tier went straight back
+    /// to OfficialManifest from the manifest's self-assessment, which is
+    /// exactly the claim a quarantine stops trusting — so a quarantined
+    /// program is Unknown, full stop.
+    ///
+    /// Without a manifest the tier comes ONLY from the graph's accumulated
+    /// evidence, else Unknown. A graph entry whose tier was genuinely EARNED
+    /// (operator-seeded Behavior evidence, or a quarantine downgrade) is
+    /// respected — forcibly capping an earned tier at HeuristicInferred would
+    /// violate P7. P6's low confidence ceiling still applies.
+    ///
+    /// SECURITY (G4 / P7): the request-body `behavior_evidence` is read on
+    /// neither path. It is caller-controlled JSON: a caller could fabricate
+    /// `has_signed_manifest: true` (or fake community/battle-test counts) to
+    /// mint OfficialManifest on a low-tier manifest, escaping that tier's
+    /// 0.55 ceiling and inflating the TrustTierLevel signal, or mint an
+    /// earned-looking tier for a program with no on-chain reputation.
+    ///
+    /// The primary and, since the 2026-10-20 audit (M2), every top-level
+    /// program of the transaction are tiered by this one function.
+    fn program_trust_tier(
+        &self,
+        program_id: &str,
+        manifest: Option<&crate::manifest::ProtocolManifest>,
+    ) -> TrustTier {
+        match manifest {
+            Some(m) => {
+                // P7: cap self-asserted tiers.
+                let manifest_tier =
+                    TrustTier::from_manifest_str(&m.trust_tier).min(TrustTier::OfficialManifest);
+                match self.graph().get(program_id) {
+                    Some(b) if b.quarantined => TrustTier::Unknown,
+                    Some(b) => b.trust_tier.max(manifest_tier),
+                    None => manifest_tier,
+                }
+            }
+            None => self
+                .graph()
+                .get(program_id)
+                .map(|b| b.trust_tier)
+                .unwrap_or(TrustTier::Unknown),
+        }
     }
 
     /// Manifest-derived risk-assessment context for ONE instruction, keyed by
@@ -4860,7 +5127,8 @@ impl GraphiteCore {
     /// P0-3 fix (2026-09-05 audit): `risk_engine::assess` used to be called
     /// exactly once, for the primary instruction only. Everything else in the
     /// transaction — CPI-flattened callees and top-level sibling instructions
-    /// — was invisible to the 23 structural risk checks, and only reachable
+    /// — was invisible to the Risk Engine's structural checks (17 labelled,
+    /// `risk_engine::CHECKED_PATTERNS`), and only reachable
     /// via `tx_pattern_analysis`'s narrow, correlation-based rules (which
     /// require a specific paired instruction, e.g. Approve immediately
     /// followed by a Transfer on the same account). A STANDALONE secondary
@@ -4880,7 +5148,7 @@ impl GraphiteCore {
     ///     would otherwise fire: "account creation but declared intent is
     ///     swap").
     ///   - An empty intent naturally no-ops every intent-DEPENDENT check
-    ///     (6a/6b/7/8/9 in risk_engine.rs — each requires a non-empty,
+    ///     (6a/6b/8/9/9b in risk_engine.rs — each requires a non-empty,
     ///     MISMATCHED intent to fire), so secondary instructions never trip
     ///     those false-positive-prone gates.
     ///   - Every intent-INDEPENDENT structural check stays fully active: the
@@ -4889,7 +5157,7 @@ impl GraphiteCore {
     ///     CloseAccount), the CPI checks (1/1b/4), the drainer/hidden-
     ///     transfer heuristics (3/3b/5), and system-account impersonation
     ///     (Check 10a).
-    ///   - Check 10b ("manifest declares this instruction's class as
+    ///   - Check 10 ("manifest declares this instruction's class as
     ///     one of `manifest::HIGH_RISK_CLASSES` and NO intent was declared —
     ///     fail closed") is DELIBERATELY activated by the empty intent for
     ///     every secondary instruction: the agent's declaration never
@@ -5098,7 +5366,8 @@ impl GraphiteCore {
                     .and_then(|m| m.instruction_for(&ix.instruction_discriminator))
                     .filter(|def| def.security_class().is_empty())
                 {
-                    if let Err(why) = Self::intent_describes_instruction(
+                    if let Err(why) = Self::intent_describes_instruction_in(
+                        &self.registry,
                         declared_intent,
                         &ix.program_id,
                         &def.name,
@@ -5169,7 +5438,7 @@ impl GraphiteCore {
                     && is_token_close(&ix.program_id, &ix.instruction_discriminator),
                 ..ix_input
             };
-            let detail = assess_with_warnings(&ix_input)?;
+            let detail = assess_with_warnings_in(&ix_input, &self.registry)?;
             warnings.extend(
                 detail
                     .warnings
@@ -5370,6 +5639,24 @@ impl GraphiteCore {
         #[cfg(feature = "rpc")]
         let budget = RpcBudget::new(self.rpc_budget);
 
+        // The artifact, parsed ONCE (audit 2026-10-20, F17). It was parsed
+        // about seven times per verification — for the lookup tables, the
+        // privileges, L2, the ALT disclosures, the coverage check and twice
+        // more for the scope — each a fresh walk of the same bytes.
+        // `artifact_message` is the message when the bytes parse;
+        // `artifact_parse_error` is why they did not. Both are `None` without
+        // an artifact.
+        let (artifact_message, artifact_parse_error): (
+            Option<crate::tx_artifact::ArtifactMessage>,
+            Option<String>,
+        ) = match input.signed_transaction.as_ref().filter(|b| !b.is_empty()) {
+            None => (None, None),
+            Some(bytes) => match crate::tx_artifact::parse_transaction(bytes) {
+                Ok(message) => (Some(message), None),
+                Err(e) => (None, Some(e.to_string())),
+            },
+        };
+
         // Lookup tables, resolved BEFORE anything reasons about the accounts.
         //
         // This used to run inside the simulation block, which is late enough to
@@ -5386,59 +5673,49 @@ impl GraphiteCore {
         #[cfg(feature = "rpc")]
         let resolved_lookups: Option<Result<crate::tx_artifact::ResolvedLookups, String>> = match (
             &self.rpc_client,
-            input.signed_transaction.as_ref(),
+            artifact_message.as_ref(),
         ) {
-            (Some(client), Some(artifact)) if !artifact.is_empty() => {
-                match crate::tx_artifact::parse_transaction(artifact) {
-                    Ok(message) if message.has_lookup_accounts() => {
-                        let table_addrs: Vec<String> =
-                            message.lookups.iter().map(|l| l.table.clone()).collect();
-                        let fetched =
-                            within_budget(&budget, client.get_multiple_accounts(&table_addrs))
-                                .await
-                                .unwrap_or_else(|()| {
-                                    Err(crate::rpc_client::RpcError::Timeout(budget.total()))
-                                });
-                        match fetched {
-                            Ok(accounts) => {
-                                let mut tables: std::collections::HashMap<String, Vec<u8>> =
-                                    std::collections::HashMap::new();
-                                let mut wrong_owner: Option<String> = None;
-                                for (addr, acc) in table_addrs.iter().zip(accounts.iter()) {
-                                    if let Some(a) = acc {
-                                        // The runtime only honours a table
-                                        // owned by the lookup-table program.
-                                        // Bytes at that address under any
-                                        // other owner would be refused at
-                                        // execution, and decoding them here
-                                        // would resolve accounts the
-                                        // transaction cannot actually reach
-                                        // — an answer about a transaction
-                                        // that will not run.
-                                        if a.owner
-                                            != crate::tx_artifact::ADDRESS_LOOKUP_TABLE_PROGRAM
-                                        {
-                                            wrong_owner.get_or_insert_with(|| {
+            (Some(client), Some(message)) if message.has_lookup_accounts() => {
+                let table_addrs: Vec<String> =
+                    message.lookups.iter().map(|l| l.table.clone()).collect();
+                let fetched = within_budget(&budget, client.get_multiple_accounts(&table_addrs))
+                    .await
+                    .unwrap_or_else(|()| Err(crate::rpc_client::RpcError::Timeout(budget.total())));
+                match fetched {
+                    Ok(accounts) => {
+                        let mut tables: std::collections::HashMap<String, Vec<u8>> =
+                            std::collections::HashMap::new();
+                        let mut wrong_owner: Option<String> = None;
+                        for (addr, acc) in table_addrs.iter().zip(accounts.iter()) {
+                            if let Some(a) = acc {
+                                // The runtime only honours a table
+                                // owned by the lookup-table program.
+                                // Bytes at that address under any
+                                // other owner would be refused at
+                                // execution, and decoding them here
+                                // would resolve accounts the
+                                // transaction cannot actually reach
+                                // — an answer about a transaction
+                                // that will not run.
+                                if a.owner != crate::tx_artifact::ADDRESS_LOOKUP_TABLE_PROGRAM {
+                                    wrong_owner.get_or_insert_with(|| {
                                                     format!(
                                                         "the account at table address {addr} is owned by {}, not the Address Lookup Table program",
                                                         a.owner
                                                     )
                                                 });
-                                            continue;
-                                        }
-                                        tables.insert(addr.clone(), a.data.clone());
-                                    }
+                                    continue;
                                 }
-                                Some(match wrong_owner {
-                                    Some(why) => Err(why),
-                                    None => crate::tx_artifact::resolve_lookups(&message, &tables)
-                                        .map_err(|e| e.to_string()),
-                                })
+                                tables.insert(addr.clone(), a.data.clone());
                             }
-                            Err(e) => Some(Err(e.to_string())),
                         }
+                        Some(match wrong_owner {
+                            Some(why) => Err(why),
+                            None => crate::tx_artifact::resolve_lookups(message, &tables)
+                                .map_err(|e| e.to_string()),
+                        })
                     }
-                    _ => None,
+                    Err(e) => Some(Err(e.to_string())),
                 }
             }
             _ => None,
@@ -5458,12 +5735,9 @@ impl GraphiteCore {
         //
         // When the derived flags disagree with the supplied ones, the derived
         // ones win. This is not a tie to average: one of the two is the
-        // transaction that will execute.
-        let artifact_message = input
-            .signed_transaction
-            .as_ref()
-            .filter(|b| !b.is_empty())
-            .and_then(|b| crate::tx_artifact::parse_transaction(b).ok());
+        // transaction that will execute. (`artifact_message` is the one parse
+        // at the top.)
+        //
         // Durable nonce: declared by the bytes (instruction 0 is a System
         // AdvanceNonceAccount), verified against the nonce account when the
         // operator has opted in and RPC is available. See `DurableNonce`.
@@ -5753,8 +6027,9 @@ impl GraphiteCore {
         // which the execution boundary refuses.
         let mut siblings_by_bytes: Option<Vec<crate::tx_pattern_analysis::TransactionInstruction>> =
             None;
-        let l2_result = match (&input.signed_transaction, &input.instruction_data) {
-            (Some(artifact), data) if !artifact.is_empty() => {
+        let l2_result = match (&artifact_parse_error, artifact_message.as_ref()) {
+            (None, None) => l2_result,
+            (Some(e), _) => {
                 // Every artifact goes through here. Until Round 9 this arm
                 // was keyed on `instruction_data` being present and at least
                 // 8 bytes long, with two consequences: an artifact supplied
@@ -5774,24 +6049,24 @@ impl GraphiteCore {
                 // `correspond` matches on exact data equality, so no minimum
                 // length is needed: a one-byte `CloseAccount` is identified
                 // by its program, its byte and its accounts at one position.
-                match crate::tx_artifact::parse_transaction(artifact) {
-                    Err(e) => PipelineLayerResult::new(
-                        "L2_InstructionVerification",
-                        LayerStatus::Failed,
-                        format!(
-                            "the supplied transaction could not be parsed as a legacy, v0 or v1 Solana message ({e}). Graphite makes no claim about bytes it cannot read: an artifact-bound verdict requires the described instruction to be located in the message, and there is no message to locate it in"
-                        ),
+                PipelineLayerResult::new(
+                    "L2_InstructionVerification",
+                    LayerStatus::Failed,
+                    format!(
+                        "the supplied transaction could not be parsed as a legacy, v0 or v1 Solana message ({e}). Graphite makes no claim about bytes it cannot read: an artifact-bound verdict requires the described instruction to be located in the message, and there is no message to locate it in"
                     ),
-                    Ok(_) if data.is_none() => PipelineLayerResult::new(
-                        "L2_InstructionVerification",
-                        LayerStatus::Failed,
-                        "a transaction was supplied but instruction_data was not, so the described instruction cannot be located in it: an artifact-bound verdict identifies the instruction by its program, its exact data and its accounts at one position in the message, and without the data the bytes about to be signed cannot be tied to this description. Supply instruction_data (the SAK bridge and the SDKs always do), or omit signed_transaction and receive a descriptive verdict that says so"
-                            .to_string(),
-                    ),
-                    Ok(message) => {
-                        let data = data.as_deref().unwrap_or_default();
+                )
+            }
+            (None, Some(_)) if input.instruction_data.is_none() => PipelineLayerResult::new(
+                "L2_InstructionVerification",
+                LayerStatus::Failed,
+                "a transaction was supplied but instruction_data was not, so the described instruction cannot be located in it: an artifact-bound verdict identifies the instruction by its program, its exact data and its accounts at one position in the message, and without the data the bytes about to be signed cannot be tied to this description. Supply instruction_data (the SAK bridge and the SDKs always do), or omit signed_transaction and receive a descriptive verdict that says so"
+                    .to_string(),
+            ),
+            (None, Some(message)) => {
+                        let data = input.instruction_data.as_deref().unwrap_or_default();
                         let c = crate::tx_artifact::correspond(
-                            &message,
+                            message,
                             &input.program_id,
                             Some(data),
                             &input.account_addresses,
@@ -5807,16 +6082,20 @@ impl GraphiteCore {
                         // GFX-106: the bytes each declaration actually names,
                         // captured here because this is the only place that
                         // knows which artifact instruction each one matched.
-                        if let Some(primary) = c.matched_instruction {
-                            let coverage = sibling_coverage(
-                                &message,
+                        // Computed once and read three times below (audit
+                        // 2026-10-20, F17: it was computed three times).
+                        let coverage = c.matched_instruction.map(|primary| {
+                            sibling_coverage(
+                                message,
                                 primary,
                                 &input.transaction_instructions,
                                 resolved_lookups.as_ref().and_then(|r| r.as_ref().ok()),
-                            );
+                            )
+                        });
+                        if let Some(coverage) = &coverage {
                             siblings_by_bytes = Some(siblings_keyed_on_their_bytes(
-                                &message,
-                                &coverage,
+                                message,
+                                coverage,
                                 &input.transaction_instructions,
                             ));
                         }
@@ -5859,28 +6138,17 @@ impl GraphiteCore {
                             // silence. What changes is that the declaration is
                             // checked against the bytes instead of being taken
                             // on its word.
-                            Some(idx)
-                                if !sibling_coverage(
-                                    &message,
-                                    idx,
-                                    &input.transaction_instructions,
-                                    resolved_lookups.as_ref().and_then(|r| r.as_ref().ok()),
-                                )
-                                .complete() =>
-                            {
+                            Some(idx) if coverage.as_ref().is_some_and(|cov| !cov.complete()) => {
                                 PipelineLayerResult::new(
                                     "L2_InstructionVerification",
                                     LayerStatus::Failed,
                                     format!(
                                         "the described instruction is instruction {idx} of {}, and {}. A verdict about one instruction says nothing about the ones beside it, and they execute in the same transaction",
                                         message.instructions.len(),
-                                        sibling_coverage(
-                                            &message,
-                                            idx,
-                                            &input.transaction_instructions,
-                                            resolved_lookups.as_ref().and_then(|r| r.as_ref().ok()),
-                                        )
-                                        .detail()
+                                        coverage
+                                            .as_ref()
+                                            .map(SiblingCoverage::detail)
+                                            .unwrap_or_default()
                                     ),
                                 )
                             }
@@ -5895,7 +6163,7 @@ impl GraphiteCore {
                             // uncompared, which is what `unresolved` is for.
                             Some(idx) => match compare_instruction_accounts(
                                 &crate::tx_artifact::resolve_instruction_accounts(
-                                    &message,
+                                    message,
                                     &message.instructions[idx],
                                     resolved_lookups.as_ref().and_then(|r| r.as_ref().ok()),
                                 )
@@ -5942,10 +6210,7 @@ impl GraphiteCore {
                                 }
                             },
                         }
-                    }
-                }
             }
-            _ => l2_result,
         };
 
         // A durable-nonce transaction is a different kind of object from the
@@ -6111,8 +6376,10 @@ impl GraphiteCore {
         };
 
         // L2: plugin folds run after the core's own L2 check. A plugin Block
-        // fails the layer (and its 0.2 confidence penalty below); a Note is
-        // appended to the report; NoFinding leaves the core verdict intact.
+        // fails the layer — which refuses the verdict through the L2/L4/L5
+        // hard gate below, and lowers the reported confidence by the 0.2
+        // penalty; a Note is appended to the report; NoFinding leaves the core
+        // verdict intact.
         let l2_result =
             self.plugins
                 .fold_verifier(LayerId::L2InstructionVerification, l2_result, &ctx);
@@ -6229,26 +6496,29 @@ impl GraphiteCore {
             }
             _ => None,
         };
-        let risk_detail = assess_with_warnings(&RiskAssessmentInput {
-            writable_extra_accounts,
-            verified_self_refund_close: primary_instruction_index
-                .is_some_and(|p| closes.refunding.contains(&p)),
-            program_id: input.program_id.clone(),
-            accounts: input.account_addresses.clone(),
-            cpi_targets: input.cpi_targets.clone(),
-            expected_state_changes: risk_expected_state_changes.clone(),
-            allowed_cpis: allowed_cpis.clone(),
-            instruction_discriminator: risk_discriminator.clone(),
-            expected_account_count,
-            variable_accounts,
-            proposed_intent_type: input.proposed_intent.intent_type.clone(),
-            extracted_output_token: input
-                .proposed_intent
-                .extracted_parameters
-                .as_ref()
-                .and_then(|p| p.output_token.clone()),
-            manifest_risk_class: manifest_risk_class.clone(),
-        })?;
+        let risk_detail = assess_with_warnings_in(
+            &RiskAssessmentInput {
+                writable_extra_accounts,
+                verified_self_refund_close: primary_instruction_index
+                    .is_some_and(|p| closes.refunding.contains(&p)),
+                program_id: input.program_id.clone(),
+                accounts: input.account_addresses.clone(),
+                cpi_targets: input.cpi_targets.clone(),
+                expected_state_changes: risk_expected_state_changes.clone(),
+                allowed_cpis: allowed_cpis.clone(),
+                instruction_discriminator: risk_discriminator.clone(),
+                expected_account_count,
+                variable_accounts,
+                proposed_intent_type: input.proposed_intent.intent_type.clone(),
+                extracted_output_token: input
+                    .proposed_intent
+                    .extracted_parameters
+                    .as_ref()
+                    .and_then(|p| p.output_token.clone()),
+                manifest_risk_class: manifest_risk_class.clone(),
+            },
+            &self.registry,
+        )?;
         // `assess_with_warnings` returns non-blocking warnings (e.g. an
         // out-of-manifest CPI on a known protocol) alongside the binary verdict.
         // These are surfaced in the L7 layer report and the summary below so the
@@ -6311,11 +6581,8 @@ impl GraphiteCore {
         // Where they can be read they are read, and a declaration that
         // contradicts them is itself reported — a request that misdescribes its
         // own transaction has said something about its reliability.
-        let artifact_shape = input
-            .signed_transaction
+        let artifact_shape = artifact_message
             .as_ref()
-            .filter(|b| !b.is_empty())
-            .and_then(|b| crate::tx_artifact::parse_transaction(b).ok())
             .map(|m| (m.version, m.alt_table_count(), m.alt_account_count()));
 
         match artifact_shape {
@@ -6747,20 +7014,12 @@ impl GraphiteCore {
             }
         };
 
-        // Step 3c.5: Add account identity mismatch findings to risk summary
-        let risk_summary = if !identity_mismatches.is_empty() && risk_summary.status == "Clear" {
-            RiskVerdictSummary {
-                status: "Blocked".to_string(),
-                findings: vec![RiskFinding {
-                    pattern: "AccountIdentityMismatch".to_string(),
-                    reason: format!(
-                        "identity mismatch on {} account(s) — derived/expected address does not match provided",
-                        identity_mismatches.len()
-                    ),
-                }],
-            }
-        } else if !identity_mismatches.is_empty() {
-            // Already blocked — append the mismatch finding
+        // Step 3c.5: Add account identity mismatch findings to risk summary.
+        // An identity mismatch has already made `risk_verdict` Blocked (Step
+        // 3c), so the summary is Blocked here and the finding is appended. A
+        // separate arm for a Clear summary with mismatches could never run
+        // and is gone (audit 2026-10-20, F13).
+        let risk_summary = if !identity_mismatches.is_empty() {
             RiskVerdictSummary {
                 status: "Blocked".to_string(),
                 findings: {
@@ -6944,6 +7203,11 @@ impl GraphiteCore {
         // what the caller declared. Filled in from `loadedAddresses` below.
         #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
         let mut alt_observations: Vec<String> = Vec::new();
+        // Whether the request names any account a pre/post diff should
+        // observe — when it does, an approval with an RPC attached requires
+        // the diff to have been built (audit 2026-10-20, H1).
+        #[cfg(feature = "rpc")]
+        let mut diff_required = false;
         #[cfg(feature = "rpc")]
         {
             // Only the artifact is simulated (Round 19, F-19-02). Without one
@@ -7052,9 +7316,13 @@ impl GraphiteCore {
                     // Returning an empty set drops the diff entirely, and the
                     // caller is told why. A bounded refusal beats an answer
                     // about the wrong ninety-nine per cent.
+                    // A diff is owed whenever there is any account to observe
+                    // (H1: approval is conditioned on it being built).
+                    diff_required = !addrs.is_empty();
                     if addrs.len() > MAX_SIMULATION_ACCOUNTS {
                         tracing::warn!(
-                            "state diff skipped: {} accounts to observe exceeds the {}                              simulateTransaction accepts",
+                            "state diff skipped: {} accounts to observe exceeds the {} \
+                             simulateTransaction accepts",
                             addrs.len(),
                             MAX_SIMULATION_ACCOUNTS
                         );
@@ -7229,8 +7497,8 @@ impl GraphiteCore {
                         // before account resolution, because whether an
                         // ALT-resolved account arrives writable has to be known
                         // before anything reasons about that account, not after.
-                        if let Some(artifact) = &input.signed_transaction {
-                            if let Ok(message) = crate::tx_artifact::parse_transaction(artifact) {
+                        {
+                            if let Some(message) = artifact_message.as_ref() {
                                 if message.has_lookup_accounts() {
                                     match &resolved_lookups {
                                         Some(Ok(resolved)) => {
@@ -7388,14 +7656,22 @@ impl GraphiteCore {
                                     // the call (Round 19, F-19-10): a
                                     // caller-written list of program ids
                                     // was otherwise a way to name any
-                                    // account "described". With no callee
-                                    // report from the simulator there is
-                                    // nothing to check it against and the
-                                    // declaration stands, as before.
+                                    // account "described".
+                                    //
+                                    // Audit 2026-10-20 (F15): and with no
+                                    // callee report from the simulator the
+                                    // declaration does not stand either (it
+                                    // used to). Unchecked, it was the same
+                                    // padding in a different case: a caller
+                                    // whose simulation came back without
+                                    // inner instructions could name any
+                                    // account a "CPI target" and have it
+                                    // count as described. A declaration
+                                    // nothing could check widens nothing.
                                     let cpi_described = |t: &str| {
                                         observed_cpi_programs
                                             .as_ref()
-                                            .is_none_or(|seen| seen.iter().any(|s| s == t))
+                                            .is_some_and(|seen| seen.iter().any(|s| s == t))
                                     };
                                     for t in &input.cpi_targets {
                                         if cpi_described(t) {
@@ -7429,23 +7705,18 @@ impl GraphiteCore {
                                     // list to be the instruction's own, position
                                     // by position, and every declared sibling to
                                     // match an instruction that is really there.
-                                    let undescribed = input
-                                        .signed_transaction
-                                        .as_ref()
-                                        .filter(|b| !b.is_empty())
-                                        .and_then(|b| crate::tx_artifact::parse_transaction(b).ok())
-                                        .map(|m| {
-                                            let mut out: Vec<String> = m
-                                                .static_keys
-                                                .iter()
-                                                .filter(|k| !described.contains(k.as_str()))
-                                                .cloned()
-                                                .collect();
-                                            // Deterministic output (P2).
-                                            out.sort_unstable();
-                                            out.dedup();
-                                            out
-                                        });
+                                    let undescribed = artifact_message.as_ref().map(|m| {
+                                        let mut out: Vec<String> = m
+                                            .static_keys
+                                            .iter()
+                                            .filter(|k| !described.contains(k.as_str()))
+                                            .cloned()
+                                            .collect();
+                                        // Deterministic output (P2).
+                                        out.sort_unstable();
+                                        out.dedup();
+                                        out
+                                    });
                                     // Round 20: the fee schedules of the
                                     // Token-2022 mints whose fee-bearing
                                     // accounts the diff covers. A
@@ -7787,25 +8058,28 @@ impl GraphiteCore {
                 if undeclared.is_empty() {
                     (risk_summary, risk_warnings)
                 } else {
-                    let detail = assess_with_warnings(&RiskAssessmentInput {
-                        verified_self_refund_close: false,
-                        writable_extra_accounts: None,
-                        program_id: input.program_id.clone(),
-                        accounts: input.account_addresses.clone(),
-                        cpi_targets: undeclared.clone(),
-                        expected_state_changes: risk_expected_state_changes.clone(),
-                        allowed_cpis: allowed_cpis.clone(),
-                        instruction_discriminator: risk_discriminator.clone(),
-                        expected_account_count,
-                        variable_accounts,
-                        proposed_intent_type: input.proposed_intent.intent_type.clone(),
-                        extracted_output_token: input
-                            .proposed_intent
-                            .extracted_parameters
-                            .as_ref()
-                            .and_then(|p| p.output_token.clone()),
-                        manifest_risk_class: manifest_risk_class.clone(),
-                    })?;
+                    let detail = assess_with_warnings_in(
+                        &RiskAssessmentInput {
+                            verified_self_refund_close: false,
+                            writable_extra_accounts: None,
+                            program_id: input.program_id.clone(),
+                            accounts: input.account_addresses.clone(),
+                            cpi_targets: undeclared.clone(),
+                            expected_state_changes: risk_expected_state_changes.clone(),
+                            allowed_cpis: allowed_cpis.clone(),
+                            instruction_discriminator: risk_discriminator.clone(),
+                            expected_account_count,
+                            variable_accounts,
+                            proposed_intent_type: input.proposed_intent.intent_type.clone(),
+                            extracted_output_token: input
+                                .proposed_intent
+                                .extracted_parameters
+                                .as_ref()
+                                .and_then(|p| p.output_token.clone()),
+                            manifest_risk_class: manifest_risk_class.clone(),
+                        },
+                        &self.registry,
+                    )?;
                     risk_warnings.push(format!(
                         "the simulator observed CPI target(s) the request did not declare: {} — judged by the same rules as a declaration",
                         undeclared.join(", ")
@@ -7881,6 +8155,44 @@ impl GraphiteCore {
                 _ => risk_summary,
             };
             (risk_summary, risk_warnings)
+        };
+
+        // Audit 2026-10-20 (R-5): the compositional-drain rule on what the
+        // simulator executed, with multiplicity. The undeclared callees above
+        // reach the Risk Engine sorted and deduplicated, so its "a program
+        // revisited three times" rule could never fire on an observed CPI,
+        // and its "five or more distinct" count could be split between the
+        // declaration and the undeclared remainder. Every node of the
+        // observed call tree under the primary is counted here, repeats kept,
+        // together with what was declared.
+        #[cfg(feature = "rpc")]
+        let risk_summary = match &observed_cpi_tree {
+            Some(tree) if !tree.children.is_empty() => {
+                let mut executed: Vec<String> = Vec::new();
+                let mut stack: Vec<&crate::tx_pattern_analysis::CpiTraceNode> =
+                    tree.children.iter().collect();
+                while let Some(node) = stack.pop() {
+                    executed.push(node.program_id.clone());
+                    stack.extend(node.children.iter());
+                }
+                match crate::risk_engine::compositional_drain_in_execution(
+                    &input.program_id,
+                    &input.cpi_targets,
+                    &executed,
+                ) {
+                    Some(RiskVerdict::Blocked { pattern, reason }) => {
+                        let mut summary = risk_summary;
+                        summary.status = "Blocked".to_string();
+                        summary.findings.push(RiskFinding {
+                            pattern: format!("{pattern:?}"),
+                            reason: format!("observed CPI execution: {reason}"),
+                        });
+                        summary
+                    }
+                    _ => risk_summary,
+                }
+            }
+            _ => risk_summary,
         };
 
         // W14 (external review, verified 2026-10-03): what each OTHER
@@ -8091,12 +8403,96 @@ impl GraphiteCore {
             }
         };
 
+        // Audit 2026-10-20 (H1): with an RPC client attached and a transaction
+        // supplied, an approval rests on Graphite's own simulation of those
+        // bytes, or it is not given.
+        //
+        // `approved` was `l6_passed && risk Clear`, and nothing in either
+        // read the simulation's outcome: an errored simulation reached only
+        // the L3 text and a residual, and an RPC outage, a timeout, an
+        // exhausted budget or a malformed response only set
+        // `diff_unavailable`. Worse, an errored simulation SKIPPED the
+        // observed-CPI checks and the L4 diff, so the checks that judge what
+        // the bytes actually do were off exactly when the bytes misbehaved —
+        // and the verdict was still an approval (an honest transfer beside an
+        // unmanifested sibling that fails in simulation was `approved`,
+        // `artifact_bound`). Only the agent guard's residual policy refused
+        // it; a `/verify` caller, an SDK user or a library embedder gating on
+        // `approved` signed it.
+        //
+        // Now, under those two conditions, the verdict is refused unless the
+        // simulation (a) ran without error and (b) yielded everything the
+        // approval rests on: a complete, plausible measurement, the callee
+        // report the observed-CPI checks read, the executed CPI tree, and —
+        // when the request names any account to observe — the pre/post diff
+        // L4 compares. An errored simulation is `SimulationFailed` (L3
+        // Failed); anything missing is `VerificationIncomplete` (fail
+        // closed). With NO RPC client nothing changes: L3 is Inconclusive and
+        // the verdict carries `not_simulated`, as documented.
+        #[cfg(feature = "rpc")]
+        let simulation_gate: Option<RiskFinding> = {
+            let artifact_supplied = input
+                .signed_transaction
+                .as_ref()
+                .is_some_and(|b| !b.is_empty());
+            if self.rpc_client.is_none() || !artifact_supplied {
+                None
+            } else if let Some(err) = &sim_err {
+                Some(RiskFinding {
+                    pattern: "SimulationFailed".to_string(),
+                    reason: format!(
+                        "the simulator executed these bytes and reported {err}: the transaction would not land as simulated, and what it does was not measured — not its CPIs, not its state changes. A transaction Graphite watched fail is not approved"
+                    ),
+                })
+            } else {
+                let missing: Option<String> = if !rpc_sim_ok {
+                    Some(match &diff_unavailable {
+                        Some(why) => format!("no complete simulation was obtained ({why})"),
+                        None => "the simulator's response was incomplete — no compute units, balance arrays or inner-instruction report to read — so nothing in it is a measurement".to_string(),
+                    })
+                } else if observed_cpi_programs.is_none() {
+                    Some("the simulator's report of the programs this transaction called could not be read, so the observed-CPI checks did not run".to_string())
+                } else if artifact_instruction_located && observed_cpi_tree.is_none() {
+                    Some("the simulator's inner instructions could not be rebuilt into the CPI tree it executed, so the observed CPI-trace rules did not run".to_string())
+                } else if diff_required && observed_diff.is_none() {
+                    Some(format!(
+                        "no pre/post state diff was built ({}), so L4 compared nothing the transaction actually does",
+                        diff_unavailable.as_deref().unwrap_or("no reason was recorded")
+                    ))
+                } else {
+                    None
+                };
+                missing.map(|why| RiskFinding {
+                    pattern: "VerificationIncomplete".to_string(),
+                    reason: format!(
+                        "verification incomplete: {why}. With an RPC client attached and a transaction supplied, an approval rests on Graphite's own simulation of these bytes; without it the verdict is refused, not approved on static analysis (fail closed)"
+                    ),
+                })
+            }
+        };
+        #[cfg(not(feature = "rpc"))]
+        let simulation_gate: Option<RiskFinding> = None;
+        let risk_summary = match &simulation_gate {
+            None => risk_summary,
+            Some(finding) => {
+                let mut summary = risk_summary;
+                summary.status = "Blocked".to_string();
+                summary.findings.push(finding.clone());
+                summary
+            }
+        };
+
         // L3: Simulation plugins run after the core's simulation-integrity
         // verdict. They may only Note or Block — never certify a clean
         // simulation (P5: a plugin cannot mint evidence). A Block fails the L3
-        // layer report only; it does not fabricate a risk finding (that would
-        // cross the layer boundary P8 forbids).
+        // layer report, which refuses the verdict (F11); it does not
+        // fabricate a risk finding (that would cross the layer boundary P8
+        // forbids).
         let l3_plugin_runs = self.plugins.simulation_verdicts(&ctx);
+        #[cfg_attr(not(feature = "rpc"), allow(unused_variables))]
+        let l3_plugin_blocked = l3_plugin_runs
+            .iter()
+            .any(|run| matches!(run.verdict, PluginVerdict::Block { .. }));
 
         // Whether `is_writable` on each resolved account came from the real
         // transaction's AccountMeta data or only from the manifest's
@@ -8173,11 +8569,8 @@ impl GraphiteCore {
                     privileges_grounded,
                     fee_payer_for_diff.as_deref(),
                 );
-                let structural = self.verify_state(
-                    &expected_state_changes,
-                    &resolution.resolved_accounts,
-                    manifest_found,
-                );
+                let structural =
+                    self.verify_state(&expected_state_changes, &resolution.resolved_accounts);
                 if structural.status == LayerStatus::Failed
                     && from_diff.status != LayerStatus::Failed
                 {
@@ -8194,18 +8587,17 @@ impl GraphiteCore {
                 }
             }
             (None, None) => {
-                let mut fallback = self.verify_state(
-                    &expected_state_changes,
-                    &resolution.resolved_accounts,
-                    manifest_found,
-                );
+                let mut fallback =
+                    self.verify_state(&expected_state_changes, &resolution.resolved_accounts);
                 // Say so when the diff was ATTEMPTED and abandoned. "State
                 // verification passed" on its own reads as though the layer did
                 // its strongest work; it did not, and the difference is the
                 // whole value of L4.
                 if let Some(reason) = &diff_unavailable {
                     fallback.reason = format!(
-                        "{} | NOTE: the pre/post state diff was attempted and could not be                          built ({reason}) — this result is the structural consistency check                          only, not a diff of what the transaction actually does",
+                        "{} | NOTE: the pre/post state diff was attempted and could not be \
+                         built ({reason}) — this result is the structural consistency check \
+                         only, not a diff of what the transaction actually does",
                         fallback.reason
                     );
                 }
@@ -8322,16 +8714,26 @@ impl GraphiteCore {
             manifest_found,
         );
         // L5: plugin folds run BEFORE the semantic penalty is computed so a
-        // plugin Block on L5 contributes the same 0.3 penalty as the core's
-        // own L5 failure (the plugin affects only its own layer's outcome).
+        // plugin Block on L5 fails the layer exactly as the core's own L5
+        // failure does: the hard gate below refuses the verdict, and the same
+        // 0.3 penalty lowers the reported confidence (the plugin affects only
+        // its own layer's outcome).
         let l5_result =
             self.plugins
                 .fold_verifier(LayerId::L5SemanticVerification, l5_result, &ctx);
 
         // GAP-2026-08-06-3: penalties key off the tri-state — only a genuine
         // FAILED check penalizes. Inconclusive (skipped/unverified) is absence
-        // of evidence, not failure: it must not shift the verdict math, only
-        // the (now honest) layer report.
+        // of evidence, not failure: it must not shift the score, only the
+        // (now honest) layer report.
+        //
+        // What a penalty does and does not do (audit 2026-10-20, F12): it
+        // lowers the CONFIDENCE reported on the verdict and on the audit
+        // trail, so the score explains that a structural check failed. It
+        // never decides approval: every layer that carries a penalty is
+        // Failed, and a Failed L2/L4/L5 is refused by the structural hard
+        // gate below whatever the score. Earlier comments here described the
+        // penalties as what made such a verdict lose — the gate does that.
         let semantic_penalty = if l5_result.status == LayerStatus::Failed {
             0.3
         } else {
@@ -8347,57 +8749,16 @@ impl GraphiteCore {
         } else {
             0.0
         };
-        // Step 4: Confidence Computation
-        let trust_tier = if manifest_found {
-            // Manifest found — the manifest's trust_tier field is the protocol
-            // team's self-assessment. Per Constitution P7, we cap this at
-            // OfficialManifest (Tier 2) — tiers 3+ (SimulationValidated,
-            // CommunityVerified, BattleTested) must be EARNED through
-            // accumulated evidence in the Semantic Graph, not self-asserted.
-            let manifest_tier = manifest
-                .map(|m| TrustTier::from_manifest_str(&m.trust_tier))
-                .unwrap_or(TrustTier::HeuristicInferred)
-                .min(TrustTier::OfficialManifest); // P7: cap self-asserted tiers
-
-            // SECURITY (G4 / P7): caller-provided `behavior_evidence` is
-            // request-body JSON — it must NEVER raise the trust tier above what
-            // the protocol's own compile-time-baked, reviewed manifest declares.
-            // Previously a caller could fabricate `has_signed_manifest: true`
-            // (or fake community/battle-test counts) to mint OfficialManifest on
-            // a low-tier manifest, escaping that tier's 0.55 P6 ceiling and
-            // inflating the TrustTierLevel signal. The Semantic Graph's
-            // internally-accumulated tier (earned, never asserted) is still
-            // honored; request-body evidence is ignored on the manifest path.
-            //
-            // The `max` is deliberately one-directional — it lets EARNED
-            // evidence raise a tier above the manifest's own claim, and stops
-            // a low graph tier from dragging a manifested protocol down. But a
-            // quarantine is a downgrade, and `max` discarded it: the tier went
-            // straight back to OfficialManifest from the manifest's
-            // self-assessment, which is exactly the claim a quarantine stops
-            // trusting. So a quarantined program is Unknown, full stop.
-            match self.graph().get(&input.program_id) {
-                Some(b) if b.quarantined => TrustTier::Unknown,
-                Some(b) => b.trust_tier.max(manifest_tier),
-                None => manifest_tier,
-            }
-        } else {
-            // No manifest found — the trust tier comes ONLY from the Semantic
-            // Graph's accumulated evidence (P7: earned, never asserted). The
-            // request-body `behavior_evidence` is ignored here exactly as on
-            // the manifest path — it is caller-controlled JSON, and honoring
-            // it would let an attacker mint an earned-looking tier for a
-            // program with no on-chain reputation (evidence-gaming, the same
-            // class of bug as the build_signals zeroing). P6's low confidence
-            // ceiling for unknown protocols still applies via
-            // apply_unknown_protocol_ceiling below. A graph entry whose tier
-            // was genuinely EARNED (operator-seeded Behavior evidence, or a
-            // quarantine downgrade) is respected — forcibly capping an earned
-            // tier at HeuristicInferred would violate P7.
-            self.graph()
-                .get(&input.program_id)
-                .map(|b| b.trust_tier)
-                .unwrap_or(TrustTier::Unknown)
+        // Step 4: Confidence Computation. The primary program's tier — see
+        // `program_trust_tier` for how a tier is earned and why the request
+        // never supplies one. A manifest-found verdict whose manifest is not
+        // in the registry cannot happen (both read the same registry); were
+        // it to, the tier is Unknown, not a guess (audit 2026-10-20, F13: it
+        // was `HeuristicInferred`).
+        let trust_tier = match (manifest_found, manifest) {
+            (true, Some(m)) => self.program_trust_tier(&input.program_id, Some(m)),
+            (true, None) => TrustTier::Unknown,
+            (false, _) => self.program_trust_tier(&input.program_id, None),
         };
         // A3-04 (2026-09-29 audit): the tier is earned by what the manifest
         // DESCRIBES. An instruction the program's manifest does not describe
@@ -8414,6 +8775,48 @@ impl GraphiteCore {
         } else {
             trust_tier
         };
+        // Audit 2026-10-20 (M2): the verdict's tier is the LOWEST of every
+        // program the transaction invokes at top level — the primary, every
+        // declared sibling and, with an artifact, every top-level instruction
+        // of the bytes — each computed exactly as the primary's is.
+        //
+        // The tier and its confidence ceiling came from the primary alone, so
+        // an unmanifested program beside an honest transfer cost a warning
+        // and nothing else, while `build_signals` cites ARCHITECTURE 3.11's
+        // "the trust tier of every instruction touched". The ceiling, the
+        // policy's tier floor and the TrustTierLevel signal all read this
+        // tier now: an Unknown sibling puts the verdict at Unknown, which no
+        // built-in profile admits. The evidence signals (SimulationMatch,
+        // HistoricalVolume, CommunityVerification) stay the primary's: they
+        // are evidence about the instruction being verified. CPI callees are
+        // not top-level programs and are judged by the CPI checks instead.
+        let primary_trust_tier = trust_tier;
+        let mut tier_capped_by: Option<(String, TrustTier)> = None;
+        let trust_tier = {
+            let mut programs: std::collections::BTreeSet<&str> = input
+                .transaction_instructions
+                .iter()
+                .map(|ix| ix.program_id.as_str())
+                .collect();
+            if let Some(message) = artifact_message.as_ref() {
+                programs.extend(message.instructions.iter().map(|ix| ix.program_id.as_str()));
+            }
+            programs.remove(input.program_id.as_str());
+            let mut tier = trust_tier;
+            for program in programs {
+                let sibling_tier = self.program_trust_tier(program, self.registry.get(program));
+                if sibling_tier < tier {
+                    tier = sibling_tier;
+                    tier_capped_by = Some((program.to_string(), sibling_tier));
+                }
+            }
+            tier
+        };
+        if let Some((program, tier)) = &tier_capped_by {
+            risk_warnings.push(format!(
+                "trust tier {tier:?}, from {program}: the verdict's trust tier is the lowest of every program the transaction invokes at top level, and this one's is below the primary's {primary_trust_tier:?}"
+            ));
+        }
 
         // Phase 2 (G4): the three evidence-derived signals now read from the
         // Semantic Graph's internal accumulator — the program's RPC-verified
@@ -8552,6 +8955,146 @@ impl GraphiteCore {
         let l6_passed = matches!(policy_verdict, PolicyVerdict::Approved)
             && l6_block.is_none()
             && !structural_layer_failed;
+        // L3 layer report: the core simulation verdict folded with simulation
+        // plugin runs (a plugin Note appends; a Block fails the report). Built
+        // BEFORE the approval decision, because a Failed L3 is a hard gate
+        // (audit 2026-10-20, F11/H1): a simulation-plugin Block, or a
+        // simulation that ran and errored, used to fail this report while the
+        // verdict stayed `approved: true`.
+        #[cfg(feature = "rpc")]
+        let failed_simulation = sim_err.as_deref();
+        #[cfg(not(feature = "rpc"))]
+        let failed_simulation: Option<&str> = None;
+        let incomplete_simulation = simulation_gate
+            .as_ref()
+            .filter(|f| f.pattern == "VerificationIncomplete")
+            .map(|f| f.reason.as_str());
+        let l3_layer_result = PipelineLayerResult::new(
+            "L3_SimulationVerification",
+            match sim_flagged {
+                Some(true) => LayerStatus::Failed,
+                Some(false) => LayerStatus::Passed,
+                // H1: the simulator executed the bytes and said they would
+                // not land. That is a check that ran and failed.
+                None if failed_simulation.is_some() => LayerStatus::Failed,
+                None => LayerStatus::Inconclusive,
+            },
+            {
+                // Without the rpc feature `failed_simulation` is a literal
+                // `None`, and clippy says so about the arm that reads it.
+                #[cfg_attr(not(feature = "rpc"), allow(clippy::unnecessary_literal_unwrap))]
+                let base = match (sim_flagged, sim_divergence) {
+                    // Round 17 (F-16-04): a simulation that errored is neither
+                    // "clean" nor "not RPC-verified" — it ran, and it said
+                    // the transaction would not land. `rpc_sim_ok` is false
+                    // for it, so `sim_flagged` is None here unless the
+                    // caller-supplied numbers flagged.
+                    (None, _) if failed_simulation.is_some() => format!(
+                        "Simulation FAILED: the simulator executed these bytes and reported {} — the transaction would not land as simulated; its compute usage is not evidence and did not enter the baseline, and the verdict is refused",
+                        failed_simulation.unwrap_or("an error")
+                    ),
+                    // H1: an RPC client is attached and an artifact was
+                    // supplied, but no complete simulation came back. The
+                    // layer reached no verdict, and the pipeline refuses.
+                    (None, _) if incomplete_simulation.is_some() => format!(
+                        "Simulation INCOMPLETE — {}",
+                        incomplete_simulation.unwrap_or("no complete simulation was obtained")
+                    ),
+                    (Some(true), _) => {
+                        // Clamp the DISPLAYED divergence: zero-variance
+                        // and degenerate paths report f64::MAX (JSON-safe
+                        // in the structured field) which would otherwise
+                        // render as a ~300-digit number here.
+                        let d = sim_divergence.unwrap_or(0.0);
+                        let div = if d > 1000.0 {
+                            ">1000σ".to_string()
+                        } else {
+                            format!("{:.2}σ", d)
+                        };
+                        // Report the usage the check ACTUALLY ran on, and say
+                        // where it came from. These printed `input.*` — the
+                        // caller's own numbers — even when the check had used
+                        // RPC-derived ones, so a flagged result could name a
+                        // figure that had nothing to do with the divergence it
+                        // was reporting (observed live: "0 CU" beside a 2.24σ
+                        // divergence computed from a real 300 CU simulation).
+                        format!(
+                            "Simulation integrity FLAGGED: {} CU / {} writes / {} hops [{}] (divergence {} vs baseline)",
+                            usage.compute_units,
+                            usage.account_writes,
+                            usage.cpi_hops,
+                            if rpc_sim_ok { "RPC-measured" } else { "caller-supplied" },
+                            div
+                        )
+                    }
+                    (Some(false), _) => format!(
+                        "Simulation integrity clean (RPC-verified): {} CU / {} writes / {} hops",
+                        usage.compute_units, usage.account_writes, usage.cpi_hops
+                    ),
+                    (None, Some(_)) => format!(
+                        "Simulation integrity NOT RPC-verified: caller-supplied usage ({} CU / {} writes / {} hops) — advisory only, cannot certify clean (P5)",
+                        input.compute_units, input.account_writes, input.cpi_hops
+                    ),
+                    (None, None) => {
+                        // No verdict — but say WHICH of the reasons, and
+                        // never imply the layer is unimplemented. This read
+                        // "Phase 1: simulation not checked", which was
+                        // indistinguishable from "L3 does not exist" even
+                        // when a live RPC had just simulated the
+                        // transaction.
+                        let has_rpc = {
+                            #[cfg(feature = "rpc")]
+                            {
+                                self.rpc_client.is_some()
+                            }
+                            #[cfg(not(feature = "rpc"))]
+                            {
+                                false
+                            }
+                        };
+                        let has_artifact = input
+                            .signed_transaction
+                            .as_ref()
+                            .is_some_and(|b| !b.is_empty());
+                        if has_rpc && !has_artifact {
+                            "No simulation: no transaction artifact was supplied. Graphite simulates only the exact bytes that will be signed; a descriptive request has nothing to execute, so compute usage was not measured and nothing was recorded as evidence (P12: no evidence, no verdict)."
+                                .to_string()
+                        } else if !has_rpc {
+                            "No simulation: no RPC endpoint configured (set GRAPHITE_RPC_URL). \
+                             Compute usage cannot be verified, so no divergence verdict is \
+                             possible (P12: no evidence, no verdict)."
+                                .to_string()
+                        } else {
+                            format!(
+                                "Simulation ran, but no trusted baseline exists for this program \
+                                 yet ({} of {} samples needed). The baseline grows only from \
+                                 RPC-verified observations, so this becomes active once enough \
+                                 traffic has been seen.",
+                                trusted_baseline
+                                    .as_ref()
+                                    .map(|b| b.sample_count)
+                                    .unwrap_or(0),
+                                crate::simulation_integrity::MIN_SAMPLES
+                            )
+                        }
+                    }
+                };
+                if let Some(ref info) = l3_rpc_account_info {
+                    format!("{} | RPC: {}", base, info)
+                } else {
+                    base
+                }
+            },
+        );
+        let l3_layer_result =
+            crate::plugin_orchestrator::fold_runs_into_result(l3_layer_result, l3_plugin_runs);
+        // F11: a Failed L3 — flagged, errored, or blocked by a simulation
+        // plugin — refuses the verdict, like a Failed L2/L4/L5. It is kept
+        // out of `structural_layer_failed` because that also decides what may
+        // train the baseline, and a flagged observation still feeds the
+        // shadow accumulator.
+        let simulation_layer_failed = l3_layer_result.status == LayerStatus::Failed;
+
         // CRITICAL (2026-09-05 SDK integration audit): `policy_str` must also
         // reflect the FINAL risk summary, not just the policy engine's view.
         //
@@ -8569,17 +9112,20 @@ impl GraphiteCore {
         // would have signed a transaction Graphite had flagged as spoofed.
         // Folding the final risk status in here makes the invariant
         // structural: `policy_str == "Approved"` iff `approved == true`
-        // (see `approved` below — same three conditions), so no future
+        // (see `approved` below — the same conditions), so no future
         // late-stage risk mutation can reintroduce the divergence without
         // also flipping this string. The specific REASON for the rejection
         // remains fully available in `risk_verdict.findings` and the layer
         // results, so explainability is preserved (P3).
-        let policy_str =
-            if l6_block.is_some() || structural_layer_failed || risk_summary.status != "Clear" {
-                "Rejected"
-            } else {
-                policy_str
-            };
+        let policy_str = if l6_block.is_some()
+            || structural_layer_failed
+            || simulation_layer_failed
+            || risk_summary.status != "Clear"
+        {
+            "Rejected"
+        } else {
+            policy_str
+        };
 
         // Build audit trail ID (deterministic hash of key fields)
         let (audit_id, content_hash) = generate_audit_id(
@@ -8592,8 +9138,9 @@ impl GraphiteCore {
             &risk_summary,
         );
 
-        // Determine if approved
-        let approved = l6_passed && risk_summary.status == "Clear";
+        // Determine if approved: policy (with the L2/L4/L5 hard gate), L3,
+        // and the final risk summary — which carries the H1 simulation gate.
+        let approved = l6_passed && !simulation_layer_failed && risk_summary.status == "Clear";
 
         // Round 17 (F-16-03 / F-16-02): what becomes evidence.
         //
@@ -8607,22 +9154,28 @@ impl GraphiteCore {
         // is what an attacker's request looked like, and it used to train the
         // baseline exactly as well as honest traffic did.
         //
-        // A request refused ONLY by the policy threshold (confidence or
-        // tier) does train: that is the bootstrap. A program with a manifest
-        // and no history sits at 0.44, below every built-in floor, and the
-        // floor is meant to be crossed by evidence — each observation here
-        // is a structurally sound, risk-clear, successfully simulated
-        // transaction of that program. What closed F-15-01 is the identity
-        // rule below: the SAME bytes re-verified are one observation, so the
-        // identical refused request can no longer become approved by being
-        // asked again.
+        // Audit 2026-10-20 (M1): and only an APPROVED verdict, unless the
+        // operator opts in. A request refused ONLY by the policy threshold
+        // (confidence or tier) used to train unconditionally, as the
+        // bootstrap: a program with a manifest and no history sits at 0.44,
+        // below every built-in floor. But the signal saturates at three
+        // observations, each distinct artifact is one, and simulation needs
+        // no signature — so any verify-key holder could lift a program from
+        // 0.44 to 0.64, past Gaming's 0.55, for every caller of the node.
+        // `set_learn_from_policy_refusals` (the server's
+        // GRAPHITE_LEARN_FROM_POLICY_REFUSALS) restores the bootstrap for an
+        // operator who accepts that; it admits a refusal that was the policy
+        // threshold's and NOTHING else's — no plugin veto, no structural or
+        // L3 failure, risk clear. The identity rule below still holds either
+        // way: the SAME bytes re-verified are one observation (F-15-01).
         //
         // A FLAGGED observation that the simulator nevertheless executed
         // cleanly is kept in the shadow accumulator. It never influences a
         // verdict. It exists so that a baseline frozen by ten identical early
         // samples is visible (`/health` reports programs whose shadow has
-        // reached MIN_SAMPLES) and recoverable (`graphite graph promote-shadow`)
-        // rather than permanent.
+        // reached MIN_SAMPLES) and recoverable (`graphite evidence
+        // promote-shadow`) rather than permanent. It follows the same rule as
+        // the trusted accumulator, but for the flag itself.
         //
         // Round 19: and an observation has an identity or it is not one.
         // It is keyed on `simulation_identity` — the bytes the simulator
@@ -8652,6 +9205,23 @@ impl GraphiteCore {
                     .findings
                     .iter()
                     .all(|f| f.pattern == "SimulationSpoofing" || f.pattern.ends_with(":warning"));
+                // The policy side of the rule, shared by both accumulators:
+                // the core policy approved — or, with the operator's opt-in,
+                // refused on the threshold alone — and nothing else in L3/L6
+                // refused. `policy_verdict` is computed before the
+                // divergence flag, so a flagged request is judged here as it
+                // would have been unflagged.
+                let policy_admits = l6_block.is_none()
+                    && !l3_plugin_blocked
+                    && !structural_layer_failed
+                    && match policy_verdict {
+                        PolicyVerdict::Approved => true,
+                        PolicyVerdict::RejectedBelowThreshold { .. }
+                        | PolicyVerdict::RejectedBelowTrustTier { .. } => {
+                            self.learn_from_policy_refusals
+                        }
+                        PolicyVerdict::RejectedRiskEngineBlock => false,
+                    };
                 let observation = |shadow: bool| PendingObservation {
                     audit_trail_id: audit_id.clone(),
                     program_id: input.program_id.clone(),
@@ -8660,10 +9230,11 @@ impl GraphiteCore {
                     shadow,
                 };
                 if sim_flagged == Some(true) {
-                    if !structural_layer_failed && blocked_only_by_the_flag {
+                    if policy_admits && blocked_only_by_the_flag {
                         self.observe(observation(true)).await;
                     }
-                } else if !structural_layer_failed && risk_summary.status == "Clear" {
+                } else if policy_admits && risk_summary.status == "Clear" {
+                    // Without the opt-in this is exactly `approved`.
                     self.observe(observation(false)).await;
                 }
             }
@@ -8756,121 +9327,6 @@ impl GraphiteCore {
             }
         }
 
-        let _summary_for_layers = summary.clone();
-
-        // L3 layer report: the core simulation verdict folded with simulation
-        // plugin runs (a plugin Note appends; a Block fails the report only).
-        let l3_layer_result = PipelineLayerResult::new(
-            "L3_SimulationVerification",
-            match sim_flagged {
-                Some(true) => LayerStatus::Failed,
-                Some(false) => LayerStatus::Passed,
-                None => LayerStatus::Inconclusive,
-            },
-            {
-                #[cfg(feature = "rpc")]
-                let failed_simulation = sim_err.as_deref();
-                #[cfg(not(feature = "rpc"))]
-                let failed_simulation: Option<&str> = None;
-                // Without the rpc feature `failed_simulation` is a literal
-                // `None`, and clippy says so about the arm that reads it.
-                #[cfg_attr(not(feature = "rpc"), allow(clippy::unnecessary_literal_unwrap))]
-                let base = match (sim_flagged, sim_divergence) {
-                    // Round 17 (F-16-04): a simulation that errored is neither
-                    // "clean" nor "not RPC-verified" — it ran, and it said
-                    // the transaction would not land. `rpc_sim_ok` is false
-                    // for it, so `sim_flagged` is None here unless the
-                    // caller-supplied numbers flagged.
-                    (None, _) if failed_simulation.is_some() => format!(
-                        "Simulation FAILED: the simulator executed these bytes and reported {} — the transaction would not land as simulated; its compute usage is not evidence and did not enter the baseline",
-                        failed_simulation.unwrap_or("an error")
-                    ),
-                    (Some(true), _) => {
-                        // Clamp the DISPLAYED divergence: zero-variance
-                        // and degenerate paths report f64::MAX (JSON-safe
-                        // in the structured field) which would otherwise
-                        // render as a ~300-digit number here.
-                        let d = sim_divergence.unwrap_or(0.0);
-                        let div = if d > 1000.0 {
-                            ">1000σ".to_string()
-                        } else {
-                            format!("{:.2}σ", d)
-                        };
-                        // Report the usage the check ACTUALLY ran on, and say
-                        // where it came from. These printed `input.*` — the
-                        // caller's own numbers — even when the check had used
-                        // RPC-derived ones, so a flagged result could name a
-                        // figure that had nothing to do with the divergence it
-                        // was reporting (observed live: "0 CU" beside a 2.24σ
-                        // divergence computed from a real 300 CU simulation).
-                        format!(
-                            "Simulation integrity FLAGGED: {} CU / {} writes / {} hops [{}] (divergence {} vs baseline)",
-                            usage.compute_units,
-                            usage.account_writes,
-                            usage.cpi_hops,
-                            if rpc_sim_ok { "RPC-measured" } else { "caller-supplied" },
-                            div
-                        )
-                    }
-                    (Some(false), _) => format!(
-                        "Simulation integrity clean (RPC-verified): {} CU / {} writes / {} hops",
-                        usage.compute_units, usage.account_writes, usage.cpi_hops
-                    ),
-                    (None, Some(_)) => format!(
-                        "Simulation integrity NOT RPC-verified: caller-supplied usage ({} CU / {} writes / {} hops) — advisory only, cannot certify clean (P5)",
-                        input.compute_units, input.account_writes, input.cpi_hops
-                    ),
-                    (None, None) => {
-                        {
-                            // No verdict — but say WHICH of the two reasons, and
-                            // never imply the layer is unimplemented. This read
-                            // "Phase 1: simulation not checked", which was
-                            // indistinguishable from "L3 does not exist" even
-                            // when a live RPC had just simulated the
-                            // transaction.
-                            let has_rpc = {
-                                #[cfg(feature = "rpc")]
-                                {
-                                    self.rpc_client.is_some()
-                                }
-                                #[cfg(not(feature = "rpc"))]
-                                {
-                                    false
-                                }
-                            };
-                            let has_artifact = input
-                                .signed_transaction
-                                .as_ref()
-                                .is_some_and(|b| !b.is_empty());
-                            if has_rpc && !has_artifact {
-                                "No simulation: no transaction artifact was supplied. Graphite simulates only the exact bytes that will be signed; a descriptive request has nothing to execute, so compute usage was not measured and nothing was recorded as evidence (P12: no evidence, no verdict)."
-                                    .to_string()
-                            } else if !has_rpc {
-                                "No simulation: no RPC endpoint configured (set GRAPHITE_RPC_URL).                                  Compute usage cannot be verified, so no divergence verdict is                                  possible (P12: no evidence, no verdict)."
-                                    .to_string()
-                            } else {
-                                format!(
-                                    "Simulation ran, but no trusted baseline exists for this program                                      yet ({} of {} samples needed). The baseline grows only from                                      RPC-verified observations, so this becomes active once enough                                      traffic has been seen.",
-                                    trusted_baseline
-                                        .as_ref()
-                                        .map(|b| b.sample_count)
-                                        .unwrap_or(0),
-                                    crate::simulation_integrity::MIN_SAMPLES
-                                )
-                            }
-                        }
-                    }
-                };
-                if let Some(ref info) = l3_rpc_account_info {
-                    format!("{} | RPC: {}", base, info)
-                } else {
-                    base
-                }
-            },
-        );
-        let l3_layer_result =
-            crate::plugin_orchestrator::fold_runs_into_result(l3_layer_result, l3_plugin_runs);
-
         // L6 layer report reason (includes any policy-plugin veto).
         //
         // The thresholds come from `WalletProfile::thresholds()` — the same
@@ -8924,7 +9380,10 @@ impl GraphiteCore {
             // exist" and was accurate at the time, since `verify_execution`
             // was reachable from no route and no command. It is now reachable,
             // and the message has to say what the caller should actually do.
-            "Not yet submitted — execution verification runs after submission. Call              POST /verify/execution (or `graphite execution`) with this content_hash and              the transaction signature to confirm it on-chain and reconcile the outcome              against this verdict.",
+            "Not yet submitted — execution verification runs after submission. Call \
+             POST /verify/execution (or `graphite execution`) with this content_hash and \
+             the transaction signature to confirm it on-chain and reconcile the outcome \
+             against this verdict.",
         );
         let l8_layer_result =
             self.plugins
@@ -8955,6 +9414,11 @@ impl GraphiteCore {
                 let simulation_error: Option<&str> = None;
                 verification_scope(
                     input,
+                    match (&artifact_message, &artifact_parse_error) {
+                        (Some(message), _) => Some(Ok(message)),
+                        (None, Some(e)) => Some(Err(e.as_str())),
+                        (None, None) => None,
+                    },
                     simulated,
                     simulation_error,
                     observed_diff.is_some(),
@@ -9255,8 +9719,16 @@ fn generate_audit_id(
     risk: &RiskVerdictSummary,
 ) -> (String, String) {
     use sha2::{Digest, Sha256};
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    use std::sync::atomic::{AtomicU32, Ordering};
+    // Audit 2026-10-20 (F8): the sequence started at 0 in every process, so
+    // the same request verified first after each restart carried the SAME
+    // `audit_trail_id` (the id hash is deterministic), and the trail —
+    // which L8 and `/audit/event` look records up by — held duplicate ids
+    // naming different verdicts. It now starts at a per-process random
+    // offset and wraps within the 8 hex digits the `gr-<16hex>-<8hex>`
+    // format has always had.
+    static COUNTER: std::sync::LazyLock<AtomicU32> =
+        std::sync::LazyLock::new(|| AtomicU32::new(audit_sequence_seed()));
 
     let seq = COUNTER.fetch_add(1, Ordering::SeqCst);
     // Round 17 (F-16-09): FRAMED. The hash used to be the bare concatenation
@@ -9293,6 +9765,13 @@ fn generate_audit_id(
     // made AuditBind impossible (client can't know the verification result
     // before submitting).
     let hash = hasher.finalize();
+    // The first 8 bytes — a 64-bit identifier, not a collision-resistant
+    // digest: a birthday collision costs about 2^32 work (audit 2026-10-20,
+    // F7). It is kept at this width because three SDK implementations and
+    // every recorded trail pin it; nothing binds an execution on it alone
+    // when better evidence exists (L8 joins on the chain's bytes and their
+    // full 256-bit `transaction_sha256`, and `content_hash` is the last
+    // fallback key).
     let content_hash = hex::encode(&hash[..8]);
 
     // audit_trail_id adds verification result + sequence for uniqueness
@@ -9307,6 +9786,24 @@ fn generate_audit_id(
     let id_hash = id_hasher.finalize();
     let audit_trail_id = format!("gr-{}-{:08x}", hex::encode(&id_hash[..8]), seq);
     (audit_trail_id, content_hash)
+}
+
+/// Where this process's `audit_trail_id` sequence starts: unpredictable and
+/// different in every process. `RandomState` is seeded from the operating
+/// system's randomness; the clock and the process id are mixed in so two
+/// processes that somehow drew the same keys still diverge.
+fn audit_sequence_seed() -> u32 {
+    use std::hash::{BuildHasher, Hasher};
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    h.write_u128(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0),
+    );
+    h.write_u32(std::process::id());
+    let x = h.finish();
+    (x ^ (x >> 32)) as u32
 }
 
 fn generate_summary(
@@ -9877,10 +10374,34 @@ mod tests {
             real_account_metas: vec![],
             state_diff: None,
         };
+        // Audit 2026-10-20 (F18): this asserted only `confidence < 1.0`,
+        // which every fresh-core verdict satisfies — it passed with both
+        // blocks deleted. It asserts each block now. With the undeclared CPI
+        // target, the CPI check refuses first (`UnexpectedCpi`)...
         let result = core.verify(&input).unwrap();
-        // Should be blocked due to unverified CPI or authority-related patterns
-        // Even if not blocked, it should have low confidence
-        assert!(result.confidence < 1.0);
+        let blocked_by = |r: &VerificationResult, pattern: &str| {
+            assert!(!r.approved, "{}", r.summary);
+            assert_eq!(r.risk_verdict.status, "Blocked", "{}", r.summary);
+            assert_eq!(r.policy_verdict, "Rejected");
+            assert!(
+                r.risk_verdict.findings.iter().any(|f| f.pattern == pattern),
+                "expected {pattern}: {:?}",
+                r.risk_verdict.findings
+            );
+            let l7 = r
+                .layers
+                .iter()
+                .find(|l| l.layer == "L7_RiskVerification")
+                .expect("L7");
+            assert_eq!(l7.status, LayerStatus::Failed, "{}", l7.reason);
+        };
+        blocked_by(&result, "UnexpectedCpi");
+        // ...and without it, SetAuthority is on the Risk Engine's
+        // unconditional table.
+        let mut input = input;
+        input.cpi_targets.clear();
+        let result = core.verify(&input).unwrap();
+        blocked_by(&result, "AuthorityHijack");
     }
 
     #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
@@ -10301,6 +10822,69 @@ mod tests {
         assert_eq!(content_hash, "48c65c638aceb5de");
     }
 
+    /// Audit 2026-10-20 (F8): the `audit_trail_id` sequence started at 0 in
+    /// every process, so the first verification after each restart could
+    /// repeat an id already on the trail. It starts at a random per-process
+    /// offset, and the id keeps its `gr-<16hex>-<8hex>` shape.
+    #[test]
+    fn audit_trail_ids_start_at_a_random_offset_and_keep_their_shape() {
+        let seeds: std::collections::BTreeSet<u32> =
+            (0..8).map(|_| audit_sequence_seed()).collect();
+        assert!(seeds.len() > 1, "the seed is not random: {seeds:?}");
+        let risk = RiskVerdictSummary {
+            status: "Clear".to_string(),
+            findings: vec![],
+        };
+        let (id, content_hash) = generate_audit_id(SYSTEM_ID, "02", &[], &None, &[], 0.5, &risk);
+        let parts: Vec<&str> = id.split('-').collect();
+        assert_eq!(parts.len(), 3, "{id}");
+        assert_eq!(parts[0], "gr");
+        assert_eq!(parts[1].len(), 16, "{id}");
+        assert_eq!(parts[2].len(), 8, "{id}");
+        assert!(parts[1..]
+            .iter()
+            .all(|p| p.chars().all(|c| c.is_ascii_hexdigit())));
+        assert_eq!(content_hash.len(), 16);
+        // Consecutive ids in one process still differ by their sequence.
+        let (next, _) = generate_audit_id(SYSTEM_ID, "02", &[], &None, &[], 0.5, &risk);
+        assert_ne!(id, next);
+    }
+
+    /// Audit 2026-10-20 (F5): only a refused transaction executing pages.
+    #[test]
+    fn only_blocked_but_executed_is_a_discrepancy() {
+        assert!(ExecutionReconciliation::BlockedButExecuted.is_discrepancy());
+        for not in [
+            ExecutionReconciliation::RecordedForDifferentBytes {
+                recorded_approved: false,
+                recorded_transaction_sha256: None,
+                chain_transaction_sha256: String::new(),
+            },
+            ExecutionReconciliation::NoVerificationOnRecord,
+            ExecutionReconciliation::ApprovedAndExecuted,
+        ] {
+            assert!(!not.is_discrepancy(), "{not:?}");
+        }
+    }
+
+    const SYSTEM_ID: &str = "11111111111111111111111111111111";
+
+    /// Drive a future that never waits to completion, without a runtime.
+    /// `verify_async` with no RPC client attached awaits nothing that can be
+    /// pending, so the featureless build can run the real pipeline too.
+    fn poll_ready<F: std::future::Future>(future: F) -> F::Output {
+        let mut future = std::pin::pin!(future);
+        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+        match future.as_mut().poll(&mut cx) {
+            std::task::Poll::Ready(output) => output,
+            std::task::Poll::Pending => panic!("the future waited on something"),
+        }
+    }
+
+    /// Audit 2026-10-20 (F18): this called `verify`, which in a featureless
+    /// build is a stub returning `InvalidInput` for EVERY input — the test
+    /// passed there whether or not the cap existed. It runs the pipeline in
+    /// every build now and checks the refusal is the cap's.
     #[test]
     fn test_oversized_instruction_data_rejected() {
         let core = GraphiteCore::new();
@@ -10310,10 +10894,27 @@ mod tests {
             &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"],
         );
         input.instruction_data = Some(vec![0u8; 64 * 1024 + 1]);
-        assert!(matches!(
-            core.verify(&input),
-            Err(VerificationError::InvalidInput(_))
-        ));
+        match poll_ready(core.verify_async(&input)) {
+            Err(VerificationError::InvalidInput(reason)) => assert!(
+                reason.contains("instruction_data exceeds maximum of 65536 bytes"),
+                "refused for another reason: {reason}"
+            ),
+            Err(other) => panic!("refused for an unexpected reason: {other}"),
+            Ok(r) => panic!("an oversized payload was verified: {}", r.summary),
+        }
+        // Control: at the cap the same request is not refused at the door.
+        input.instruction_data = Some({
+            let mut data = vec![0u8; 64 * 1024];
+            data[0] = 2;
+            data
+        });
+        if let Err(VerificationError::InvalidInput(reason)) = poll_ready(core.verify_async(&input))
+        {
+            assert!(
+                !reason.contains("instruction_data exceeds maximum"),
+                "a payload at the cap was refused by the cap: {reason}"
+            );
+        }
     }
 
     #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]

@@ -3,7 +3,9 @@
 #![allow(clippy::all)]
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::semantic_graph_store::BehaviorEvidence;
-use graphite_core::verification::{GraphiteCore, ProposedIntent, VerificationInput};
+use graphite_core::verification::{ProposedIntent, VerificationInput};
+
+mod attack_harness;
 
 const SYSTEM: &str = "11111111111111111111111111111111";
 const SPL_TOKEN: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
@@ -93,52 +95,12 @@ fn high_ev() -> BehaviorEvidence {
     }
 }
 
+/// Round 29 (audit 2026-10-20, MED-6): an error out of `verify()` is a test
+/// failure, not a block (see `attack_harness`).
 fn run(input: VerificationInput) -> graphite_core::VerificationResult {
-    GraphiteCore::new().verify(&input).unwrap_or_else(|e| {
-        // Verification error — construct a blocked result (fail-closed P12)
-        graphite_core::verification::VerificationResult {
-            program_upgrades: Vec::new(),
-            approved: false,
-            confidence: 0.0,
-            breakdown: vec![],
-            trust_tier: "Unknown".to_string(),
-            scope: graphite_core::verification::VerificationScope::Descriptive {
-                unobserved: vec!["test fixture; no transaction was supplied".to_string()],
-                unobserved_codes: vec![graphite_core::verification::UnobservedCode::NoArtifact],
-            },
-            risk_verdict: graphite_core::verification::RiskVerdictSummary {
-                status: "Blocked".to_string(),
-                findings: vec![],
-            },
-            policy_verdict: "Rejected".to_string(),
-            audit_trail_id: "gr-error".to_string(),
-            content_hash: "error".to_string(),
-            transaction: graphite_core::transaction_builder::BuiltTransaction {
-                program_id: input.program_id.clone(),
-                protocol_version: input.protocol_version.clone(),
-                instruction_name: "Error".to_string(),
-                instruction_discriminator: input.instruction_discriminator.clone(),
-                instruction_count: 0,
-                account_count: input.account_addresses.len(),
-                signer_count: 0,
-                writable_count: 0,
-                compute_budget_units: 0,
-                accounts: vec![],
-                data_hex: String::new(),
-                data_len: 0,
-            },
-            resolved_accounts: vec![],
-            protocol_name: "Error".to_string(),
-            instruction_name: "Error".to_string(),
-            manifest_found: false,
-            unknown_protocol: true,
-            manifest_version: None,
-            summary: format!("BLOCKED | error: {:?}", e),
-            simulation_flagged: None,
-            simulation_divergence: None,
-            layers: vec![],
-        }
-    })
+    let r = attack_harness::verify(&input);
+    attack_harness::discover(&input, &r);
+    r
 }
 
 #[test]
@@ -151,14 +113,19 @@ fn test_real_stmt_001() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
+    // With earned evidence for the program the same input is APPROVED; it
+    // is blocked here only because nothing is approvable without evidence.
+    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
     println!(
         "STMT 001 (4 accounts) — approved: {}, confidence: {}, risk: {}",
         result.approved, result.confidence, result.risk_verdict.status
     );
-    // 4 accounts with SPL Token Transfer (manifest expects 3) — account count mismatch
-    // causes L2 Instruction Verification to fail, applying a 0.20 confidence penalty.
-    // Even though SPL Token has a BattleTested manifest, the transaction should not be
-    // approved because confidence falls below TradingBot's 0.80 threshold.
+    // 4 accounts with SPL Token Transfer (the manifest lists 3). This comment used
+    // to say the count mismatch fails L2; it does not (Round 29 measured it): a
+    // multisig owner's signers follow the 3 accounts, so extra accounts are
+    // legal, and with earned evidence this input is approved. What keeps it
+    // under TradingBot's 0.80 here is the absence of evidence alone.
     assert!(
         !result.approved,
         "STMT 001: account count mismatch should not be approved"
@@ -179,13 +146,17 @@ fn test_real_stmt_002() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
+    // With earned evidence for the program the same input is APPROVED; it
+    // is blocked here only because nothing is approvable without evidence.
+    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
     println!(
         "STMT 002 (5 accounts) — approved: {}, confidence: {}, risk: {}",
         result.approved, result.confidence, result.risk_verdict.status
     );
-    // 5 accounts with SPL Token Transfer (manifest expects 3) — account count mismatch
-    // causes L2 Instruction Verification to fail, applying a 0.20 confidence penalty.
-    // Should not be approved (confidence below TradingBot's 0.80 threshold).
+    // 5 accounts with SPL Token Transfer (the manifest lists 3): as in STMT 001,
+    // no layer fails on the count (multisig signers follow the 3 accounts); the
+    // confidence stays under 0.80 only because no evidence is on record.
     assert!(
         !result.approved,
         "STMT 002: account count mismatch should not be approved"
@@ -206,6 +177,7 @@ fn test_real_stmt_003() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:Drainer"]);
     println!(
         "STMT 003 (6 accounts) — approved: {}, confidence: {}, risk: {}",
         result.approved, result.confidence, result.risk_verdict.status
@@ -226,6 +198,7 @@ fn test_real_stmt_004() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:Drainer"]);
     println!(
         "STMT 004 (7 accounts) — approved: {}, confidence: {}, risk: {}",
         result.approved, result.confidence, result.risk_verdict.status
@@ -246,6 +219,7 @@ fn test_real_stmt_005() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:Drainer"]);
     println!(
         "STMT 005 (8 accounts) — approved: {}, confidence: {}, risk: {}",
         result.approved, result.confidence, result.risk_verdict.status
@@ -266,6 +240,7 @@ fn test_real_stmt_006() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:Drainer"]);
     println!(
         "STMT 006 (9 accounts) — approved: {}, confidence: {}, risk: {}",
         result.approved, result.confidence, result.risk_verdict.status
@@ -286,6 +261,7 @@ fn test_real_stmt_007() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:Drainer"]);
     println!(
         "STMT 007 (10 accounts) — approved: {}, confidence: {}, risk: {}",
         result.approved, result.confidence, result.risk_verdict.status
@@ -306,6 +282,7 @@ fn test_real_stmt_008() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:Drainer"]);
     println!(
         "STMT 008 (11 accounts) — approved: {}, confidence: {}, risk: {}",
         result.approved, result.confidence, result.risk_verdict.status
@@ -326,6 +303,7 @@ fn test_real_stmt_009() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:Drainer"]);
     println!(
         "STMT 009 (12 accounts) — approved: {}, confidence: {}, risk: {}",
         result.approved, result.confidence, result.risk_verdict.status
@@ -346,6 +324,7 @@ fn test_real_stmt_010() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:Drainer"]);
     println!(
         "STMT 010 (13 accounts) — approved: {}, confidence: {}, risk: {}",
         result.approved, result.confidence, result.risk_verdict.status
@@ -366,6 +345,10 @@ fn test_real_aat_011() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "AAT 011 (SPL_TOKEN) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -387,6 +370,10 @@ fn test_real_aat_012() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "AAT 012 (TOKEN_2022) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -408,6 +395,10 @@ fn test_real_aat_013() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "AAT 013 (SPL_TOKEN) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -429,6 +420,10 @@ fn test_real_aat_014() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "AAT 014 (TOKEN_2022) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -450,6 +445,10 @@ fn test_real_aat_015() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "AAT 015 (SPL_TOKEN) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -471,6 +470,10 @@ fn test_real_aat_016() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "AAT 016 (TOKEN_2022) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -492,6 +495,10 @@ fn test_real_aat_017() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "AAT 017 (SPL_TOKEN) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -513,6 +520,10 @@ fn test_real_aat_018() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "AAT 018 (TOKEN_2022) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -534,6 +545,10 @@ fn test_real_aat_019() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "AAT 019 (SPL_TOKEN) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -555,6 +570,10 @@ fn test_real_aat_020() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "AAT 020 (TOKEN_2022) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -570,6 +589,7 @@ fn test_real_aat_020() {
 fn test_real_isa_021() {
     let input = make(U2, "02000000", &[A1, A2], &[], WalletProfile::TradingBot);
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["evidence_ceiling", "unknown_protocol"]);
     println!(
         "ISA 021 (prog=A1) — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -584,6 +604,7 @@ fn test_real_isa_021() {
 fn test_real_isa_022() {
     let input = make(U1, "02000000", &[A1, A2], &[], WalletProfile::TradingBot);
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["evidence_ceiling", "unknown_protocol"]);
     println!(
         "ISA 022 (prog=A2) — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -598,6 +619,7 @@ fn test_real_isa_022() {
 fn test_real_isa_023() {
     let input = make(U2, "02000000", &[A1, A2], &[], WalletProfile::TradingBot);
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["evidence_ceiling", "unknown_protocol"]);
     println!(
         "ISA 023 (prog=A3) — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -612,6 +634,7 @@ fn test_real_isa_023() {
 fn test_real_isa_024() {
     let input = make(U1, "02000000", &[A1, A2], &[], WalletProfile::TradingBot);
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["evidence_ceiling", "unknown_protocol"]);
     println!(
         "ISA 024 (prog=A4) — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -626,6 +649,7 @@ fn test_real_isa_024() {
 fn test_real_isa_025() {
     let input = make(U2, "02000000", &[A1, A2], &[], WalletProfile::TradingBot);
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["evidence_ceiling", "unknown_protocol"]);
     println!(
         "ISA 025 (prog=A5) — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -640,6 +664,7 @@ fn test_real_isa_025() {
 fn test_real_isa_026() {
     let input = make(U1, "02000000", &[A1, A2], &[], WalletProfile::TradingBot);
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["evidence_ceiling", "unknown_protocol"]);
     println!(
         "ISA 026 (prog=A6) — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -654,6 +679,7 @@ fn test_real_isa_026() {
 fn test_real_isa_027() {
     let input = make(U2, "02000000", &[A1, A2], &[], WalletProfile::TradingBot);
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["evidence_ceiling", "unknown_protocol"]);
     println!(
         "ISA 027 (prog=A7) — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -668,6 +694,7 @@ fn test_real_isa_027() {
 fn test_real_isa_028() {
     let input = make(U1, "02000000", &[A1, A2], &[], WalletProfile::TradingBot);
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["evidence_ceiling", "unknown_protocol"]);
     println!(
         "ISA 028 (prog=A8) — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -682,6 +709,7 @@ fn test_real_isa_028() {
 fn test_real_isa_029() {
     let input = make(U2, "02000000", &[A1, A2], &[], WalletProfile::TradingBot);
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["evidence_ceiling", "unknown_protocol"]);
     println!(
         "ISA 029 (prog=A9) — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -696,6 +724,7 @@ fn test_real_isa_029() {
 fn test_real_isa_030() {
     let input = make(U1, "02000000", &[A1, A2], &[], WalletProfile::TradingBot);
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["evidence_ceiling", "unknown_protocol"]);
     println!(
         "ISA 030 (prog=A10) — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -716,6 +745,7 @@ fn test_real_compositional_031() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:UnexpectedCpi"]);
     println!(
         "Comp drain 031 (5 accts + CPI) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -733,6 +763,7 @@ fn test_real_compositional_032() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:UnexpectedCpi"]);
     println!(
         "Comp drain 032 (6 accts + CPI) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -750,6 +781,7 @@ fn test_real_compositional_033() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:UnexpectedCpi"]);
     println!(
         "Comp drain 033 (7 accts + CPI) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -767,6 +799,7 @@ fn test_real_compositional_034() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:UnexpectedCpi"]);
     println!(
         "Comp drain 034 (8 accts + CPI) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -784,6 +817,7 @@ fn test_real_compositional_035() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:UnexpectedCpi"]);
     println!(
         "Comp drain 035 (9 accts + CPI) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -801,6 +835,7 @@ fn test_real_compositional_036() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:UnexpectedCpi"]);
     println!(
         "Comp drain 036 (10 accts + CPI) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -818,6 +853,7 @@ fn test_real_compositional_037() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:UnexpectedCpi"]);
     println!(
         "Comp drain 037 (11 accts + CPI) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -835,6 +871,7 @@ fn test_real_compositional_038() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:UnexpectedCpi"]);
     println!(
         "Comp drain 038 (12 accts + CPI) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -852,6 +889,7 @@ fn test_real_compositional_039() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:UnexpectedCpi"]);
     println!(
         "Comp drain 039 (13 accts + CPI) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -869,6 +907,7 @@ fn test_real_compositional_040() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:UnexpectedCpi"]);
     println!(
         "Comp drain 040 (14 accts + CPI) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -886,6 +925,7 @@ fn test_real_fake_swap_041() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
     println!(
         "Fake swap 041 (JUPITER_V6) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -906,6 +946,15 @@ fn test_real_fake_swap_042() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &[
+            "layer:L1_AccountResolution",
+            "risk:AccountCountShortfall",
+            "risk:AccountIdentityMismatch",
+            "risk:MaliciousAccountChange",
+        ],
+    );
     println!(
         "Fake swap 042 (ORCA) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -926,6 +975,13 @@ fn test_real_fake_swap_043() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &[
+            "layer:L5_SemanticVerification",
+            "risk:AccountCountShortfall",
+        ],
+    );
     println!(
         "Fake swap 043 (METEORA) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -946,6 +1002,7 @@ fn test_real_fake_swap_044() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
     println!(
         "Fake swap 044 (JUPITER_V6) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -966,6 +1023,16 @@ fn test_real_fake_swap_045() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &[
+            "layer:L1_AccountResolution",
+            "layer:L4_StateVerification",
+            "risk:AccountCountShortfall",
+            "risk:AccountIdentityMismatch",
+            "risk:MaliciousAccountChange",
+        ],
+    );
     println!(
         "Fake swap 045 (ORCA) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -986,6 +1053,13 @@ fn test_real_fake_swap_046() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &[
+            "layer:L5_SemanticVerification",
+            "risk:AccountCountShortfall",
+        ],
+    );
     println!(
         "Fake swap 046 (METEORA) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1006,6 +1080,7 @@ fn test_real_fake_swap_047() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
     println!(
         "Fake swap 047 (JUPITER_V6) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1026,6 +1101,15 @@ fn test_real_fake_swap_048() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &[
+            "layer:L1_AccountResolution",
+            "risk:AccountCountShortfall",
+            "risk:AccountIdentityMismatch",
+            "risk:MaliciousAccountChange",
+        ],
+    );
     println!(
         "Fake swap 048 (ORCA) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1046,6 +1130,13 @@ fn test_real_fake_swap_049() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &[
+            "layer:L5_SemanticVerification",
+            "risk:AccountCountShortfall",
+        ],
+    );
     println!(
         "Fake swap 049 (METEORA) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1066,6 +1157,7 @@ fn test_real_fake_swap_050() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
     println!(
         "Fake swap 050 (JUPITER_V6) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1086,6 +1178,10 @@ fn test_real_auth_theft_051() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Auth theft 051 — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1103,6 +1199,10 @@ fn test_real_auth_theft_052() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Auth theft 052 — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1120,6 +1220,10 @@ fn test_real_auth_theft_053() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Auth theft 053 — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1137,6 +1241,10 @@ fn test_real_auth_theft_054() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Auth theft 054 — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1154,6 +1262,10 @@ fn test_real_auth_theft_055() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Auth theft 055 — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1171,6 +1283,10 @@ fn test_real_auth_theft_056() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Auth theft 056 — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1188,6 +1304,10 @@ fn test_real_auth_theft_057() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Auth theft 057 — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1205,6 +1325,10 @@ fn test_real_auth_theft_058() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Auth theft 058 — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1222,6 +1346,10 @@ fn test_real_auth_theft_059() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Auth theft 059 — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1239,6 +1367,10 @@ fn test_real_auth_theft_060() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Auth theft 060 — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1256,6 +1388,7 @@ fn test_real_unknown_program_061() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:Drainer", "unknown_protocol"]);
     println!(
         "Unknown prog 061 — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -1276,6 +1409,7 @@ fn test_real_unknown_program_062() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:UnexpectedCpi", "unknown_protocol"]);
     println!(
         "Unknown prog 062 — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -1296,6 +1430,7 @@ fn test_real_unknown_program_063() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:Drainer", "unknown_protocol"]);
     println!(
         "Unknown prog 063 — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -1316,6 +1451,7 @@ fn test_real_unknown_program_064() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:UnexpectedCpi", "unknown_protocol"]);
     println!(
         "Unknown prog 064 — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -1336,6 +1472,7 @@ fn test_real_unknown_program_065() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:Drainer", "unknown_protocol"]);
     println!(
         "Unknown prog 065 — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -1356,6 +1493,7 @@ fn test_real_unknown_program_066() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:UnexpectedCpi", "unknown_protocol"]);
     println!(
         "Unknown prog 066 — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -1376,6 +1514,7 @@ fn test_real_unknown_program_067() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:Drainer", "unknown_protocol"]);
     println!(
         "Unknown prog 067 — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -1396,6 +1535,7 @@ fn test_real_unknown_program_068() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:UnexpectedCpi", "unknown_protocol"]);
     println!(
         "Unknown prog 068 — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -1416,6 +1556,7 @@ fn test_real_unknown_program_069() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:Drainer", "unknown_protocol"]);
     println!(
         "Unknown prog 069 — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -1436,6 +1577,7 @@ fn test_real_unknown_program_070() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["risk:UnexpectedCpi", "unknown_protocol"]);
     println!(
         "Unknown prog 070 — confidence: {}, unknown: {}",
         result.confidence, result.unknown_protocol
@@ -1457,6 +1599,10 @@ fn test_real_evasion_071() {
         high_ev(),
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Evasion 071 (high evidence) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1478,6 +1624,10 @@ fn test_real_evasion_072() {
         high_ev(),
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Evasion 072 (high evidence) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1499,6 +1649,10 @@ fn test_real_evasion_073() {
         high_ev(),
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Evasion 073 (high evidence) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1520,6 +1674,10 @@ fn test_real_evasion_074() {
         high_ev(),
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Evasion 074 (high evidence) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1541,6 +1699,10 @@ fn test_real_evasion_075() {
         high_ev(),
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Evasion 075 (high evidence) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1562,6 +1724,10 @@ fn test_real_evasion_076() {
         high_ev(),
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Evasion 076 (high evidence) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1583,6 +1749,10 @@ fn test_real_evasion_077() {
         high_ev(),
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Evasion 077 (high evidence) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1604,6 +1774,10 @@ fn test_real_evasion_078() {
         high_ev(),
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Evasion 078 (high evidence) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1625,6 +1799,10 @@ fn test_real_evasion_079() {
         high_ev(),
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Evasion 079 (high evidence) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1646,6 +1824,10 @@ fn test_real_evasion_080() {
         high_ev(),
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Evasion 080 (high evidence) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1660,6 +1842,10 @@ fn test_real_evasion_080() {
 fn test_real_policy_bypass_081() {
     let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::Treasury);
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Policy bypass 081 (Treasury) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1680,6 +1866,10 @@ fn test_real_policy_bypass_082() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Policy bypass 082 (TradingBot) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1694,6 +1884,10 @@ fn test_real_policy_bypass_082() {
 fn test_real_policy_bypass_083() {
     let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::Gaming);
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Policy bypass 083 (Gaming) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1714,6 +1908,10 @@ fn test_real_policy_bypass_084() {
         WalletProfile::Enterprise,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Policy bypass 084 (Enterprise) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1734,6 +1932,10 @@ fn test_real_policy_bypass_085() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Policy bypass 085 (TradingBot) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1748,6 +1950,10 @@ fn test_real_policy_bypass_085() {
 fn test_real_policy_bypass_086() {
     let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::Gaming);
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Policy bypass 086 (Gaming) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1762,6 +1968,10 @@ fn test_real_policy_bypass_086() {
 fn test_real_policy_bypass_087() {
     let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::Treasury);
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Policy bypass 087 (Treasury) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1782,6 +1992,10 @@ fn test_real_policy_bypass_088() {
         WalletProfile::Enterprise,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Policy bypass 088 (Enterprise) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1802,6 +2016,10 @@ fn test_real_policy_bypass_089() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Policy bypass 089 (TradingBot) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1816,6 +2034,10 @@ fn test_real_policy_bypass_089() {
 fn test_real_policy_bypass_090() {
     let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::Gaming);
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Policy bypass 090 (Gaming) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1836,6 +2058,10 @@ fn test_real_edge_091() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Edge 091 (SetAuthority) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1853,6 +2079,10 @@ fn test_real_edge_092() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
+    // With earned evidence for the program the same input is APPROVED; it
+    // is blocked here only because nothing is approvable without evidence.
+    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
     println!(
         "Edge 092 (Transfer) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1873,6 +2103,7 @@ fn test_real_edge_093() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["layer:L5_SemanticVerification", "risk:Drainer"]);
     println!(
         "Edge 093 (CloseAccount) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1890,6 +2121,10 @@ fn test_real_edge_094() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Edge 094 (SetAuthority) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1907,6 +2142,10 @@ fn test_real_edge_095() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
+    // With earned evidence for the program the same input is APPROVED; it
+    // is blocked here only because nothing is approvable without evidence.
+    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
     println!(
         "Edge 095 (Transfer) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1927,6 +2166,7 @@ fn test_real_edge_096() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["layer:L5_SemanticVerification", "risk:Drainer"]);
     println!(
         "Edge 096 (CloseAccount) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1944,6 +2184,10 @@ fn test_real_edge_097() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Edge 097 (SetAuthority) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1961,6 +2205,10 @@ fn test_real_edge_098() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
+    // With earned evidence for the program the same input is APPROVED; it
+    // is blocked here only because nothing is approvable without evidence.
+    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
     println!(
         "Edge 098 (Transfer) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1981,6 +2229,7 @@ fn test_real_edge_099() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(&result, &["layer:L5_SemanticVerification", "risk:Drainer"]);
     println!(
         "Edge 099 (CloseAccount) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1998,9 +2247,48 @@ fn test_real_edge_100() {
         WalletProfile::TradingBot,
     );
     let result = run(input);
+    attack_harness::assert_blocked_by(
+        &result,
+        &["layer:L5_SemanticVerification", "risk:AuthorityHijack"],
+    );
     println!(
         "Edge 100 (SetAuthority) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
     );
     assert!(!result.approved, "SetAuthority must be blocked");
+}
+
+// ─── Positive controls (Round 29, audit 2026-10-20, MED-6) ─────────────────
+//
+// Every case above is a block, and with no earned evidence nothing is
+// approvable at all, so a block alone proves nothing. These put the same
+// input shape through an engine that HAS earned evidence for the program:
+// a benign transaction is approved, and an attack on that same engine is
+// still refused, by its detector.
+
+#[test]
+fn positive_control_benign_system_transfer_is_approved_with_earned_evidence() {
+    let core = attack_harness::seeded_core(SYSTEM, &["debits accounts.from by amount"]);
+    let mut input = make(
+        SYSTEM,
+        "02000000",
+        &[A1, A2],
+        &[],
+        WalletProfile::TradingBot,
+    );
+    input.compute_units = 150;
+    input.account_writes = 2;
+    attack_harness::assert_approved(&attack_harness::verify_with(&core, &input));
+}
+
+#[test]
+fn positive_control_an_attack_on_the_same_engine_is_refused_by_its_detector() {
+    // System `Assign` (hands the account to another program) under a
+    // transfer intent, on the engine that approves the transfer above.
+    let core = attack_harness::seeded_core(SYSTEM, &["debits accounts.from by amount"]);
+    let mut input = make(SYSTEM, "01000000", &[A1], &[], WalletProfile::TradingBot);
+    input.compute_units = 150;
+    input.account_writes = 2;
+    let r = attack_harness::verify_with(&core, &input);
+    attack_harness::assert_blocked_by(&r, &["risk:AuthorityHijack"]);
 }

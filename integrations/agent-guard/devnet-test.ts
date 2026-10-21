@@ -28,7 +28,7 @@ import { executeBoundTransaction } from "./execution-lifecycle.js";
 import { ResidualPolicy } from "./residual-policy.js";
 import { GraphiteClient } from "../../sdk/typescript/src/client.js";
 import type { VerificationInput } from "../../sdk/typescript/src/types.js";
-import { assertNoLegacyEnvNames, rpcHostForLog } from "./env-names.js";
+import { assertDevnetCluster, assertNoLegacyEnvNames, rpcHostForLog } from "./env-names.js";
 
 /**
  * The Core, through the SDK client and nowhere else.
@@ -98,6 +98,9 @@ async function main() {
   const keyPair = Keypair.fromSecretKey(bs58.decode(privateKey));
   const walletPubkey = keyPair.publicKey.toBase58();
   const connection = new Connection(rpcUrl, "confirmed");
+  // Round 29 (audit 2026-10-20, Info): devnet by its genesis hash, before
+  // anything is built — this script signs and submits.
+  assertDevnetCluster(await connection.getGenesisHash(), rpcUrl);
   const balance = await connection.getBalance(keyPair.publicKey);
 
   console.log(`Wallet:   ${walletPubkey}`);

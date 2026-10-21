@@ -219,6 +219,9 @@ fn a_malformed_first_entry_is_distinguishable_from_no_extensions() {
 /// Trailing bytes too short to be a header are reported, not ignored.
 #[test]
 fn trailing_bytes_shorter_than_a_header_are_reported() {
+    // Round 29 (audit 2026-10-20, M11): only when they are not padding. A
+    // NON-ZERO type with no room for its length is refused, as Token-2022's
+    // own walk refuses it; zero padding is not (next test).
     let mut data = with_extensions(1000, &[(7, 0)]);
     data.extend_from_slice(&[0x0e, 0x00, 0x20]); // three of the four header bytes
     let scan = detect_token2022_extensions(&data);
@@ -228,6 +231,26 @@ fn trailing_bytes_shorter_than_a_header_are_reported() {
         "{:?}",
         scan.malformed
     );
+}
+
+/// Round 29 (M11): Token-2022 pads an account whose length would equal
+/// `Multisig::LEN` (355) with two zero bytes (`adjust_len_for_multisig`), and
+/// its walk ends at a zero type. Such a tail ends the region cleanly; it was
+/// a Critical "region unreadable".
+#[test]
+fn zero_padding_shorter_than_a_header_ends_the_region() {
+    // 166 bytes of base and type, then one entry of 4 + 185 bytes: 355,
+    // padded to 357 exactly as the program sizes it.
+    let mut data = with_extensions(1000, &[(7, 185)]);
+    assert_eq!(data.len(), 355);
+    data.extend_from_slice(&[0, 0]);
+    let scan = detect_token2022_extensions(&data);
+    assert_eq!(names(&scan.found), vec!["ImmutableOwner"]);
+    assert!(scan.malformed.is_none(), "{:?}", scan.malformed);
+    // One non-zero trailing byte is still refused.
+    let mut odd = with_extensions(1000, &[(7, 0)]);
+    odd.push(5);
+    assert!(detect_token2022_extensions(&odd).malformed.is_some());
 }
 
 /// A type byte that is neither Account nor Mint on data long enough to carry a
