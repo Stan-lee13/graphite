@@ -206,6 +206,18 @@ export function realAccountMetas(
  * budget in the message config and its signatures at the END of the frame;
  * every helper below that slices a frame dispatches on the leading `0x81`.
  */
+/**
+ * A key that may sign a bound transaction: a web3.js `Keypair` (its secret
+ * key is imported into WebCrypto for the one signature), or — what the guard
+ * holds since Round 30 — a public key with a NON-EXTRACTABLE WebCrypto key
+ * pair, whose private half no code in the process can read back out as bytes.
+ */
+export type TransactionSigner = Keypair | { readonly publicKey: PublicKey; readonly keyPair: CryptoKeyPair };
+
+async function cryptoKeyPairOf(signer: TransactionSigner): Promise<CryptoKeyPair> {
+  return "keyPair" in signer ? signer.keyPair : createKeyPairFromBytes(signer.secretKey);
+}
+
 export class BoundTransaction {
   /** The single compiled transaction that is verified, signed and submitted. */
   #tx: KitTransaction;
@@ -236,6 +248,12 @@ export class BoundTransaction {
     this.#artifact = artifact;
     this.#message = Uint8Array.from(tx.messageBytes);
     this.#blockhash = blockhash;
+    // Round 30: `version`, `lookupTableCount` and `lastValidBlockHeight` are
+    // read on the execution path (the declaration sent to the Core, the
+    // confirmation bound, the record of an unresolved submission); frozen so
+    // nothing holding the object can rewrite them. Private fields are not
+    // affected by freezing.
+    Object.freeze(this);
   }
 
   /** The unsigned serialization handed to Graphite (a copy). */
@@ -385,7 +403,7 @@ export class BoundTransaction {
    * Returns the exact bytes to submit. Nothing else may be submitted: they are
    * the only thing here that has been checked end to end.
    */
-  async signApproved(approvedSha256: string, signers: Keypair[]): Promise<Uint8Array> {
+  async signApproved(approvedSha256: string, signers: readonly TransactionSigner[]): Promise<Uint8Array> {
     this.assertApproved(approvedSha256);
     this.assertSignersMatchTheMessage(signers);
     // Kit signs asynchronously, so two calls could both pass the checks above
@@ -408,7 +426,7 @@ export class BoundTransaction {
    * nothing downstream would notice a transaction signed by the wrong key or
    * one short of a required signature.
    */
-  private assertSignersMatchTheMessage(signers: Keypair[]): void {
+  private assertSignersMatchTheMessage(signers: readonly TransactionSigner[]): void {
     const required = requiredSigners(this.#message).sort();
     const supplied = signers.map((s) => s.publicKey.toBase58()).sort();
     const same =
@@ -447,8 +465,8 @@ export class BoundTransaction {
    * signature array rather than by re-compiling: a recompile would be asking
    * the same code that built it whether it built it.
    */
-  private async signAndFreeze(signers: Keypair[]): Promise<Uint8Array> {
-    const keyPairs = await Promise.all(signers.map((s) => createKeyPairFromBytes(s.secretKey)));
+  private async signAndFreeze(signers: readonly TransactionSigner[]): Promise<Uint8Array> {
+    const keyPairs = await Promise.all(signers.map(cryptoKeyPairOf));
     const signed = await signTransaction(keyPairs, this.#tx);
     // The object moves on to the signed transaction, as the web3.js one did:
     // a second signApproved re-encodes it, finds signatures where the approved
@@ -466,6 +484,12 @@ export class BoundTransaction {
     return raw;
   }
 }
+// Round 30: the one signing path cannot be replaced at runtime. Without this,
+// code holding the class — an in-process tool or plugin — could assign
+// `BoundTransaction.prototype.signApproved` (and be handed the guard's signer
+// on the next execution) or `assertApproved` (and sign unverified bytes).
+Object.freeze(BoundTransaction.prototype);
+Object.freeze(BoundTransaction);
 
 /** Version byte, header and static keys of a legacy, v0 or v1 message. */
 function messageKeys(message: Uint8Array): { v0: boolean; header: number[]; keys: string[]; after: number } {

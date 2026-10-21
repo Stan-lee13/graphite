@@ -87,6 +87,19 @@ test("devnet-test runs on devnet (by genesis hash) or a loopback validator, neve
   const source = readFileSync(new URL("./devnet-test.ts", import.meta.url), "utf8");
   const check = source.indexOf("assertDevnetCluster(await connection.getGenesisHash(), rpcUrl)");
   assert.ok(check > 0, "devnet-test.ts checks the cluster");
-  const firstExecution = source.indexOf("await executeBoundTransaction(");
+  const firstExecution = source.indexOf("await guard.executeTransfer(");
   assert.ok(firstExecution > 0 && check < firstExecution, "before anything is signed");
+});
+
+// Round 30 (audit finding K-09): the demo executes through the guard — spend
+// cap, grounding, AuditBind, the execution decision, confirmation — and never
+// through the signing primitives directly.
+test("K-09: devnet-test executes only through GraphiteGuard, capped and confirmed", () => {
+  const source = readFileSync(new URL("./devnet-test.ts", import.meta.url), "utf8");
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  for (const primitive of ["executeBoundTransaction(", "signApproved(", "sendRawTransaction(", "sendTransaction(", "BoundTransaction.build("]) {
+    assert.ok(!code.includes(primitive), `devnet-test.ts calls ${primitive} itself`);
+  }
+  assert.match(code, /GraphiteGuard\.create\(\{[\s\S]*?spendPolicy: \{ maxTransferLamports: \d[\d_]*n/);
+  assert.match(code, /guard\.executeTransfer\(request, \{\s*\n?[\s\S]*?confirm: async/);
 });

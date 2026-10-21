@@ -24,7 +24,6 @@
  * check is `signApproved`'s, and the reconciliation is the server's.
  */
 
-import type { Keypair } from "@solana/web3.js";
 import type {
   ExecutionCheckResult,
   LifecycleEventInput,
@@ -33,8 +32,8 @@ import type {
   VerdictOnRecord,
   VerificationResult,
 } from "../../sdk/typescript/src/types.js";
-import { firstSignatureOf, type BoundTransaction } from "./artifact.js";
-import type { ResidualPolicy } from "./residual-policy.js";
+import { firstSignatureOf, type BoundTransaction, type TransactionSigner } from "./artifact.js";
+import type { ExecutionDecision, ResidualPolicy } from "./residual-policy.js";
 
 /** The two Connection calls this path makes, so a test can stand in a fake. */
 export interface SubmitConnection {
@@ -70,6 +69,15 @@ export interface ExecutionLifecycle {
   rpcReportedSignature?: string;
   /** Non-inherent residuals the policy accepted for this execution (P14). */
   acceptedUnobserved: UnobservedCode[];
+  /**
+   * The execution decision this process acted on (Round 30, G-01):
+   * `executable_approved`, or `analysis_only` under residuals the operator
+   * accepted by name. Recomputed from the verdict's scope and, when the Core
+   * reported one, equal to its `decision`.
+   */
+  decision: "executable_approved" | "analysis_only";
+  /** The Core's own `decision`, or null from a server that predates it. */
+  reportedDecision: ExecutionDecision | null;
   /** The `signing` event reached the trail before submission (always true on a returned lifecycle). */
   signingRecorded: true;
   /** What the trail said about the content_hash when signing was reported. */
@@ -94,7 +102,12 @@ export interface ExecutionLifecycle {
 export interface ExecuteParams {
   bound: BoundTransaction;
   verification: VerificationResult;
-  signers: Keypair[];
+  /**
+   * Exactly the signers the message requires: web3.js `Keypair`s, or
+   * `{ publicKey, keyPair }` with a non-extractable WebCrypto key pair (what
+   * the guard holds since Round 30).
+   */
+  signers: TransactionSigner[];
   connection: SubmitConnection;
   graphite: LifecycleReporter;
   policy: ResidualPolicy;
@@ -119,7 +132,25 @@ export interface ExecuteParams {
    * caller's hook through this.
    */
   confirm?: (decided: { acceptedUnobserved: UnobservedCode[] }) => Promise<boolean>;
+  /**
+   * How long `confirm` may take, in milliseconds (default
+   * `DEFAULT_CONFIRM_TIMEOUT_MS`). A confirmation that has not answered by
+   * then is a decline (Round 30): a hook that never returns must not hold a
+   * signing decision open, and an answer that arrives minutes later is an
+   * answer about a transaction the person saw minutes ago.
+   */
+  confirmTimeoutMs?: number;
+  /**
+   * Called with the transaction's signature after the signing is on the
+   * trail and immediately before the bytes are handed to the RPC (Round 30).
+   * The guard records the submission as unresolved here, durably, so a crash
+   * during the send cannot lose it. A throw aborts: nothing is sent.
+   */
+  beforeSubmit?: (signature: string) => void;
 }
+
+/** How long a confirmation hook may take before it counts as declined (Round 30). */
+export const DEFAULT_CONFIRM_TIMEOUT_MS = 120_000;
 
 /** The person (or the caller's hook) did not confirm: nothing was signed or sent. */
 export class ConfirmationDeclined extends Error {
@@ -178,9 +209,10 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
   }
 
   // 1. Policy: what the verdict did not observe, against what this deployment
-  //    accepts. Refuses on anything else, including a server that reports no
-  //    codes.
-  const decision = p.policy.assertExecutable(verification.scope, label);
+  //    accepts, and the Core's execution decision recomputed and compared
+  //    (Round 30, G-01). Refuses on anything else, including a server that
+  //    reports no codes and a decision that disagrees with its own scope.
+  const decision = p.policy.assertExecutableVerdict(verification, label);
   const scope = verification.scope;
   if (scope?.kind !== "artifact_bound") {
     // Unreachable after assertExecutable; kept so the type narrows.
@@ -196,13 +228,25 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
   // 1b. The caller's last say (Round 29, M7): after everything that can
   //     refuse has run, before the one irreversible local step.
   if (p.confirm) {
-    let confirmed: boolean;
+    const timeoutMs = p.confirmTimeoutMs ?? DEFAULT_CONFIRM_TIMEOUT_MS;
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
+      throw new ConfirmationDeclined(label, `the confirmation timeout ${String(timeoutMs)} is not a positive integer of milliseconds`);
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<"timeout">((resolve) => {
+      timer = setTimeout(() => resolve("timeout"), timeoutMs);
+    });
+    let answer: unknown;
     try {
-      confirmed = (await p.confirm({ acceptedUnobserved: [...decision.accepted] })) === true;
+      answer = await Promise.race([p.confirm({ acceptedUnobserved: [...decision.accepted] }), timedOut]);
     } catch (e) {
       throw new ConfirmationDeclined(label, `the confirmation failed: ${message(e)}`);
+    } finally {
+      clearTimeout(timer);
     }
-    if (!confirmed) throw new ConfirmationDeclined(label, "declined");
+    if (answer === "timeout") throw new ConfirmationDeclined(label, `no answer within ${timeoutMs} ms`);
+    // Exactly `true`: "yes", 1 or an object is not a confirmation.
+    if (answer !== true) throw new ConfirmationDeclined(label, "declined");
   }
 
   // 2. The one signing path: digest and signer set re-derived over this
@@ -266,6 +310,16 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
   //    ambiguously still leaves the caller holding it. It used to be thrown
   //    away with the error, and a retry built and signed a second transfer.
   const signature = firstSignatureOf(raw);
+  if (p.beforeSubmit) {
+    try {
+      p.beforeSubmit(signature);
+    } catch (e) {
+      throw new Error(
+        `[Graphite] ${label}: signed, but the submission of ${signature} could not be recorded before sending ` +
+          `(${message(e)}). NOT submitting.`,
+      );
+    }
+  }
   let reported: string;
   try {
     reported = await p.connection.sendRawTransaction(raw);
@@ -299,6 +353,8 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
     signature,
     ...(reported !== signature ? { rpcReportedSignature: reported } : {}),
     acceptedUnobserved: decision.accepted,
+    decision: decision.decision,
+    reportedDecision: decision.reportedDecision,
     signingRecorded: true,
     verdictOnRecordAtSigning: signing.verdict_on_record,
     submissionRecorded: false,
@@ -323,6 +379,11 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
         transaction_sha256: scope.transaction_sha256,
         transaction_signature: signature,
         reported_by: p.reportedBy,
+        // Round 30: an RPC that answered with another id is an anomaly the
+        // trail keeps, not only a log line in this process.
+        ...(reported !== signature
+          ? { detail: `RPC ANOMALY: sendTransaction answered ${String(reported).slice(0, 100)}; the signed bytes carry ${signature}` }
+          : {}),
       });
       lifecycle.submissionRecorded = true;
       lifecycle.submissionRecordError = undefined;

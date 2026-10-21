@@ -42,8 +42,8 @@ approves is signed and submitted on whatever cluster `SOLANA_RPC_URL` names.
 - **Graphite's verdict** on the exact bytes, as in every integration.
 - **A per-transaction cap is required** (`GRAPHITE_MAX_TRANSFER_LAMPORTS`); optionally an
   allowlist of destinations (`GRAPHITE_ALLOWED_DESTINATIONS`) and an aggregate limit over a
-  rolling window (`GRAPHITE_MAX_TOTAL_LAMPORTS`, `GRAPHITE_SPEND_WINDOW_SECONDS`; in memory,
-  per process). The server refuses to start without the cap, even when the guard has been
+  rolling window (`GRAPHITE_MAX_TOTAL_LAMPORTS`, `GRAPHITE_SPEND_WINDOW_SECONDS`; per process,
+  durable across restarts with `GRAPHITE_GUARD_STATE_FILE`). The server refuses to start without the cap, even when the guard has been
   told to run uncapped. A transfer's amount and destination are checked before anything is
   built. A swap's outflow is measured by simulating the exact transaction (lamports out of
   the wallet, fee and wrapped SOL included) before it is signed: over the cap is refused,

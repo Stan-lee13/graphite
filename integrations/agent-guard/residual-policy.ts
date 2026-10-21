@@ -40,12 +40,37 @@ export const ACCEPT_UNOBSERVED_ENV = "GRAPHITE_ACCEPT_UNOBSERVED";
 
 const KNOWN: ReadonlySet<string> = new Set<string>(UNOBSERVED_CODES);
 
+/**
+ * The Core's execution decision (Round 30, G-01): `decision` on a verdict,
+ * with `executable` true exactly when it is `executable_approved`. Only that
+ * value permits signing; `approved` alone never did. Any other string is a
+ * decision this guard does not know, and is not executable.
+ */
+export const EXECUTION_DECISIONS = ["executable_approved", "analysis_only", "inconclusive", "blocked"] as const;
+export type ExecutionDecision = (typeof EXECUTION_DECISIONS)[number];
+
 /** What the policy established about one verdict it allowed through. */
 export interface ResidualDecision {
   /** Non-inherent residuals that were present and accepted by configuration. */
   accepted: UnobservedCode[];
   /** Inherent residuals present (always allowed; recorded for completeness). */
   inherent: UnobservedCode[];
+  /**
+   * The execution decision recomputed here from the verdict's scope:
+   * `executable_approved` when nothing beyond the inherent residuals is
+   * unobserved, `analysis_only` when the deployment accepted the rest by name.
+   */
+  decision: "executable_approved" | "analysis_only";
+  /** What the Core reported as `decision`, or null for a server that predates it. */
+  reportedDecision: ExecutionDecision | null;
+}
+
+/** The parts of a verdict the execution decision is read from. */
+export interface DecidableVerdict {
+  approved: boolean;
+  scope?: VerificationScope;
+  decision?: unknown;
+  executable?: unknown;
 }
 
 /**
@@ -61,7 +86,9 @@ export class ResidualPolicyRefusal extends Error {
 }
 
 export class ResidualPolicy {
-  private readonly acceptedCodes: ReadonlySet<UnobservedCode>;
+  // An ES private field (Round 30): a TypeScript `private` Set was reachable
+  // at runtime as `policy.acceptedCodes` and could be `.add`ed to.
+  readonly #acceptedCodes: ReadonlySet<UnobservedCode>;
 
   /**
    * @param accepted The non-inherent codes this deployment accepts. Each must
@@ -81,7 +108,8 @@ export class ResidualPolicy {
       }
       set.add(code as UnobservedCode);
     }
-    this.acceptedCodes = set;
+    this.#acceptedCodes = set;
+    Object.freeze(this);
   }
 
   /**
@@ -96,7 +124,7 @@ export class ResidualPolicy {
 
   /** The non-inherent codes this policy accepts, sorted, for logs and outcomes. */
   accepts(): UnobservedCode[] {
-    return [...this.acceptedCodes].filter((c) => !INHERENT_UNOBSERVED.has(c)).sort();
+    return [...this.#acceptedCodes].filter((c) => !INHERENT_UNOBSERVED.has(c)).sort();
   }
 
   /**
@@ -108,7 +136,7 @@ export class ResidualPolicy {
    * the prose on the same verdict says otherwise. Codes and prose are paired
    * by position, so a length mismatch is a malformed verdict and a refusal.
    */
-  assertExecutable(scope: VerificationScope | undefined, label: string): ResidualDecision {
+  assertExecutable(scope: VerificationScope | undefined, label: string): Omit<ResidualDecision, "decision" | "reportedDecision"> {
     if (scope?.kind !== "artifact_bound") {
       throw new ResidualPolicyRefusal(
         `[Graphite] ${label}: the verdict is ${scope?.kind ?? "unscoped"}, not artifact_bound. ` +
@@ -140,7 +168,7 @@ export class ResidualPolicy {
         refused.push(`${code} (unknown to this bridge): ${scope.unobserved[i]}`);
       } else if (INHERENT_UNOBSERVED.has(code)) {
         inherent.push(code);
-      } else if (this.acceptedCodes.has(code)) {
+      } else if (this.#acceptedCodes.has(code)) {
         accepted.push(code);
       } else {
         refused.push(`${code}: ${scope.unobserved[i]}`);
@@ -159,4 +187,64 @@ export class ResidualPolicy {
     }
     return { accepted, inherent };
   }
+
+  /**
+   * The whole execution decision on one verdict (Round 30, G-01): approved,
+   * artifact-bound, every residual inherent or accepted — and, when the Core
+   * reports its own `decision`, the same answer.
+   *
+   * The Core's `decision` is not taken on trust: it is recomputed here from
+   * the scope, and a server that says `executable_approved` over a residual,
+   * or `analysis_only` over none, or `blocked` on an approval, or a value
+   * this guard does not know, disagrees with its own verdict and is refused.
+   * `executable` must say the same as `decision`. A server that reports no
+   * `decision` (one that predates it) is judged by the recomputation alone,
+   * which is what this policy always did.
+   *
+   * `analysis_only` proceeds only when every residual that made it so is one
+   * the operator accepted by name; nothing else turns it into a signature.
+   */
+  assertExecutableVerdict(verdict: DecidableVerdict, label: string): ResidualDecision {
+    if (verdict.approved !== true) {
+      throw new ResidualPolicyRefusal(`[Graphite] ${label}: the verdict is not an approval. ABORTING.`);
+    }
+    const reported = verdict.decision;
+    if (reported !== undefined && !(EXECUTION_DECISIONS as readonly unknown[]).includes(reported)) {
+      throw new ResidualPolicyRefusal(
+        `[Graphite] ${label}: the verdict's decision ${JSON.stringify(reported)} is not one this guard knows ` +
+          `(${EXECUTION_DECISIONS.join(", ")}). An unknown decision is not an executable one. ABORTING.`,
+      );
+    }
+    if (verdict.executable !== undefined && typeof verdict.executable !== "boolean") {
+      throw new ResidualPolicyRefusal(`[Graphite] ${label}: the verdict's \`executable\` is not a boolean. ABORTING.`);
+    }
+    if (reported === "blocked" || reported === "inconclusive") {
+      throw new ResidualPolicyRefusal(
+        `[Graphite] ${label}: the verdict says approved but its decision is "${reported}". A verdict that ` +
+          "contradicts itself is not executed. ABORTING.",
+      );
+    }
+    const { accepted, inherent } = this.assertExecutable(verdict.scope, label);
+    const decision = accepted.length === 0 ? "executable_approved" : "analysis_only";
+    if (reported !== undefined && reported !== decision) {
+      throw new ResidualPolicyRefusal(
+        `[Graphite] ${label}: the Core decided "${reported}", but its own scope makes this verdict ` +
+          `"${decision}" (${accepted.length === 0 ? "nothing beyond the inherent residuals is unobserved" : `unobserved: ${accepted.join(", ")}`}). ` +
+          "The two must agree before anything is signed. ABORTING.",
+      );
+    }
+    const effective = (reported as ExecutionDecision | undefined) ?? decision;
+    if (verdict.executable !== undefined && verdict.executable !== (effective === "executable_approved")) {
+      throw new ResidualPolicyRefusal(
+        `[Graphite] ${label}: the verdict's \`executable\` (${String(verdict.executable)}) contradicts its ` +
+          `decision "${effective}". ABORTING.`,
+      );
+    }
+    return { accepted, inherent, decision, reportedDecision: (reported as ExecutionDecision | undefined) ?? null };
+  }
 }
+// Round 30: the gate's methods cannot be replaced at runtime by code holding
+// the class (an in-process tool or plugin): `ResidualPolicy.prototype.
+// assertExecutableVerdict = () => ...` throws instead of switching it off.
+Object.freeze(ResidualPolicy.prototype);
+Object.freeze(ResidualPolicy);
