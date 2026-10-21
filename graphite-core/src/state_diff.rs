@@ -124,6 +124,7 @@ pub struct MintView {
 
 /// The state of one account at one point in time.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct AccountSnapshot {
     pub pubkey: String,
     pub lamports: u64,
@@ -1115,6 +1116,7 @@ fn decode_mint_checked(data: &[u8]) -> Result<Option<MintView>, String> {
 /// `None` on either side means the account did not exist at that point:
 /// `before: None` is a creation, `after: None` is a full close.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct AccountDelta {
     pub pubkey: String,
     #[serde(default)]
@@ -1341,6 +1343,7 @@ fn rent_exempt_minimum(data_len: usize) -> i128 {
 
 /// A complete pre/post picture of a transaction's effect on account state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct StateDiff {
     pub deltas: Vec<AccountDelta>,
     #[serde(default)]
