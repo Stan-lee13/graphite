@@ -292,7 +292,14 @@ fn t05_system_transfer_to_unknown() {
         None,
     );
     let r = run(input);
-    attack_harness::assert_blocked_by(&r, &["risk:UnspendableDestination"]);
+    // The System program sits in a slot past the transfer's two accounts,
+    // not at its destination; since the audit of 2026-10-20 (R-4) only the
+    // destination (and, at five '1's, the source) of a fund movement is held
+    // to the unspendable and impersonation rules, so nothing here is an
+    // attack the Risk Engine names. A one-byte label is not System's
+    // four-byte Transfer selector, so the instruction is undescribed and the
+    // request is refused for want of evidence alone.
+    attack_harness::assert_blocked_by(&r, &["evidence_ceiling"]);
     assert!(
         r.confidence < 1.0,
         "System transfer to unknown should not be 100%"
@@ -1264,7 +1271,12 @@ fn t43_stale_state_closed_account() {
         None,
     );
     let r = run(input);
-    attack_harness::assert_blocked_by(&r, &["risk:UnspendableDestination"]);
+    // The SPL Token program is the transfer's AUTHORITY slot here (source,
+    // destination, authority), not its destination; the unspendable rule
+    // judges the destination only (audit 2026-10-20, R-4), and a stale
+    // account is not something the request-time Core can see. Refused for
+    // want of evidence alone.
+    attack_harness::assert_blocked_by(&r, &["evidence_ceiling"]);
     assert!(
         r.confidence < 1.0,
         "Stale state account should not get 100% confidence"

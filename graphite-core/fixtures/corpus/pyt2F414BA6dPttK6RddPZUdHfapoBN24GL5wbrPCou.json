@@ -3,7 +3,7 @@
     "program_id": "pyt2F414BA6dPttK6RddPZUdHfapoBN24GL5wbrPCou",
     "version": "1.0.0",
     "content_hash": "24b2b41d6f2161ec2c77b2e91b14f3b2bbc19cc6f2f2b7bc9bd123693eadd7eb",
-    "expected_approved": false,
+    "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {
@@ -66,7 +66,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "ceb7a5a1b0d4eb531b4bb5dc38c1ce0733a2400fa33293d61c874ff9344cb68f"
   },
   {
     "program_id": "pyt2F414BA6dPttK6RddPZUdHfapoBN24GL5wbrPCou",
@@ -135,7 +136,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "e8aad8b1eedf3e5810bde957a7d0d2467dc55e1e2d2aa0ec543fd47ddaf301ee"
   },
   {
     "program_id": "pyt2F414BA6dPttK6RddPZUdHfapoBN24GL5wbrPCou",
@@ -204,7 +206,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "112e12c6d4b1af3a892763b98a9d25150435c37ec2d3a17abf7ec4048e6c733b"
   },
   {
     "program_id": "pyt2F414BA6dPttK6RddPZUdHfapoBN24GL5wbrPCou",
@@ -281,7 +284,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "a7c690d1a51fe75b4eca97a7c1f521796221b199c34c40e9263b2281b8ccc1bc"
   },
   {
     "program_id": "pyt2F414BA6dPttK6RddPZUdHfapoBN24GL5wbrPCou",
@@ -328,6 +332,7 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "51a5133e4eb9f59039607b2c2723bedf8a9dc373e1b108d674fda702467c7e53"
   }
 ]

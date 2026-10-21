@@ -69,7 +69,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "8c06047cda886509f3de8141daf162a6664d4d1b0175cc8b2a435ff64d530d80"
   },
   {
     "program_id": "pv1ttom8tbyh83C1AVh6QH2naGRdVQUVt3HY1Yst5sv",
@@ -141,7 +142,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "6e6946bc444a03961af9d94b23430b049b13fffeafc42b62d75a579d6f8ffb0d"
   },
   {
     "program_id": "pv1ttom8tbyh83C1AVh6QH2naGRdVQUVt3HY1Yst5sv",
@@ -213,7 +215,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "9ca303395af7d558ada23a0f9a5d3627b566f9cd0ae37fdcedce4602851c9633"
   },
   {
     "program_id": "pv1ttom8tbyh83C1AVh6QH2naGRdVQUVt3HY1Yst5sv",
@@ -293,7 +296,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "65e44715ab2ee88af1c9a80425beac08bd9714bcbf34b3da68154f5e70aadd93"
   },
   {
     "program_id": "pv1ttom8tbyh83C1AVh6QH2naGRdVQUVt3HY1Yst5sv",
@@ -340,7 +344,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "ab53ccb8a462743943e730385ca99385c5282376b8b52b258fc6c2cb297bad89"
   },
   {
     "program_id": "pv1ttom8tbyh83C1AVh6QH2naGRdVQUVt3HY1Yst5sv",
@@ -411,7 +416,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "a3692aeeddfd402880fd3597364edcaa3e471a69cadb82d27b29b1499f30908d"
   },
   {
     "program_id": "pv1ttom8tbyh83C1AVh6QH2naGRdVQUVt3HY1Yst5sv",
@@ -482,7 +488,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "1f82086432db90a70a2dc9fb3a1ec053281b6ee2d93169835cd1b1c26e3a7053"
   },
   {
     "program_id": "pv1ttom8tbyh83C1AVh6QH2naGRdVQUVt3HY1Yst5sv",
@@ -553,7 +560,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "5bd222284aa0d6bc3a5ec2736a52d173245a80e8b440c135ba598ffb650a6b28"
   },
   {
     "program_id": "pv1ttom8tbyh83C1AVh6QH2naGRdVQUVt3HY1Yst5sv",
@@ -632,13 +640,14 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "0ff02ad11c7a62df99e1a76d3c8bc4ce0b28b644a76e3e9a1bb14f862248ac8a"
   },
   {
     "program_id": "pv1ttom8tbyh83C1AVh6QH2naGRdVQUVt3HY1Yst5sv",
     "version": "1.0.0",
     "content_hash": "8f28d71ac582dab3e064253f6a0fe5ac8ee8b653589e7ac003a022df0a2d6e7b",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {
@@ -703,7 +712,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "a82c7993812e3e0464ed0e9fc65e8862334be256bc9fb107595ec9afdfe4aaf0"
   },
   {
     "program_id": "pv1ttom8tbyh83C1AVh6QH2naGRdVQUVt3HY1Yst5sv",
@@ -774,7 +784,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "3747908faf33d1c7d79b417b930338ed2881ccdbd26c69b282e133fb289ebf33"
   },
   {
     "program_id": "pv1ttom8tbyh83C1AVh6QH2naGRdVQUVt3HY1Yst5sv",
@@ -845,7 +856,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "e4778a8642a94f355ea43bc17ab58bd86f1b491149fe86bdc6dc14f56ba1642d"
   },
   {
     "program_id": "pv1ttom8tbyh83C1AVh6QH2naGRdVQUVt3HY1Yst5sv",
@@ -924,6 +936,7 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "3d1cc0a5fee50b99c5e80ba2e26a12063903a172f26d44ee2b9998e0c4485550"
   }
 ]

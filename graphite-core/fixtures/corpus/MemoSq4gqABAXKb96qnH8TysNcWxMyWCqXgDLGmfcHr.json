@@ -60,7 +60,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "b77d4a57592f6d0c2a3d70a98ec19951c23cb0bc71185830b7d4f1d27214cc54"
   },
   {
     "program_id": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
@@ -123,7 +124,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "1ab9e3597ee95b295ae1adfec530742d84b08cd375e9d12f071ec7619c97db6c"
   },
   {
     "program_id": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
@@ -186,7 +188,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "f0dc08d45c867adea1dad1809675f37061da913bd7f4277cfda0246326fe42bb"
   },
   {
     "program_id": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
@@ -257,7 +260,8 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "dbb54d18d557b462e52af2c4e30a17f434452622f1341c0deddb35edc91c2f37"
   },
   {
     "program_id": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
@@ -304,6 +308,7 @@
       "uses_versioned_transaction": false,
       "lookup_table_count": 0,
       "state_diff": null
-    }
+    },
+    "integrity_hash": "a62a21e68a78ad7608935c1ab60b8f33885c33a22927ee038dc5cab4f078e75c"
   }
 ]

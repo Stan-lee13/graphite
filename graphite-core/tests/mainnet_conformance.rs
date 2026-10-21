@@ -773,8 +773,22 @@ const COMMITTED_BLOCKS: &str =
 // 2026-09-23 conformance run of Round 24's final code (`verdicts_r24E`, 2,277
 // rows) hash to the same value, so the committed slice reproduces the
 // published measurement row for row.
+//
+// Re-pinned 2026-10-21 (audit 2026-10-20 remediation, Round 29), from
+// `ff1bcff8…` at `19a2974`. Diffed row by row against that commit's verdicts:
+// 3 of 2,277 rows changed, each by the manifest reclassification (LOW-1),
+// none from refused to approved, approvals 0 before and after —
+//   row 1117, Jupiter `e517cb97…`: Kamino's flashBorrow/flashRepay siblings
+//     now carry a class, so the first finding is MaliciousAccountChange where
+//     it was the W14 unclassed-sibling PermissionEscalation; still refused.
+//   row 1392, Pyth push oracle `1c095d96…`: `updatePriceFeed` is classed, so
+//     its W14 finding is gone; the Wormhole sibling's high-risk `close` with
+//     no intent (MaliciousAccountChange) still refuses it.
+//   row 1555, BPF Upgradeable Loader `01000000…` (Write): now class `create`,
+//     which a transfer intent cannot declare (PermissionEscalation, Check 9b);
+//     risk Clear before, refused by policy before and after.
 const COMMITTED_VERDICTS_SHA256: &str =
-    "ff1bcff8f08bcf570789613b3927bec11acd471f2244b21e4b80b093533c8992";
+    "3a75d3b2b8d9e7aba97d23a7420d4a51a36e58c470d9321fb210c52a800f90a3";
 
 #[test]
 fn the_committed_mainnet_blocks_give_the_recorded_verdicts_every_run() {
