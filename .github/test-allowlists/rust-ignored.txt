@@ -1,0 +1,23 @@
+# Rust tests allowed to be #[ignore]d in CI (Round 30, read by
+# .github/scripts/test-count.sh). One test path per line, as `cargo test`
+# prints it. Every entry needs a network, a live sample or a long benchmark,
+# so it cannot run in the hermetic job; each one names how to run it in its
+# #[ignore = "..."] reason. Adding a line here is a reviewed decision that a
+# test stops gating; a new #[ignore] that is not listed fails CI.
+#
+# Benchmarks / soak (minutes of I/O, not assertions about correctness):
+benchmark::tests::soak_sequential_verifies_report_scale
+durable::tests::archive_index_cost_on_64_mib_archives
+# Need tools/mainnet-sample/mainnet_sample.json (fetched, not committed):
+every_mainnet_v1_transaction_in_the_sample_parses_and_binds
+real_mainnet_traffic_is_not_refused_for_contradicting_itself
+# Need a live RPC (devnet or mainnet):
+l3_malformed_payload_fails_safely
+l3_simulate_real_transaction_bytes
+l8_confirmed_success_signature_reports_confirmed_success
+l8_fabricated_signature_is_never_confirmed
+l8_real_chain_bytes_are_bound_to_their_signature
+real_fee_bearing_transfers_arrive_as_the_model_computes
+real_mainnet_transactions_verified_against_a_real_rpc
+verify_real_c56_protocol_transactions
+verify_real_devnet_transactions

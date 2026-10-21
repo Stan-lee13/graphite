@@ -4,7 +4,8 @@
 //   node gate.mjs audit.json <package>.allow
 //
 // Fails when the lockfile carries a MODERATE, HIGH or CRITICAL advisory that
-// is not listed in the package's allowlist. An entry `GHSA-xxxx@package` covers that
+// is not listed in the package's allowlist, or whose entry is past its
+// `review-by:` date. An entry `GHSA-xxxx@package` covers that
 // advisory in that package only, so the same advisory surfacing in another
 // package is NEW (review of the 2026-09-29 audit's fix, F14). A bare
 // `GHSA-xxxx`, which would cover it in any package, is refused (W23, external
@@ -75,17 +76,35 @@ for (const vuln of Object.values(report.vulnerabilities)) {
   }
 }
 
-const allowed = new Set(
-  readFileSync(allowPath, "utf8")
-    .split(/\r?\n/)
-    .map((l) => l.replace(/#.*/, "").trim())
-    .filter(Boolean)
-    .map((l) => l.split(/\s+/)[0]),
-);
+// Every entry carries a review date (Round 30): `GHSA-…@package
+// review-by:YYYY-MM-DD`. An allowlisted advisory used to stay allowed for as
+// long as nobody looked, so "no fix can be applied from here" was asserted once
+// and never re-checked. Past its date the entry fails the gate until someone
+// re-examines the advisory and moves the date in a reviewed diff (at most
+// MAX_REVIEW_DAYS ahead), or fixes it. GATE_TODAY (YYYY-MM-DD) pins "today" for
+// the gate's own tests.
+const MAX_REVIEW_DAYS = 120;
+const today = process.env.GATE_TODAY ?? new Date().toISOString().slice(0, 10);
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-for (const entry of allowed) {
+const allowed = new Set();
+for (const line of readFileSync(allowPath, "utf8").split(/\r?\n/)) {
+  const fields = line.replace(/#.*/, "").trim().split(/\s+/).filter(Boolean);
+  if (fields.length === 0) continue;
+  const [entry, review, ...rest] = fields;
+  allowed.add(entry);
   if (!/^GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}@\S+$/.test(entry)) {
     fail(`allowlist entry ${entry} is not GHSA-xxxx-xxxx-xxxx@package; an advisory is allowed in one named package only`);
+  }
+  const date = /^review-by:(\d{4}-\d{2}-\d{2})$/.exec(review ?? "")?.[1];
+  if (!date || Number.isNaN(Date.parse(date)) || rest.length > 0) {
+    fail(`allowlist entry ${entry} needs exactly one review-by:YYYY-MM-DD after it (notes go after #)`);
+    continue;
+  }
+  if (date < today) {
+    fail(`allowlist entry ${entry} was due for review on ${date}: re-check the advisory, then fix it or move the date`);
+  } else if ((Date.parse(date) - Date.parse(today)) / DAY_MS > MAX_REVIEW_DAYS) {
+    fail(`allowlist entry ${entry} has review-by ${date}, more than ${MAX_REVIEW_DAYS} days ahead`);
   }
 }
 const allows = (key) => allowed.has(key);
