@@ -86,7 +86,17 @@ enum Commands {
         strict: bool,
     },
     /// Run the benchmark suite
-    Benchmark,
+    Benchmark {
+        /// Print the release evaluation instead: every committed labelled
+        /// input scored per split, as JSON, with input hashes, code HEAD and
+        /// Wilson intervals.
+        #[arg(long)]
+        json: bool,
+        /// The graphite-core directory holding the committed inputs
+        /// (default: the current directory, or its graphite-core child).
+        #[arg(long)]
+        root: Option<std::path::PathBuf>,
+    },
     /// Regression corpus: replay (P10 gate) or seed from real on-chain data
     Regression {
         #[command(subcommand)]
@@ -537,7 +547,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 strict,
             })
         }
-        Commands::Benchmark => graphite_core::cli::run(graphite_core::cli::CliCommand::Benchmark),
+        Commands::Benchmark { json, root } => {
+            graphite_core::cli::run(graphite_core::cli::CliCommand::Benchmark { json, root })
+        }
         Commands::Regression { action } => match action {
             RegressionAction::Replay { corpus_dir } => {
                 graphite_core::cli::run(graphite_core::cli::CliCommand::Regression { corpus_dir })

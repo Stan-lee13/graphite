@@ -64,14 +64,27 @@ pub(crate) fn benchmark_fixture_seed() -> Vec<(bool, VerificationInput)> {
         .collect()
 }
 
-pub fn run_benchmark() {
-    println!("\n╔════════════════════════════════════════════════════════╗");
-    println!("║         Graphite Phase 1 Benchmark Suite               ║");
-    println!("╚════════════════════════════════════════════════════════╝\n");
+/// The hand-built cases as `(label, category, expected_approved, input)`,
+/// for the release evaluation (`release_eval`), which scores them with the
+/// same rule as [`run_benchmark`]: `unknown` cases are counted, not scored.
+pub(crate) fn cases_for_release_evaluation() -> Vec<(String, &'static str, bool, VerificationInput)>
+{
+    build_benchmark_cases()
+        .into_iter()
+        .map(|c| {
+            (
+                c.label.to_string(),
+                c.category,
+                c.expected_approved,
+                c.input,
+            )
+        })
+        .collect()
+}
 
-    let cases = build_benchmark_cases();
+/// A core with the operator-seeded baseline the benchmark cases assume.
+pub(crate) fn seeded_benchmark_core() -> GraphiteCore {
     let core = GraphiteCore::new();
-
     // Baselines are trusted state (baseline trust model): seed the System
     // Program baseline used by the Phase 1.5 benchmark cases here, as an
     // operator would, instead of letting request bodies supply it.
@@ -89,6 +102,16 @@ pub fn run_benchmark() {
         },
     )
     .expect("benchmark baseline must be valid");
+    core
+}
+
+pub fn run_benchmark() {
+    println!("\n╔════════════════════════════════════════════════════════╗");
+    println!("║         Graphite Phase 1 Benchmark Suite               ║");
+    println!("╚════════════════════════════════════════════════════════╝\n");
+
+    let cases = build_benchmark_cases();
+    let core = seeded_benchmark_core();
 
     let mut true_positives = 0; // malicious correctly blocked
     let mut true_negatives = 0; // safe correctly approved

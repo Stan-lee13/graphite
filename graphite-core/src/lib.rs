@@ -94,3 +94,4 @@ pub mod server;
 pub mod benchmark;
 #[cfg(feature = "cli")]
 pub mod cli;
+pub mod release_eval;

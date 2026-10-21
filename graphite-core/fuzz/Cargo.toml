@@ -1,0 +1,73 @@
+# Coverage-guided fuzzing for Graphite Core (roadmap R-P11, Round 30).
+#
+# A separate crate with its own lockfile, so `cargo test` in graphite-core
+# never builds it and the main dependency tree is unchanged. Needs a nightly
+# toolchain and cargo-fuzz:
+#
+#   cargo +nightly fuzz run parse_transaction -- -max_total_time=60
+#
+# CI runs a short smoke of every target on each pull request and longer runs
+# on a schedule (.github/workflows/assurance.yml).
+[package]
+name = "graphite-core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+graphite-core = { path = "..", default-features = false, features = ["rpc"] }
+
+# Not part of any parent workspace: keeps cargo from looking upward.
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "parse_transaction"
+path = "fuzz_targets/parse_transaction.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "lookup_table"
+path = "fuzz_targets/lookup_table.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "manifest_json"
+path = "fuzz_targets/manifest_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "token_extensions"
+path = "fuzz_targets/token_extensions.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "state_diff"
+path = "fuzz_targets/state_diff.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rpc_json"
+path = "fuzz_targets/rpc_json.rs"
+test = false
+doc = false
+bench = false

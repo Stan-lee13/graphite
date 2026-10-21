@@ -3747,8 +3747,15 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
             // indistinguishable from the diff alone, so the manifest breaks
             // the tie: excused only when it declares a creation. Absent that
             // declaration it is read as the takeover, which is fail-closed.
-            let allocation =
-                from == SYSTEM_PROGRAM && d.before.as_ref().is_some_and(|s| s.data_len == 0);
+            //
+            // Never for the fee payer (Round 30, found by the state-diff
+            // fuzzer): it existed and held lamports before the transaction —
+            // it paid the fee — so it is not an account being built, and
+            // handing the signer's own wallet to a program under any
+            // instruction that "initializes" something is the takeover.
+            let allocation = from == SYSTEM_PROGRAM
+                && d.before.as_ref().is_some_and(|s| s.data_len == 0)
+                && !is_fee_payer;
             // Two ways the manifest can account for an owner change: it
             // declares the creation this allocation is part of, or it declares
             // an authority change outright. Neither means the takeover reading
