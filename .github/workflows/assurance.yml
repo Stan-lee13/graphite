@@ -95,10 +95,43 @@ jobs:
           retention-days: 30
 
   mutants:
-    name: Mutation tests (security-critical modules)
+    name: Mutants ${{ matrix.file }} ${{ matrix.shard }}
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '41 4 * * 0'
     runs-on: ubuntu-24.04
     timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      # Each security-critical module is mutated against the lib unit tests
+      # and the integration suites that exercise it — the whole suite per
+      # mutant would be days of runner time. A mutant one of these suites
+      # misses may still be caught by another suite; the Round 30 report
+      # lists the missed ones that were triaged by hand.
+      matrix:
+        include:
+          - file: src/risk_engine.rs
+            shard: 0/1
+            floor: "RISK_FLOOR"
+            tests: --lib --test adversarial_tests --test secondary_instruction_risk --test p0_validation_attacks --test omega_red_team --test integration_tests --test cert_revalidation_attacks
+          - file: src/simulation_integrity.rs
+            shard: 0/1
+            floor: "0.60"
+            tests: --lib --test audit_a2_baseline_variance_ratchet --test audit_a2_shadow_takes_refused_requests --test round19_what_one_observation_is --test audit_2026_10_20_simulation_gate
+          - file: src/tx_artifact.rs
+            shard: 0/1
+            floor: "0.60"
+            tests: --lib --test tx_artifact_real --test wire_format_bounds --test alt_real_v0 --test round19_v1_transactions --test durable_nonce --test audit_a1_compute_budget_trailing --test alt_privilege --test privilege_from_artifact
+          - file: src/state_diff.rs
+            shard: 0/3
+            floor: "0.60"
+            tests: --lib --test round29_state_diff --test l4_state_diff_gate --test token2022_extensions --test round20_transfer_fee --test audit_a2_data_only_change_is_not_noop --test audit_a2_delegate_allowance_increase --test audit_a2_declared_effects_account_names --test round30_fuzz_findings
+          - file: src/state_diff.rs
+            shard: 1/3
+            floor: "0.60"
+            tests: --lib --test round29_state_diff --test l4_state_diff_gate --test token2022_extensions --test round20_transfer_fee --test audit_a2_data_only_change_is_not_noop --test audit_a2_delegate_allowance_increase --test audit_a2_declared_effects_account_names --test round30_fuzz_findings
+          - file: src/state_diff.rs
+            shard: 2/3
+            floor: "0.60"
+            tests: --lib --test round29_state_diff --test l4_state_diff_gate --test token2022_extensions --test round20_transfer_fee --test audit_a2_data_only_change_is_not_noop --test audit_a2_delegate_allowance_increase --test audit_a2_declared_effects_account_names --test round30_fuzz_findings
     defaults:
       run:
         working-directory: graphite-core
@@ -115,23 +148,24 @@ jobs:
       - name: Install cargo-mutants
         run: cargo install cargo-mutants --locked --version "$CARGO_MUTANTS_VERSION"
       - name: Mutate
-        # A mutant is "caught" when ANY test in the crate fails on it, not
-        # only the module's own. cargo-mutants exits non-zero when a mutant
-        # is missed; the floor step below is what judges the run, from the
-        # outcomes file, so that exit is recorded rather than fatal here.
+        # cargo-mutants exits non-zero when a mutant is missed; the floor
+        # step below judges the run from the outcomes file, so that exit is
+        # recorded here rather than fatal.
         run: |
           set +e
-          cargo mutants --no-shuffle --timeout-multiplier 3 --jobs 2 \
-            --file src/risk_engine.rs --file src/state_diff.rs \
-            --file src/tx_artifact.rs --file src/simulation_integrity.rs \
-            --cargo-test-arg=--release
+          cargo mutants --in-place --no-shuffle --timeout 300 \
+            --file "${{ matrix.file }}" --shard "${{ matrix.shard }}" \
+            -- ${{ matrix.tests }}
           echo "cargo-mutants exit: $?"
       - name: Enforce the mutation-score floor
-        run: python3 scripts/mutation_floor.py mutants.out/outcomes.json MUTATION_FLOOR
+        run: python3 scripts/mutation_floor.py mutants.out/outcomes.json "${{ matrix.floor }}"
+      - name: Name the artifact
+        id: name
+        run: echo "slug=$(echo '${{ matrix.file }}-${{ matrix.shard }}' | tr '/.' '--')" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: mutants-out
+          name: mutants-${{ steps.name.outputs.slug }}
           path: graphite-core/mutants.out
           retention-days: 30
 

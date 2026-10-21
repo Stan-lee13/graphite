@@ -71,7 +71,14 @@ pub(crate) fn cases_for_release_evaluation() -> Vec<(String, &'static str, bool,
 {
     build_benchmark_cases()
         .into_iter()
-        .map(|c| (c.label.to_string(), c.category, c.expected_approved, c.input))
+        .map(|c| {
+            (
+                c.label.to_string(),
+                c.category,
+                c.expected_approved,
+                c.input,
+            )
+        })
         .collect()
 }
 

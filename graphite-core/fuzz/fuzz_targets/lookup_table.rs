@@ -51,7 +51,10 @@ fuzz_target!(|data: &[u8]| {
         // The runtime refuses a transaction that loads an account twice;
         // an accepted resolution must not produce a duplicate.
         let mut seen = std::collections::HashSet::new();
-        assert!(all.iter().all(|a| seen.insert(a)), "an account is loaded twice");
+        assert!(
+            all.iter().all(|a| seen.insert(a)),
+            "an account is loaded twice"
+        );
         for ix in &m.instructions {
             if let Some(accounts) = tx::resolve_instruction_accounts(&m, ix, Some(&resolved)) {
                 assert_eq!(accounts.len(), ix.account_indexes.len());

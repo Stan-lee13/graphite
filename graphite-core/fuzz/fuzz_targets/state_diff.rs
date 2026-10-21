@@ -91,7 +91,6 @@ fn resolved(index: usize, key: &str, writable: bool, signer: bool) -> ResolvedAc
 }
 
 fuzz_target!(|input: Input| {
-
     let mut deltas = Vec::new();
     for d in input.deltas.iter().take(8) {
         let key = KEYS[d.key as usize % KEYS.len()];

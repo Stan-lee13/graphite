@@ -36,8 +36,18 @@ fn writable(address: &str, signer: bool) -> ResolvedAccount {
 fn assigned(pubkey: &str) -> AccountDelta {
     AccountDelta {
         pubkey: pubkey.to_string(),
-        before: Some(AccountSnapshot::from_raw(pubkey, 5_000_000_000, SYSTEM_PROGRAM, &[])),
-        after: Some(AccountSnapshot::from_raw(pubkey, 4_999_995_000, ATTACKER_PROGRAM, &[])),
+        before: Some(AccountSnapshot::from_raw(
+            pubkey,
+            5_000_000_000,
+            SYSTEM_PROGRAM,
+            &[],
+        )),
+        after: Some(AccountSnapshot::from_raw(
+            pubkey,
+            4_999_995_000,
+            ATTACKER_PROGRAM,
+            &[],
+        )),
     }
 }
 

@@ -8,8 +8,8 @@
 #![no_main]
 
 use graphite_core::manifest::{
-    discriminator_matches, names_a_delegation_grant, names_an_authority_change,
-    validate_manifest, ManifestRegistry, ProtocolManifest,
+    discriminator_matches, names_a_delegation_grant, names_an_authority_change, validate_manifest,
+    ManifestRegistry, ProtocolManifest,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -21,12 +21,18 @@ fuzz_target!(|data: &[u8]| {
     let mut registry = ManifestRegistry::new();
     let loaded = registry.load_from_json(text).is_ok();
     let Ok(manifest) = parsed else {
-        assert!(!loaded, "the registry loaded a document that does not parse");
+        assert!(
+            !loaded,
+            "the registry loaded a document that does not parse"
+        );
         return;
     };
     let valid = validate_manifest(&manifest).is_ok();
     if loaded {
-        assert!(valid, "the registry loaded a manifest that does not validate");
+        assert!(
+            valid,
+            "the registry loaded a manifest that does not validate"
+        );
     }
     if !valid {
         return;

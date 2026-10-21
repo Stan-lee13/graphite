@@ -549,7 +549,11 @@ fn mainnet_parse_coverage(path: &Path) -> Result<MainnetSampleReport, ReleaseEva
             Some(Ok(_)) => parsed += 1,
             Some(Err(e)) => {
                 let class = format!("{e:?}");
-                let class = class.split(['(', ' ', '{']).next().unwrap_or("").to_string();
+                let class = class
+                    .split(['(', ' ', '{'])
+                    .next()
+                    .unwrap_or("")
+                    .to_string();
                 *failures.entry(class).or_default() += 1;
             }
             None => *failures.entry("UnreadableBase64".to_string()).or_default() += 1,
@@ -677,7 +681,10 @@ mod tests {
     fn wilson_interval_matches_the_textbook_values() {
         // n = 10, k = 5: (0.2366, 0.7634) to four places.
         let (lo, hi) = wilson95(5, 10);
-        assert!((lo - 0.2366).abs() < 1e-4 && (hi - 0.7634).abs() < 1e-4, "{lo} {hi}");
+        assert!(
+            (lo - 0.2366).abs() < 1e-4 && (hi - 0.7634).abs() < 1e-4,
+            "{lo} {hi}"
+        );
         // k = n keeps the upper bound at 1 and the lower bound well below it:
         // 37/37 is not "100% recall" with any confidence worth the name.
         let (lo, hi) = wilson95(37, 37);

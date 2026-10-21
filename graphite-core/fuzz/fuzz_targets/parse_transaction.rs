@@ -30,7 +30,11 @@ fuzz_target!(|data: &[u8]| {
         tx::message_bytes(data).is_ok(),
         "a frame that parses must expose its message bytes"
     );
-    assert_eq!(m.static_keys.first(), Some(&m.fee_payer), "fee payer is static key 0");
+    assert_eq!(
+        m.static_keys.first(),
+        Some(&m.fee_payer),
+        "fee payer is static key 0"
+    );
     assert!(m.signers.iter().all(|s| m.static_keys.contains(s)));
     assert!(m.header_writable.iter().all(|w| m.static_keys.contains(w)));
     assert!(
@@ -45,10 +49,16 @@ fuzz_target!(|data: &[u8]| {
     let static_len = m.static_keys.len();
     let universe = static_len + m.alt_account_count();
     for ix in &m.instructions {
-        assert!(m.static_keys.contains(&ix.program_id), "program ids are static keys");
+        assert!(
+            m.static_keys.contains(&ix.program_id),
+            "program ids are static keys"
+        );
         assert_eq!(ix.accounts.len(), ix.account_indexes.len());
         for (slot, &i) in ix.accounts.iter().zip(&ix.account_indexes) {
-            assert!((i as usize) < universe, "account index past the account universe");
+            assert!(
+                (i as usize) < universe,
+                "account index past the account universe"
+            );
             // Static indexes name their key; lookup indexes stay unresolved.
             if (i as usize) < static_len {
                 assert_eq!(slot.as_deref(), Some(m.static_keys[i as usize].as_str()));

@@ -44,7 +44,10 @@ fuzz_target!(|data: &[u8]| {
         );
     }
     if let Ok(None) = account_from_value_for_test("Acct", &value) {
-        assert!(value.is_null(), "only `null` means the account does not exist");
+        assert!(
+            value.is_null(),
+            "only `null` means the account does not exist"
+        );
     }
 
     if let Ok(epoch) = EpochInfo::from_value(&value) {

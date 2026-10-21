@@ -47,7 +47,8 @@ const SEALED_HOLDOUT: &[(&str, &str)] = &[
 /// `content_hash\0integrity_hash\0expected_approved\n`. The rows are derived
 /// from the sealed sources by `tests/regression_corpus.rs`; this catches a
 /// regeneration that changed them.
-const SEALED_HOLDOUT_ROWS_SHA256: &str = "2db78c121190123cfd9b20b39612b4b1c8db12b307843aca157861c355c5e8d7";
+const SEALED_HOLDOUT_ROWS_SHA256: &str =
+    "2db78c121190123cfd9b20b39612b4b1c8db12b307843aca157861c355c5e8d7";
 
 #[test]
 fn the_sealed_holdout_has_not_moved() {
@@ -57,7 +58,10 @@ fn the_sealed_holdout_has_not_moved() {
         "every holdout source is pinned"
     );
     for (rel, pinned) in SEALED_HOLDOUT {
-        assert!(HOLDOUT_SOURCES.contains(rel), "{rel} is not a holdout source");
+        assert!(
+            HOLDOUT_SOURCES.contains(rel),
+            "{rel} is not a holdout source"
+        );
         assert_eq!(
             &sha256_file(rel),
             pinned,
@@ -117,7 +121,10 @@ fn only_an_explicit_reseal_can_write_the_holdout() {
             let path = entry.expect("dir entry").path();
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if path.is_dir() {
-                if !matches!(name, "target" | "node_modules" | ".git" | ".claude" | "dist") {
+                if !matches!(
+                    name,
+                    "target" | "node_modules" | ".git" | ".claude" | "dist"
+                ) {
                     stack.push(path);
                 }
                 continue;
@@ -132,12 +139,18 @@ fn only_an_explicit_reseal_can_write_the_holdout() {
                 continue;
             };
             for line in text.lines() {
-                let names_holdout = HOLDOUT_SOURCES.iter().any(|h| {
-                    line.contains(Path::new(h).file_name().unwrap().to_str().unwrap())
-                });
-                let writes = ["writeFileSync", "write_text", "fs::write", "File::create", "open("]
+                let names_holdout = HOLDOUT_SOURCES
                     .iter()
-                    .any(|w| line.contains(w))
+                    .any(|h| line.contains(Path::new(h).file_name().unwrap().to_str().unwrap()));
+                let writes = [
+                    "writeFileSync",
+                    "write_text",
+                    "fs::write",
+                    "File::create",
+                    "open(",
+                ]
+                .iter()
+                .any(|w| line.contains(w))
                     && !line.contains("include_str!");
                 if names_holdout && writes {
                     offenders.push(format!("{}: {}", path.display(), line.trim()));
@@ -159,7 +172,16 @@ fn split<'a>(splits: &'a [SplitReport], name: &str) -> &'a SplitReport {
 }
 
 /// `(name, rows, errors, unscored, TP, TN, FP, FN)`.
-type Pin = (&'static str, usize, usize, usize, usize, usize, usize, usize);
+type Pin = (
+    &'static str,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+);
 
 const PINNED: &[Pin] = &[
     ("holdout", 38, 0, 0, 37, 0, 1, 0),
@@ -222,7 +244,10 @@ fn the_release_evaluation_is_pinned_for_the_committed_inputs() {
             ("transaction build failed".to_string(), 1)
         ]
     );
-    assert_eq!(causes("dev"), [("transaction build failed".to_string(), 38)]);
+    assert_eq!(
+        causes("dev"),
+        [("transaction build failed".to_string(), 38)]
+    );
     assert!(causes("holdout").is_empty() && causes("hand-built").is_empty());
 
     let mainnet = &report.mainnet_sample;
