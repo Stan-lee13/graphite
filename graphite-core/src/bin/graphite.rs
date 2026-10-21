@@ -160,6 +160,13 @@ enum Commands {
         #[command(subcommand)]
         action: EvidenceAction,
     },
+    /// Check the audit trail's hash chain, or export a checkpoint of its head
+    ///
+    /// Read-only; safe beside a running server.
+    Audit {
+        #[command(subcommand)]
+        action: AuditAction,
+    },
     /// Inspect what the gate knows about a program, or compare manifests
     Protocol {
         #[command(subcommand)]
@@ -308,6 +315,44 @@ enum ProtocolAction {
         /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
         #[arg(long)]
         data_dir: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum AuditAction {
+    /// Walk every archive and the active file against the hash chain
+    ///
+    /// Exits 0 when nothing failed, 1 on a break or a checkpoint that does
+    /// not hold, 2 when the walk could not prove what it was asked to (MACs
+    /// under a key not supplied, no chained record, a pruned checkpoint), 3
+    /// when the trail could not be read.
+    Verify {
+        /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+        /// A key file whose MACs to check (repeatable: old keys after a
+        /// rotation). GRAPHITE_AUDIT_KEY_FILE is added when set.
+        #[arg(long = "key-file")]
+        key_files: Vec<PathBuf>,
+        /// A checkpoint exported earlier: detects rewrite, truncation and
+        /// stale restores up to its sequence number
+        #[arg(long)]
+        checkpoint: Option<PathBuf>,
+        /// Print the full report as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Verify the trail, then export a checkpoint of its head for anchoring
+    Checkpoint {
+        /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+        /// Key file to MAC the checkpoint with (default: GRAPHITE_AUDIT_KEY_FILE)
+        #[arg(long)]
+        key_file: Option<PathBuf>,
+        /// Write here instead of stdout (never over an existing file)
+        #[arg(long)]
+        out: Option<PathBuf>,
     },
 }
 
@@ -600,6 +645,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     corpus_dir,
                     manifest_path: manifest,
                     input_path: input,
+                },
+            }),
+        },
+        Commands::Audit { action } => match action {
+            AuditAction::Verify {
+                data_dir,
+                key_files,
+                checkpoint,
+                json,
+            } => graphite_core::cli::run(graphite_core::cli::CliCommand::Audit {
+                action: graphite_core::cli::AuditAction::Verify {
+                    data_dir,
+                    key_files,
+                    checkpoint,
+                    json,
+                },
+            }),
+            AuditAction::Checkpoint {
+                data_dir,
+                key_file,
+                out,
+            } => graphite_core::cli::run(graphite_core::cli::CliCommand::Audit {
+                action: graphite_core::cli::AuditAction::Checkpoint {
+                    data_dir,
+                    key_file,
+                    out,
                 },
             }),
         },

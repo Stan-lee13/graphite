@@ -43,6 +43,8 @@ const CLEARED: &[&str] = &[
     "GRAPHITE_ALLOW_DURABLE_NONCE",
     "GRAPHITE_QUARANTINE_ON_UPGRADE",
     "GRAPHITE_CORS_ORIGINS",
+    "GRAPHITE_AUDIT_KEY_FILE",
+    "GRAPHITE_AUDIT_ANCHOR_DIR",
 ];
 
 /// Run the server with `extra` set on top of a clean dev-mode environment;
@@ -86,6 +88,24 @@ fn startup_error(case: usize, extra: &[(&str, String)]) -> String {
         Ok(Ok(())) => panic!("case {case}: the server started and shut down: {extra:?}"),
         Err(_) => panic!("case {case}: the server STARTED with {extra:?}"),
     }
+}
+
+/// A well-formed audit key that group and others can read: refused on Unix
+/// (`chmod 600`); elsewhere a key that is too short, refused everywhere.
+fn loose_key_file() -> String {
+    let path = std::env::temp_dir().join(format!(
+        "graphite-startup-refusals-{}-audit.key",
+        std::process::id()
+    ));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::write(&path, "ab".repeat(32)).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+    }
+    #[cfg(not(unix))]
+    std::fs::write(&path, "ab".repeat(8)).unwrap();
+    path.display().to_string()
 }
 
 #[test]
@@ -146,6 +166,30 @@ fn configuration_the_server_cannot_honour_refuses_to_start() {
                 s("/nonexistent-graphite-dir/events.jsonl"),
             )],
             "GRAPHITE_PLUGIN_EVENTS_FILE",
+        ),
+        // Round 30 (G-07): an operator who set a key file or an anchor
+        // directory must not get an unkeyed or unanchored trail.
+        (
+            vec![("GRAPHITE_AUDIT_KEY_FILE", s(" "))],
+            "GRAPHITE_AUDIT_KEY_FILE",
+        ),
+        (
+            vec![(
+                "GRAPHITE_AUDIT_KEY_FILE",
+                s("/nonexistent-graphite-dir/audit.key"),
+            )],
+            "GRAPHITE_AUDIT_KEY_FILE",
+        ),
+        (
+            vec![("GRAPHITE_AUDIT_KEY_FILE", loose_key_file())],
+            "GRAPHITE_AUDIT_KEY_FILE",
+        ),
+        (
+            vec![(
+                "GRAPHITE_AUDIT_ANCHOR_DIR",
+                s("/nonexistent-graphite-anchor"),
+            )],
+            "GRAPHITE_AUDIT_ANCHOR_DIR",
         ),
     ];
     for (i, (extra, names)) in cases.iter().enumerate() {

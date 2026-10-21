@@ -1284,46 +1284,69 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
             "GRAPHITE_AUDIT_ROTATE_BYTES=0: the active audit file and its in-memory indexes grow without bound for the life of the process"
         );
     }
-    let audit =
-        match AuditLog::open_with_rotation(audit_path(&data_dir), rotate_bytes, max_archives) {
-            Ok(log) => {
-                tracing_log(&format!(
-                    "audit log: {} (rotate at {} bytes, archives kept: {})",
-                    audit_path(&data_dir).display(),
-                    rotate_bytes,
-                    if max_archives == 0 {
-                        "all".to_string()
-                    } else {
-                        max_archives.to_string()
-                    }
-                ));
-                // Check or build every archive's index before the first L8
-                // lookup needs it (R-M11, Round 28).
-                log.warm_archive_indexes_in_background();
-                Some(log)
-            }
-            Err(e) => {
-                // Hard failure, matching what `probe_data_dir_writable` above
-                // already promises: "Graphite refuses to start without a
-                // durable audit trail (Constitution P9)."
-                //
-                // This used to log a WARNING and continue with `audit = None`,
-                // after which the server accepted verifications and recorded
-                // none of them — the probe's stated guarantee contradicted a
-                // few hundred lines below it. The probe checks that the
-                // DIRECTORY is writable; opening the log can still fail for
-                // reasons it cannot see (the file exists and is not writable,
-                // a stale lock, a full disk).
-                return Err(format!(
-                    "audit log at {} could not be opened: {e}. Graphite refuses to start \
+    // Round 30 (G-07): a MAC key makes the trail tamper-evident; without
+    // one it is corruption-evident only, and the log says so. A key file or
+    // anchor directory that is set and cannot be used refuses the start.
+    let audit_options = crate::durable::AuditOptions {
+        rotate_bytes,
+        max_archives,
+        ..Default::default()
+    }
+    .with_env_values(
+        std::env::var(crate::durable::AUDIT_KEY_ENV).ok().as_deref(),
+        std::env::var(crate::durable::AUDIT_ANCHOR_ENV)
+            .ok()
+            .as_deref(),
+        &data_dir,
+    )?;
+    let audit = match AuditLog::open_with_options(audit_path(&data_dir), audit_options) {
+        Ok(log) => {
+            tracing_log(&format!(
+                "audit log: {} (rotate at {} bytes, archives kept: {})",
+                audit_path(&data_dir).display(),
+                rotate_bytes,
+                if max_archives == 0 {
+                    "all".to_string()
+                } else {
+                    max_archives.to_string()
+                }
+            ));
+            match log.key_id() {
+                    Some(id) => tracing_log(&format!(
+                        "audit trail: hash-chained and MAC'd under key {id} — tamper-evident against anyone without the key; truncation and stale restores are caught only against an anchored checkpoint (`graphite audit checkpoint`)"
+                    )),
+                    None => tracing::warn!(
+                        "audit trail: hash-chained but NOT keyed — corruption-evident only: a writer to the data directory can rewrite it coherently. Set {} to a key file outside the data directory to make it tamper-evident",
+                        crate::durable::AUDIT_KEY_ENV
+                    ),
+                }
+            // Check or build every archive's index before the first L8
+            // lookup needs it (R-M11, Round 28).
+            log.warm_archive_indexes_in_background();
+            Some(log)
+        }
+        Err(e) => {
+            // Hard failure, matching what `probe_data_dir_writable` above
+            // already promises: "Graphite refuses to start without a
+            // durable audit trail (Constitution P9)."
+            //
+            // This used to log a WARNING and continue with `audit = None`,
+            // after which the server accepted verifications and recorded
+            // none of them — the probe's stated guarantee contradicted a
+            // few hundred lines below it. The probe checks that the
+            // DIRECTORY is writable; opening the log can still fail for
+            // reasons it cannot see (the file exists and is not writable,
+            // a stale lock, a full disk).
+            return Err(format!(
+                "audit log at {} could not be opened: {e}. Graphite refuses to start \
                      without a durable audit trail (Constitution P9) — an approval nobody \
                      recorded is an approval nobody can reconcile, quarantine against, or \
                      investigate.",
-                    audit_path(&data_dir).display()
-                )
-                .into());
-            }
-        };
+                audit_path(&data_dir).display()
+            )
+            .into());
+        }
+    };
 
     // Wallet policy profile enforcement at the network trust boundary — see
     // `enforce_wallet_profile`. A misconfigured pin was refused above, by
@@ -2541,6 +2564,11 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
                 // it grows without bound and every dashboard poll scans it.
                 reasons.push("audit_rotation_failed");
             }
+            if h.anchors_failed > 0 {
+                // A rotation checkpoint did not reach the anchor directory:
+                // the trail since the last one is not anchored.
+                reasons.push("audit_anchor_failed");
+            }
         }
         // No audit log at all is degraded, not healthy: verification still
         // works, but the P9 trail does not exist.
@@ -2578,6 +2606,10 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
                 "rotations_ok": h.rotations_ok,
                 "rotations_failed": h.rotations_failed,
                 "archive_count": h.archive_count,
+                // Round 30 (G-07): what the trail's integrity rests on.
+                "integrity": if h.tamper_evident { "tamper_evident" } else { "corruption_evident" },
+                "chain_head_seq": h.chain_head_seq,
+                "anchors_failed": h.anchors_failed,
             }),
             None => serde_json::json!({ "enabled": false }),
         },
@@ -2794,6 +2826,18 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
         "Rotated audit archives on disk.",
         "gauge",
         audit.map(|h| h.archive_count).unwrap_or(0),
+    );
+    push(
+        "graphite_audit_tamper_evident",
+        "1 when new audit records are MAC'd under an operator key (tamper-evident), 0 when the hash chain is unkeyed (corruption-evident only).",
+        "gauge",
+        u64::from(audit.is_some_and(|h| h.tamper_evident)),
+    );
+    push(
+        "graphite_audit_anchor_writes_failed_total",
+        "Rotation checkpoints that could not be written to GRAPHITE_AUDIT_ANCHOR_DIR (degraded).",
+        "counter",
+        audit.map(|h| h.anchors_failed).unwrap_or(0),
     );
     let persistence = state.core.persistence_health();
     push(
@@ -7243,8 +7287,13 @@ mod tests {
         // because the server task is fully joined above (abort → router drop
         // → audit File handle drop → flush), so every append is visible to a
         // fresh open.
-        let log = AuditLog::open(audit_path(&dir)).unwrap();
+        // Read only (Round 30): the server still holds the writer lock.
+        let log = AuditLog::open_read_only(audit_path(&dir)).unwrap();
         let (records, errors, total, _) = log.read_tail_filtered(10_000, AuditSelector::All);
+        // The eight concurrent writers left one unbroken hash chain.
+        let chain = log.verify(&[], None).unwrap();
+        assert!(chain.intact(), "{chain:?}");
+        assert_eq!(chain.chained_records as usize, WORKERS * PER_WORKER);
         assert_eq!(
             total,
             WORKERS * PER_WORKER,
