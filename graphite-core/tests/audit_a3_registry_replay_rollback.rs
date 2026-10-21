@@ -160,8 +160,42 @@ fn replaying_a_superseded_submission_does_not_roll_the_manifest_back() {
     );
 }
 
-/// R30 (deliberate break of A3-07): the test above passes with the A3-07
-/// check deleted — its replay is submitted with no regression corpus, so it is
+/// R30 (deliberate break of the MR-1 corpus check): deleting
+/// `submitted.verify_integrity()` from `submit` failed no test. A submitter's
+/// corpus whose fixture outcome was edited — here a refusal flipped to an
+/// approval — would be resealed when copied into the replay and judged as if
+/// recorded. It is refused before anything is replayed.
+#[test]
+fn a_submitted_corpus_with_an_edited_outcome_is_refused() {
+    use graphite_core::manifest_registry::RegistryError;
+    let reviewer = SigningKey::from_bytes(&[9u8; 32]);
+    let reviewer_b58 = bs58::encode(reviewer.verifying_key().to_bytes()).into_string();
+    let mut engine = ManifestRegistryEngine::new();
+    engine.register_reviewer(&reviewer_b58, 1_000).unwrap();
+    let mut store = SemanticGraphStore::new();
+    let gate_core = GraphiteCore::new();
+    let mut corpus = RegressionCorpus::new();
+    record_fixture(&mut corpus, &fixture_input(), false, "a3");
+
+    // The fixture file as a submitter could hand it in, outcome edited.
+    let mut json = serde_json::to_value(&corpus).unwrap();
+    let fixture = &mut json["fixtures"][0];
+    assert_eq!(fixture["expected_approved"], serde_json::Value::Bool(false));
+    fixture["expected_approved"] = serde_json::Value::Bool(true);
+    let edited: RegressionCorpus = serde_json::from_value(json).unwrap();
+
+    let v1 = attested(manifest("1.0.0", &[], None), &reviewer, &reviewer_b58);
+    let r = engine.submit(&mut store, v1, Some((&edited, &gate_core)));
+    assert!(
+        matches!(r, Err(RegistryError::RegressionGateBlocked(ref why)) if why.contains("not intact")),
+        "{r:?}"
+    );
+    assert!(engine.records().is_empty());
+}
+
+/// R30 (deliberate break of A3-07):
+/// `replaying_a_superseded_submission_does_not_roll_the_manifest_back` passes
+/// with the A3-07 check deleted — its replay is submitted with no regression corpus, so it is
 /// refused by the P10 gate whatever else holds, and its assertion accepts any
 /// error. Here the replay carries a corpus and the refusal must be A3-07's:
 /// a byte-identical old version, and an old LABEL on new content that names
