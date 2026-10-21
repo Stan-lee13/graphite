@@ -143,8 +143,24 @@ pub const RISK_CLASSES: &[&str] = &[
 
 /// The classes Check 10 refuses when the request declares no intent: an
 /// instruction that moves value or control the agent never stated (P12).
-pub const HIGH_RISK_CLASSES: &[&str] =
-    &["drain", "authority", "withdraw", "mint", "close", "stake"];
+///
+/// The grounded classes only `intent_grants` can give (Round 30) are listed
+/// too: one is only ever given under the intent that declares it, so the
+/// entry never fires, and it keeps "a class that moves value is high-risk"
+/// true of every class there is.
+pub const HIGH_RISK_CLASSES: &[&str] = &[
+    "drain",
+    "authority",
+    "withdraw",
+    "mint",
+    "close",
+    "stake",
+    crate::intent_grants::WITHDRAW_TO_OWNER,
+    crate::intent_grants::CLAIM_TO_OWNER,
+    crate::intent_grants::CLOSE_TO_OWNER,
+    crate::intent_grants::BURN_OWN,
+    crate::intent_grants::OWNER_CONFIGURE,
+];
 
 /// Which security classes ([`InstructionDef::security_class`]) each canonical
 /// intent can declare (external review R2, 2026-10-01).
@@ -183,14 +199,29 @@ pub const HIGH_RISK_CLASSES: &[&str] =
 /// VERIFIED as one: an agent wallet granting a delegate is never what Graphite
 /// approves. The explicit empty entry says so rather than leaving `approve`
 /// to fall outside the table.
+///
+/// Round 30 (roadmap R-M13/R-M14): `withdraw`, `claim`, `burn` and
+/// `configure`, and `close` beyond the token and DCA programs, declare only
+/// the GROUNDED classes `intent_grants` gives one instruction at a time, when
+/// the transaction's own accounts show the operation is the signer's own
+/// (the funds go to the owner's associated token account, the rent to the
+/// owner, the object is seeded by the owner). None declares a manifest class:
+/// a `withdraw` intent declaring the `withdraw` class would declare all 414
+/// withdraw-class instructions, among them ones paying any account the
+/// caller names. A manifest cannot declare a grounded class
+/// (`RISK_CLASSES`), so only the reviewed table in code can give one.
 pub const INTENT_DECLARES: &[(&str, &[&str])] = &[
     ("transfer", &["transfer"]),
     ("swap", &["transfer", ""]),
     ("stake", &["stake", "withdraw", "transfer", "create"]),
-    ("close", &["close"]),
+    ("close", &["close", crate::intent_grants::CLOSE_TO_OWNER]),
     ("create", &["create"]),
     ("approve", &[]),
     ("revoke", &[""]),
+    ("withdraw", &[crate::intent_grants::WITHDRAW_TO_OWNER]),
+    ("claim", &[crate::intent_grants::CLAIM_TO_OWNER]),
+    ("burn", &[crate::intent_grants::BURN_OWN]),
+    ("configure", &[crate::intent_grants::OWNER_CONFIGURE]),
 ];
 
 /// Whether a canonical intent can declare an instruction of this security

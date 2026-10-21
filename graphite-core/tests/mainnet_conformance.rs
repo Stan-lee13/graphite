@@ -329,7 +329,25 @@ fn measure(doc: &serde_json::Value, honest: bool) -> (Tally, Vec<Row>) {
         let resolved: Vec<Vec<String>> = resolved.into_iter().map(|r| r.unwrap()).collect();
 
         // The instruction the transaction is actually for: the most-accounted
-        // one that is not infrastructure, falling back to the most-accounted.
+        // one that is not infrastructure, falling back to the most-accounted
+        // one that moves something. Round 30 (R-M14): the fallback skipped
+        // nothing, so a durable-nonce transaction of boilerplate programs
+        // only (AdvanceNonceAccount + a System transfer) was measured as its
+        // nonce advance — three accounts to the transfer's two — and an
+        // `inert` instruction is what no intent declares: 41 rows of the
+        // 48,855-row run were "refused" for the wrong instruction. An
+        // instruction its manifest classes `inert` (a nonce advance, a compute
+        // budget, a memo) is never what a transaction is for while another
+        // instruction is there.
+        let inert = |ix: &graphite_core::tx_artifact::ArtifactInstruction| {
+            !ix.data.is_empty()
+                && registry
+                    .find_instruction(
+                        &ix.program_id,
+                        &hex::encode(&ix.data[..ix.data.len().min(8)]),
+                    )
+                    .is_some_and(|d| d.security_class() == "inert")
+        };
         let pick = message
             .instructions
             .iter()
@@ -338,6 +356,14 @@ fn measure(doc: &serde_json::Value, honest: bool) -> (Tally, Vec<Row>) {
                 !BOILERPLATE.contains(&ix.program_id.as_str()) && !resolved[*i].is_empty()
             })
             .max_by_key(|(i, _)| resolved[*i].len())
+            .or_else(|| {
+                message
+                    .instructions
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, ix)| !resolved[*i].is_empty() && !inert(ix))
+                    .max_by_key(|(i, _)| resolved[*i].len())
+            })
             .or_else(|| {
                 message
                     .instructions
@@ -383,11 +409,10 @@ fn measure(doc: &serde_json::Value, honest: bool) -> (Tally, Vec<Row>) {
         // instructions no intent describes. Measures what an honest agent can
         // get through, separately from the guess's label.
         let intent = match (honest, found) {
-            (true, Some(def)) => match graphite_core::live_corpus::honest_intent(
+            (true, Some(def)) => match graphite_core::live_corpus::honest_intent_with_accounts(
                 &ix.program_id,
-                &def.name,
-                def.security_class(),
-                &def.expected_state_changes,
+                def,
+                &resolved[idx],
             ) {
                 Some(intent) => intent.to_string(),
                 None => {
@@ -787,8 +812,20 @@ const COMMITTED_BLOCKS: &str =
 //   row 1555, BPF Upgradeable Loader `01000000…` (Write): now class `create`,
 //     which a transfer intent cannot declare (PermissionEscalation, Check 9b);
 //     risk Clear before, refused by policy before and after.
+//
+// Re-pinned in Round 30 (R-M14), from `3a75d3b2…` at `29e4356`. Diffed row by
+// row against that commit's verdicts (the same build with the round's change
+// switched off reproduces `3a75d3b2…` exactly): 3 of 2,277 rows changed, all
+// by the harness's choice of primary, none from refused to approved,
+// approvals 0 before and after —
+//   rows 442, 1272, 1366: durable-nonce transactions of System instructions
+//     only (AdvanceNonceAccount + Transfer). The fallback picked the nonce
+//     advance (three accounts to the transfer's two), an `inert` instruction
+//     no intent declares, so the risk column was PermissionEscalation; the
+//     transfer is now the primary and the risk column is Clear. L2 refuses
+//     each ("durable nonce refused") before and after.
 const COMMITTED_VERDICTS_SHA256: &str =
-    "3a75d3b2b8d9e7aba97d23a7420d4a51a36e58c470d9321fb210c52a800f90a3";
+    "bda80e6978580f94bf34d40282f937537ca14e8d767d91a9cfc6c28dc44149cf";
 
 #[test]
 fn the_committed_mainnet_blocks_give_the_recorded_verdicts_every_run() {

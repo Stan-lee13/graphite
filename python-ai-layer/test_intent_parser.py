@@ -549,6 +549,10 @@ _MODELLED = (
     ("Create a new token account", "create"),
     ("Approve USDC", "approve"),
     ("Revoke the delegate", "revoke"),
+    ("withdraw my liquidity", "withdraw"),
+    ("claim my fees", "claim"),
+    ("burn 100 BONK", "burn"),
+    ("update my offer", "configure"),
 )
 
 
@@ -840,15 +844,40 @@ def test_stop_words_are_not_tokens():
 
 
 def test_claims_and_liquidity_withdrawals_are_not_stake():
-    for text in ("claim rewards", "Claim my rewards", "withdraw liquidity from Orca",
-                 "Withdraw my collateral", "withdraw fees"):
+    # Round 30: the Core's `claim` and `withdraw` intents (declared only for
+    # granted instructions); a claim of accrued value is never a withdrawal
+    # of principal, nor the reverse.
+    for text, intent in (("claim rewards", "claim"), ("Claim my rewards", "claim"),
+                         ("withdraw fees", "claim"),
+                         ("withdraw liquidity from Orca", "withdraw"),
+                         ("Withdraw my collateral", "withdraw"),
+                         ("remove liquidity", "unknown")):
         r = parse_intent(text)
-        assert r["intent_type"] == "unknown", text
-        assert "WITHDRAWAL_UNMODELED" in _codes(r), text
+        assert r["intent_type"] == intent, (text, r["intent_type"])
+        if intent != "unknown":
+            assert "GRANT_SCOPED_INTENT" in _codes(r), text
     # A stake withdrawal is still one.
     assert parse_intent("Withdraw 1 jitoSOL")["intent_type"] == "stake"
     assert parse_intent("Unstake 3 SOL")["intent_type"] == "stake"
+    # Two actions are still not one label.
+    assert parse_intent("claim fees then send 2 SOL to " + _FULL_ADDRESS)["intent_type"] == "unknown"
+    # Negated is still not the action.
+    assert parse_intent("don't withdraw liquidity")["intent_type"] == "unknown"
     print("✓ test_claims_and_liquidity_withdrawals_are_not_stake passed")
+
+
+def test_burn_and_owner_configuration_are_labelled():
+    burn = parse_intent("burn 100 BONK")
+    assert burn["intent_type"] == "burn"
+    assert burn["extracted_parameters"] == {"amount": "100", "input_token": "BONK"}
+    assert burn["suggested_program_id"] == "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    offer = parse_intent("update my offer")
+    assert offer["intent_type"] == "configure"
+    assert offer["extracted_parameters"] == {"account_type": "offer"}
+    # Changing an owner or an authority is never an owner configuration.
+    for text in ("change owner of the pool", "set the authority to X"):
+        assert parse_intent(text)["intent_type"] != "configure", text
+    print("✓ test_burn_and_owner_configuration_are_labelled passed")
 
 
 def _bounded_status(cl_value):

@@ -619,6 +619,10 @@ pub(crate) fn intent_vocabulary(canonical_intent: &str) -> &'static [&'static st
         "create" => &["create", "allocate", "assign", "initialize"],
         "approve" => &["approve", "delegate"],
         "revoke" => &["revoke"],
+        "withdraw" => &["withdraw", "redeem", "remove", "decrease"],
+        "claim" => &["claim", "collect", "harvest"],
+        "burn" => &["burn"],
+        "configure" => &["update", "set", "config", "edit", "modify"],
         _ => &[],
     }
 }
@@ -4781,7 +4785,7 @@ impl GraphiteCore {
             let canonical = proposed_intent.intent_type.trim().to_lowercase();
             let high_risk = matches!(
                 crate::risk_engine::canonical_intent(&canonical),
-                "swap" | "bridge" | "withdraw" | "stake" | "mint"
+                "swap" | "bridge" | "withdraw" | "stake" | "mint" | "claim" | "burn" | "configure"
             );
             if high_risk {
                 return PipelineLayerResult::new(
@@ -4903,6 +4907,8 @@ impl GraphiteCore {
             "revoke" => &["approve"],
             "create" => &["close"],
             "close" => &["create", "initialize"],
+            "withdraw" | "claim" => &["deposit", "increase"],
+            "burn" => &["mint"],
             _ => &[],
         };
         if let Some(word) = opposites.iter().find(|w| ix_name.contains(**w)) {
@@ -4940,7 +4946,11 @@ impl GraphiteCore {
         // enough: a `stake` intent declares the `transfer` class (a liquid
         // staking deposit is one), and without this a System Transfer would
         // pass L5 as a stake.
-        if !program_supports_intent(program_id, intent) {
+        // A grounded class (Round 30) carries its own answer: only a grant
+        // naming this program's instruction for this intent gives one.
+        if !crate::intent_grants::is_grounded_class(security_class)
+            && !program_supports_intent(program_id, intent)
+        {
             return Err(format!(
                     "a '{raw_intent}' intent does not describe {instruction_name}: program {program_id} does not serve that intent"
                 ),
@@ -6457,6 +6467,12 @@ impl GraphiteCore {
         // measured, the full label was Blocked and the empty label Clear on
         // the same bytes. Only Check 2's empty-label arm still reads the
         // label, and that arm refuses.
+        // Round 30 (R-M13/R-M14): an instruction a grant names for the declared
+        // intent is judged by the grant's grounded class when the
+        // transaction's own accounts make the operation the signer's own
+        // (`intent_grants`), and by its manifest class otherwise — with the
+        // failed fact kept, to name in the refusal.
+        let mut ungrounded_grant: Option<String> = None;
         let (expected_account_count, variable_accounts, manifest_risk_class) = match manifest {
             Some(m) => {
                 let ix = m.instruction_for(&effective_discriminator);
@@ -6465,7 +6481,25 @@ impl GraphiteCore {
                     Some(i) => (
                         Some(i.layout_for(input.account_addresses.len()).len()),
                         i.variable_accounts,
-                        i.security_class().to_string(),
+                        match crate::intent_grants::ground(
+                            &input.program_id,
+                            i,
+                            crate::risk_engine::canonical_intent(
+                                &input.proposed_intent.intent_type.trim().to_lowercase(),
+                            ),
+                            &input.account_addresses,
+                        ) {
+                            crate::intent_grants::GrantOutcome::Grounded(class) => {
+                                class.to_string()
+                            }
+                            crate::intent_grants::GrantOutcome::Ungrounded(why) => {
+                                ungrounded_grant = Some(why);
+                                i.security_class().to_string()
+                            }
+                            crate::intent_grants::GrantOutcome::NoGrant => {
+                                i.security_class().to_string()
+                            }
+                        },
                     ),
                     None => (None, false, String::new()),
                 }
@@ -6525,6 +6559,20 @@ impl GraphiteCore {
         // signal is never silently dropped (Constitution P3 explainability).
         let risk_verdict = risk_detail.verdict;
         let mut risk_warnings = risk_detail.warnings;
+        // A grant whose facts did not hold left the manifest's class in place,
+        // which the intent does not declare, so the Risk Engine refused it
+        // (Check 9/9b). The refusal says which fact failed.
+        let risk_verdict = match (risk_verdict, ungrounded_grant) {
+            (verdict, None) => verdict,
+            (RiskVerdict::Passed, Some(why)) => RiskVerdict::Blocked {
+                pattern: crate::risk_engine::RiskPattern::PermissionEscalation,
+                reason: why,
+            },
+            (RiskVerdict::Blocked { pattern, reason }, Some(why)) => RiskVerdict::Blocked {
+                pattern,
+                reason: format!("{reason} | {why}"),
+            },
+        };
 
         // GAP-2026-08-06-1: a NOVEL instruction on a KNOWN protocol is exactly
         // where new attacker behavior hides. The confidence ceiling (P6) already

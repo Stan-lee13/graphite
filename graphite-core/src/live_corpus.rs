@@ -144,6 +144,35 @@ pub fn honest_intent(
         .or_else(|| INTENTS.into_iter().find(describes))
 }
 
+/// [`honest_intent`] with the instruction's accounts, so the intents only a
+/// grounded grant serves (Round 30, `intent_grants`: withdraw, claim, burn,
+/// configure, and a protocol close) are found too. A grant whose facts hold
+/// for these accounts names the intent; otherwise the class-only answer.
+pub fn honest_intent_with_accounts(
+    program_id: &str,
+    def: &crate::manifest::InstructionDef,
+    accounts: &[String],
+) -> Option<&'static str> {
+    crate::intent_grants::GRANTS
+        .iter()
+        .filter(|g| g.program_id == program_id && g.instruction == def.name)
+        .find(|g| {
+            matches!(
+                crate::intent_grants::ground(program_id, def, g.intent, accounts),
+                crate::intent_grants::GrantOutcome::Grounded(_)
+            )
+        })
+        .map(|g| g.intent)
+        .or_else(|| {
+            honest_intent(
+                program_id,
+                &def.name,
+                def.security_class(),
+                &def.expected_state_changes,
+            )
+        })
+}
+
 /// Upper bound on account keys extracted per instruction (instruction account
 /// lists beyond this are truncated).
 ///

@@ -4,7 +4,7 @@
   "type": "object",
   "required": ["intent_type", "raw_natural_language", "confidence_of_parse"],
   "properties": {
-    "intent_type": { "type": "string", "enum": ["swap", "trade", "exchange", "transfer", "send", "stake", "delegate", "close", "close_account", "create", "create_account", "approve", "revoke", "unknown"] },
+    "intent_type": { "type": "string", "enum": ["swap", "trade", "exchange", "transfer", "send", "stake", "delegate", "close", "close_account", "create", "create_account", "approve", "revoke", "withdraw", "redeem", "remove_liquidity", "decrease_liquidity", "claim", "claim_fees", "claim_rewards", "collect_fees", "harvest", "burn", "configure", "update_config", "unknown"], "description": "The declared intent. Every value but `unknown` is one of the Core's canonical intents or a synonym of one (risk_engine::canonical_intent). `withdraw`, `claim`, `burn` and `configure` (and `close` beyond the token and DCA programs) describe only the instructions a grounded grant names (intent_grants), when the transaction's own accounts show the operation is the signer's own; anything else they label is refused." },
     "raw_natural_language": { "type": "string" },
     "confidence_of_parse": {
       "type": "number",
