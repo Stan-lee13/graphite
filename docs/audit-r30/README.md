@@ -14,6 +14,7 @@ scripts in `tools/`; nothing generated is edited by hand.
 | `historical-findings.md` | Reviewed dispositions: the twelve leads (G-01 … G-12) and every open, partial, limitation or owner item in the records | by hand, from the code at `29e4356` |
 | `architecture.md` | The system reconstructed from the code: components, trust boundaries, the pipeline and the approval rule, every sign/send sink, L8, persistence, credentials, CI | by hand |
 | `new-defects.md` | Defects this pass found and did not fix (K-01 …) | by hand |
+| `findings-registry.md` | Every Round 30 finding (R30-*, K-*, the twelve leads) with severity, class, status, regression test, break record and residual; the before/after counts | by hand, at the end of the round |
 | `tools/vacuous_tests.py` | Lists Rust tests whose body contains no assertion form | run on demand |
 
 ## Audit depth, as the ledger uses it

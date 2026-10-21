@@ -8,7 +8,7 @@ The Rust verification engine — the heart of Graphite.
 |--------|---------------|-------|
 | `account_resolution` | PDA derivation (Solana hash-chain algorithm), account role validation | L1 |
 | `verification` | 8-layer pipeline orchestrator (L1–L8) — implements L2 Instruction Verification and L4 State Verification inline | L2/L4 |
-| `transaction_builder` | A validated transaction summary (not wire bytes), compute budget estimate | — |
+| `transaction_builder` | `InstructionPlan` / `InstructionSummary`: a validated summary of one instruction and a compute-unit ESTIMATE, not wire bytes (renamed in Round 30; the old names are deprecated aliases) | — |
 | `risk_engine` | 10 of the 12 detection patterns in 16 checks, hard gate (the other two come from `tx_pattern_analysis`; `PluginBlock` names a plugin veto) | L7 |
 | `confidence_engine` | Weighted signal scoring + trust tier ceilings | L6 |
 | `policy_engine` | Per-wallet profile thresholds (Treasury, TradingBot, Gaming, Enterprise) | L6 |
@@ -22,12 +22,13 @@ The Rust verification engine — the heart of Graphite.
 | `plugins` | Built-in plugins: FakeRewardsDrainer (L7 risk), VerificationEventLogger (analytics) | L7/L8 |
 | `benchmark` | P16-compliant benchmark suite (24 cases, 22 scored; an approve-all comparison row; plugin overhead) | — |
 | `cli` | CLI interface (clap) | — |
-| `operator_boundary` | The trust-boundary rules the server and the CLI share: profile pin, weak-`Custom` clamp, permissive opt-out, plugins directory, durable nonces, upgrade quarantine, learning from policy refusals | — |
-| `durable` | Append-only audit trail (P4/P9): `sync_data` per record, rotation by rename, archives read by every consumer through persisted, checked indexes (`src/durable/archive_index.rs`), the lifecycle emission table, health counters | — |
+| `operator_boundary` | The trust-boundary rules the server and the CLI share: profile pin, weak-`Custom` clamp, permissive opt-out, plugins directory, durable nonces, upgrade quarantine; the retired learning variable refuses to start (Round 30) | — |
+| `durable` | Append-only audit trail (P4/P9): `sync_data` per record, rotation by rename, archives read by every consumer through persisted, checked indexes (`src/durable/archive_index.rs`), the lifecycle emission table, health counters; since Round 30 a hash chain across rotation with an optional HMAC key, `graphite audit verify` / `checkpoint`, and one writer per trail (`src/durable/chain.rs`) | — |
 | `tx_artifact` | Wire-format parser (legacy, v0 and — since Round 19 — v1): canonical compact-u16, header privileges, lookup-table resolution, runtime account numbering, durable-nonce detection, `message_bytes`, `simulation_identity` (the baseline's observation key: signatures and blockhash zeroed) | L1/L2 |
 | `state_diff` | Pre/post account diff; SPL Token / Token-2022 decoding; Token-2022 extension classification (fail-closed on unreadable regions) | L4 |
 | `solana_types` | PDA derivation, base58, 32-byte pubkeys — no `solana-sdk` dependency | — |
 | `live_corpus` | Pinned real on-chain transaction corpus for regression testing | — |
+| `intent_grants` | Round 30: the 21 named instructions a `withdraw` / `claim` / `close` / `burn` / `configure` intent may clear, each only when the transaction's own accounts show the proceeds or rent go to the signer | L5/L7 |
 | `manifest` | Seed manifest loader (one compile-time `include_str!` list) + the trust-tier evidence gate | — |
 | `rpc_client` | Solana RPC client for live L3/L8 verification | — |
 | `tx_pattern_analysis` | Multi-instruction + CPI trace analysis (C29), run on the call tree the simulator reports (Round 19) | — |
@@ -85,9 +86,9 @@ When run via `cargo run --release --bin graphite -- server --port 7331`, the HTT
 - **Per-IP token-bucket rate limiting** (`GRAPHITE_RATE_LIMIT`, returns 429, FIFO eviction)
 - **CORS denied by default**, allowlist via `GRAPHITE_CORS_ORIGINS`
 - **Audit trail** — append-only JSONL (`audit.jsonl` in `GRAPHITE_DATA_DIR`), every record synced to the device before the response; a verdict that cannot be recorded is refused with `503`; rotation is a rename and every reader covers the archives
-- **Health and metrics** — `/health` (open, exempt from rate limiting and load shedding) reports `degraded_reasons`, audit and rotation counters, `frozen_baseline_count` and snapshot health; `/metrics` (keyed) exports 28 Prometheus series; `GET /api/frozen-baselines` (keyed) lists the frozen programs
+- **Health and metrics** — `/health` (open, exempt from rate limiting and load shedding) reports `degraded_reasons`, audit and rotation counters, `frozen_baseline_count` and snapshot health; `/metrics` (keyed; also the read-only key since Round 30) exports 30 Prometheus series (Round 30 added `graphite_audit_tamper_evident` and `graphite_audit_anchor_writes_failed_total`); `GET /api/frozen-baselines` (keyed) lists the frozen programs
 - **L8 and lifecycle** — `POST /verify/execution` reconciles a signature against the recorded verdict across the whole trail; `POST /audit/event` records caller-reported signing/submission/confirmation/finalization as attestations
-- **Operator switches** — `/admin/quarantine` (the separate operator key `GRAPHITE_ADMIN_API_KEY`; disabled without it — Round 19), `GRAPHITE_WALLET_PROFILE`, `GRAPHITE_ALLOW_PERMISSIVE_PROFILES`, `GRAPHITE_ALLOW_DURABLE_NONCE`, `GRAPHITE_QUARANTINE_ON_UPGRADE` (quarantine a program found redeployed since last seen; detection itself is always on with an RPC), `GRAPHITE_LEARN_FROM_POLICY_REFUSALS` (let threshold-only refusals train the baseline, Round 29); all default closed, and every variable refuses to start on a value it cannot parse
+- **Operator switches** — `/admin/quarantine` (the separate operator key `GRAPHITE_ADMIN_API_KEY`; disabled without it — Round 19), `GRAPHITE_WALLET_PROFILE`, `GRAPHITE_ALLOW_PERMISSIVE_PROFILES`, `GRAPHITE_ALLOW_DURABLE_NONCE`, `GRAPHITE_QUARANTINE_ON_UPGRADE` (quarantine a program found redeployed since last seen; detection itself is always on with an RPC, and since Round 30 an upgrade withdraws the program's evidence), `GRAPHITE_L8_HIGH_ASSURANCE` (Round 30), the read-only `GRAPHITE_READ_API_KEY` (Round 30); all default closed, every variable refuses to start on a value it cannot parse, and the retired `GRAPHITE_LEARN_FROM_POLICY_REFUSALS` refuses to start with any value
 - **Graceful shutdown**; `X-Forwarded-For` only honored behind an explicit trusted-proxy flag
-- **Live L3** when `GRAPHITE_RPC_URL` is set — `simulateTransaction` runs with real compute feeding the trusted baseline accumulator (live-validated on Solana devnet, C40); a failed or incomplete simulation refuses the verdict (Round 29). Without it, L3 is Inconclusive and the verdict carries `not_simulated`
-- **Live L8** — execution verification reports honest on-chain status (Confirmed/Unknown/Unavailable), live-validated against mainnet RPC (C40)
+- **Live L3** when `GRAPHITE_RPC_URL` is set — `simulateTransaction` runs with real compute feeding the trusted baseline accumulator (checked by hand on Solana devnet through an ignored live test, C40); a failed or incomplete simulation refuses the verdict (Round 29). Without it, L3 is Inconclusive, the verdict carries `not_simulated`, and every approval is `decision: analysis_only` — never permission to sign (Round 30)
+- **Live L8** — execution verification reports honest on-chain status (Confirmed/Unknown/Unavailable), checked by hand against mainnet RPC through an ignored live test (C40); since Round 30 each reconciliation states its `inclusion_assurance`

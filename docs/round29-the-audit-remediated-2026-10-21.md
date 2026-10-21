@@ -3,6 +3,14 @@
 > **Historical record.** This report describes the codebase at commit `19a2974`
 > on 2026-10-20/21, and the changes made on top of it. For the current state of
 > Graphite see [`CURRENT.md`](CURRENT.md).
+>
+> **Superseded in part by Round 30** (`round30-forensic-audit-and-remediation-2026-10-22.md`):
+> M1's opt-in `GRAPHITE_LEARN_FROM_POLICY_REFUSALS` is retired, and a second training path
+> through a request-named profile is closed (R30-B-1); H1's "without an RPC the verdict is
+> unchanged" now yields `decision: analysis_only`, never permission to sign (G-01); "the audit
+> trail is corruption-evident, not tamper-evident" holds only without `GRAPHITE_AUDIT_KEY_FILE`
+> (G-07); the risk-engine, registry, protocol-data and attack-suite fixes this report did not
+> break-test were broken and caught in Round 30 (R30-F-3).
 
 **Date:** 2026-10-20 to 2026-10-21 · **Base:** `19a2974` (Round 28) · **Scope:** a full-repository
 audit of `19a2974` — every source file read, the most consequential findings re-checked by hand,
