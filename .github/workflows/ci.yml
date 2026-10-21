@@ -37,6 +37,9 @@ concurrency:
 # pipefail, so `cargo test | tee log` took tee's exit status and a failing
 # run piped into a log passed (the A6-01 failure mode, closed here for every
 # step at once rather than step by step).
+# A job's own `defaults.run` replaces this block, not merges into it, so every
+# job that sets a working directory repeats `shell: bash` (seen on the first
+# PR run: those jobs ran `bash -e {0}`, without pipefail).
 defaults:
   run:
     shell: bash
@@ -64,6 +67,7 @@ jobs:
     defaults:
       run:
         working-directory: graphite-core
+        shell: bash
     steps:
       # `persist-credentials: false` on every checkout (A6-10): nothing here
       # pushes, so the token has no reason to sit in .git/config where every
@@ -191,6 +195,7 @@ jobs:
     defaults:
       run:
         working-directory: graphite-core
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -275,6 +280,7 @@ jobs:
     defaults:
       run:
         working-directory: tools/runtime-oracle
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -715,6 +721,7 @@ jobs:
     defaults:
       run:
         working-directory: sdk/go
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -754,6 +761,7 @@ jobs:
     defaults:
       run:
         working-directory: dashboard
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -813,6 +821,7 @@ jobs:
     defaults:
       run:
         working-directory: python-ai-layer
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -859,6 +868,7 @@ jobs:
     defaults:
       run:
         working-directory: graphite-core
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
