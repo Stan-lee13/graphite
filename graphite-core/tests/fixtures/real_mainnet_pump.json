@@ -1,4 +1,5 @@
 {
+ "graphite_note": "FAILED on chain: meta.err = InstructionError [3, Custom 7002]. Fetched by the pre-Round-29 scripts/fetch_real_fixtures.py, which took the newest signature without checking meta.err; it contains no pump.fun instruction. A real instruction shape, NOT a benign label (tests/regression_corpus.rs does not score it).",
  "transaction": {
   "message": {
    "accountKeys": [
