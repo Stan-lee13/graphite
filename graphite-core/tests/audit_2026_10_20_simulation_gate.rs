@@ -6,7 +6,8 @@
 //!   one that could not be obtained — an RPC error, a malformed or incomplete
 //!   response, no post-state — is `VerificationIncomplete`. Both refuse.
 //! - M1: a request refused ONLY by the policy threshold trains the baseline
-//!   only when the operator opts in (`set_learn_from_policy_refusals`).
+//!   only under the operator's bootstrap policy
+//!   (`ObservationPolicy::OperatorBootstrap`; Round 30, G-02).
 //! - F5: a caller citing a refused `audit_trail_id` beside a signature whose
 //!   chain bytes are something else is not a discrepancy.
 //! - F10: the inclusion witness is never the primary, whichever is attached
@@ -398,12 +399,20 @@ async fn a_simulation_without_a_diff_is_refused() {
 // ─── M1 ─────────────────────────────────────────────────────────────────────
 
 /// Three distinct transfers refused by the threshold took a fresh program
-/// from 0.44 to 0.64 — past Gaming — for everyone. Off by default now.
+/// from 0.44 to 0.64 — past Gaming — for everyone. Off by default now, and
+/// since Round 30 (G-02) not by naming a permissive profile either: a
+/// verdict approved under the request's own `Custom { 0.40 }` profile is no
+/// more evidence than one refused under Gaming.
 #[tokio::test]
 async fn policy_refusals_teach_nothing_unless_the_operator_opts_in() {
+    use graphite_core::verification::ObservationPolicy;
     let endpoint = cluster(Arc::default());
     let core = core_at(&endpoint);
-    assert!(!core.learn_from_policy_refusals(), "off by default");
+    assert_eq!(
+        core.observation_policy(),
+        ObservationPolicy::BuiltinFloor,
+        "the built-in floor by default"
+    );
     for i in 1..=3u64 {
         let r = core
             .verify_async(&describe(2_000_000 + i, WalletProfile::Gaming))
@@ -427,17 +436,33 @@ async fn policy_refusals_teach_nothing_unless_the_operator_opts_in() {
         fourth.confidence
     );
 
-    // An APPROVED verdict still trains, as before.
-    let approved = core
-        .verify_async(&describe(2_000_020, official_floor()))
+    // Round 30 (G-02): APPROVED under the request's own permissive profile,
+    // and still no evidence — the request chose the bar it cleared.
+    for i in 1..=3u64 {
+        let approved = core
+            .verify_async(&describe(2_000_020 + i, official_floor()))
+            .await
+            .unwrap();
+        assert!(approved.approved, "{}", approved.summary);
+    }
+    assert_eq!(
+        samples(&core),
+        0,
+        "a verdict approved below the built-in floor trained the baseline"
+    );
+    let after_self_approval = core
+        .verify_async(&describe(2_000_030, WalletProfile::Gaming))
         .await
         .unwrap();
-    assert!(approved.approved, "{}", approved.summary);
-    assert_eq!(samples(&core), 1);
+    assert!(
+        !after_self_approval.approved,
+        "{}",
+        after_self_approval.summary
+    );
 
-    // The operator's opt-in restores the bootstrap.
+    // The operator's bootstrap policy — library and CLI only — restores it.
     let mut opted = core_at(&endpoint);
-    opted.set_learn_from_policy_refusals(true);
+    opted.set_observation_policy(ObservationPolicy::OperatorBootstrap);
     for i in 1..=3u64 {
         let _ = opted
             .verify_async(&describe(3_000_000 + i, WalletProfile::Gaming))

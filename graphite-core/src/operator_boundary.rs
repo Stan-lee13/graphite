@@ -221,6 +221,10 @@ pub fn enforce_wallet_profile(
     }
 }
 
+/// The variable that let threshold-only refusals train evidence (Round 29),
+/// refused since Round 30 (G-02).
+pub const RETIRED_LEARN_FROM_POLICY_REFUSALS: &str = "GRAPHITE_LEARN_FROM_POLICY_REFUSALS";
+
 /// The operator's policy settings, read once from the environment.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct OperatorPolicy {
@@ -232,12 +236,6 @@ pub struct OperatorPolicy {
     pub allow_durable_nonce: bool,
     /// `GRAPHITE_QUARANTINE_ON_UPGRADE`.
     pub quarantine_on_upgrade: bool,
-    /// `GRAPHITE_LEARN_FROM_POLICY_REFUSALS`: a request refused ONLY by the
-    /// confidence or tier threshold trains the simulation baseline. Off by
-    /// default (audit 2026-10-20, M1): with it on, anyone holding the verify
-    /// key can raise a program's confidence for every caller of the node by
-    /// submitting three byte-distinct transactions it refuses.
-    pub learn_from_policy_refusals: bool,
     /// `GRAPHITE_PLUGINS_DIR`, when set and non-empty.
     pub plugins_dir: Option<PathBuf>,
 }
@@ -258,13 +256,22 @@ impl OperatorPolicy {
             ),
             _ => None,
         };
+        // Round 30 (G-02): retired. With it on, anyone holding the verify
+        // key could raise a program's confidence for every caller of the
+        // node; no request-driven path may train evidence below the built-in
+        // floor now (`verification::ObservationPolicy`). An operator who set
+        // it is told rather than silently ignored.
+        if get(RETIRED_LEARN_FROM_POLICY_REFUSALS).is_some_and(|v| !v.trim().is_empty()) {
+            return Err(format!(
+                "{RETIRED_LEARN_FROM_POLICY_REFUSALS} was removed in Round 30: a verify request can no longer train evidence for a program no built-in profile admits. Stand a program up with `graphite evidence seed` or `graphite evidence baseline` (operator-asserted, recorded on the trail), and unset the variable"
+            ));
+        }
         let flag = |name: &str| env_flag(name, get(name).as_deref());
         Ok(Self {
             pinned_profile,
             allow_permissive_profiles: flag("GRAPHITE_ALLOW_PERMISSIVE_PROFILES")?,
             allow_durable_nonce: flag("GRAPHITE_ALLOW_DURABLE_NONCE")?,
             quarantine_on_upgrade: flag("GRAPHITE_QUARANTINE_ON_UPGRADE")?,
-            learn_from_policy_refusals: flag("GRAPHITE_LEARN_FROM_POLICY_REFUSALS")?,
             plugins_dir: get("GRAPHITE_PLUGINS_DIR")
                 .filter(|d| !d.trim().is_empty())
                 .map(PathBuf::from),
@@ -272,8 +279,7 @@ impl OperatorPolicy {
     }
 
     /// Apply the settings that live in the core: durable nonces, the
-    /// upgrade quarantine, learning from policy refusals and the plugins
-    /// directory. Returns the plugin
+    /// upgrade quarantine and the plugins directory. Returns the plugin
     /// registration summary when a directory is configured. A directory
     /// that does not load is an error: an operator who configured
     /// plugins expects them to be running (Round 17, F-16-07).
@@ -283,7 +289,6 @@ impl OperatorPolicy {
     ) -> Result<Option<crate::plugin_orchestrator::RegistrationSummary>, String> {
         core.set_allow_durable_nonce(self.allow_durable_nonce);
         core.set_quarantine_on_upgrade(self.quarantine_on_upgrade);
-        core.set_learn_from_policy_refusals(self.learn_from_policy_refusals);
         match &self.plugins_dir {
             Some(dir) => core.attach_plugins_dir(dir).map(Some).map_err(|e| {
                 format!(

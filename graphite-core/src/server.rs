@@ -1176,11 +1176,6 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
             "a program redeployed since Graphite last saw it is QUARANTINED until the operator lifts it (GRAPHITE_QUARANTINE_ON_UPGRADE=1)",
         );
     }
-    if policy.learn_from_policy_refusals {
-        tracing_log(
-            "requests refused ONLY by the confidence/tier threshold TRAIN the simulation baseline (GRAPHITE_LEARN_FROM_POLICY_REFUSALS=1): anyone holding the verify key can raise a program's confidence for every caller",
-        );
-    }
     if policy.allow_durable_nonce {
         tracing_log(
             "durable-nonce transactions PERMITTED (GRAPHITE_ALLOW_DURABLE_NONCE=1): they do not expire; each one is verified against its nonce account on-chain before L2 passes",
@@ -8410,10 +8405,19 @@ Connection: close
             "GRAPHITE_ALLOW_PERMISSIVE_PROFILES",
             "GRAPHITE_ALLOW_DURABLE_NONCE",
             "GRAPHITE_QUARANTINE_ON_UPGRADE",
-            "GRAPHITE_LEARN_FROM_POLICY_REFUSALS",
         ] {
             assert!(policy(name, "yes").is_err(), "{name}=yes");
         }
+        // Round 30 (G-02): retired, and refused whatever its value, so an
+        // operator who relied on it learns that it no longer exists.
+        for value in ["1", "0", "true", "yes"] {
+            let e = policy("GRAPHITE_LEARN_FROM_POLICY_REFUSALS", value).unwrap_err();
+            assert!(e.contains("removed in Round 30"), "{value}: {e}");
+        }
+        assert!(
+            policy("GRAPHITE_LEARN_FROM_POLICY_REFUSALS", "  ").is_ok(),
+            "an empty value is an unset one, as for every other switch"
+        );
         assert!(policy("GRAPHITE_WALLET_PROFILE", "treasry").is_err());
     }
 
