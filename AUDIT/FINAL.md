@@ -73,8 +73,11 @@ that alone (a documented limitation; the agent guard refuses it).
   Round 24 (R2, R3, R3-b and W11–W25), B104–B107 from Round 25 (E3, E3b, E8), B108 from Round 26
   (the committed mainnet blocks catch a verdict change), B109–B111 from Round 27 (upgrade detection), B112–B125 from Round 28 (the archive index, the
   emission table, the contract gate). Round 29 adds B126 (the RPC-client and state-diff fixes
-  reverted: 28 failures, every new test but its two controls) and B127 (the contract gate), and no
-  more: its other areas' reverts were not run or not recorded. B62 and B99 were
+  reverted: 28 failures, every new test but its two controls) and B127 (the contract gate), . Outside
+  the numbered harness, each Round 29 area's own revert runs are listed in the round report
+  (core pipeline, server and CLI, audit trail and parser, agent guard, SDKs and schema, dashboard
+  and AI layer: caught); the risk engine and registry, and the protocol data and attack suites,
+  were not break-tested. B62 and B99 were
   missed on their first run because their tests did not exercise the reverted rule; each test was
   corrected and the break caught. TypeScript: 11 of 11 caught (TSB1–TSB5 in Round 24, TSB6–TSB11
   in Round 25).

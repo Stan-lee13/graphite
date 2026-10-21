@@ -254,23 +254,41 @@ sends.
 ## 5. Deliberate breaks
 
 Until Round 28 every fix was reverted once to show its test fails. This round's record is
-incomplete, and this section says where.
+complete for most areas and missing for two; each area's own run is stated, not inferred. The
+results below were reported by the run that made them; where no artifact survives beyond that
+report, it says so.
 
-- **Recorded: the RPC client and state-diff fixes.** `src/state_diff.rs` and `src/rpc_client.rs`
-  were reverted to their pre-fix versions together and four suites run: `round29_rpc_client` failed
-  11 of 11, `round29_state_diff` 15 of 17 (its two controls, `closing_an_empty_token_account_is_no_debit`
-  and `lamports_into_a_signers_own_token_account_are_not_a_loss`, passed as they should),
-  `token2022_extensions::zero_padding_shorter_than_a_header_ends_the_region` and
-  `round20_transfer_fee::an_undeclared_change_to_the_fee_terms_blocks` failed. 28 failures; every
-  new test except the two controls caught the revert.
-- **Recorded: the contract gate.** Removing `raw_natural_language` from
-  `proposed-intent-v1.json` fails the gate in a checkout with no tags.
-- **Written but not recorded:** scripts that revert the Core pipeline fixes (H1, M1, M2 and four
-  smaller ones), and that break the guard and the schema, were written for those areas, but their
-  results were not kept. They are not claimed as caught.
-- **Not run:** the server and CLI, audit trail and parser, risk engine and registry, protocol data,
-  dashboard, Python and CI fixes have tests that pass with the fix, but no revert was run against
-  them in this round.
+- **Core pipeline.** H1, M1, M2, F5, F10, F11 and F14 were disabled together and the 16 new tests
+  in `audit_2026_10_20_core_gates` and `audit_2026_10_20_simulation_gate` run: 12 failed — all
+  but the F4 and F9 tests (which do not depend on the disabled code) and the two controls (no-RPC
+  and clean simulation), which passed as they should.
+- **Server and CLI.** The M12 permit split, the L1 X-Forwarded-For parsing and the L3 `/health`
+  exemption were each reverted; their new tests failed.
+- **RPC client and state diff.** `src/state_diff.rs` and `src/rpc_client.rs` reverted together:
+  `round29_rpc_client` failed 11 of 11 (in the run kept), `round29_state_diff` 15 of 17 (its two
+  controls passed), and the new `token2022_extensions` padding test and the updated `round20`
+  fee-terms test failed — 28 failures. The S1 and S5 simulation-integrity tests failed with their
+  fixes reverted.
+- **Audit trail and parser.** Every new durable test was run against its reverted fix (archive
+  ordering, archive names, the failed-append undo and its refusal, the bounded statistics, the
+  forged index, the detached handle, the retried index, the per-key bound) and failed; so did the
+  legacy-nonce and lookup-split tests in `tx_artifact`. The bump-0 change has no failing test: no
+  seed is known whose bumps 255..1 are all on the curve.
+- **Agent guard and adapters.** Reverted and caught: the transfer grammar (H3/M5), the swap
+  minimum and price floor (H2), both AuditBind selector cases (L1), the key walk (M8), the
+  ambiguous-send record (L2), the confirmation hook (M7, guard and Vercel), the required cap (M6)
+  and the `.env.example` check.
+- **SDKs and schema.** The Go verdict validation (20 of its 22 malformed bodies passed without
+  it), the Go wire inputs, the TS timeout and byte checks and the schema's invariants were each
+  reverted and their tests failed.
+- **Dashboard and AI layer.** The dashboard's fetch deadline test hangs and fails without the
+  abort signal; the AI layer's new tests fail against the previous parser (9 failed, 35 passed).
+- **Contract gate.** Removing `raw_natural_language` from `proposed-intent-v1.json` fails the gate
+  in a checkout with no tags.
+- **Not run: the risk engine, manifests and registry**, whose revert runs were refused by the
+  environment's permission check — their tests were written against the behaviour each finding
+  describes, which is weaker evidence; **and the protocol data and attack suites**, where a
+  rebuild per detector was not run.
 
 ## 6. Still open
 
@@ -291,9 +309,7 @@ configuration versus protocol administration (R-M13); per-instruction L3 baselin
 guard's public API on web3.js 1.x (R-M15); scheduled mutation, fuzz and coverage runs
 (R-P11/12/15); renaming `content_hash` (R-M10); the release-evaluation report (R-P1).
 
-**Two figures not fixed here:** `docs/protocol-coverage.md` is generated, and two of its sentences
-come from data files rather than from the page: it names the 10,617-transaction sample's registry as
-131 manifests (the tools README records 129), and its "transaction versions in the same sample" line
-is the 80-block census's (version 1: 15.8% there; 17.2% in the sample). Correcting them means
-editing `scripts/out/mainnet_sample_named.json` and `render_coverage.py`, outside a documentation
-pass; `CURRENT.md` states both.
+**Two figures corrected after the documentation pass** (`716462c`): `docs/protocol-coverage.md`
+named the 10,617-transaction sample's registry as 131 manifests (the Round 18 report records 129),
+and labelled the 80-block census's transaction versions as "the same sample". The data file and the
+renderer were corrected and the page re-rendered.
