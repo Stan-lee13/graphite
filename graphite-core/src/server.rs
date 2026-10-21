@@ -913,7 +913,8 @@ pub fn read_key_posture(
 /// reports. `/health` needs no key; `/admin/*` needs the operator key; every
 /// `POST` verifies or records and needs the verify key.
 fn is_read_route(method: &Method, route: &str) -> bool {
-    method == Method::GET && (route == "/metrics" || route == "/manifests" || route.starts_with("/api/"))
+    method == Method::GET
+        && (route == "/metrics" || route == "/manifests" || route.starts_with("/api/"))
 }
 
 /// Why `GRAPHITE_L8_HIGH_ASSURANCE=1` cannot be honoured with this
@@ -947,7 +948,11 @@ fn high_assurance_refusal(
             "the primary RPC and the witness must both be https; a plaintext answer can be rewritten in transit".into(),
         );
     }
-    let name = |v: Option<&str>| v.map(str::trim).filter(|s| !s.is_empty()).map(str::to_ascii_lowercase);
+    let name = |v: Option<&str>| {
+        v.map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_ascii_lowercase)
+    };
     match (name(providers.0), name(providers.1)) {
         (Some(p), Some(w)) if p != w => None,
         (Some(_), Some(_)) => Some(
@@ -1395,7 +1400,9 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
             (names.0.as_deref(), names.1.as_deref()),
             (schemes.0.as_deref(), schemes.1.as_deref()),
         ) {
-            return Err(format!("GRAPHITE_L8_HIGH_ASSURANCE=1: {refusal}. REFUSING TO START.").into());
+            return Err(
+                format!("GRAPHITE_L8_HIGH_ASSURANCE=1: {refusal}. REFUSING TO START.").into(),
+            );
         }
         core.set_require_independent_witness(true);
         tracing_log(&format!(
@@ -9110,11 +9117,7 @@ mod route_surface {
             };
             for keys in [[key, key], [key, "wrong"], ["wrong", key]] {
                 let (status, _) = call(&app, method, path, &keys, body.clone()).await;
-                assert_eq!(
-                    status,
-                    StatusCode::UNAUTHORIZED,
-                    "{method} {path} {keys:?}"
-                );
+                assert_eq!(status, StatusCode::UNAUTHORIZED, "{method} {path} {keys:?}");
             }
         }
         std::fs::remove_dir_all(&dir).ok();
@@ -9393,8 +9396,12 @@ mod route_surface {
         let verify = "v".repeat(MIN_API_KEY_CHARS);
         let admin = "a".repeat(MIN_API_KEY_CHARS);
         let read = "r".repeat(MIN_API_KEY_CHARS);
-        assert!(read_key_posture(None, Some(&verify), None).unwrap().is_none());
-        assert!(read_key_posture(Some("  "), Some(&verify), None).unwrap().is_none());
+        assert!(read_key_posture(None, Some(&verify), None)
+            .unwrap()
+            .is_none());
+        assert!(read_key_posture(Some("  "), Some(&verify), None)
+            .unwrap()
+            .is_none());
         assert_eq!(
             read_key_posture(Some(&read), Some(&verify), Some(&admin))
                 .unwrap()
@@ -9405,7 +9412,9 @@ mod route_surface {
         // Short, equal to another key, or without a verify key at all.
         assert!(read_key_posture(Some("short"), Some(&verify), None).is_err());
         assert!(read_key_posture(Some(&verify), Some(&verify), None).is_err());
-        assert!(read_key_posture(Some(&format!(" {admin} ")), Some(&verify), Some(&admin)).is_err());
+        assert!(
+            read_key_posture(Some(&format!(" {admin} ")), Some(&verify), Some(&admin)).is_err()
+        );
         assert!(read_key_posture(Some(&read), None, None).is_err());
     }
 

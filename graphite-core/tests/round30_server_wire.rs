@@ -137,7 +137,10 @@ fn the_server_refuses_what_it_cannot_honour_and_frames_strictly() {
     base_env("ha-none");
     std::env::set_var("GRAPHITE_L8_HIGH_ASSURANCE", "1");
     let why = refusal();
-    assert!(why.contains("GRAPHITE_L8_HIGH_ASSURANCE") && why.contains("witness"), "{why}");
+    assert!(
+        why.contains("GRAPHITE_L8_HIGH_ASSURANCE") && why.contains("witness"),
+        "{why}"
+    );
 
     // A typo is not "off".
     base_env("ha-typo");
@@ -172,7 +175,10 @@ fn the_server_refuses_what_it_cannot_honour_and_frames_strictly() {
         base_env("forbidden");
         std::env::set_var("GRAPHITE_RPC_URL", endpoint);
         let why = refusal();
-        assert!(why.contains("GRAPHITE_RPC_URL") && why.contains("address"), "{why}");
+        assert!(
+            why.contains("GRAPHITE_RPC_URL") && why.contains("address"),
+            "{why}"
+        );
         assert!(!why.contains("169.254"), "the address is not echoed: {why}");
     }
 
@@ -194,7 +200,10 @@ fn the_server_refuses_what_it_cannot_honour_and_frames_strictly() {
     }
     chunked.extend_from_slice(b"0\r\n\r\n");
     let status = raw(addr, &chunked);
-    assert!(status.contains(" 413 "), "oversized chunked body: {status:?}");
+    assert!(
+        status.contains(" 413 "),
+        "oversized chunked body: {status:?}"
+    );
 
     // Two Content-Length values, or Content-Length beside Transfer-Encoding:
     // the framing a proxy and this server could read differently. Never
@@ -221,10 +230,13 @@ fn the_server_refuses_what_it_cannot_honour_and_frames_strictly() {
     assert!(raw(addr, req.as_bytes()).contains(" 401 "));
 
     // The operator surface, with the verify key, by any spelling.
-    for path in ["/admin/quarantine", "//admin/quarantine", "/admin/./quarantine"] {
-        let req = format!(
-            "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n{auth}Connection: close\r\n\r\n"
-        );
+    for path in [
+        "/admin/quarantine",
+        "//admin/quarantine",
+        "/admin/./quarantine",
+    ] {
+        let req =
+            format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n{auth}Connection: close\r\n\r\n");
         let status = raw(addr, req.as_bytes());
         assert!(!status.contains(" 200 "), "{path}: {status:?}");
     }

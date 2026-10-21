@@ -212,7 +212,12 @@ fn record(log: &AuditLog, signed: &[u8], approved: bool) {
 /// Reconcile `signed` against a trail holding one verdict for it. The
 /// caller's `transaction_sha256` is supplied, as the agent guard supplies it,
 /// so a source with no bytes still finds the record.
-async fn reconcile(core: &GraphiteCore, signed: &[u8], approved: bool, tag: &str) -> ExecutionAudit {
+async fn reconcile(
+    core: &GraphiteCore,
+    signed: &[u8],
+    approved: bool,
+    tag: &str,
+) -> ExecutionAudit {
     let (log, dir) = temp_log(tag);
     record(&log, signed, approved);
     let digest = artifact_sha256_of_signed(signed).unwrap();
@@ -243,20 +248,44 @@ async fn every_reconciliation_says_what_its_account_rests_on() {
 
     // No witness: the primary's word.
     let a = reconcile(&core(&honest, None, false, false), &signed, true, "single").await;
-    assert_eq!(a.reconciliation, ExecutionReconciliation::ApprovedAndExecuted);
+    assert_eq!(
+        a.reconciliation,
+        ExecutionReconciliation::ApprovedAndExecuted
+    );
     assert_eq!(a.inclusion_assurance, InclusionAssurance::SingleProvider);
 
     // A loopback witness beside a loopback primary agrees, but it is one
     // machine: reported as such, and outside high-assurance the conclusion
     // stands as before.
     let twin = cluster(serving(signed.clone(), 777));
-    let a = reconcile(&core(&honest, Some(&twin), false, false), &signed, true, "twin").await;
-    assert_eq!(a.reconciliation, ExecutionReconciliation::ApprovedAndExecuted);
-    assert_eq!(a.inclusion_assurance, InclusionAssurance::WitnessedNotIndependent);
+    let a = reconcile(
+        &core(&honest, Some(&twin), false, false),
+        &signed,
+        true,
+        "twin",
+    )
+    .await;
+    assert_eq!(
+        a.reconciliation,
+        ExecutionReconciliation::ApprovedAndExecuted
+    );
+    assert_eq!(
+        a.inclusion_assurance,
+        InclusionAssurance::WitnessedNotIndependent
+    );
 
     // Assessed independent: witnessed.
-    let a = reconcile(&core(&honest, Some(&twin), true, false), &signed, true, "indep").await;
-    assert_eq!(a.reconciliation, ExecutionReconciliation::ApprovedAndExecuted);
+    let a = reconcile(
+        &core(&honest, Some(&twin), true, false),
+        &signed,
+        true,
+        "indep",
+    )
+    .await;
+    assert_eq!(
+        a.reconciliation,
+        ExecutionReconciliation::ApprovedAndExecuted
+    );
     assert_eq!(a.inclusion_assurance, InclusionAssurance::Witnessed);
 
     // The label reaches the wire, and a record without it reads back as the
@@ -278,18 +307,45 @@ async fn high_assurance_states_nothing_about_the_chain_on_one_providers_word() {
     let twin = cluster(serving(signed.clone(), 777));
 
     // Single provider: executed, but not stated.
-    let a = reconcile(&core(&honest, None, false, true), &signed, true, "ha-single").await;
+    let a = reconcile(
+        &core(&honest, None, false, true),
+        &signed,
+        true,
+        "ha-single",
+    )
+    .await;
     let why = unavailable(&a.reconciliation);
-    assert!(why.contains("high-assurance") && why.contains("single_provider"), "{why}");
-    assert!(why.contains("ApprovedAndExecuted"), "the withheld answer is named: {why}");
+    assert!(
+        why.contains("high-assurance") && why.contains("single_provider"),
+        "{why}"
+    );
+    assert!(
+        why.contains("ApprovedAndExecuted"),
+        "the withheld answer is named: {why}"
+    );
 
     // A witness that is not independent is not enough.
-    let a = reconcile(&core(&honest, Some(&twin), false, true), &signed, true, "ha-twin").await;
+    let a = reconcile(
+        &core(&honest, Some(&twin), false, true),
+        &signed,
+        true,
+        "ha-twin",
+    )
+    .await;
     assert!(unavailable(&a.reconciliation).contains("witnessed_not_independent"));
 
     // An independent witness that agrees: the conclusion stands.
-    let a = reconcile(&core(&honest, Some(&twin), true, true), &signed, true, "ha-ok").await;
-    assert_eq!(a.reconciliation, ExecutionReconciliation::ApprovedAndExecuted);
+    let a = reconcile(
+        &core(&honest, Some(&twin), true, true),
+        &signed,
+        true,
+        "ha-ok",
+    )
+    .await;
+    assert_eq!(
+        a.reconciliation,
+        ExecutionReconciliation::ApprovedAndExecuted
+    );
     assert_eq!(a.inclusion_assurance, InclusionAssurance::Witnessed);
 
     // The negative statements need it too: "the blocked transaction did not
@@ -297,7 +353,13 @@ async fn high_assurance_states_nothing_about_the_chain_on_one_providers_word() {
     // exactly what a censoring primary would say.
     let empty = cluster(knows_nothing());
     for approved in [false, true] {
-        let a = reconcile(&core(&empty, None, false, true), &signed, approved, "ha-neg").await;
+        let a = reconcile(
+            &core(&empty, None, false, true),
+            &signed,
+            approved,
+            "ha-neg",
+        )
+        .await;
         assert!(
             unavailable(&a.reconciliation).contains("single_provider"),
             "approved={approved}"
@@ -314,8 +376,17 @@ async fn high_assurance_states_nothing_about_the_chain_on_one_providers_word() {
         );
     }
     let empty_twin = cluster(knows_nothing());
-    let a = reconcile(&core(&empty, Some(&empty_twin), true, true), &signed, false, "ha-neg-ok").await;
-    assert_eq!(a.reconciliation, ExecutionReconciliation::BlockedAndNotExecuted);
+    let a = reconcile(
+        &core(&empty, Some(&empty_twin), true, true),
+        &signed,
+        false,
+        "ha-neg-ok",
+    )
+    .await;
+    assert_eq!(
+        a.reconciliation,
+        ExecutionReconciliation::BlockedAndNotExecuted
+    );
 }
 
 #[tokio::test]
@@ -323,8 +394,17 @@ async fn high_assurance_never_withholds_the_alarm() {
     let signed = signed_by(&key(0x42));
     // The primary saw the blocked transaction; no witness at all.
     let honest = cluster(serving(signed.clone(), 777));
-    let a = reconcile(&core(&honest, None, false, true), &signed, false, "alarm-primary").await;
-    assert_eq!(a.reconciliation, ExecutionReconciliation::BlockedButExecuted);
+    let a = reconcile(
+        &core(&honest, None, false, true),
+        &signed,
+        false,
+        "alarm-primary",
+    )
+    .await;
+    assert_eq!(
+        a.reconciliation,
+        ExecutionReconciliation::BlockedButExecuted
+    );
     assert!(a.reconciliation.is_discrepancy());
 
     // The primary censors it; a witness — even one that is not independent —
@@ -332,7 +412,13 @@ async fn high_assurance_never_withholds_the_alarm() {
     let censor = cluster(knows_nothing());
     let saw = cluster(serving(signed.clone(), 777));
     for independent in [false, true] {
-        let a = reconcile(&core(&censor, Some(&saw), independent, true), &signed, false, "alarm-witness").await;
+        let a = reconcile(
+            &core(&censor, Some(&saw), independent, true),
+            &signed,
+            false,
+            "alarm-witness",
+        )
+        .await;
         assert_eq!(
             a.reconciliation,
             ExecutionReconciliation::BlockedButExecuted,
@@ -359,12 +445,25 @@ async fn a_witness_that_lags_lies_or_redirects_leaves_no_positive_conclusion() {
     for (name, witness, label) in [
         ("lagging", &lagging, InclusionAssurance::WitnessDisputed),
         ("lying", &liar, InclusionAssurance::WitnessDisputed),
-        ("redirecting", &redirect, InclusionAssurance::WitnessUnavailable),
+        (
+            "redirecting",
+            &redirect,
+            InclusionAssurance::WitnessUnavailable,
+        ),
     ] {
         for high in [false, true] {
-            let a = reconcile(&core(&honest, Some(witness), true, high), &signed, true, name).await;
+            let a = reconcile(
+                &core(&honest, Some(witness), true, high),
+                &signed,
+                true,
+                name,
+            )
+            .await;
             assert!(
-                matches!(a.reconciliation, ExecutionReconciliation::Unavailable { .. }),
+                matches!(
+                    a.reconciliation,
+                    ExecutionReconciliation::Unavailable { .. }
+                ),
                 "{name} high={high}: {:?}",
                 a.reconciliation
             );
@@ -392,7 +491,10 @@ async fn a_primary_serving_bytes_signed_by_another_key_concludes_nothing() {
             let a = reconcile(&core(&primary, None, false, high), &signed, true, name).await;
             assert!(a.chain_bytes_rejected.is_some(), "{name}");
             assert!(
-                matches!(a.reconciliation, ExecutionReconciliation::Unavailable { .. }),
+                matches!(
+                    a.reconciliation,
+                    ExecutionReconciliation::Unavailable { .. }
+                ),
                 "{name}: {:?}",
                 a.reconciliation
             );
@@ -413,7 +515,10 @@ async fn padded_signature_slots_are_not_the_transaction() {
     let primary = cluster(serving(padded, 777));
     let a = reconcile(&core(&primary, None, false, false), &signed, true, "padded").await;
     assert!(a.chain_bytes_rejected.is_some());
-    assert!(matches!(a.reconciliation, ExecutionReconciliation::Unavailable { .. }));
+    assert!(matches!(
+        a.reconciliation,
+        ExecutionReconciliation::Unavailable { .. }
+    ));
 }
 
 // ─── independence ───────────────────────────────────────────────────────────
@@ -423,7 +528,10 @@ fn a_witness_on_the_same_host_or_domain_is_not_independent() {
     for (p, w) in [
         ("https://rpc.example.com/a", "https://rpc.example.com/b"),
         ("https://rpc.example.com", "https://RPC.EXAMPLE.COM."),
-        ("https://mainnet.helius-rpc.com/?api-key=a", "https://eu.helius-rpc.com/?api-key=b"),
+        (
+            "https://mainnet.helius-rpc.com/?api-key=a",
+            "https://eu.helius-rpc.com/?api-key=b",
+        ),
         ("https://a.rpc.co.uk", "https://b.rpc.co.uk"),
         ("http://127.0.0.1:8899", "http://localhost:8900"),
         ("http://[::1]:8899", "http://127.0.0.2:8899"),
@@ -440,7 +548,11 @@ fn a_witness_on_the_same_host_or_domain_is_not_independent() {
         ("https://a.co.uk", "https://b.co.uk"),
         ("https://203.0.113.5", "https://198.51.100.7"),
     ] {
-        assert_eq!(witness_independence(p, w), WitnessIndependence::Distinct, "{p} / {w}");
+        assert_eq!(
+            witness_independence(p, w),
+            WitnessIndependence::Distinct,
+            "{p} / {w}"
+        );
     }
 }
 
@@ -450,13 +562,25 @@ fn a_witness_on_the_same_host_or_domain_is_not_independent() {
 #[test]
 fn the_same_provider_under_a_second_key_is_not_a_witness() {
     for (p, w) in [
-        ("https://rpc.example.com/?api-key=A", "https://rpc.example.com/?api-key=B"),
-        ("https://rpc.example.com/v1/A", "https://RPC.example.com:443/v2/B"),
-        ("https://user:a@rpc.example.com", "https://user:b@rpc.example.com:8443/"),
+        (
+            "https://rpc.example.com/?api-key=A",
+            "https://rpc.example.com/?api-key=B",
+        ),
+        (
+            "https://rpc.example.com/v1/A",
+            "https://RPC.example.com:443/v2/B",
+        ),
+        (
+            "https://user:a@rpc.example.com",
+            "https://user:b@rpc.example.com:8443/",
+        ),
     ] {
         let mut core = GraphiteCore::new();
         core.attach_rpc_client(client(p));
-        assert!(core.attach_inclusion_witness(client(w)).is_err(), "{p} / {w}");
+        assert!(
+            core.attach_inclusion_witness(client(w)).is_err(),
+            "{p} / {w}"
+        );
 
         let mut core = GraphiteCore::new();
         core.attach_inclusion_witness(client(w)).unwrap();
@@ -466,7 +590,8 @@ fn the_same_provider_under_a_second_key_is_not_a_witness() {
     }
     let mut core = GraphiteCore::new();
     core.attach_rpc_client(client("http://127.0.0.1:8899"));
-    core.attach_inclusion_witness(client("http://127.0.0.1:8900")).unwrap();
+    core.attach_inclusion_witness(client("http://127.0.0.1:8900"))
+        .unwrap();
     assert!(!core.witness_independence().unwrap().is_distinct());
 }
 
@@ -507,11 +632,17 @@ fn metadata_link_local_and_unroutable_hosts_are_refused() {
         "http://255.255.255.255/",
     ] {
         assert!(
-            matches!(validate_endpoint(endpoint), Err(EndpointError::ForbiddenAddress(_))),
+            matches!(
+                validate_endpoint(endpoint),
+                Err(EndpointError::ForbiddenAddress(_))
+            ),
             "{endpoint}"
         );
         let err = validate_endpoint(endpoint).unwrap_err().to_string();
-        assert!(!err.contains("169.254") && !err.contains("fe80"), "the address is not echoed: {err}");
+        assert!(
+            !err.contains("169.254") && !err.contains("fe80"),
+            "the address is not echoed: {err}"
+        );
     }
     for (endpoint, private) in [
         ("http://10.0.0.5:8899", true),
@@ -523,7 +654,11 @@ fn metadata_link_local_and_unroutable_hosts_are_refused() {
         ("https://rpc.example.com", false),
         ("http://127.0.0.1:8899", false),
     ] {
-        assert_eq!(validate_endpoint(endpoint).unwrap().private_network, private, "{endpoint}");
+        assert_eq!(
+            validate_endpoint(endpoint).unwrap().private_network,
+            private,
+            "{endpoint}"
+        );
     }
 }
 
@@ -539,7 +674,10 @@ async fn a_name_is_judged_when_it_resolves() {
         let r = resolver
             .resolve(reqwest::dns::Name::from_str(name).unwrap())
             .await;
-        let err = r.err().unwrap_or_else(|| panic!("{name} resolved")).to_string();
+        let err = r
+            .err()
+            .unwrap_or_else(|| panic!("{name} resolved"))
+            .to_string();
         assert!(err.contains("refused"), "{name}: {err}");
     }
     let addrs: Vec<_> = resolver
@@ -551,7 +689,13 @@ async fn a_name_is_judged_when_it_resolves() {
 
     let signed = signed_by(&key(0x42));
     let endpoint = cluster(serving(signed.clone(), 777)).replace("127.0.0.1", "localhost");
-    let a = reconcile(&core(&endpoint, None, false, false), &signed, true, "by-name").await;
+    let a = reconcile(
+        &core(&endpoint, None, false, false),
+        &signed,
+        true,
+        "by-name",
+    )
+    .await;
     assert_eq!(
         a.reconciliation,
         ExecutionReconciliation::ApprovedAndExecuted,

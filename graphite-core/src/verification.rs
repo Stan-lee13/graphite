@@ -3388,7 +3388,10 @@ impl GraphiteCore {
     /// the stricter of the URL check and a DNS check
     /// (`rpc_client::witness_independence_resolved`).
     #[cfg(feature = "rpc")]
-    pub fn set_witness_independence(&mut self, independence: crate::rpc_client::WitnessIndependence) {
+    pub fn set_witness_independence(
+        &mut self,
+        independence: crate::rpc_client::WitnessIndependence,
+    ) {
         self.witness_independence = Some(independence);
     }
 
@@ -4130,9 +4133,7 @@ impl GraphiteCore {
         // alarm is never withheld; neither is an answer about Graphite's own
         // trail (`NoVerificationOnRecord`) or one that is already
         // `Unavailable`.
-        let independent = self
-            .witness_independence()
-            .is_some_and(|i| i.is_distinct());
+        let independent = self.witness_independence().is_some_and(|i| i.is_distinct());
         let inclusion_assurance = InclusionAssurance::of(inclusion_witness.as_ref(), independent);
         let reconciliation = match reconciliation {
             r @ (ExecutionReconciliation::ApprovedAndExecuted
@@ -10135,7 +10136,10 @@ mod tests {
             "https://a.example/?k=1",
             "https://a.example/?k=2"
         ));
-        assert!(same_endpoint("https://a.example/v1/x", "https://a.example:8443/v2/y"));
+        assert!(same_endpoint(
+            "https://a.example/v1/x",
+            "https://a.example:8443/v2/y"
+        ));
         // Two local processes on two ports remain two endpoints.
         assert!(!same_endpoint("http://127.0.0.1:1", "http://127.0.0.1:2"));
     }
