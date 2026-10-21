@@ -11,6 +11,6 @@
 #   - GHSA-6prh-2h8m-c8cw (moderate): the SDK's HTTP client transports and
 #     OAuth requests followed cross-origin redirects with custom headers and
 #     bodies.
-# Neither is listed: a fix exists, so the remedy is the upgrade (bump
-# @modelcontextprotocol/sdk to >=1.32.0 in integrations/mcp-server), not an
-# entry here. Until that lands this package fails the gate, as it should.
+# Neither is listed: a fix exists, so the remedy was the upgrade, not an
+# entry here. @modelcontextprotocol/sdk 1.32.1 landed in Round 29; re-checked
+# 2026-10-21 (Round 30): `npm audit` reports 0 vulnerabilities at any level.

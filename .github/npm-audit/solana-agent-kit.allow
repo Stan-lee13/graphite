@@ -17,22 +17,21 @@
 #     qs 6.16.0. Typecheck and all bridge tests pass on them.
 #
 # What remains has no fix that can be applied from here:
-GHSA-3gc7-fjrx-p6mg@bigint-buffer  # high  bigint-buffer <=1.1.5 (no patched release exists): solana-agent-kit 2.0.10 -> @solana/spl-token 0.4.15 -> @solana/buffer-layout-utils 0.3.0 -> bigint-buffer 1.1.5 (npm ls, 2026-10-02). The overflow is in the package's NATIVE addon (toBigIntLE). Every install of this tree runs with --ignore-scripts, so the addon is never built and bigint-buffer runs its pure-JS fallback. Since R-P8 phase 3 (2026-10-02) only this adapter package depends on solana-agent-kit: the guard that signs (integrations/agent-guard) and every other integration do not carry this advisory.
+GHSA-3gc7-fjrx-p6mg@bigint-buffer  review-by:2027-01-20  # high  bigint-buffer <=1.1.5 (no patched release exists): solana-agent-kit 2.0.10 -> @solana/spl-token 0.4.15 -> @solana/buffer-layout-utils 0.3.0 -> bigint-buffer 1.1.5 (npm ls, 2026-10-02). The overflow is in the package's NATIVE addon (toBigIntLE). Every install of this tree runs with --ignore-scripts, so the addon is never built and bigint-buffer runs its pure-JS fallback. Since R-P8 phase 3 (2026-10-02) only this adapter package depends on solana-agent-kit: the guard that signs (integrations/agent-guard) and every other integration do not carry this advisory.
 #
 # Moderate, listed since the gate began to fail on moderate (2026-10-20). The
 # four come through jayson 4.3.0, web3.js 1.x's HTTP JSON-RPC client; web3.js
 # loads only `jayson/lib/client/browser`, which requires `uuid` (v4) and
 # nothing that loads stream-json. npm's only offered fix is web3.js 3.x.
-GHSA-528h-pc64-c93x@stream-json  # moderate  stream-json <=3.4.0: O(depth^2) filters (DoS). Required only by jayson/lib/utils.js (server-side stream parsing), never by the client web3.js loads.
-GHSA-hqr4-qq8f-hg3x@stream-json  # moderate  stream-json <=3.5.0: JSONC comment re-scan per chunk (DoS). Same path: never loaded.
-GHSA-mjw6-4jj6-33hc@stream-json  # moderate  stream-json <3.6.0: prototype pollution in Assembler. Same path: no RPC answer reaches it.
-GHSA-w5hq-g745-h8pq@uuid  # moderate  uuid <11.1.1: bounds check missing in v3/v5/v6 with a caller-supplied buffer. jayson calls v4() and @langchain/core calls v4/v5 without a buffer. Forcing uuid across three majors into web3.js was judged riskier than the advisory.
+GHSA-528h-pc64-c93x@stream-json  review-by:2027-01-20  # moderate  stream-json <=3.4.0: O(depth^2) filters (DoS). Required only by jayson/lib/utils.js (server-side stream parsing), never by the client web3.js loads.
+GHSA-hqr4-qq8f-hg3x@stream-json  review-by:2027-01-20  # moderate  stream-json <=3.5.0: JSONC comment re-scan per chunk (DoS). Same path: never loaded.
+GHSA-mjw6-4jj6-33hc@stream-json  review-by:2027-01-20  # moderate  stream-json <3.6.0: prototype pollution in Assembler. Same path: no RPC answer reaches it.
+GHSA-w5hq-g745-h8pq@uuid  review-by:2027-01-20  # moderate  uuid <11.1.1: bounds check missing in v3/v5/v6 with a caller-supplied buffer. jayson calls v4() and @langchain/core calls v4/v5 without a buffer. Forcing uuid across three majors into web3.js was judged riskier than the advisory.
 #
-# Not listed, and failing the gate until fixed (2026-10-20): @modelcontextprotocol/sdk
-# <1.32.0 carries GHSA-22jm-h49p-29qw (high) and GHSA-6prh-2h8m-c8cw
-# (moderate), both with a fix npm marks non-breaking. The remedy is an
-# `overrides` entry forcing @modelcontextprotocol/sdk >=1.32.0 in
-# integrations/solana-agent-kit/package.json, not an entry here.
+# Not listed (2026-10-20): @modelcontextprotocol/sdk <1.32.0 carried
+# GHSA-22jm-h49p-29qw (high) and GHSA-6prh-2h8m-c8cw (moderate). Fixed by the
+# upgrade to 1.32.1 in Round 29, not by an entry here; re-checked 2026-10-21.
+# Each entry above carries a review-by date the gate enforces (Round 30).
 #
 # Below the gate's threshold (low), recorded for completeness:
 #   - ai <5.0.52 (GHSA-rwvc-j5jr-mgvh) and @ai-sdk/provider-utils <3.0.28

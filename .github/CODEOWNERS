@@ -1,0 +1,35 @@
+# Code owners (Round 30, G-11). Read by GitHub only when the `main` ruleset
+# requires code-owner review (.github/rulesets/main-review.json, to be enabled
+# once a second maintainer exists; with one maintainer a required review is a
+# deadlock, since an author cannot approve their own pull request).
+#
+# The default owner covers everything. The paths below are listed explicitly
+# so a reviewer added later can be scoped to them, and so the security-bearing
+# surface is named in one place: the verdict pipeline, the signing boundary,
+# the published contract, the audit trail, the supply-chain gates and the
+# release/deploy path.
+*                                       @Stan-lee13
+
+# The verdict pipeline and everything it trusts
+/graphite-core/src/                     @Stan-lee13
+/graphite-core/protocols/               @Stan-lee13
+/graphite-core/Cargo.toml               @Stan-lee13
+/graphite-core/Cargo.lock               @Stan-lee13
+
+# The signing boundary and every adapter that reaches a key
+/integrations/agent-guard/              @Stan-lee13
+/integrations/solana-agent-kit/         @Stan-lee13
+/integrations/mcp-server/               @Stan-lee13
+/integrations/vercel-ai/                @Stan-lee13
+
+# The published contract and its clients
+/schemas/                               @Stan-lee13
+/sdk/                                   @Stan-lee13
+
+# CI, supply-chain gates, rulesets and the deploy path
+/.github/                               @Stan-lee13
+/Dockerfile                             @Stan-lee13
+/.dockerignore                          @Stan-lee13
+/docker-compose.yml                     @Stan-lee13
+/.env.example                           @Stan-lee13
+/SECURITY.md                            @Stan-lee13
