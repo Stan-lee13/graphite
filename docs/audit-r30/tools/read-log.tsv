@@ -33,7 +33,7 @@ integrations/agent-guard/devnet-test.ts	full	K-09
 integrations/solana-agent-kit/graphite-sak-bridge.ts	full	SAK gets the public key only
 integrations/mcp-server/graphite-mcp.ts	full	confirm hook after resolution; elicitation required by default
 integrations/vercel-ai/graphite-tools.ts	full	K-01
-sdk/typescript/src/client.ts	sections	transport, redirects, accept(); K-03
+sdk/typescript/src/client.ts	sections	200-380 result validation (approved ⇒ Clear risk and Approved policy; layers; scope required; unknown top-level fields ignored), 580-746 transport, redirects, accept(); K-03
 graphite-core/src/server.rs	sections	1-420 (limits, connection caps), 1600-1700 (router, middleware order), auth middleware
 graphite-core/src/policy_engine.rs	sections	1-240 (all production code); K-13
 graphite-core/src/operator_boundary.rs	full	strict env flags; profile clamp on both axes; learn flag (G-02)
@@ -45,6 +45,11 @@ dashboard/src/usePolling.ts	full	K-15
 dashboard/src/App.tsx	sections	95-140: app-level polls survive a connection change (K-15)
 python-ai-layer/intent_parser.py	sections	800-1049: bounded body, Origin/Host refusal, JSON only, connection cap
 sdk/go/graphite.go	sections	1-80 package doc (teaches Approved as the decision, G-01), 590-650 residual helpers
+graphite-core/src/plugins/mod.rs	full	a plugins-dir manifest can activate only the two built-ins: no third-party code runs
+.github/ISSUE_TEMPLATE/hardening_suggestion.md	full	—
+.github/ISSUE_TEMPLATE/protocol_manifest.md	full	—
+graphite-core/Cargo.toml	full	features (server ⇒ rpc), release profile, MSRV declared not tested (K-20)
+tools/runtime-oracle/Cargo.toml	full	own workspace; agave SDK crates as the oracle
 graphite-core/src/lib.rs	full	module graph; rpc and server feature-gated
 graphite-core/src/unknown_protocol_mode.rs	full	one ceiling table
 graphite-core/src/plugins/fake_rewards_drainer.rs	sections	1-170 (all production code): request-text keyed, veto only, limits stated

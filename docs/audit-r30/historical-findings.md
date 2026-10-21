@@ -71,6 +71,7 @@ any account is the design (A2-01, F2: a signer's own token account is still judg
 | A6-15 crate publish flag; tagging `0.3.0-beta` | 01-findings, FINAL | owner decision | — |
 | A6-36 disclosure mailbox / private vulnerability reporting | 01-findings, CURRENT | owner action | `SECURITY.md:9` names a personal mailbox |
 | Round 29 §5: risk engine, registry, protocol data, attack suites not break-tested | round29 report, FINAL | still open (an assurance gap, not a defect) | WS-F |
+| Round 29 PDA bump 0 no longer tried | round29 §5 | fixed in code but not tested (no seed is known whose bumps 255..1 are all on the curve); confirmed by reading `solana_types.rs:215-224` (`1u8..=u8::MAX` reversed) | — |
 | Without RPC the Core does not refuse (H1 residual) | round29, CURRENT | still open | = G-01 |
 | `BattleTested` does not reach verdicts; thin bar (M14) | round29, CURRENT | documentation-only | — |
 | wSOL wrapping unsupported in the guard | CURRENT | documentation-only; refused through `CloseAccount` | WS-H (state it as a capability refusal) |
@@ -80,6 +81,17 @@ any account is the design (A2-01, F2: a signer's own token account is still judg
 
 ## What the regression run showed
 
-See `historical-regression-matrix.md` for every finding and every named test's result here. The
-summary and the commands that produced the runs are in this workstream's report; no named test
-of a fixed finding failed on `29e4356` unless the matrix says **REGRESSED**.
+See `historical-regression-matrix.md` for every finding and every named test's result here.
+
+**What ran in this pass, on `29e4356`:** TypeScript — agent guard 249/249, MCP 9/9, SAK 9/9,
+Vercel AI 9/9, TS SDK 46/50 (4 live tests skipped: no live Core), dashboard 20/20, `tsc` clean in
+all six packages; Go — gofmt clean, `go vet` clean, 52 top-level tests pass (the `liveserver` tag
+not built); Python — AI layer 44/44, mainnet-sample tools 7/7, `compileall` clean.
+
+**What did not:** the full Rust suite. `cargo test --release --all-features --no-fail-fast` was
+started on the shared machine and stopped after building 83 of about 146 test targets (eleven
+workstreams compiling at once; load average above 20). **No Rust test result is in the matrix**,
+so every finding whose records name only Rust tests is labelled "fixed per records; no named test
+resolved here" or "needs review", not "confirmed fixed". Re-run the matrix with a complete Rust
+log (`regression_matrix.py <repo> <logs> docs/audit-r30`) at integration to turn those labels into
+results. The 25 "confirmed fixed" labels rest on the TypeScript, Go and Python runs only.
