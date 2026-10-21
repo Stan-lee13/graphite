@@ -20,8 +20,8 @@ use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
 use graphite_core::semantic_graph_store::BehaviorEvidence;
 use graphite_core::tx_artifact::message_bytes;
 use graphite_core::verification::{
-    ExecutionKeys, ExecutionReconciliation, GraphiteCore, LayerStatus, ProposedIntent,
-    VerificationInput, VerificationResult, VerificationScope,
+    ExecutionDecision, ExecutionKeys, ExecutionReconciliation, GraphiteCore, LayerStatus,
+    ProposedIntent, VerificationInput, VerificationResult, VerificationScope,
 };
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -337,6 +337,14 @@ async fn a_clean_simulation_approves() {
         "{}",
         layer(&r, "L4").reason
     );
+    // Round 30 (G-01): the one shape that permits signing.
+    assert_eq!(
+        r.decision,
+        ExecutionDecision::ExecutableApproved,
+        "{}",
+        r.summary
+    );
+    assert!(r.executable && r.is_executable());
 }
 
 /// The simulator executed the bytes and said they would not land. That was
@@ -355,6 +363,10 @@ async fn an_errored_simulation_is_refused() {
     let l3 = layer(&r, "L3");
     assert_eq!(l3.status, LayerStatus::Failed, "{}", l3.reason);
     assert!(l3.reason.contains("FAILED"), "{}", l3.reason);
+    // Round 30 (G-01): a simulation that failed is a finding, not missing
+    // evidence: blocked, not inconclusive.
+    assert_eq!(r.decision, ExecutionDecision::Blocked);
+    assert!(!r.executable);
 }
 
 /// An RPC that answers with an error — an outage, a node behind, a rate
@@ -369,6 +381,14 @@ async fn an_unobtainable_simulation_is_refused_as_incomplete() {
     let l3 = layer(&r, "L3");
     assert_eq!(l3.status, LayerStatus::Inconclusive, "{}", l3.reason);
     assert!(l3.reason.contains("INCOMPLETE"), "{}", l3.reason);
+    // Round 30 (G-01): evidence that could not be obtained.
+    assert_eq!(
+        r.decision,
+        ExecutionDecision::Inconclusive,
+        "{:?}",
+        r.risk_verdict.findings
+    );
+    assert!(!r.executable);
 }
 
 /// A response with no compute units, balance arrays or inner instructions
@@ -382,6 +402,8 @@ async fn an_incomplete_simulation_response_is_refused() {
         "{:?}",
         r.risk_verdict.findings
     );
+    assert_eq!(r.decision, ExecutionDecision::Inconclusive);
+    assert!(!r.executable);
 }
 
 /// A simulation that ran clean but brought back no post-state leaves L4
@@ -393,6 +415,8 @@ async fn a_simulation_without_a_diff_is_refused() {
     assert!(!r.approved, "{}", r.summary);
     let why = finding(&r, "VerificationIncomplete").expect("a VerificationIncomplete finding");
     assert!(why.contains("no pre/post state diff was built"), "{why}");
+    assert_eq!(r.decision, ExecutionDecision::Inconclusive);
+    assert!(!r.executable);
 }
 
 // ─── M1 ─────────────────────────────────────────────────────────────────────
@@ -493,6 +517,8 @@ fn record(log: &AuditLog, r: &VerificationResult) {
         protocol_name: r.protocol_name.clone(),
         manifest_version: r.manifest_version.clone(),
         approved: r.approved,
+        decision: None,
+        executable: None,
         confidence: r.confidence,
         risk_status: r.risk_verdict.status.clone(),
         policy_verdict: r.policy_verdict.clone(),

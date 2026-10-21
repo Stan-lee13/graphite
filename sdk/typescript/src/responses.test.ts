@@ -41,6 +41,13 @@ const APPROVED: Record<string, unknown> = {
     unobserved: ["program semantics", "inner instructions"],
     unobserved_codes: ["program_semantics", "inner_instructions"],
   },
+  // Round 30: simulated, bound, inherent residuals only, and no layer failed
+  // (the sample is a policy refusal, so its L6 did): executable.
+  layers: (SAMPLE.layers as Array<Record<string, unknown>>).map((l) =>
+    l.status === "failed" ? { ...l, status: "passed", passed: true } : l,
+  ),
+  decision: "executable_approved",
+  executable: true,
 };
 
 const RECEIPT = {

@@ -3,7 +3,7 @@
 use crate::confidence_engine::TrustTier;
 use crate::manifest::ProtocolManifest;
 use crate::policy_engine::WalletProfile;
-use crate::verification::{GraphiteCore, VerificationInput};
+use crate::verification::{GraphiteCore, VerificationInput, VerificationResult};
 use std::path::{Path, PathBuf};
 
 /// The operator-boundary rules (`GRAPHITE_WALLET_PROFILE`, the weak-`Custom`
@@ -439,11 +439,12 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
                 result.summary = format!("{} | policy: {}", result.summary, note);
             }
             println!("{}", serde_json::to_string_pretty(&result)?);
-            // SECURITY FIX: Exit 1 on REJECT so CLI can be used as CI gate
-            if !result.approved {
-                std::process::exit(1);
-            }
-            Ok(())
+            // SECURITY FIX: Exit 1 on REJECT so CLI can be used as CI gate.
+            // Round 30 (G-01): and 3 on an approval that does not permit
+            // signing (`analysis_only`) — this command attaches no RPC, so
+            // nothing it verifies is simulated, and a shell gate written as
+            // `graphite verify x && sign` must not read exit 0 as permission.
+            std::process::exit(verify_exit_code(&result));
         }
         CliCommand::Profiles => {
             println!("Wallet policy profiles — passed as `wallet_profile` in VerificationInput, or overridden on the CLI with `--profile`:");
@@ -931,11 +932,17 @@ fn run_explain(
     println!();
 
     println!(
-        "VERDICT  {}",
+        "VERDICT  {}  (decision: {}{})",
         if result.approved {
             "APPROVED"
         } else {
             "BLOCKED"
+        },
+        result.decision.as_str(),
+        if result.executable {
+            ""
+        } else {
+            " — not permission to sign"
         }
     );
     println!(
@@ -1035,11 +1042,26 @@ fn run_explain(
     println!();
     println!("{}", result.summary);
 
-    if !result.approved {
-        // Same convention as `regression`: usable as a shell gate.
-        std::process::exit(1);
+    // Same convention as `verify`: usable as a shell gate.
+    match verify_exit_code(&result) {
+        0 => Ok(()),
+        code => std::process::exit(code),
     }
-    Ok(())
+}
+
+/// The exit code of `graphite verify` and `graphite explain` (Round 30,
+/// G-01): 0 only for `executable_approved`, 1 for a refusal (`blocked` or
+/// `inconclusive`), 3 for an approval that is `analysis_only`. Exit 0 used
+/// to mean "approved", and these commands attach no RPC, so it meant an
+/// approval nothing had simulated.
+pub fn verify_exit_code(result: &VerificationResult) -> i32 {
+    use crate::verification::ExecutionDecision;
+    match result.decision {
+        ExecutionDecision::ExecutableApproved if result.is_executable() => 0,
+        ExecutionDecision::Blocked | ExecutionDecision::Inconclusive => 1,
+        _ if !result.approved => 1,
+        _ => 3,
+    }
 }
 
 fn run_protocol(action: ProtocolAction) -> Result<(), Box<dyn std::error::Error>> {

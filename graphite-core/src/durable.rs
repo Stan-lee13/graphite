@@ -675,6 +675,16 @@ pub struct AuditRecord {
     pub protocol_name: String,
     pub manifest_version: Option<String>,
     pub approved: bool,
+    /// The verdict's `decision` (Round 30, G-01): `executable_approved`,
+    /// `analysis_only`, `inconclusive` or `blocked`. `approved` alone never
+    /// said whether the transaction could be signed. `None` on rows written
+    /// before Round 30 and on rows that are not verifications — "not
+    /// reported", never read as either answer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision: Option<String>,
+    /// The verdict's `executable` (Round 30). `None` as `decision`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executable: Option<bool>,
     pub confidence: f64,
     pub risk_status: String,
     pub policy_verdict: String,
@@ -2899,6 +2909,8 @@ mod tests {
             protocol_name: "system-program".to_string(),
             manifest_version: None,
             approved: true,
+            decision: None,
+            executable: None,
             confidence: 0.9,
             risk_status: "Clear".to_string(),
             policy_verdict: "Approved".to_string(),
@@ -3170,6 +3182,8 @@ mod tests {
             protocol_name: "system-program".to_string(),
             manifest_version: None,
             approved: true,
+            decision: None,
+            executable: None,
             confidence: 0.9,
             risk_status: "Clear".to_string(),
             policy_verdict: "Approved".to_string(),
@@ -3223,6 +3237,8 @@ mod tests {
                     protocol_name: "system".into(),
                     manifest_version: None,
                     approved: i % 2 == 0,
+                    decision: None,
+                    executable: None,
                     confidence: 0.5,
                     risk_status: "Clear".into(),
                     policy_verdict: if i % 2 == 0 {

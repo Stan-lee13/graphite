@@ -412,7 +412,53 @@ func verificationResultViolation(value any) string {
 	if !has {
 		return "`scope` is missing: the verdict does not say what it is bound to"
 	}
-	return scopeViolation(scope)
+	if why := scopeViolation(scope); why != "" {
+		return why
+	}
+	return decisionViolation(v, approved)
+}
+
+// decisionViolation checks Round 30's decision, executable and
+// instruction_bind_key. Optional, so a server older than Round 30 still
+// decodes (IsExecutable then recomputes alone); when present they must be
+// known, agree with each other and with approved, and a server claiming
+// executable must agree with the rule recomputed from the verdict's own
+// fields. A server stricter than the rule is accepted: that is never the
+// dangerous direction.
+func decisionViolation(v map[string]any, approved bool) string {
+	if k, has := v["instruction_bind_key"]; has {
+		if s, ok := k.(string); !ok || s != v["content_hash"] {
+			return "`instruction_bind_key` must be a string equal to `content_hash`"
+		}
+	}
+	d, hasD := v["decision"]
+	e, hasE := v["executable"]
+	if !hasD && !hasE {
+		return ""
+	}
+	if !oneOf(d, ExecutionDecisions...) {
+		return "`decision` must be one of " + strings.Join(ExecutionDecisions, ", ")
+	}
+	executable, ok := e.(bool)
+	if !ok {
+		return "`executable` must be a boolean beside `decision`"
+	}
+	if executable != (d == DecisionExecutableApproved) {
+		return "`executable` must be true exactly when `decision` is \"executable_approved\""
+	}
+	if approved != (d == DecisionExecutableApproved || d == DecisionAnalysisOnly) {
+		return "`decision` contradicts `approved`"
+	}
+	if executable {
+		// The shape is valid by now; decode it to recompute the rule.
+		raw, err := json.Marshal(v)
+		var r VerificationResult
+		if err != nil || json.Unmarshal(raw, &r) != nil ||
+			r.ComputeExecutionDecision() != DecisionExecutableApproved {
+			return "`executable` is true but the verdict's own fields do not permit execution (not artifact-bound and simulated, a non-inherent residual, or a failed layer)"
+		}
+	}
+	return ""
 }
 
 func transactionViolation(value any) string {

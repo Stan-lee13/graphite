@@ -1,0 +1,192 @@
+{
+  "approved": false,
+  "audit_trail_id": "gr-fc1e245281bf5b6c-c142f2f7",
+  "breakdown": [
+    {
+      "contribution": 0.2,
+      "kind": "ManifestMatch",
+      "raw_value": 1.0,
+      "weight": 0.2
+    },
+    {
+      "contribution": 0.13999999999999999,
+      "kind": "TrustTierLevel",
+      "raw_value": 0.7,
+      "weight": 0.2
+    },
+    {
+      "contribution": 0.0,
+      "kind": "SimulationMatch",
+      "raw_value": 0.0,
+      "weight": 0.2
+    },
+    {
+      "contribution": 0.0,
+      "kind": "HistoricalVolume",
+      "raw_value": 0.0,
+      "weight": 0.15
+    },
+    {
+      "contribution": 0.0,
+      "kind": "CommunityVerification",
+      "raw_value": 0.0,
+      "weight": 0.15
+    },
+    {
+      "contribution": 0.1,
+      "kind": "IntentAlignment",
+      "raw_value": 1.0,
+      "weight": 0.1
+    }
+  ],
+  "confidence": 0.43999999999999995,
+  "content_hash": "19c98629dd935ddd",
+  "decision": "blocked",
+  "executable": false,
+  "instruction_bind_key": "19c98629dd935ddd",
+  "instruction_name": "Transfer",
+  "layers": [
+    {
+      "layer": "L1_AccountResolution",
+      "passed": true,
+      "reason": "Resolved 2 account(s), manifest found; identity confirmed for 0 of 2 — the manifest declares no PDA seeds or fixed addresses for this instruction, so every account is accepted in the position the caller supplied it; signer/writable flags were read from the transaction's own header",
+      "status": "passed"
+    },
+    {
+      "layer": "L2_InstructionVerification",
+      "passed": true,
+      "reason": "Instruction Transfer verified against manifest",
+      "status": "passed"
+    },
+    {
+      "layer": "L3_SimulationVerification",
+      "passed": false,
+      "reason": "Simulation FAILED: the simulator executed these bytes and reported {\"InstructionError\":[0,\"Custom(1)\"]} — the transaction would not land as simulated; its compute usage is not evidence and did not enter the baseline, and the verdict is refused | RPC: RPC error: Invalid response: missing result.value",
+      "status": "failed"
+    },
+    {
+      "layer": "L4_StateVerification",
+      "passed": false,
+      "reason": "State not observed: no pre/post diff; 2 declared state change(s) are structurally consistent with 2 account(s) — a consistency check on the declarations, not a verification of state | NOTE: the pre/post state diff was attempted and could not be built (simulation did not execute: {\"InstructionError\":[0,\"Custom(1)\"]}) — this result is the structural consistency check only, not a diff of what the transaction actually does",
+      "status": "inconclusive"
+    },
+    {
+      "layer": "L5_SemanticVerification",
+      "passed": true,
+      "reason": "Semantic verification passed: a 'transfer' intent declares Transfer (security class 'transfer')",
+      "status": "passed"
+    },
+    {
+      "layer": "L6_PolicyVerification",
+      "passed": true,
+      "reason": "Confidence: 0.4400 (tier: OfficialManifest, ceiling: 0.75) → Policy: Rejected (min_conf: 0.40, min_tier: OfficialManifest)",
+      "status": "passed"
+    },
+    {
+      "layer": "L7_RiskVerification",
+      "passed": false,
+      "reason": "Blocked: 1 finding(s) — [\"SimulationFailed\"]",
+      "status": "failed"
+    },
+    {
+      "layer": "L8_ExecutionVerification",
+      "passed": false,
+      "reason": "Not yet submitted — execution verification runs after submission. Call POST /verify/execution (or `graphite execution`) with this content_hash and the transaction signature to confirm it on-chain and reconcile the outcome against this verdict.",
+      "status": "inconclusive"
+    }
+  ],
+  "manifest_found": true,
+  "manifest_version": "1.0.0",
+  "policy_verdict": "Rejected",
+  "protocol_name": "System Program",
+  "resolved_accounts": [
+    {
+      "address": "GM4eCsQuaLNXApYz6YYUQVMxajTaJ7dB4TbroFGBaou9",
+      "expected_address_mismatch": false,
+      "identity": "unverified",
+      "is_pda": false,
+      "is_signer": true,
+      "is_writable": true,
+      "name": "from",
+      "pda_mismatch": false,
+      "pda_seeds": [],
+      "privilege_mismatch": false,
+      "role": "signer"
+    },
+    {
+      "address": "8u8LCMQvMKrFxHbn326Ltcqv72HDPEC5FPMgPC3mXvxV",
+      "expected_address_mismatch": false,
+      "identity": "unverified",
+      "is_pda": false,
+      "is_signer": false,
+      "is_writable": true,
+      "name": "to",
+      "pda_mismatch": false,
+      "pda_seeds": [],
+      "privilege_mismatch": false,
+      "role": "writable"
+    }
+  ],
+  "risk_verdict": {
+    "findings": [
+      {
+        "pattern": "SimulationFailed",
+        "reason": "the simulator executed these bytes and reported {\"InstructionError\":[0,\"Custom(1)\"]}: the transaction would not land as simulated, and what it does was not measured — not its CPIs, not its state changes. A transaction Graphite watched fail is not approved"
+      }
+    ],
+    "status": "Blocked"
+  },
+  "scope": {
+    "compute_budget": {
+      "compute_unit_limit": null,
+      "effective_compute_unit_limit": 200000,
+      "priority_fee_lamports": 0,
+      "source": "compute_budget_instructions"
+    },
+    "kind": "artifact_bound",
+    "message_version": "legacy",
+    "simulated": false,
+    "transaction_bytes": 215,
+    "transaction_sha256": "e32950f70a7f63c5d34695964ac376fc53b6727806c26269639ee27b2bc3a886",
+    "unobserved": [
+      "the simulator executed these bytes and reported an error ({\"InstructionError\":[0,\"Custom(1)\"]}): the transaction would not land as simulated, so what it does was not measured — its state changes were not diffed and its compute usage is not evidence about this program",
+      "what the instructions DO beyond the effects the simulation surfaced: the message gives Graphite each instruction's program, accounts and raw data, and it decodes that data only for the protocols it has manifests for",
+      "inner instructions: only top-level instructions appear in a message, so anything a program invokes by CPI is visible to Graphite through simulation rather than through the artifact — when a simulation ran, the programs it called were read from the response and judged like declared CPI targets; what those calls do inside remains unobserved"
+    ],
+    "unobserved_codes": [
+      "simulation_failed",
+      "program_semantics",
+      "inner_instructions"
+    ]
+  },
+  "simulation_divergence": null,
+  "simulation_flagged": null,
+  "summary": "BLOCKED | confidence=0.44 | risk=Blocked | policy=Rejected | protocol=System Program | instruction=Transfer | unknown_protocol=false",
+  "transaction": {
+    "account_count": 2,
+    "accounts": [
+      {
+        "address": "GM4eCsQuaLNXApYz6YYUQVMxajTaJ7dB4TbroFGBaou9",
+        "is_signer": true,
+        "is_writable": true
+      },
+      {
+        "address": "8u8LCMQvMKrFxHbn326Ltcqv72HDPEC5FPMgPC3mXvxV",
+        "is_signer": false,
+        "is_writable": true
+      }
+    ],
+    "compute_budget_units": 220000,
+    "data_hex": "0200000080841e0000000000",
+    "data_len": 12,
+    "instruction_count": 1,
+    "instruction_discriminator": "02000000",
+    "instruction_name": "Transfer",
+    "program_id": "11111111111111111111111111111111",
+    "protocol_version": "1.0.0",
+    "signer_count": 1,
+    "writable_count": 2
+  },
+  "trust_tier": "OfficialManifest",
+  "unknown_protocol": false
+}

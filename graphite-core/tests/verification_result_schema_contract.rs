@@ -52,6 +52,7 @@ const KEYWORDS: &[&str] = &[
     "additionalProperties",
     "items",
     "oneOf",
+    "allOf",
     "if",
     "then",
     "else",
@@ -218,6 +219,13 @@ fn check(v: &Value, s: &Value, path: &str, declare_all: bool, errors: &mut Vec<S
             ));
         }
     }
+    // Round 30: `allOf` holds the decision invariants, each an `if`/`then`
+    // that names only the fields it is about (so `declare_all` is off).
+    if let Some(all) = obj.get("allOf").and_then(Value::as_array) {
+        for (i, sub) in all.iter().enumerate() {
+            check(v, sub, &format!("{path}<allOf{i}>"), false, errors);
+        }
+    }
     if let Some(cond) = obj.get("if") {
         let mut e = Vec::new();
         check(v, cond, path, false, &mut e);
@@ -377,6 +385,41 @@ fn the_committed_example_satisfies_the_schema() {
         "the example violates the schema:\n{}",
         errors.join("\n")
     );
+    // Round 30: the four decision fixtures the SDKs' contract tests read.
+    for (name, text) in [
+        (
+            "executable_approved",
+            include_str!("../../examples/decisions/executable_approved.json"),
+        ),
+        (
+            "analysis_only",
+            include_str!("../../examples/decisions/analysis_only.json"),
+        ),
+        (
+            "inconclusive",
+            include_str!("../../examples/decisions/inconclusive.json"),
+        ),
+        (
+            "blocked",
+            include_str!("../../examples/decisions/blocked.json"),
+        ),
+    ] {
+        let v: Value = serde_json::from_str(text).expect("valid JSON");
+        let errors = errors_of(&v);
+        assert!(errors.is_empty(), "{name}:\n{}", errors.join("\n"));
+        assert_eq!(v["decision"], name);
+    }
+    // The executable fixture is the one shape the schema's `executable`
+    // invariant admits; edited, it is refused.
+    let mut v: Value = serde_json::from_str(include_str!(
+        "../../examples/decisions/executable_approved.json"
+    ))
+    .unwrap();
+    v["scope"]["simulated"] = Value::from(false);
+    assert!(
+        !errors_of(&v).is_empty(),
+        "executable beside simulated: false"
+    );
 }
 
 /// `identity` is spelled on the wire exactly as the schema's enum spells it.
@@ -496,6 +539,40 @@ fn the_schema_holds_the_invariants_the_core_emits() {
     let mut v = approved.clone();
     v["scope"]["unobserved_codes"] = Value::Array(vec![]);
     refused("no codes", &v, "unobserved_codes");
+
+    // Round 30 (G-01): the decision invariants. This run has no RPC, so the
+    // real approval is `analysis_only`; asserting `executable` on it — or
+    // naming it executable_approved — contradicts its own scope.
+    assert_eq!(
+        approved["decision"], "analysis_only",
+        "no RPC: analysis only"
+    );
+    assert_eq!(approved["executable"], false);
+    assert_eq!(blocked["decision"], "blocked");
+    for field in ["decision", "executable", "instruction_bind_key"] {
+        let mut v = approved.clone();
+        v.as_object_mut().unwrap().remove(field);
+        refused(&format!("no {field}"), &v, field);
+    }
+    let mut v = approved.clone();
+    v["executable"] = Value::from(true);
+    refused("executable on an analysis-only approval", &v, "decision");
+    let mut v = approved.clone();
+    v["executable"] = Value::from(true);
+    v["decision"] = Value::from("executable_approved");
+    refused("executable beside not_simulated", &v, "simulated");
+    let mut v = approved.clone();
+    v["decision"] = Value::from("executable_approved");
+    refused("executable_approved without executable", &v, "executable");
+    let mut v = blocked.clone();
+    v["decision"] = Value::from("analysis_only");
+    refused("a refusal named analysis_only", &v, "decision");
+    let mut v = blocked.clone();
+    v["executable"] = Value::from(true);
+    refused("a refusal marked executable", &v, "executable");
+    let mut v = approved.clone();
+    v["decision"] = Value::from("approved");
+    refused("a decision the schema does not list", &v, "decision");
 }
 
 /// R5 (external review of the 2026-09-29 audit): both schemas named

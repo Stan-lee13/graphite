@@ -392,6 +392,8 @@ fn record(log: &AuditLog, r: &VerificationResult) {
         protocol_name: r.protocol_name.clone(),
         manifest_version: r.manifest_version.clone(),
         approved: r.approved,
+        decision: None,
+        executable: None,
         confidence: r.confidence,
         risk_status: r.risk_verdict.status.clone(),
         policy_verdict: r.policy_verdict.clone(),

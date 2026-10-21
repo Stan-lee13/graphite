@@ -1,5 +1,7 @@
 {
   "approved": false,
+  "decision": "blocked",
+  "executable": false,
   "confidence": 0.43999999999999995,
   "breakdown": [
     {
@@ -45,8 +47,9 @@
     "findings": []
   },
   "policy_verdict": "Rejected",
-  "audit_trail_id": "gr-b9da6dcad9c6ab8b-31fa7af8",
+  "audit_trail_id": "gr-b9da6dcad9c6ab8b-6e37a335",
   "content_hash": "48c65c638aceb5de",
+  "instruction_bind_key": "48c65c638aceb5de",
   "transaction": {
     "program_id": "11111111111111111111111111111111",
     "protocol_version": "1.0.0",
