@@ -1,5 +1,9 @@
 # Round 23 — the audit, closed at the root
 
+> **Historical record.** This report describes the codebase at commit `3327fcf`
+> on 2026-09-29 to 2026-10-01, and the changes made on top of it. For the current state of
+> Graphite see [`CURRENT.md`](CURRENT.md).
+
 **Date:** 2026-09-29 to 2026-10-01 · **Base:** `3327fcf` (Round 22) · **Scope:** a six-area audit of
 the whole repository (Core, simulation and state diff, manifests and policy, server and audit
 trail, the AI boundary with SDKs, bridge, dashboard and Python layer, and CI, supply chain and

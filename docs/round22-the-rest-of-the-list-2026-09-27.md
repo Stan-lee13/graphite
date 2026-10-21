@@ -1,5 +1,9 @@
 # Round 22 — the rest of the list
 
+> **Historical record.** This report describes the codebase at commit `9284385`
+> on 2026-09-27/28, and the changes made on top of it. For the current state of
+> Graphite see [`CURRENT.md`](CURRENT.md).
+
 **Date:** 2026-09-27 (finished 2026-09-28) · **Base:** `9284385` (Round 21) · **Scope:** every item
 Round 21 left open that code can close, measured against three days of mainnet,
 per-program mainnet traffic and the live chain; and the root causes that work

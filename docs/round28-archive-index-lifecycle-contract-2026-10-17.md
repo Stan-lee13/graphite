@@ -1,5 +1,9 @@
 # Round 28 — the archives are indexed, the lifecycle is exhaustive, the contract is gated
 
+> **Historical record.** This report describes the codebase at commit `365cbfd`
+> on 2026-10-17, and the changes made on top of it. For the current state of
+> Graphite see [`CURRENT.md`](CURRENT.md).
+
 **Date:** 2026-10-17 · **Base:** `365cbfd` (Round 27) · **Scope:** three open roadmap items that need
 no owner decision: a persisted archive index (R-M11, external review W10), the lifecycle-emission
 lint (R-P14) and the P13 contract gate (R-M2).

@@ -1,5 +1,9 @@
 # Round 21 — what happened, not what could
 
+> **Historical record.** This report describes the codebase at commit `f47db5a`
+> on 2026-09-27, and the changes made on top of it. For the current state of
+> Graphite see [`CURRENT.md`](CURRENT.md).
+
 **Date:** 2026-09-27 · **Base:** `f47db5a` (Round 20) · **Scope:** the open
 list Rounds 19 and 20 left, closed where it could be; and the root causes the
 work turned up on the way.

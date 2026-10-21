@@ -1,5 +1,14 @@
 # Round 25 — the swap is the one asked for
 
+> **Historical record.** This report describes the codebase at commit `d95d37a`
+> on 2026-10-16, and the changes made on top of it. For the current state of
+> Graphite see [`CURRENT.md`](CURRENT.md).
+>
+> One statement in it is now known to be false: it says the Core reads a swap
+> route's minimum (in the instruction data) for the protocols it models. The Core
+> reads no route's minimum; since Round 29 the agent guard does. See
+> [`CURRENT.md`](CURRENT.md).
+
 **Date:** 2026-10-16 · **Base:** `d95d37a` (Round 24) · **Scope:** a second external review of the
 whole tree (ten items, E1–E10 in `AUDIT/01-findings.md`), each checked against the code before
 anything changed; a five-minute section of the README for judges and reviewers.
