@@ -366,7 +366,7 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "risk_class": "close"
+   "risk_class": "authority"
   },
   {
    "name": "ThawAccount",
@@ -935,6 +935,855 @@
     "RISK: the new schedule decides what every later transfer of this token costs — up to 100% of each transfer"
    ],
    "risk_class": "authority"
+  },
+  {
+   "name": "InitializeMintCloseAuthority",
+   "discriminator": "19",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes the close authority on accounts.mint before InitializeMint"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "the close authority chosen here may later close the mint once its supply is zero"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "InitializeDefaultAccountState",
+   "discriminator": "1c00",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes the default state of new token accounts on accounts.mint before InitializeMint"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "UpdateDefaultAccountState",
+   "discriminator": "1c01",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "freeze_authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "changes the default state of new token accounts of accounts.mint under accounts.freeze_authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "freeze_authority must be signer"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "Reallocate",
+   "discriminator": "1d",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
+    },
+    {
+     "name": "owner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "reallocates accounts.account to fit the listed extensions",
+    "debits accounts.payer for the additional rent"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "owner must be signer",
+    "payer must be signer"
+   ],
+   "risk_class": "create"
+  },
+  {
+   "name": "EnableRequiredTransferMemos",
+   "discriminator": "1e00",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "owner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "requires a memo on every incoming transfer on accounts.account"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "owner must be signer"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "DisableRequiredTransferMemos",
+   "discriminator": "1e01",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "owner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "stops requiring a memo on incoming transfers on accounts.account"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "owner must be signer"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "CreateNativeMint",
+   "discriminator": "1f",
+   "accounts": [
+    {
+     "name": "payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "native_mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
+    }
+   ],
+   "expected_state_changes": [
+    "creates the Token-2022 native (wrapped SOL) mint",
+    "debits accounts.payer for its rent"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "payer must be signer"
+   ],
+   "risk_class": "create"
+  },
+  {
+   "name": "InitializeNonTransferableMint",
+   "discriminator": "20",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes the non-transferable extension on accounts.mint before InitializeMint"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "InitializeInterestBearingMint",
+   "discriminator": "2100",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes the interest-bearing extension on accounts.mint before InitializeMint"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "UpdateInterestRate",
+   "discriminator": "2101",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rate_authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "changes the interest rate of accounts.mint under accounts.rate_authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "rate_authority must be signer"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "EnableCpiGuard",
+   "discriminator": "2200",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "owner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "turns on the CPI guard on accounts.account"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "owner must be signer"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "DisableCpiGuard",
+   "discriminator": "2201",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "owner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "turns off the CPI guard on accounts.account"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "owner must be signer"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "InitializePermanentDelegate",
+   "discriminator": "23",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes a permanent delegate on accounts.mint before InitializeMint"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "RISK: the permanent delegate can transfer or burn tokens from EVERY account of this mint, forever"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "InitializeTransferHook",
+   "discriminator": "2400",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes the transfer-hook program and its authority on accounts.mint before InitializeMint"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "RISK: the hook program runs on every transfer of this mint"
+   ],
+   "risk_class": "create"
+  },
+  {
+   "name": "UpdateTransferHook",
+   "discriminator": "2401",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "changes the transfer-hook program of accounts.mint under accounts.authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "authority must be signer"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "WithdrawExcessLamports",
+   "discriminator": "26",
+   "accounts": [
+    {
+     "name": "source",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "debits accounts.source by its lamports above the rent-exempt minimum",
+    "credits accounts.destination with those lamports"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "authority must be signer (the account owner, or the mint authority for a mint)",
+    "RISK: the destination receives every lamport above rent exemption — verify it"
+   ],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "InitializeMetadataPointer",
+   "discriminator": "2700",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes the metadata pointer on accounts.mint before InitializeMint"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "UpdateMetadataPointer",
+   "discriminator": "2701",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "changes the metadata pointer of accounts.mint under accounts.authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "authority must be signer"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "InitializeGroupPointer",
+   "discriminator": "2800",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes the group pointer on accounts.mint before InitializeMint"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "UpdateGroupPointer",
+   "discriminator": "2801",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "changes the group pointer of accounts.mint under accounts.authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "authority must be signer"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "InitializeGroupMemberPointer",
+   "discriminator": "2900",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes the group member pointer on accounts.mint before InitializeMint"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "UpdateGroupMemberPointer",
+   "discriminator": "2901",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "changes the group member pointer of accounts.mint under accounts.authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "authority must be signer"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "InitializeScaledUiAmount",
+   "discriminator": "2b00",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes the scaled UI amount multiplier on accounts.mint before InitializeMint"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "UpdateMultiplier",
+   "discriminator": "2b01",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "changes the scaled UI amount multiplier of accounts.mint under accounts.authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "authority must be signer"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "InitializePausable",
+   "discriminator": "2c00",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes the pausable extension on accounts.mint before InitializeMint"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "Pause",
+   "discriminator": "2c01",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "changes the paused flag (every transfer, mint and burn stops) of accounts.mint under accounts.authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "authority must be signer"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "Resume",
+   "discriminator": "2c02",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "changes the paused flag of accounts.mint under accounts.authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "authority must be signer"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "TokenMetadataInitialize",
+   "discriminator": "d2e11ea258b84d8d",
+   "accounts": [
+    {
+     "name": "metadata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "update_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mint_authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "writes name, symbol and uri into accounts.metadata"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "mint_authority must be signer"
+   ],
+   "risk_class": "create"
+  },
+  {
+   "name": "TokenMetadataUpdateField",
+   "discriminator": "dde9312db5cadcc8",
+   "accounts": [
+    {
+     "name": "metadata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "update_authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "changes one field of accounts.metadata"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "update_authority must be signer",
+    "RISK: a URI swap is invisible on chain"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "TokenMetadataRemoveKey",
+   "discriminator": "ea122038598d25b5",
+   "accounts": [
+    {
+     "name": "metadata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "update_authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "removes an additional key from accounts.metadata"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "update_authority must be signer"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "TokenMetadataUpdateAuthority",
+   "discriminator": "d7e4a6e45464567b",
+   "accounts": [
+    {
+     "name": "metadata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "update_authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "hands the metadata update authority to another key"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "update_authority must be signer",
+    "RISK: AUTHORITY_HIJACK"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "TokenMetadataEmit",
+   "discriminator": "faa6b4fa0d0cb846",
+   "accounts": [
+    {
+     "name": "metadata",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "returns the metadata as return data; changes nothing"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "inert"
   }
  ],
  "trust_tier": "BattleTested"

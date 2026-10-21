@@ -5,7 +5,7 @@
   "program_id": "FCW1uBM3pZ7fQWvEL9sxTe4fNiH41bu9DWX4ErTZ6aMq",
   "website": "",
   "github": "",
-  "category": "swap"
+  "category": "bridge"
  },
  "version": {
   "label": "0.1.0",
@@ -349,7 +349,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool, poolAccount, payer",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -357,7 +357,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "allowOperator",
@@ -408,14 +408,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: operatorStorage, payer",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "withdraw",
@@ -659,14 +659,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: bridge",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   }
  ],
  "trust_tier": "BattleTested"

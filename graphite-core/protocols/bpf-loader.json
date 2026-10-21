@@ -31,7 +31,8 @@
    "allowed_cpis": [],
    "risk_rules": [
     "program deployment primitive — deployer must be trusted"
-   ]
+   ],
+   "risk_class": "create"
   },
   {
    "name": "Finalize",
@@ -51,7 +52,8 @@
    "allowed_cpis": [],
    "risk_rules": [
     "program deployment primitive — deployer must be trusted"
-   ]
+   ],
+   "risk_class": "create"
   }
  ],
  "trust_tier": "BattleTested"

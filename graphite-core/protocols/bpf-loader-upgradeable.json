@@ -47,7 +47,8 @@
     "initializes a buffer account for program deployment"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "Write",
@@ -72,7 +73,8 @@
     "writes a chunk of program ELF bytes into the buffer account"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "DeployWithMaxDataLen",
@@ -152,7 +154,8 @@
    ],
    "risk_rules": [
     "program deployment primitive — deployer must be trusted"
-   ]
+   ],
+   "risk_class": "create"
   },
   {
    "name": "Upgrade",
@@ -415,7 +418,8 @@
     "grows accounts.program_data by data.additional_bytes, funded from accounts.payer"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "SetAuthorityChecked",

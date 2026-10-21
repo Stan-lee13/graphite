@@ -94,7 +94,13 @@ def rpc(method, params, tries=6, timeout=90):
                 out = json.loads(r.read())
             if "error" in out:
                 code = out["error"].get("code")
-                if code in (-32004, -32007, -32009, -32014, -32602):
+                # Block/slot not available, skipped, purged, or not yet
+                # final: the endpoint has nothing to give for THIS request.
+                # Round 29 (audit 2026-10-20, LOW-6): -32602 ("invalid
+                # params") used to be in this list, so a malformed request —
+                # a bug in this script — read as "not available" and the
+                # census quietly measured less. It raises now.
+                if code in (-32004, -32007, -32009, -32014):
                     return None
                 raise RuntimeError(out["error"])
             return out["result"]
@@ -199,6 +205,9 @@ def sweep_blocks(n_blocks, spacing, wanted):
              transactions_seen)}.
     """
     tip = rpc("getSlot", [{"commitment": "finalized"}])
+    if not isinstance(tip, int):
+        # Round 29 (LOW-6): `tip - 80` used to crash on None.
+        raise SystemExit("getSlot returned no slot; the block sweep cannot be placed")
     out = {p: [Counter(), 0, 0] for p in wanted}
     blocks = 0
     for i in range(n_blocks):
@@ -243,7 +252,7 @@ def sweep_blocks(n_blocks, spacing, wanted):
         print(f"  block sweep {blocks}/{i+1} slot {slot} "
               f"({sum(1 for v in out.values() if sum(v[0].values()) >= MIN_DECODED_INSTRUCTIONS)}"
               f"/{len(out)} programs already at the sample floor)", flush=True)
-    return out, blocks
+    return out, blocks, tip
 
 
 def decode_census(pid, sigs, manifest, sample_size, prior=None):
@@ -329,7 +338,12 @@ def decode_census(pid, sigs, manifest, sample_size, prior=None):
         "instructions_named_by_manifest": sum(matched.values()),
         "decode_rate": ((sum(matched.values()) / total) if total else None) if decodable else None,
         "instructions_by_name": dict(matched.most_common()),
-        "unmatched_leading_bytes": dict(unmatched.most_common(12)),
+        # Round 29 (audit 2026-10-20, MED-1): the WHOLE histogram for a
+        # program whose manifest can name anything, so the record can be
+        # re-resolved exactly against a later manifest
+        # (`recompute_evidence.py`). A memo program's "heads" are its users'
+        # text: only the commonest 12 are kept.
+        "unmatched_leading_bytes": dict(unmatched.most_common() if decodable else unmatched.most_common(12)),
     }
 
 
@@ -340,6 +354,8 @@ def main():
     ap.add_argument("--max-pages", type=int, default=4)
     ap.add_argument("--sweep-cache", default=str(HERE / "out" / "block_sweep.json"),
                     help="where the block sweep is cached, so a restart does not re-read blocks")
+    ap.add_argument("--sweep-max-age", type=int, default=6 * 3600,
+                    help="seconds after which a cached block sweep is stale and re-read")
     ap.add_argument("--sample", type=int, default=80)
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--blocks", type=int, default=40,
@@ -360,17 +376,34 @@ def main():
     targets = args.program_ids or list(manifests)
     block_obs = {}
     cache = Path(args.sweep_cache) if args.sweep_cache else None
-    if args.blocks and cache and cache.exists():
-        raw = json.loads(cache.read_text(encoding="utf-8"))
+    raw = json.loads(cache.read_text(encoding="utf-8")) if (args.blocks and cache and cache.exists()) else None
+    # Round 29 (audit 2026-10-20, LOW-6): a cached sweep used to be reused
+    # however old it was, and whatever programs it covered — a census run
+    # weeks later recorded the old blocks under a new `measured_at_unix`. It
+    # is reused only when it says when it was taken, is younger than
+    # --sweep-max-age, and covers every program measured now.
+    reusable = (
+        raw is not None
+        and isinstance(raw.get("swept_at_unix"), int)
+        and time.time() - raw["swept_at_unix"] <= args.sweep_max_age
+        and set(targets) <= set(raw.get("programs", {}))
+    )
+    if reusable:
         block_obs = {p: [Counter(v[0]), v[1], v[2]] for p, v in raw["programs"].items()}
         print(f"reusing the block sweep cached in {cache} "
-              f"({raw['blocks']} blocks, {len(block_obs)} programs)", flush=True)
+              f"({raw['blocks']} blocks up to slot {raw.get('tip_slot')}, "
+              f"{int(time.time() - raw['swept_at_unix'])} s old, {len(block_obs)} programs)", flush=True)
     elif args.blocks:
+        if raw is not None:
+            print(f"the block sweep cached in {cache} is stale or does not cover this run; re-reading",
+                  flush=True)
         print(f"sweeping {args.blocks} finalized blocks for decode evidence", flush=True)
-        block_obs, swept = sweep_blocks(args.blocks, args.block_spacing, set(targets))
+        block_obs, swept, tip = sweep_blocks(args.blocks, args.block_spacing, set(targets))
         if cache:
             cache.write_text(json.dumps({
                 "blocks": swept,
+                "tip_slot": tip,
+                "swept_at_unix": int(time.time()),
                 "programs": {p: [dict(v[0]), v[1], v[2]] for p, v in block_obs.items()},
             }, indent=1), encoding="utf-8")
     if block_obs:

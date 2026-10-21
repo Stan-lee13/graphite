@@ -14,10 +14,39 @@ Sources:
 
 Discriminator convention (Anchor): sha256("global:" + snake_case_name)[..8] hex.
 Native programs (Solend): 1-byte tag hex (e.g. "04").
+
+Round 29 (audit 2026-10-20, LOW-6): the shipped manifests these builders first
+produced have since been curated and extended — `marginfi-v2.json` alone went
+from the 4 placeholder shapes built here to 91 instructions — so running this
+file would silently throw that work away. It now refuses to overwrite an
+existing manifest unless `--force` is given, and resolves every path from its
+own location instead of the current directory (it used to work only when run
+from `graphite-core/`).
+
+    python3 graphite-core/build_manifests.py [phoenix openbook switchboard jupiter-limit solend marginfi] [--force]
 """
+import argparse
 import hashlib
 import json
-import os
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+FORCE = False
+
+
+def read_json(rel):
+    return json.load(open(ROOT / rel, encoding="utf-8"))
+
+
+def write_manifest(rel, manifest):
+    path = ROOT / rel
+    if path.exists() and not FORCE:
+        raise SystemExit(
+            f"refusing to overwrite {path}: the shipped manifest has been curated since this "
+            "builder first produced it; pass --force to replace it anyway"
+        )
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=1)
 
 TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 TOKEN2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
@@ -168,59 +197,62 @@ def build_anchor(name, program_id, idl, label, source, website, github, category
     return manifest
 
 
-def main():
+def build_phoenix():
     # 1. Phoenix (native shank program: 1-byte instruction tags, NOT Anchor)
-    phoenix_idl = json.load(open("scripts/phoenix_idl.json", encoding="utf-8"))
+    phoenix_idl = read_json("scripts/phoenix_idl.json")
     m = build_anchor(
         "Phoenix", "PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY", phoenix_idl,
         "phoenix-v1", "official Ellipsis-Labs/phoenix-v1 program/src/instruction.rs #[repr(u8)] enum (shank IDL)",
         "https://www.phoenix.trade", "https://github.com/Ellipsis-Labs/phoenix-v1", "swap",
         "Phoenix spot DEX (native Rust, shank IDL origin). Discriminators are the 1-byte #[repr(u8)] instruction tags, cross-checked against live mainnet transactions (tags 0x09/0x0f/0x10 observed).",
         disc_mode="u8tag")
-    json.dump(m, open("protocols/phoenix.json", "w", encoding="utf-8"), indent=1)
+    write_manifest("protocols/phoenix.json", m)
     print(f"phoenix: {len(m['instructions'])} instructions")
 
+
+def build_openbook():
     # 2. OpenBook v2 (Anchor-convention: snake_case hashing, verified on-chain)
-    ob_idl = json.load(open("scripts/openbook_idl.json", encoding="utf-8"))
+    ob_idl = read_json("scripts/openbook_idl.json")
     m = build_anchor(
         "OpenBook V2", "opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb", ob_idl,
         "openbook-v2", "official openbook-dex/openbook-v2 idl/openbook_v2.json; sha256('global:'+snake_case) derivation verified on-chain (placeTakeOrder, cancelAllAndPlaceOrders)",
         "https://www.openbook.xyz", "https://github.com/openbook-dex/openbook-v2", "swap",
         "OpenBook v2 CLOB DEX. Discriminators derived sha256('global:'+snake_case fn name) and verified against live mainnet txs.")
-    json.dump(m, open("protocols/openbook-v2.json", "w", encoding="utf-8"), indent=1)
+    write_manifest("protocols/openbook-v2.json", m)
     print(f"openbook-v2: {len(m['instructions'])} instructions")
 
+
+def build_switchboard():
     # 3. Switchboard (Anchor program; snake_case derivation per Anchor convention)
-    sb_idl = json.load(open("scripts/switchboard_idl.json", encoding="utf-8"))
+    sb_idl = read_json("scripts/switchboard_idl.json")
     m = build_anchor(
         "Switchboard", "SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f", sb_idl,
         "switchboard-v2", "official mrgnlabs/sbv2-solana javascript/solana.js/src/idl/mainnet.json; sha256('global:'+snake_case) per Anchor convention",
         "https://switchboard.xyz", "https://github.com/switchboard-xyz/solana-sdk", "oracle",
         "Switchboard v2 oracle. Leaf data-feed program: no user funds flow. Discriminators derived per Anchor convention (not yet observed in sampled mainnet txs).")
-    json.dump(m, open("protocols/switchboard-v2.json", "w", encoding="utf-8"), indent=1)
+    write_manifest("protocols/switchboard-v2.json", m)
     print(f"switchboard: {len(m['instructions'])} instructions")
 
+
+def build_jupiter_limit():
     # 4. Jupiter Limit Order (Anchor-convention, verified on-chain)
-    jl_idl = json.load(open("scripts/jupiter_limit_idl.json", encoding="utf-8"))
+    jl_idl = read_json("scripts/jupiter_limit_idl.json")
     m = build_anchor(
         "Jupiter Limit Order", "jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu", jl_idl,
         "limit-order-v2", "published IDL (jup-ag limit-order); sha256('global:'+snake_case) verified on-chain (cancelOrder)",
         "https://jup.ag", "https://github.com/jup-ag/limit-order-sdk", "swap",
         "Jupiter Limit Order v2. Program ID verified executable on mainnet; discriminator derivation verified against live txs.")
-    json.dump(m, open("protocols/jupiter-limit.json", "w", encoding="utf-8"), indent=1)
+    write_manifest("protocols/jupiter-limit.json", m)
     print(f"jupiter-limit: {len(m['instructions'])} instructions")
 
-    # 5. Solend (native; tags from official SDK unpack, layouts from SDK docs + on-chain)
-    build_solend()
-
-    # 6. MarginFi (real on-chain shapes)
-    build_marginfi()
+# 5. Solend (native; tags from official SDK unpack, layouts from SDK docs + on-chain)
+# 6. MarginFi (real on-chain shapes)
 
 
 def build_solend():
-    shapes = json.load(open("scripts/solend_shapes.json", encoding="utf-8")) if os.path.exists("scripts/solend_shapes.json") else {}
+    shapes = read_json("scripts/solend_shapes.json") if (ROOT / "scripts/solend_shapes.json").exists() else {}
     # tag -> (name, [account names from SDK doc comments], signer_indices)
-    sdk = json.load(open("scripts/solend_sdk_layouts.json", encoding="utf-8"))
+    sdk = read_json("scripts/solend_sdk_layouts.json")
     # doc-comment account names by name (indices from the SDK comments)
     doc_names = {}
     for name, info in sdk.items():
@@ -337,16 +369,16 @@ def build_solend():
             "notes": "; ".join(sorted(notes)) + " Tags 10 and 14 cross-checked against live mainnet transactions.",
         },
     }
-    json.dump(m, open("protocols/solend.json", "w", encoding="utf-8"), indent=1)
+    write_manifest("protocols/solend.json", m)
     print(f"solend: {len(m['instructions'])} instructions")
 
 
 def build_marginfi():
-    shapes = json.load(open("scripts/marginfi_shapes.json", encoding="utf-8"))
+    shapes = read_json("scripts/marginfi_shapes.json")
     names = {
         "047e74353005d41f": "lending_account_borrow",
         "0e8321dc51bab46b": "lending_account_start_flashloan",
-        "4fd1acb1de33ad97": "onchain_observed_shape_7acct",
+        "4fd1acb1de33ad97": "lending_account_repay",  # sha256("global:lending_account_repay")[..8]
         "697cc96a9902089c": "lending_account_end_flashloan",
     }
     instructions = []
@@ -390,8 +422,33 @@ def build_marginfi():
             "notes": "4 instruction shapes captured from live mainnet transactions (incl. inner CPIs); marginfi does not publish an official IDL file.",
         },
     }
-    json.dump(m, open("protocols/marginfi-v2.json", "w", encoding="utf-8"), indent=1)
+    write_manifest("protocols/marginfi-v2.json", m)
     print(f"marginfi: {len(m['instructions'])} instructions")
+
+
+BUILDERS = {
+    "phoenix": build_phoenix,
+    "openbook": build_openbook,
+    "switchboard": build_switchboard,
+    "jupiter-limit": build_jupiter_limit,
+    "solend": build_solend,
+    "marginfi": build_marginfi,
+}
+
+
+def main():
+    global FORCE
+    ap = argparse.ArgumentParser(description="Build protocol manifests from official IDLs")
+    ap.add_argument("only", nargs="*", help="builders to run (default: all): " + ", ".join(BUILDERS))
+    ap.add_argument("--force", action="store_true", help="overwrite existing manifests")
+    args = ap.parse_args()
+    FORCE = args.force
+    unknown = [b for b in args.only if b not in BUILDERS]
+    if unknown:
+        raise SystemExit(f"unknown builder(s) {unknown}; choose from {list(BUILDERS)}")
+    for name, build in BUILDERS.items():
+        if not args.only or name in args.only:
+            build()
 
 
 if __name__ == "__main__":

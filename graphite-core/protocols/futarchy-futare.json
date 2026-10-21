@@ -5,7 +5,7 @@
   "program_id": "FUTARELBfJfQ8RDGhg1wdhddq1odMAJUePHFuBYfUxKq",
   "website": "",
   "github": "",
-  "category": "swap"
+  "category": "governance"
  },
  "version": {
   "label": "0.6.1",
@@ -1401,14 +1401,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: dao, baseTokenAccount, quoteTokenAccount, ammBaseVault, ammQuoteVault",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "executeSpendingLimitChange",
@@ -1459,14 +1459,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: proposal, dao, squadsProposal",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "sponsorProposal",
@@ -1715,14 +1715,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: dao, admin, squadsMultisig, squadsMultisigVault, squadsMultisigVaultTransaction, squadsMultisigProposal, meteoraClaimPositionFeesAccounts_position, meteoraClaimPositionFeesAccounts_tokenAAccount, meteoraClaimPositionFeesAccounts_tokenBAccount, meteoraClaimPositionFeesAccounts_tokenAVault, meteoraClaimPositionFeesAccounts_tokenBVault",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "initiateVaultSpendOptimisticProposal",

@@ -871,14 +871,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: fundsTo, craftableItem, tokenFrom, tokenTo",
-    "transfers funds between the protocol and the involved accounts"
+    "transfers the funds held by the protocol account to the destination account"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "drain"
   },
   {
    "name": "initializeDomain",

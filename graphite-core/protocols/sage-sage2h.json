@@ -3088,14 +3088,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: fundsTo, progressionConfig",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "deregisterResource",
@@ -3778,14 +3778,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: fundsTo, mineItem, tokenFrom, tokenTo",
-    "transfers funds between the protocol and the involved accounts"
+    "transfers the funds held by the protocol account to the destination account"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "drain"
   },
   {
    "name": "drainSurveyDataUnitsBank",
@@ -3857,14 +3857,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: fundsTo, tokenFrom, tokenTo",
-    "transfers funds between the protocol and the involved accounts"
+    "transfers the funds held by the protocol account to the destination account"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "drain"
   },
   {
    "name": "fleetStateHandler",
@@ -4157,7 +4157,7 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "risk_class": ""
+   "risk_class": "inert"
   },
   {
    "name": "idleToRespawn",
@@ -4229,11 +4229,11 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: gameAccountsFleetAndOwner_gameFleetAndOwner_fleetAndOwner_fleet, atlasTokenFrom, atlasTokenTo",
-    "updates protocol accounting state"
+    "transfers funds between the protocol and the involved accounts"
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "initGame",
@@ -5180,7 +5180,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: funder, progressionConfig",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -5188,7 +5188,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "registerResource",
@@ -5319,7 +5319,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: funder, sageCrewConfig",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -5327,7 +5327,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "registerSagePlayerProfile",
@@ -7710,7 +7710,7 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "risk_class": ""
+   "risk_class": "inert"
   },
   {
    "name": "syncStarbaseUpgradeIngredients",
@@ -7779,7 +7779,7 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "risk_class": ""
+   "risk_class": "inert"
   },
   {
    "name": "transferCargoAtStarbase",

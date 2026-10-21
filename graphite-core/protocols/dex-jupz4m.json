@@ -192,14 +192,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: signer, dex, position, user_token_0_account, user_token_1_account, token_0_reserve, token_1_reserve, token_0_vault, token_1_vault, dex_supply_position_token_0, dex_supply_position_token_1, dex_borrow_position_token_0, dex_borrow_position_token_1",
-    "transfers funds between the protocol and the involved accounts"
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "withdraw"
   },
   {
    "name": "borrow_perfect",
@@ -380,14 +380,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: signer, dex, position, user_token_0_account, user_token_1_account, token_0_reserve, token_1_reserve, token_0_vault, token_1_vault, dex_supply_position_token_0, dex_supply_position_token_1, dex_borrow_position_token_0, dex_borrow_position_token_1",
-    "transfers funds between the protocol and the involved accounts"
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "withdraw"
   },
   {
    "name": "deposit",
@@ -854,7 +854,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: signer, dex_admin",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -862,7 +862,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "init_position",
@@ -982,14 +982,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: dex",
-    "credits the output token account with the received amount for the swap"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "pause_user",
@@ -2487,14 +2487,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: dex",
-    "credits the output token account with the received amount for the swap"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "unpause_user",
@@ -2949,14 +2949,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: position",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "update_utilization_limit",

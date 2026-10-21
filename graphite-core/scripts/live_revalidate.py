@@ -99,7 +99,13 @@ def check_ids(label, ids):
     failures = []
     for name, pid in sorted(ids.items()):
         try:
-            res = rpc(MAINNET, "getAccountInfo", [pid, {"encoding": "jsonParsed"}])
+            # Round 29 (audit 2026-10-20, LOW-6): only `executable` is read,
+            # and a program account's DATA can be its whole ELF (BPF loader
+            # v2, the native loaders' builtins aside). A zero-length
+            # dataSlice returns the flags without the bytes; jsonParsed
+            # cannot be sliced, hence base64.
+            res = rpc(MAINNET, "getAccountInfo",
+                      [pid, {"encoding": "base64", "dataSlice": {"offset": 0, "length": 0}}])
             value = (res.get("result") or {}).get("value")
             executable = bool(value and value.get("executable"))
             if executable:

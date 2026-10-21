@@ -1,11 +1,16 @@
 //! A shipped manifest may not award itself a trust tier.
 //!
-//! `BattleTested` is the top tier: it lifts the confidence ceiling to 1.0 and
-//! is the floor the Enterprise profile demands. Until Round 18 it was a string
-//! in a JSON file that nothing checked — eight manifests declared it and the
-//! engine believed all eight, which is exactly the "computed, never asserted"
-//! rule (P7) being applied to every source of evidence except the document in
-//! the repository.
+//! `BattleTested` is the top tier. What a seed manifest's declaration of it
+//! does is narrower than that suggests (Round 29, audit 2026-10-20, M14): the
+//! verdict path caps every manifest's own tier at `OfficialManifest`
+//! (`verification.rs`, "P7: cap self-asserted tiers"), so a declared — even a
+//! measured — `BattleTested` never lifts a verdict's confidence ceiling; only
+//! the Semantic Graph's runtime tier can. The declared tier is what the
+//! registry and its displays report. Until Round 18 it was a string in a JSON
+//! file that nothing checked — eight manifests declared it and the registry
+//! reported all eight, which is exactly the "computed, never asserted" rule
+//! (P7) being applied to every source of evidence except the document in the
+//! repository.
 //!
 //! These tests hold the declaration to a measurement:
 //! `protocols/battle_tested_evidence.json`, produced read-only from mainnet by
@@ -226,4 +231,133 @@ fn every_record_names_a_seed_manifest_and_a_measurement_time() {
             "{pid}: the volume record must state the window it was counted over"
         );
     }
+}
+
+/// The census's resolution rule (`scripts/battle_tested_census.py`): the first
+/// instruction, in manifest order, whose discriminator the observed head
+/// starts with.
+fn census_resolves(manifest: &serde_json::Value, head: &str) -> Option<String> {
+    let head = head.to_ascii_lowercase();
+    manifest["instructions"]
+        .as_array()?
+        .iter()
+        .find(|ix| {
+            let d = ix["discriminator"]
+                .as_str()
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            !d.is_empty() && head.starts_with(&d)
+        })
+        .and_then(|ix| ix["name"].as_str().map(str::to_string))
+}
+
+/// Round 29 (audit 2026-10-20, MED-1): a record is bound to the manifest it
+/// describes. Its derived fields — the instructions it names, the decode
+/// rate, the tier it says the manifest declares, its own verdict — must be
+/// what its raw observations give against the manifest AS SHIPPED, so a
+/// manifest cannot move on while its evidence keeps describing the old one.
+/// Token-2022's record listed as "unmatched" instructions its manifest had
+/// since named, Marginfi's named an instruction that had been renamed, and
+/// seven records stated a tier their manifest no longer declared.
+/// `scripts/recompute_evidence.py` brings a record back in line (no network).
+#[test]
+fn every_record_agrees_with_a_recomputation_from_its_raw_observations() {
+    let doc = evidence();
+    let t = &doc["thresholds"];
+    let manifests: std::collections::BTreeMap<&str, serde_json::Value> =
+        graphite_core::manifest::SEED_MANIFESTS
+            .iter()
+            .map(|(name, body)| {
+                (
+                    *name,
+                    serde_json::from_str(body).unwrap_or_else(|e| panic!("{name}: {e}")),
+                )
+            })
+            .collect();
+    let mut problems = Vec::new();
+    for p in doc["programs"].as_array().expect("programs array") {
+        let file = p["manifest"].as_str().expect("manifest file name");
+        let Some(m) = manifests.get(file) else {
+            problems.push(format!("{file}: no such seed manifest"));
+            continue;
+        };
+        let d = &p["decode"];
+        let instructions = m["instructions"].as_array().expect("instructions");
+        let names: std::collections::BTreeSet<&str> = instructions
+            .iter()
+            .filter_map(|ix| ix["name"].as_str())
+            .collect();
+        if p["declared_trust_tier"] != m["trust_tier"] {
+            problems.push(format!(
+                "{file}: declared_trust_tier {} but the manifest declares {}",
+                p["declared_trust_tier"], m["trust_tier"]
+            ));
+        }
+        let by_name = d["instructions_by_name"].as_object().expect("by name");
+        for name in by_name.keys() {
+            if !names.contains(name.as_str()) {
+                problems.push(format!(
+                    "{file}: names {name:?}, which the manifest does not have"
+                ));
+            }
+        }
+        let unmatched = d["unmatched_leading_bytes"].as_object().expect("unmatched");
+        for head in unmatched.keys() {
+            if let Some(name) = census_resolves(m, head) {
+                problems.push(format!(
+                    "{file}: lists {head} as unmatched, but the manifest names it {name}"
+                ));
+            }
+        }
+        let named: u64 = by_name.values().filter_map(|v| v.as_u64()).sum();
+        let listed_unmatched: u64 = unmatched.values().filter_map(|v| v.as_u64()).sum();
+        let observed = d["instructions_observed"].as_u64().expect("observed");
+        if d["instructions_named_by_manifest"].as_u64() != Some(named) {
+            problems.push(format!(
+                "{file}: instructions_named_by_manifest {} but the names add up to {named}",
+                d["instructions_named_by_manifest"]
+            ));
+        }
+        if named + listed_unmatched > observed {
+            problems.push(format!(
+                "{file}: {named} named + {listed_unmatched} unmatched exceed {observed} observed"
+            ));
+        }
+        let decodable = instructions
+            .iter()
+            .any(|ix| !ix["discriminator"].as_str().unwrap_or("").is_empty());
+        let expected_rate = (decodable && observed > 0).then(|| named as f64 / observed as f64);
+        match (expected_rate, d["decode_rate"].as_f64()) {
+            (None, None) => {}
+            (Some(e), Some(r)) if (e - r).abs() < 1e-12 => {}
+            (e, r) => problems.push(format!("{file}: decode_rate {r:?}, recomputed {e:?}")),
+        }
+        if d["decode_applicable"].as_bool() != Some(decodable) {
+            problems.push(format!(
+                "{file}: decode_applicable disagrees with the manifest"
+            ));
+        }
+        let meets = p["identity"]["executable"].as_bool() == Some(true)
+            && p["volume"]["successful_transactions_counted"]
+                .as_u64()
+                .unwrap_or(0)
+                >= t["min_successful_transactions"]
+                    .as_u64()
+                    .expect("threshold")
+            && observed >= t["min_decoded_instructions"].as_u64().expect("threshold")
+            && expected_rate
+                .is_some_and(|r| r >= t["min_decode_rate"].as_f64().expect("threshold"));
+        if p["meets_battle_tested"].as_bool() != Some(meets) {
+            problems.push(format!(
+                "{file}: meets_battle_tested {} but the measurements give {meets}",
+                p["meets_battle_tested"]
+            ));
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "evidence records disagree with their own observations against the shipped manifests \
+         (run `python3 graphite-core/scripts/recompute_evidence.py`):\n{}",
+        problems.join("\n")
+    );
 }

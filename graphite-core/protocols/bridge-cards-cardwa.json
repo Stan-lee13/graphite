@@ -5,7 +5,7 @@
   "program_id": "cardWArqhdV5jeRXXjUti7cHAa4mj41Nj3Apc6RPZH2",
   "website": "",
   "github": "",
-  "category": "staking"
+  "category": ""
  },
  "version": {
   "label": "0.1.0",
@@ -145,7 +145,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, destination_state",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -153,7 +153,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "add_or_update_merchant_manager",
@@ -207,7 +207,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, manager_state",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -215,7 +215,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "add_or_update_user_delegate",
@@ -323,14 +323,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, payer, account_to_close",
-    "closes the position or account and transfers remaining funds back to the user"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "close"
+   "risk_class": "authority"
   },
   {
    "name": "debit_user",

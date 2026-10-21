@@ -120,14 +120,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: aligned_distributor, distributor, from, to, admin",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "create_test_oracle",
@@ -324,7 +324,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: aligned_distributor, withdrawor, clawback_receiver, distributor, token_vault, admin",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -332,7 +332,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "realloc_test_oracle",

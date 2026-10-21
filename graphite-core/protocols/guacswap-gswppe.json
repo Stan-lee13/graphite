@@ -111,7 +111,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool, poolXAccount, poolYAccount, adminXAccount, adminYAccount, admin",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -119,7 +119,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "createProvider",
@@ -243,7 +243,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: state, admin",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -251,7 +251,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "addTokens",
@@ -459,14 +459,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool, buybackXAccount, buybackYAccount, poolXAccount, poolYAccount, admin",
-    "credits the output token account with the received amount for the swap"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "swap",
@@ -980,7 +980,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: farm, tokenMarcoAccount, adminMarcoAccount, admin",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -988,7 +988,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "createDualFarm",
@@ -1088,7 +1088,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: farm, tokenMarcoAccount, tokenProjectFirstAccount, adminMarcoAccount, adminProjectFirstAccount, admin",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -1096,7 +1096,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "createTripleFarm",
@@ -1231,7 +1231,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: farm, tokenMarcoAccount, tokenProjectFirstAccount, tokenProjectSecondAccount, adminMarcoAccount, adminProjectFirstAccount, adminProjectSecondAccount, admin",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -1239,7 +1239,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "withdrawRewards",
@@ -1446,14 +1446,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool, farm, tokenMarcoAccount, tokenProjectFirstAccount, tokenProjectSecondAccount, poolXAccount, poolYAccount, buybackXAccount, buybackYAccount, admin",
-    "closes the position or account and transfers remaining funds back to the user"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "close"
+   "risk_class": "authority"
   },
   {
    "name": "withdrawMercantiFee",
@@ -1525,14 +1525,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool, mercantiXAccount, mercantiYAccount, poolXAccount, poolYAccount, admin",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "addSupply",
@@ -1618,7 +1618,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool, farm, tokenMarcoAccount, tokenProjectFirstAccount, tokenProjectSecondAccount, adminMarcoAccount, adminProjectFirstAccount, adminProjectSecondAccount",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -1626,7 +1626,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "updateFees",
@@ -1964,14 +1964,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: farm, provider, tokenMarcoAccount, tokenProjectFirstAccount, tokenProjectSecondAccount, ownerMarcoAccount, ownerProjectFirstAccount, ownerProjectSecondAccount, admin",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   }
  ],
  "trust_tier": "BattleTested"
