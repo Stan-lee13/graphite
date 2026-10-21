@@ -116,10 +116,11 @@ fn attack_a_self_declared_tier_outranks_the_computed_one() {
         signature_hex: None,
         attestations: vec![],
     };
-    let hash = submission.content_hash();
+    // Round 29 (MR-3): the domain-separated registry message is what is signed.
+    let message = submission.signing_message();
     submission.attestations.push(ReviewerAttestation {
         reviewer_pubkey: reviewer_b58.clone(),
-        signature_hex: hex::encode(reviewer.sign(hash.as_bytes()).to_bytes()),
+        signature_hex: hex::encode(reviewer.sign(&message).to_bytes()),
     });
 
     // P10: a first submission is a promotion; pin one fixture (refused under
