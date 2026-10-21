@@ -155,6 +155,12 @@ is no sign-up and no key service:
 3. Every caller — this console, the agent kit, the CLI — sends the same key
    as `Authorization: Bearer`. Every route except `/health` requires it.
 
+Since Round 30 a Core can also take a read-only key, `GRAPHITE_READ_API_KEY`:
+it opens only the `GET` routes this console reads (`/metrics`, `/manifests`,
+`/api/*`) and cannot submit a verification or record a lifecycle event. Give
+the console that key rather than the verify key; the Connection screen tests
+it the same way.
+
 The console receives its copy on the Connection screen, which tests it in
 two steps: `/health` proves the address is a Core that this origin may talk
 to, and a key-guarded route (`/api/protocols/top`) proves the key. By

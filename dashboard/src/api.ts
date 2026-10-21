@@ -207,7 +207,14 @@ export interface Health {
     archive_count?: number;
     rotations_ok?: number;
     rotations_failed?: number;
+    /** Round 30 (G-07): what the trail's integrity rests on. */
+    integrity?: "tamper_evident" | "corruption_evident";
+    chain_head_seq?: number | null;
+    anchors_failed?: number;
   };
+  /** Round 30 (G-08): whether the witness is another provider, and whether
+   *  every L8 conclusion needs it. */
+  l8_assurance?: { witness_independent?: boolean | null; high_assurance?: boolean };
   graph_persistence?: {
     enabled: boolean;
     snapshots_ok?: number;

@@ -97,6 +97,52 @@ export function SystemView() {
           sub={loading ? undefined : h.rpc_attached === false ? "no approval is executable" : h.rpc_attached === undefined ? "this Core does not say" : undefined}
         />
         <Figure label="Inclusion witness" value={loading ? "—" : h.inclusion_witness === undefined ? "Not reported" : h.inclusion_witness ? "Configured" : "None"} tone={loading ? undefined : h.inclusion_witness ? "pass" : "idle"} sub={h && h.inclusion_witness === false ? "L8 trusts a single RPC" : undefined} />
+        {/* Round 30 (G-08): a witness on the same provider is not a second
+            source; "Not reported" when the Core does not say. */}
+        <Figure
+          label="L8 assurance"
+          value={
+            loading
+              ? "—"
+              : h.l8_assurance === undefined
+                ? "Not reported"
+                : h.l8_assurance.high_assurance
+                  ? "High assurance"
+                  : h.l8_assurance.witness_independent === true
+                    ? "Independent witness"
+                    : h.l8_assurance.witness_independent === false
+                      ? "Witness not independent"
+                      : "Single provider"
+          }
+          tone={loading ? undefined : h.l8_assurance?.high_assurance || h.l8_assurance?.witness_independent === true ? "pass" : "warn"}
+          sub={loading ? undefined : h.l8_assurance?.high_assurance ? "every L8 conclusion needs the witness to agree" : h.l8_assurance === undefined ? "this Core does not say" : "an RPC provider's word, not proof of inclusion"}
+        />
+        {/* Round 30 (G-07): keyed, the trail is tamper-evident; unkeyed,
+            anyone who can write the data directory can rewrite it. */}
+        <Figure
+          label="Audit integrity"
+          value={
+            loading
+              ? "—"
+              : h.audit?.integrity === undefined
+                ? "Not reported"
+                : h.audit.integrity === "tamper_evident"
+                  ? "Tamper-evident"
+                  : "Corruption-evident"
+          }
+          tone={loading ? undefined : h.audit?.integrity === "tamper_evident" && !(h.audit.anchors_failed ?? 0) ? "pass" : "warn"}
+          sub={
+            loading
+              ? undefined
+              : (h.audit?.anchors_failed ?? 0) > 0
+                ? `${fmt.int(h.audit?.anchors_failed ?? 0)} checkpoint write(s) failed`
+                : h.audit?.integrity === "corruption_evident"
+                  ? "no MAC key: a coherent rewrite is not detectable"
+                  : h.audit?.chain_head_seq != null
+                    ? `chain head at record ${fmt.int(h.audit.chain_head_seq)}`
+                    : undefined
+          }
+        />
       </div>
 
       {!loading && ((h.frozen_baseline_count ?? 0) > 0 || (h.program_upgrades?.detected ?? 0) > 0) && (
