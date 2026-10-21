@@ -703,12 +703,10 @@ func executionResultViolation(value any, sent *ExecutionCheckInput) string {
 	if !ok {
 		return "`discrepancy` must be a boolean"
 	}
+	// BlockedButExecuted is the one discrepancy since the audit of
+	// 2026-10-20 (F5): a cited verdict about other bytes is reported in
+	// caller_keys_disagree, never as an alarm.
 	expected := rec == "BlockedButExecuted"
-	if rec == "RecordedForDifferentBytes" {
-		m, _ := asObject(r["reconciliation"])
-		inner, _ := asObject(m[rec])
-		expected = inner["recorded_approved"] == false
-	}
 	if disc != expected {
 		return fmt.Sprintf("`discrepancy` must be %v for a %s reconciliation", expected, rec)
 	}

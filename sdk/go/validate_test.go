@@ -348,12 +348,13 @@ func TestVerifyExecutionIsCheckedLikeAVerdict(t *testing.T) {
 		t.Fatalf("the alarm must come through: %+v %v", r, err)
 	}
 	for name, body := range map[string]string{
-		"alarm dropped":       executionJSON(`"BlockedButExecuted"`, false),
-		"refused bytes quiet": executionJSON(`{"RecordedForDifferentBytes":{"recorded_approved":false,"recorded_transaction_sha256":null,"chain_transaction_sha256":"ab"}}`, false),
-		"unknown outcome":     executionJSON(`"Fine"`, false),
-		"another signature":   strings.ReplaceAll(executionJSON(`"ApprovedAndExecuted"`, false), signature, strings.Repeat("4", 88)),
-		"empty object":        `{}`,
-		"not JSON":            `<html>`,
+		"alarm dropped": executionJSON(`"BlockedButExecuted"`, false),
+		// Only BlockedButExecuted is a discrepancy (audit 2026-10-20, F5).
+		"cited other bytes alarmed": executionJSON(`{"RecordedForDifferentBytes":{"recorded_approved":false,"recorded_transaction_sha256":null,"chain_transaction_sha256":"ab"}}`, true),
+		"unknown outcome":           executionJSON(`"Fine"`, false),
+		"another signature":         strings.ReplaceAll(executionJSON(`"ApprovedAndExecuted"`, false), signature, strings.Repeat("4", 88)),
+		"empty object":              `{}`,
+		"not JSON":                  `<html>`,
 	} {
 		if _, err := NewClient(serve(t, http.StatusOK, body).URL).VerifyExecution(in); err == nil {
 			t.Errorf("%s: must be refused", name)

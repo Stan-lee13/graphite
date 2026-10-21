@@ -213,8 +213,14 @@ test("T1: a receipt or an L8 answer about something else is refused", () => {
   const refusedElsewhere = {
     RecordedForDifferentBytes: { recorded_approved: false, recorded_transaction_sha256: null, chain_transaction_sha256: "cd".repeat(32) },
   };
-  assert.match(validateExecutionCheckResult({ ...EXECUTION, reconciliation: refusedElsewhere }) ?? "", /discrepancy/);
-  assert.equal(validateExecutionCheckResult({ ...EXECUTION, reconciliation: refusedElsewhere, discrepancy: true }), null);
+  // A cited verdict about other bytes is never an alarm (audit 2026-10-20,
+  // F5): only BlockedButExecuted is a discrepancy, so a body raising one on
+  // any other outcome is refused too.
+  assert.equal(validateExecutionCheckResult({ ...EXECUTION, reconciliation: refusedElsewhere }), null);
+  assert.match(
+    validateExecutionCheckResult({ ...EXECUTION, reconciliation: refusedElsewhere, discrepancy: true }) ?? "",
+    /discrepancy/,
+  );
 });
 
 test("the validator requires what the Core always emits and refuses what it never does", () => {

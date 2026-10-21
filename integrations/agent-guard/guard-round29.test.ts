@@ -107,7 +107,7 @@ async function harness(
 ): Promise<H> {
   const wallet = Keypair.generate();
   const rpc = await mockRpc(o.rpc?.(wallet) ?? swapState(wallet));
-  const core = o.approve ? await mockApprovingCore() : await mockService({ "GET /health": { status: "ok" } });
+  const core = o.approve ? await mockApprovingCore() : await mockService({ "GET /health": { status: "ok", service: "graphite", version: "test" } });
   if (!o.approve) core.answer.set("POST /verify", { status: 200, body: BLOCKED_VERDICT });
   const ai = await mockService();
   const text = o.text ?? REQUEST;
@@ -477,7 +477,7 @@ test("L4: the compute budget and the wallet's own output account are built by th
   const wallet = Keypair.generate();
   const ata = associatedTokenAddress(wallet.publicKey, new PublicKey(USDC), new PublicKey(SPL_TOKEN_PROGRAM)).toBase58();
   const rpc = await mockRpc(swapState(wallet, { out: ata }));
-  const core = await mockService({ "GET /health": { status: "ok" } });
+  const core = await mockService({ "GET /health": { status: "ok", service: "graphite", version: "test" } });
   core.answer.set("POST /verify", { status: 200, body: BLOCKED_VERDICT });
   const ai = await mockService();
   ai.answer.set("POST /parse", { status: 200, body: swapParse(SWAP) });
@@ -528,7 +528,7 @@ test("L4: the compute budget and the wallet's own output account are built by th
 
 test("M8: SOLANA_PRIVATE_KEY is gone from the environment once read, and the guard cannot be rewired", async () => {
   const wallet = Keypair.generate();
-  const core = await mockService({ "GET /health": { status: "ok" } });
+  const core = await mockService({ "GET /health": { status: "ok", service: "graphite", version: "test" } });
   const saved = process.env.SOLANA_PRIVATE_KEY;
   try {
     process.env.SOLANA_PRIVATE_KEY = bs58.encode(wallet.secretKey);
@@ -574,7 +574,7 @@ test("M3: the RPC is held to the transport rule and never followed through a red
     r.end();
   });
   await new Promise<void>((r) => redirector.listen(0, "127.0.0.1", r));
-  const core = await mockService({ "GET /health": { status: "ok" } });
+  const core = await mockService({ "GET /health": { status: "ok", service: "graphite", version: "test" } });
   const ai = await mockService();
   ai.answer.set("POST /parse", {
     status: 200,

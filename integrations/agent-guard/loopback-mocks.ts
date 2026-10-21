@@ -407,13 +407,16 @@ export async function mockApprovingCore(): Promise<MockService> {
       status: 200,
       body: {
         signature: e.signature,
-        chain_status: { Confirmed: { slot: 1 } },
+        chain_status: {
+          Confirmed: { signature: e.signature, slot: 1, success: true, error: null, commitment: "finalized" },
+        },
         recorded_approved: true,
         recorded_audit_trail_id: e.audit_trail_id ?? null,
         reconciliation: "ApprovedAndExecuted",
         discrepancy: false,
         recorded_transaction_sha256: e.transaction_sha256 ?? null,
-        attribution: "chain_bytes",
+        // What the Core serialises for `ExecutionAttribution::Chain`.
+        attribution: "chain",
         chain_transaction_sha256: e.transaction_sha256 ?? null,
         caller_keys_disagree: [],
         audit_recorded: true,

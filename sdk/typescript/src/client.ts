@@ -428,9 +428,10 @@ function variantOf(value: unknown, units: readonly string[], data: readonly stri
  * Shape guard for `POST /verify/execution`'s answer (audit 2026-10-20, T1:
  * the method used to resolve `{}` for a 200 whose body was not JSON, which a
  * caller read as "no discrepancy"). `discrepancy` must agree with the
- * reconciliation the server computed it from — `BlockedButExecuted`, or
- * `RecordedForDifferentBytes` of a refusal — so a body that drops the alarm
- * while keeping the outcome is refused. When `sent` is given, the answer must
+ * reconciliation the server computed it from — `BlockedButExecuted`, the one
+ * discrepancy since the audit of 2026-10-20 (F5: a cited verdict about other
+ * bytes is reported in `caller_keys_disagree`, never as an alarm) — so a body
+ * that drops the alarm, or raises one on any other outcome, is refused. When `sent` is given, the answer must
  * be about that signature.
  */
 export function validateExecutionCheckResult(value: unknown, sent?: ExecutionCheckInput): string | null {
@@ -442,10 +443,7 @@ export function validateExecutionCheckResult(value: unknown, sent?: ExecutionChe
   const reconciliation = variantOf(value.reconciliation, RECONCILIATION_UNIT, RECONCILIATION_DATA);
   if (reconciliation === null) return "`reconciliation` is not an ExecutionReconciliation";
   if (!isBoolean(value.discrepancy)) return "`discrepancy` must be a boolean";
-  const differentBytes = isObject(value.reconciliation) ? value.reconciliation.RecordedForDifferentBytes : undefined;
-  const expected =
-    reconciliation === "BlockedButExecuted" ||
-    (reconciliation === "RecordedForDifferentBytes" && isObject(differentBytes) && differentBytes.recorded_approved === false);
+  const expected = reconciliation === "BlockedButExecuted";
   if (value.discrepancy !== expected) {
     return `\`discrepancy\` must be ${expected} for a ${reconciliation} reconciliation`;
   }
