@@ -281,6 +281,10 @@ fn core_at(endpoint: &str) -> GraphiteCore {
         max_retries: 0,
         ..Default::default()
     }));
+    // `earning` earns the Gaming floor through policy-threshold refusals,
+    // which teach the baseline only with the operator's opt-in since the
+    // 2026-10-20 audit (M1). These tests are about attribution, not that.
+    core.set_learn_from_policy_refusals(true);
     core
 }
 
