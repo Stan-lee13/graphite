@@ -452,7 +452,7 @@ show it — but that is a hypothesis, and a blocking control is not loosened on 
 hypothesis. The breakdown is in the Round 18 report and is reproducible with
 `GRAPHITE_MAINNET_REASONS`.
 
-**Coverage.** 137 manifests / 3,504 instructions, 104 of them generated from each
+**Coverage.** 137 manifests / 3,541 instructions, 104 of them generated from each
 program's own on-chain Anchor IDL after ranking the inventory by real usage. On
 the same 10,617-transaction sample, the share of non-vote transactions whose
 primary program Graphite can name went from 20.8% to 44.0%. The programs that

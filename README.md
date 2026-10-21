@@ -63,7 +63,7 @@ nothing is ever signed before the verdict.
 | Its fixes are real | every security fix has a test that fails without it, and each fix was reverted once to prove the test catches it ([`AUDIT/01-findings.md`](AUDIT/01-findings.md), break log) |
 | It parses what the network runs | a runtime oracle compares Graphite's parser with the validator's own decoder on ~628,500 generated frames per CI seed: never looser |
 | Agents can use it today | SolanaAgentKit, the Vercel AI SDK and an MCP server, all signing through [`integrations/agent-guard`](integrations/agent-guard/README.md) |
-| It covers real protocols | 137 manifests, 3,504 instructions, 113 with a measured `BattleTested` tier ([coverage](docs/protocol-coverage.md)) |
+| It covers real protocols | 137 manifests, 3,541 instructions, 113 with a measured `BattleTested` tier ([coverage](docs/protocol-coverage.md)) |
 
 **What it is not, yet:** independently audited (every review here is internal engineering work
 plus one external review, answered item by item), or publicly deployed. A fresh instance approves
@@ -174,7 +174,7 @@ All 12 patterns are real detection logic — not stubs, not placeholders. Ten ar
 
 ---
 
-## Supported Protocols (137 Manifests / 3,504 Instructions)
+## Supported Protocols (137 Manifests / 3,541 Instructions)
 
 The full table — every program, its instruction count, the tier the loader
 actually applied, and the mainnet measurement behind it — is
@@ -241,7 +241,7 @@ graphite/
 │   │   ├── benchmark.rs           ← Benchmark (18 scored + 2 baselines; SYNTHETIC cases labeled)
 │   │   ├── bin/graphite.rs        ← Binary entry point (server + CLI)
 │   │   └── cli.rs                 ← CLI command handlers (the clap tree is in bin/graphite.rs; `graphite --help` lists every command)
-│   ├── protocols/                 ← 137 JSON protocol manifests (3,504 instructions)
+│   ├── protocols/                 ← 137 JSON protocol manifests (3,541 instructions)
 │   │                                 + battle_tested_evidence.json: the mainnet measurement behind each tier
 │   └── tests/                     ← integration suites (adversarial + exploit + RPC trust boundary + live RPC + real mainnet); 1,849 tests in the default leg counting src/ unit tests
 │
@@ -764,7 +764,7 @@ What we **do** claim:
 - **Confidence is calibrated honestly and earned, never asserted (G4).** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) read from the Semantic Graph's **internal accumulator** — the program's RPC-verified simulation baseline (`sample_count`, counting DISTINCT sound transactions: the same bytes re-verified are one observation, and a request refused at L2 or by the Risk Engine is none) and its earned Behavior evidence — never from request-body JSON, which an attacker could fabricate to mint confidence. Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). A fresh Core therefore scores a known, clean, intent-aligned protocol at **~0.44** and the built-in presets (TradingBot 0.80, Treasury 0.95, Gaming 0.55, Enterprise 0.99) block everything until evidence is earned — e.g. Gaming (0.55) is exactly satisfiable by a HeuristicInferred manifest-backed program (the P6 ceiling), Treasury unlocks at battle-tested evidence (≈ 0.98). The benchmark and the agent guard default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile (which the Core clamps to Gaming unless the operator allows permissive profiles); `graphite verify --profile <preset>` or `graphite profiles` drives the presets from the CLI. Raise or lower the profile to change policy; the engine's score itself is the honest number.
 - 1,849 Rust tests passing (1,864 total; 15 network- or sample-dependent ignored), 0 failures, 0 clippy warnings — every test has real assertions, and every security fix since 2026-09-08 has had its fix reverted once to show its test fails without it (the "deliberate break" logs in the round reports).
 - 12 detection patterns (13 `RiskPattern` variants counting the `PluginBlock` plugin veto) and the Risk Engine's 17 checks, plus the priority-fee bound, are real detection logic, not stubs. Multi-instruction drain, CPI trace analysis (C29), and manifest-declared high-risk class gating (C38) shipped.
-- 137 protocol manifests / 3,504 instructions (Round 18; Token-2022's transfer-fee instructions added in Round 20; Stake and the BPF Upgradeable Loader rebuilt from their interfaces in Round 22; eight programs added and the instructions that move nothing classed `inert` in Round 24), program IDs verified against on-chain sources and pinned both ways by test; 104 generated from each program's own on-chain Anchor IDL; every `BattleTested` tier backed by a mainnet measurement in `protocols/battle_tested_evidence.json` or lowered at load.
+- 137 protocol manifests / 3,541 instructions (Round 18; Token-2022's transfer-fee instructions added in Round 20; Stake and the BPF Upgradeable Loader rebuilt from their interfaces in Round 22; eight programs added and the instructions that move nothing classed `inert` in Round 24), program IDs verified against on-chain sources and pinned both ways by test; 104 generated from each program's own on-chain Anchor IDL; every `BattleTested` tier backed by a mainnet measurement in `protocols/battle_tested_evidence.json` or lowered at load.
 - Confidence engine uses real weighted computation with tier ceilings and NaN rejection.
 - Simulation integrity uses 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm and median/MAD baseline (C28).
 - The SAK integration imports real `solana-agent-kit` v2 and calls real SAK methods — **verified on Solana devnet** (wallet `CWb8MciizembLV66kisYcXo3Cb91hdszxw74QHpEJKZR`, 5 finalized transactions: 2 faucet airdrops + 3 SAK test transfers; latest signature `xHa4dyuFS6JmSaTsmhcMpEtwbWnPjBoUGwk3wNixD2uw2Wmeui6GhnSmmdzNVkv85zXSd6g7QYhHymAjciwP3jJ` confirmed and finalized).
