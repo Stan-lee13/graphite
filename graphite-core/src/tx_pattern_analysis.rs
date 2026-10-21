@@ -24,7 +24,13 @@
 use serde::{Deserialize, Serialize};
 
 /// A single compiled instruction inside a Solana transaction message.
+///
+/// Unknown fields are refused (Round 29, audit 2026-10-20, F4): a typo'd
+/// `account_address` or `cpi_target` used to deserialize as an EMPTY list —
+/// no accounts for the sweep rules to correlate, no CPIs for Check 1 to judge
+/// — instead of an error.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
 pub struct TransactionInstruction {
     pub program_id: String,
     #[serde(default)]
@@ -41,7 +47,11 @@ pub struct TransactionInstruction {
 ///
 /// `depth == 0` is the root (the instruction being verified); each child is
 /// one Cross-Program Invocation made by its parent, in order.
+///
+/// Unknown fields are refused (Round 29, F4): a typo'd `child` dropped a whole
+/// subtree from every trace rule without a word.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
 pub struct CpiTraceNode {
     pub program_id: String,
     #[serde(default)]
@@ -102,12 +112,25 @@ pub const DISC_CLOSE_ACCOUNT: &str = "09";
 pub const DISC_SYSTEM_TRANSFER: &str = "02";
 pub const DISC_SYSTEM_ASSIGN: &str = "01";
 
-/// Prefix match on lowercase discriminators, mirroring
+/// System `WithdrawNonceAccount` (u32 5). Accounts `[nonce, recipient,
+/// recent_blockhashes, rent, authority]`.
+pub const DISC_SYSTEM_WITHDRAW_NONCE: &str = "05000000";
+/// Token-2022 `TransferFeeExtension::WithdrawWithheldTokensFromMint`.
+/// Accounts `[mint, destination, authority, ..]`.
+pub const DISC_WITHDRAW_WITHHELD_FROM_MINT: &str = "1a02";
+/// Token-2022 `TransferFeeExtension::WithdrawWithheldTokensFromAccounts`.
+/// Accounts `[mint, destination, authority, .., sources]`.
+pub const DISC_WITHDRAW_WITHHELD_FROM_ACCOUNTS: &str = "1a03";
+
+/// Prefix match on normalized discriminators (`risk_engine::
+/// normalize_discriminator`: trimmed, `0x` removed, lower-case), mirroring
 /// `crate::manifest::discriminator_matches` (a manifest disc like "0c"
-/// matches a real disc like "0c00000000000000").
+/// matches a real disc like "0c00000000000000"). A System selector is matched
+/// on its leading byte: the runtime's u32 tags below 256 differ there.
 fn disc_matches(discriminator: &str, needle: &str) -> bool {
-    let disc = discriminator.to_lowercase();
-    !needle.is_empty() && disc.starts_with(needle)
+    let disc = crate::risk_engine::normalize_discriminator(discriminator);
+    let needle = crate::risk_engine::normalize_discriminator(needle);
+    !needle.is_empty() && disc.starts_with(&needle)
 }
 
 /// True for SPL Token / Token-2022 programs.
@@ -115,31 +138,98 @@ fn is_token_program(program_id: &str) -> bool {
     program_id == TOKEN_PROGRAM || program_id == TOKEN_2022_PROGRAM
 }
 
+/// How an instruction moves value, read from its program and discriminator:
+/// the positions, in the instruction's own account list, of the account the
+/// value leaves and the account it arrives at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ValueMovement {
+    /// The account value leaves (a holder's token account or wallet, a nonce
+    /// account, a mint holding withheld fees).
+    pub source: usize,
+    /// The account value arrives at.
+    pub destination: usize,
+    /// A transfer between holders (counts toward a sweep), as opposed to a
+    /// withdrawal (a nonce account's lamports, a mint's withheld fees).
+    pub is_transfer: bool,
+}
+
+/// The ONE definition of "this instruction moves value" (Round 29, audit
+/// 2026-10-20, R-3), read by the sweep rules here and by the Risk Engine's
+/// impersonation and unspendable-destination checks
+/// (`risk_engine::is_fund_movement`). The two used to keep separate lists and
+/// disagreed: the Risk Engine missed System `TransferWithSeed` and
+/// `WithdrawNonceAccount`, and only it knew Token-2022's fee withdrawals.
+///
+/// | program | selector | instruction | source | destination |
+/// |---|---|---|---|---|
+/// | System | 02 | Transfer `[from, to]` | 0 | 1 |
+/// | System | 0b | TransferWithSeed `[from, base, to]` | 0 | 2 |
+/// | System | 05 | WithdrawNonceAccount `[nonce, to, blockhashes, rent, authority]` | 0 | 1 (withdrawal) |
+/// | Token / Token-2022 | 03 | Transfer `[source, dest, authority]` | 0 | 1 |
+/// | Token / Token-2022 | 0c | TransferChecked `[source, mint, dest, authority]` | 0 | 2 |
+/// | Token-2022 | 1a01 | TransferCheckedWithFee `[source, mint, dest, authority]` | 0 | 2 |
+/// | Token-2022 | 1a02 | WithdrawWithheldTokensFromMint `[mint, dest, authority]` | 0 | 1 (withdrawal) |
+/// | Token-2022 | 1a03 | WithdrawWithheldTokensFromAccounts `[mint, dest, authority, ..]` | 0 | 1 (withdrawal) |
+pub fn value_movement(program_id: &str, discriminator: &str) -> Option<ValueMovement> {
+    let transfer = |source, destination| {
+        Some(ValueMovement {
+            source,
+            destination,
+            is_transfer: true,
+        })
+    };
+    let withdrawal = |source, destination| {
+        Some(ValueMovement {
+            source,
+            destination,
+            is_transfer: false,
+        })
+    };
+    let d = discriminator;
+    if program_id == SYSTEM_PROGRAM {
+        if disc_matches(d, &DISC_SYSTEM_TRANSFER[..2]) {
+            return transfer(0, 1);
+        }
+        if disc_matches(d, &DISC_SYSTEM_TRANSFER_WITH_SEED[..2]) {
+            return transfer(0, 2);
+        }
+        if disc_matches(d, &DISC_SYSTEM_WITHDRAW_NONCE[..2]) {
+            return withdrawal(0, 1);
+        }
+        return None;
+    }
+    if is_token_program(program_id) {
+        if disc_matches(d, DISC_TRANSFER) {
+            return transfer(0, 1);
+        }
+        if disc_matches(d, DISC_TRANSFER_CHECKED) {
+            return transfer(0, 2);
+        }
+        // Classic SPL Token has no 0x1a family.
+        if program_id == TOKEN_2022_PROGRAM {
+            if disc_matches(d, DISC_TRANSFER_CHECKED_WITH_FEE) {
+                return transfer(0, 2);
+            }
+            if disc_matches(d, DISC_WITHDRAW_WITHHELD_FROM_MINT)
+                || disc_matches(d, DISC_WITHDRAW_WITHHELD_FROM_ACCOUNTS)
+            {
+                return withdrawal(0, 1);
+            }
+        }
+    }
+    None
+}
+
 /// Transfer-family instruction on a token program (Transfer,
 /// TransferChecked, and Token-2022 TransferCheckedWithFee), or a System
-/// Program transfer (Transfer, TransferWithSeed).
+/// Program transfer (Transfer, TransferWithSeed) — the transfers of
+/// [`value_movement`].
 ///
 /// Round 19 (F-19-24): the two "with" variants move value exactly like the
 /// plain ones and were invisible to the sweep rule, so four or more transfer-fee
 /// Token-2022 balances swept to one address did not add up to a sweep.
 fn is_transfer_instruction(ix: &TransactionInstruction) -> bool {
-    if ix.program_id == SYSTEM_PROGRAM {
-        return disc_matches(&ix.instruction_discriminator, DISC_SYSTEM_TRANSFER)
-            || disc_matches(
-                &ix.instruction_discriminator,
-                DISC_SYSTEM_TRANSFER_WITH_SEED,
-            );
-    }
-    if is_token_program(&ix.program_id) {
-        return disc_matches(&ix.instruction_discriminator, DISC_TRANSFER)
-            || disc_matches(&ix.instruction_discriminator, DISC_TRANSFER_CHECKED)
-            || (ix.program_id == TOKEN_2022_PROGRAM
-                && disc_matches(
-                    &ix.instruction_discriminator,
-                    DISC_TRANSFER_CHECKED_WITH_FEE,
-                ));
-    }
-    false
+    value_movement(&ix.program_id, &ix.instruction_discriminator).is_some_and(|m| m.is_transfer)
 }
 
 fn is_approve_instruction(ix: &TransactionInstruction) -> bool {
@@ -177,27 +267,15 @@ fn primary_token_account(ix: &TransactionInstruction) -> Option<&str> {
 /// Instruction-type-aware extraction so a TransferChecked mass sweep cannot
 /// evade the mass-sweep detector by having the mint parsed as destination.
 fn transfer_source(ix: &TransactionInstruction) -> Option<&str> {
-    if is_transfer_instruction(ix) {
-        ix.account_addresses.first().map(|s| s.as_str())
-    } else {
-        None
-    }
+    let m =
+        value_movement(&ix.program_id, &ix.instruction_discriminator).filter(|m| m.is_transfer)?;
+    ix.account_addresses.get(m.source).map(|s| s.as_str())
 }
 
 fn transfer_destination(ix: &TransactionInstruction) -> Option<&str> {
-    if !is_transfer_instruction(ix) {
-        return None;
-    }
-    let d = &ix.instruction_discriminator;
-    let idx = if disc_matches(d, DISC_TRANSFER_CHECKED)
-        || disc_matches(d, DISC_TRANSFER_CHECKED_WITH_FEE)
-        || (ix.program_id == SYSTEM_PROGRAM && disc_matches(d, DISC_SYSTEM_TRANSFER_WITH_SEED))
-    {
-        2
-    } else {
-        1
-    };
-    ix.account_addresses.get(idx).map(|s| s.as_str())
+    let m =
+        value_movement(&ix.program_id, &ix.instruction_discriminator).filter(|m| m.is_transfer)?;
+    ix.account_addresses.get(m.destination).map(|s| s.as_str())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -458,12 +536,36 @@ fn max_path_occurrences(node: &CpiTraceNode, needle: &str, count: u32) -> u32 {
     }
 }
 
+/// The tree's structural depth: edges on the longest root-to-leaf path.
+///
+/// Round 29 (audit 2026-10-20, T-2): this returned the leaf's own `depth`
+/// FIELD, which the caller declares — a trace that nested ten levels and
+/// wrote `depth: 1` on every node reported depth 1 and never drew the
+/// excessive-depth warning. Depth is now counted from the shape the trace
+/// actually has; the field is not read by any rule.
 fn max_depth(node: &CpiTraceNode) -> u32 {
-    node.children
-        .iter()
-        .map(max_depth)
-        .max()
-        .unwrap_or(node.depth)
+    // Iterative: a hostile trace can nest deeper than the call stack.
+    let mut deepest = 0u32;
+    let mut stack: Vec<(&CpiTraceNode, u32)> = vec![(node, 0)];
+    while let Some((n, d)) = stack.pop() {
+        deepest = deepest.max(d);
+        stack.extend(n.children.iter().map(|c| (c, d.saturating_add(1))));
+    }
+    deepest
+}
+
+/// Every node below the root with its structural depth (root = 0) — the walk
+/// every rule shares, so none reads the caller-declared `depth` field (T-2).
+/// The visiting order is the one the rules have always used (a stack seeded
+/// with the root's children), so findings keep their order.
+fn nodes_with_depth(trace: &CpiTraceNode) -> Vec<(&CpiTraceNode, u32)> {
+    let mut out = Vec::new();
+    let mut stack: Vec<(&CpiTraceNode, u32)> = trace.children.iter().map(|c| (c, 1)).collect();
+    while let Some((node, depth)) = stack.pop() {
+        out.push((node, depth));
+        stack.extend(node.children.iter().map(|c| (c, depth.saturating_add(1))));
+    }
+    out
 }
 
 /// A program ID that vanity-impersonates a known program: shares a long
@@ -496,26 +598,23 @@ fn impersonates(program_id: &str, known: &[String]) -> Option<String> {
 pub fn analyze_cpi_trace(trace: &CpiTraceNode, known_programs: &[String]) -> Vec<PatternFinding> {
     let mut findings = Vec::new();
 
-    // Walk the tree once, collecting depth >= 1 nodes.
-    let mut nodes: Vec<&CpiTraceNode> = Vec::new();
-    let mut stack: Vec<&CpiTraceNode> = trace.children.iter().collect();
-    while let Some(node) = stack.pop() {
-        nodes.push(node);
-        stack.extend(node.children.iter());
-    }
+    // Walk the tree once, collecting depth >= 1 nodes with their STRUCTURAL
+    // depth (T-2): the `depth` field is caller-declared and is not read.
+    let walked = nodes_with_depth(trace);
+    let nodes: Vec<&CpiTraceNode> = walked.iter().map(|(n, _)| *n).collect();
 
     // Rule 1: unknown program invoked deep in the chain — the highest-signal
     // anomaly. A legitimate protocol invokes manifest-registered or system
     // programs; an unregistered program inside the tree is unverified code
     // being given execution (and authority over writable accounts).
-    for node in &nodes {
+    for (node, depth) in &walked {
         if !known_programs.iter().any(|k| k == &node.program_id) {
             findings.push(PatternFinding {
                 pattern: "CpiTraceAnomaly".to_string(),
                 severity: PatternSeverity::Blocked,
                 reason: format!(
                     "CPI trace invokes unknown program {} at depth {} — not in the manifest registry or well-known system programs",
-                    node.program_id, node.depth
+                    node.program_id, depth
                 ),
             });
         }
@@ -544,14 +643,14 @@ pub fn analyze_cpi_trace(trace: &CpiTraceNode, known_programs: &[String]) -> Vec
 
     // Rule 3: excessive chain depth — a warning, not a block: legitimate
     // DEX routing can nest several levels, but unusually deep chains deserve
-    // an explicit report signal.
-    if max_depth(trace) >= 6 {
+    // an explicit report signal. Structural depth (T-2).
+    let depth = max_depth(trace);
+    if depth >= 6 {
         findings.push(PatternFinding {
             pattern: "CpiTraceAnomaly".to_string(),
             severity: PatternSeverity::Warning,
             reason: format!(
-                "CPI trace depth {} exceeds the typical nesting bound — unusually deep chain",
-                max_depth(trace)
+                "CPI trace depth {depth} exceeds the typical nesting bound — unusually deep chain"
             ),
         });
     }
@@ -570,9 +669,22 @@ pub fn analyze_cpi_trace(trace: &CpiTraceNode, known_programs: &[String]) -> Vec
     // Grouping is per PARENT, not across the whole tree, because that is what
     // separates a sweep from a route. A multi-hop swap also calls the Token
     // Program a dozen times over a dozen distinct account pairs — but those
-    // calls hang off a dozen DIFFERENT DEX programs, one or two per hop. A
-    // sweep's calls all hang off the same parent, because one instruction is
-    // iterating a list.
+    // calls hang off a dozen different hops, one or two per hop. A sweep's
+    // calls all hang off one parent, because one instruction is iterating a
+    // list.
+    //
+    // Round 29 (audit 2026-10-20, T-1): two splits defeated the grouping. By
+    // DISCRIMINATOR: eleven `Transfer`s and eleven `TransferChecked`s under one
+    // parent were two groups of eleven, each under the block bound. Every
+    // value transfer (`value_movement`: System Transfer/TransferWithSeed,
+    // Token Transfer/TransferChecked, Token-2022 TransferCheckedWithFee) is
+    // now one class; other instructions are still grouped by their own
+    // (program, discriminator). By PARENT: one program invoked twice, each
+    // invocation sweeping eleven accounts, is two parents of eleven. That
+    // split is NOT pooled into a block: a route through the same AMM program
+    // on several hops is the same shape, and blocking it would refuse
+    // ordinary split routes. It is caught by Rule 6's whole-tree count — a
+    // warning that puts the total in front of a reviewer.
     //
     // The thresholds are a judgment call and are stated as one: there was no
     // corpus of real CPI traces to calibrate against (five fixtures carry a
@@ -588,53 +700,57 @@ pub fn analyze_cpi_trace(trace: &CpiTraceNode, known_programs: &[String]) -> Vec
     // no data, no verdict (P12), rather than a block on a count alone.
     const FANOUT_WARN: usize = 6;
     const FANOUT_BLOCK: usize = 12;
+    const TRANSFER_CLASS: &str =
+        "value transfers (Transfer / TransferChecked / TransferCheckedWithFee / System transfers)";
 
     let mut parents: Vec<&CpiTraceNode> = vec![trace];
     parents.extend(nodes.iter().copied());
-    // Deterministic order (P2): the tree walk above uses a stack, so findings
-    // would otherwise depend on traversal order rather than on the trace.
-    let mut fanouts: Vec<(String, String, usize, usize)> = Vec::new();
-    for parent in parents {
-        let mut groups: std::collections::BTreeMap<(&str, &str), Vec<&CpiTraceNode>> =
-            std::collections::BTreeMap::new();
+    // (parent program, parent position, callee program or transfer class,
+    // discriminator) → the callees. A BTreeMap, so findings come out in a
+    // deterministic order (P2).
+    type GroupKey<'a> = (&'a str, usize, &'a str, &'a str);
+    let mut groups: std::collections::BTreeMap<GroupKey, Vec<&CpiTraceNode>> =
+        std::collections::BTreeMap::new();
+    for (pi, parent) in parents.into_iter().enumerate() {
         for child in &parent.children {
-            groups
-                .entry((
+            let is_transfer = value_movement(&child.program_id, &child.instruction_discriminator)
+                .is_some_and(|m| m.is_transfer);
+            let key = if is_transfer {
+                (parent.program_id.as_str(), pi, TRANSFER_CLASS, "")
+            } else {
+                (
+                    parent.program_id.as_str(),
+                    pi,
                     child.program_id.as_str(),
                     child.instruction_discriminator.as_str(),
-                ))
-                .or_default()
-                .push(child);
-        }
-        for ((program, disc), siblings) in groups {
-            if siblings.len() < FANOUT_WARN {
-                continue;
-            }
-            let distinct: std::collections::BTreeSet<&[String]> = siblings
-                .iter()
-                .map(|s| s.account_addresses.as_slice())
-                .collect();
-            fanouts.push((
-                program.to_string(),
-                disc.to_string(),
-                siblings.len(),
-                distinct.len(),
-            ));
+                )
+            };
+            groups.entry(key).or_default().push(child);
         }
     }
-    fanouts.sort();
-    for (program, disc, count, distinct) in fanouts {
-        let instruction = if disc.is_empty() {
-            "(no discriminator reported)".to_string()
+    for ((parent, _, callee, disc), siblings) in groups {
+        let count = siblings.len();
+        if count < FANOUT_WARN {
+            continue;
+        }
+        let distinct: std::collections::BTreeSet<&[String]> = siblings
+            .iter()
+            .map(|s| s.account_addresses.as_slice())
+            .collect();
+        let distinct = distinct.len();
+        let what = if callee == TRANSFER_CLASS {
+            callee.to_string()
+        } else if disc.is_empty() {
+            format!("{callee} (no discriminator reported)")
         } else {
-            format!("instruction {disc}")
+            format!("{callee} instruction {disc}")
         };
         if count >= FANOUT_BLOCK && distinct >= FANOUT_BLOCK {
             findings.push(PatternFinding {
                 pattern: "CpiTraceAnomaly".to_string(),
                 severity: PatternSeverity::Blocked,
                 reason: format!(
-                    "CPI trace invokes {program} {instruction} {count} times side by side under one parent, across {distinct} distinct account sets — a sweep, not a route (a multi-hop swap spreads its token calls across different venue programs)"
+                    "CPI trace invokes {what} {count} times side by side under program {parent}, across {distinct} distinct account sets — a sweep, not a route (a multi-hop swap spreads its token calls across different venue programs)"
                 ),
             });
         } else {
@@ -642,7 +758,43 @@ pub fn analyze_cpi_trace(trace: &CpiTraceNode, known_programs: &[String]) -> Vec
                 pattern: "CpiTraceAnomaly".to_string(),
                 severity: PatternSeverity::Warning,
                 reason: format!(
-                    "CPI trace invokes {program} {instruction} {count} times side by side under one parent ({distinct} distinct account set(s)) — unusually wide fan-out"
+                    "CPI trace invokes {what} {count} times side by side under program {parent} ({distinct} distinct account set(s)) — unusually wide fan-out"
+                ),
+            });
+        }
+    }
+
+    // Rule 6 (T-1): the whole tree's value transfers, whichever programs they
+    // hang off. A sweep spread over several DIFFERENT parent programs — each
+    // under the per-parent bound — still moves value out of many accounts or
+    // into many. A multi-hop route does too, which is why this is a warning
+    // and never a block: it puts the total in front of a reviewer.
+    let transfers: Vec<(&CpiTraceNode, ValueMovement)> = nodes
+        .iter()
+        .filter_map(|n| {
+            value_movement(&n.program_id, &n.instruction_discriminator)
+                .filter(|m| m.is_transfer)
+                .map(|m| (*n, m))
+        })
+        .collect();
+    if transfers.len() >= FANOUT_BLOCK {
+        let sources: std::collections::BTreeSet<&str> = transfers
+            .iter()
+            .filter_map(|(n, m)| n.account_addresses.get(m.source).map(String::as_str))
+            .collect();
+        let destinations: std::collections::BTreeSet<&str> = transfers
+            .iter()
+            .filter_map(|(n, m)| n.account_addresses.get(m.destination).map(String::as_str))
+            .collect();
+        if sources.len() >= FANOUT_BLOCK || destinations.len() >= FANOUT_BLOCK {
+            findings.push(PatternFinding {
+                pattern: "CpiTraceAnomaly".to_string(),
+                severity: PatternSeverity::Warning,
+                reason: format!(
+                    "CPI trace moves value {} times across the whole tree, out of {} distinct source account(s) into {} distinct destination(s)",
+                    transfers.len(),
+                    sources.len(),
+                    destinations.len()
                 ),
             });
         }
@@ -687,14 +839,11 @@ pub fn analyze_observed_cpi_trace(
     if !root_manifested {
         return analyze_cpi_trace(trace, known_programs);
     }
-    let mut unknown: Vec<(String, u32)> = Vec::new();
-    let mut stack: Vec<&CpiTraceNode> = trace.children.iter().collect();
-    while let Some(node) = stack.pop() {
-        if !known_programs.iter().any(|k| k == &node.program_id) {
-            unknown.push((node.program_id.clone(), node.depth));
-        }
-        stack.extend(node.children.iter());
-    }
+    let mut unknown: Vec<(String, u32)> = nodes_with_depth(trace)
+        .into_iter()
+        .filter(|(node, _)| !known_programs.iter().any(|k| k == &node.program_id))
+        .map(|(node, depth)| (node.program_id.clone(), depth))
+        .collect();
     unknown.sort();
     unknown.dedup();
     let mut known = known_programs.to_vec();
@@ -1294,7 +1443,217 @@ mod tests {
         for _ in 0..20 {
             assert_eq!(analyze_cpi_trace(&trace, &known), first);
         }
-        assert_eq!(blocked(&first).len(), 2, "both sweeps must be reported");
+        // Round 29 (T-1): fourteen token transfers and fourteen System
+        // transfers under one parent are ONE sweep of twenty-eight value
+        // transfers, reported once (they were two sweeps of fourteen).
+        assert_eq!(blocked(&first).len(), 1, "one sweep: {first:?}");
+        assert!(blocked(&first)[0].contains("28 times"), "{first:?}");
+    }
+
+    /// Round 29 (T-1): a sweep split across Transfer and TransferChecked —
+    /// eleven of each, each group under the block bound — is one sweep.
+    #[test]
+    fn a_sweep_split_across_transfer_discriminators_is_one_sweep() {
+        let children: Vec<CpiTraceNode> = (0..11)
+            .map(|i| leaf(TOKEN_PROGRAM, "03", 1, &[&victim(i), "Dest"]))
+            .chain((11..22).map(|i| leaf(TOKEN_PROGRAM, "0c", 1, &[&victim(i), MINT, "Dest"])))
+            .collect();
+        let trace = CpiTraceNode {
+            program_id: "SomeProtocol111111111111111111111111111111".to_string(),
+            instruction_discriminator: "00".to_string(),
+            depth: 0,
+            account_addresses: vec![],
+            children,
+        };
+        let known: Vec<String> = vec![
+            TOKEN_PROGRAM.into(),
+            "SomeProtocol111111111111111111111111111111".into(),
+        ];
+        let findings = analyze_cpi_trace(&trace, &known);
+        assert_eq!(blocked(&findings).len(), 1, "{findings:?}");
+    }
+
+    /// Round 29 (T-1): the same program invoked twice, each invocation
+    /// sweeping eleven accounts, is reported for the whole tree — a warning,
+    /// because a route through one AMM on several hops has the same shape.
+    #[test]
+    fn a_sweep_split_across_two_invocations_of_one_program_is_reported() {
+        let half = |from: usize| CpiTraceNode {
+            program_id: "SweeperProgram11111111111111111111111111111".to_string(),
+            instruction_discriminator: "aa".to_string(),
+            depth: 1,
+            account_addresses: vec![],
+            children: (from..from + 11)
+                .map(|i| leaf(TOKEN_PROGRAM, "03", 2, &[&victim(i), "Dest"]))
+                .collect(),
+        };
+        let trace = CpiTraceNode {
+            program_id: "SomeProtocol111111111111111111111111111111".to_string(),
+            instruction_discriminator: "00".to_string(),
+            depth: 0,
+            account_addresses: vec![],
+            children: vec![half(0), half(11)],
+        };
+        let known: Vec<String> = vec![
+            TOKEN_PROGRAM.into(),
+            "SomeProtocol111111111111111111111111111111".into(),
+            "SweeperProgram11111111111111111111111111111".into(),
+        ];
+        let findings = analyze_cpi_trace(&trace, &known);
+        assert!(blocked(&findings).is_empty(), "{findings:?}");
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.reason.contains("22 times across the whole tree")),
+            "{findings:?}"
+        );
+    }
+
+    /// Round 29 (T-1): value spread over several different parent programs is
+    /// reported for the whole tree — a warning, since a route looks the same.
+    #[test]
+    fn whole_tree_value_movement_is_reported_not_blocked() {
+        let venues: Vec<String> = (0..4)
+            .map(|v| format!("Venue{v}Program1111111111111111111111111111"))
+            .collect();
+        let hops: Vec<CpiTraceNode> = venues
+            .iter()
+            .enumerate()
+            .map(|(v, venue)| CpiTraceNode {
+                program_id: venue.clone(),
+                instruction_discriminator: "aa".to_string(),
+                depth: 1,
+                account_addresses: vec![],
+                children: (0..3)
+                    .map(|i| leaf(TOKEN_PROGRAM, "03", 2, &[&victim(v * 3 + i), "Dest"]))
+                    .collect(),
+            })
+            .collect();
+        let trace = CpiTraceNode {
+            program_id: "SomeProtocol111111111111111111111111111111".to_string(),
+            instruction_discriminator: "00".to_string(),
+            depth: 0,
+            account_addresses: vec![],
+            children: hops,
+        };
+        let mut known: Vec<String> = venues.clone();
+        known.push(TOKEN_PROGRAM.into());
+        let findings = analyze_cpi_trace(&trace, &known);
+        assert!(blocked(&findings).is_empty(), "{findings:?}");
+        assert!(
+            findings.iter().any(|f| f
+                .reason
+                .contains("across the whole tree, out of 12 distinct source")),
+            "{findings:?}"
+        );
+    }
+
+    /// Round 29 (T-2): depth is the tree's shape, not the caller-declared
+    /// field. Six levels of nesting all labelled `depth: 1` still warn.
+    #[test]
+    fn depth_is_structural_not_declared() {
+        let mut node = node(SYSTEM_PROGRAM, 1, vec![]);
+        for _ in 0..5 {
+            node = CpiTraceNode {
+                program_id: TOKEN_PROGRAM.to_string(),
+                instruction_discriminator: String::new(),
+                depth: 1,
+                account_addresses: vec![],
+                children: vec![node],
+            };
+        }
+        let trace = CpiTraceNode {
+            program_id: "SomeProtocol111111111111111111111111111111".to_string(),
+            instruction_discriminator: String::new(),
+            depth: 0,
+            account_addresses: vec![],
+            children: vec![node],
+        };
+        assert_eq!(max_depth(&trace), 6);
+        let known: Vec<String> = vec![
+            TOKEN_PROGRAM.into(),
+            SYSTEM_PROGRAM.into(),
+            "SomeProtocol111111111111111111111111111111".into(),
+        ];
+        let findings = analyze_cpi_trace(&trace, &known);
+        assert!(
+            findings.iter().any(|f| f.reason.contains("depth 6")),
+            "{findings:?}"
+        );
+        // And an unknown deep callee reports the depth it is really at.
+        let findings = analyze_cpi_trace(&trace, &[TOKEN_PROGRAM.to_string()]);
+        assert!(
+            findings.iter().any(|f| f
+                .reason
+                .contains(&format!("unknown program {SYSTEM_PROGRAM} at depth 6"))),
+            "{findings:?}"
+        );
+    }
+
+    /// Round 29 (F4): request types refuse fields they do not define, so a
+    /// typo is an error instead of an empty list.
+    #[test]
+    fn request_types_refuse_unknown_fields() {
+        assert!(serde_json::from_str::<TransactionInstruction>(
+            r#"{"program_id":"p","account_address":["a"]}"#
+        )
+        .is_err());
+        assert!(serde_json::from_str::<TransactionInstruction>(
+            r#"{"program_id":"p","account_addresses":["a"]}"#
+        )
+        .is_ok());
+        assert!(
+            serde_json::from_str::<CpiTraceNode>(r#"{"program_id":"p","depth":0,"child":[]}"#)
+                .is_err()
+        );
+        assert!(
+            serde_json::from_str::<crate::account_resolution::RealAccountMeta>(
+                r#"{"is_signer":true,"is_writable":false,"isSigner":true}"#
+            )
+            .is_err()
+        );
+        assert!(serde_json::from_str::<crate::semantic_graph_store::BehaviorEvidence>(
+            r#"{"has_signed_manifest":true,"community_verified_count":0,"battle_tested_tx_count":0,"simulation_match_count":0,"battle_tested":5}"#
+        )
+        .is_err());
+    }
+
+    /// Round 29 (R-3): one value-movement table, read through the shared
+    /// discriminator normalization.
+    #[test]
+    fn value_movement_is_the_shared_definition() {
+        let m = |p: &str, d: &str| value_movement(p, d);
+        assert_eq!(
+            m(SYSTEM_PROGRAM, "02000000").map(|v| v.destination),
+            Some(1)
+        );
+        assert_eq!(
+            m(SYSTEM_PROGRAM, "0x0B000000").map(|v| v.destination),
+            Some(2)
+        );
+        assert_eq!(
+            m(SYSTEM_PROGRAM, "05000000").map(|v| v.is_transfer),
+            Some(false)
+        );
+        assert_eq!(m(TOKEN_PROGRAM, "0c").map(|v| v.destination), Some(2));
+        assert_eq!(
+            m(TOKEN_2022_PROGRAM, "1a01").map(|v| v.is_transfer),
+            Some(true)
+        );
+        assert_eq!(
+            m(TOKEN_2022_PROGRAM, "1a03").map(|v| v.is_transfer),
+            Some(false)
+        );
+        assert_eq!(m(TOKEN_PROGRAM, "1a01"), None);
+        assert_eq!(m(SYSTEM_PROGRAM, "01000000"), None);
+        // The Risk Engine reads the same table.
+        for (p, d) in [
+            (SYSTEM_PROGRAM, "0b000000"),
+            (TOKEN_2022_PROGRAM, "1a01"),
+            (TOKEN_2022_PROGRAM, "1a02"),
+        ] {
+            assert!(crate::risk_engine::is_fund_movement(p, d), "{p} {d}");
+        }
     }
 
     #[test]

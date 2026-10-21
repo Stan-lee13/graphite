@@ -17,13 +17,39 @@ pub enum RiskError {
     InvalidTransaction { reason: String },
 }
 
-/// Number of distinct risk checks `assess` performs: Checks 1, 1b, 2, 2b, 3,
-/// 3b, 4, 5, 6a, 6b, 7, 8, 9, 9b (intent-class mismatch, external review R2),
-/// 10 (impersonation), 10b and 10 (high-risk class with no intent). The L7 layer report states it ("N patterns checked").
-/// It said 13 while `assess` ran 16 (2026-09-29 audit): the comment promised
-/// it could not drift, and nothing checked. `tests::checked_patterns_counts_
-/// the_labelled_checks` now counts the `// P0 Check` labels in `assess`.
-pub const CHECKED_PATTERNS: usize = 17;
+/// Number of distinct risk checks `assess` performs, each labelled `// P0
+/// Check <id>` in its body, in evaluation order:
+///
+/// | id | pattern | what it refuses |
+/// |----|---------|-----------------|
+/// | 1  | UnexpectedCpi | a non-universal CPI target from a program with no allowed-CPI list |
+/// | 1b | AuthorityHijack | a token-program CPI from an untrusted root its manifest does not declare |
+/// | 2  | per `RISKY_PATTERNS` | a native selector that hands over control, drains or batches (SetAuthority, CloseAccount, Approve/ApproveChecked, Assign, ...) — under ANY intent |
+/// | 2b | AuthorityHijack | a manifest instruction whose security class is `authority_change` |
+/// | 3  | Drainer | many accounts against few declared state changes |
+/// | 3b | Drainer | more (writable) accounts than the manifest layout plus two |
+/// | 4  | CompositionalDrainPattern | a repeated security-relevant CPI target, or 5+ targets from an untrusted root |
+/// | 5  | HiddenTransfer | far more accounts than the state changes name |
+/// | 6a | MaliciousAccountChange | a token CloseAccount (one Check 2 exempted as a verified self-refund) declared as something other than a close |
+/// | 6b | MaliciousAccountChange | a System account creation declared as something other than a create |
+/// | 8  | FakeSwap | a swap intent on a swap program whose state changes credit nothing |
+/// | 9  | PermissionEscalation | an intent the program does not serve |
+/// | 9b | PermissionEscalation | an intent that cannot declare the instruction's security class |
+/// | 10a | Impersonation | value sent to an address ground to look like an official account |
+/// | 10b | UnspendableDestination | value sent to a native program, loader or sysvar |
+/// | 10 | MaliciousAccountChange | a high-risk class with no declared intent |
+///
+/// The L7 layer report states the count ("N patterns checked").
+/// `tests::checked_patterns_counts_the_labelled_checks` counts the labels in
+/// `assess`, so the number cannot drift from the code.
+///
+/// Round 29 (audit 2026-10-20, R-1): this was 17 and counted a Check 7
+/// ("Approve declared as anything but approve → PermissionEscalation") that no
+/// input could reach: Check 2 refuses every SPL / Token-2022 Approve and
+/// ApproveChecked under any intent first, so the check was removed rather
+/// than kept as a label that implied a second line of defence. Two blocks
+/// were also both labelled "Check 10"; the impersonation block is now 10a.
+pub const CHECKED_PATTERNS: usize = 16;
 
 /// Adversarial pattern categories that the Risk Engine detects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,9 +62,9 @@ pub enum RiskPattern {
     PermissionEscalation,
     MaliciousAccountChange,
     CompositionalDrainPattern,
-    /// Fund movement to/from an address that vanity-impersonates an official
-    /// system account (trailing 11111 or Compu prefix) — SolPhishHunter
-    /// arXiv:2505.04094 attack class.
+    /// Value sent to an address that vanity-impersonates an official system
+    /// account (four or more trailing '1's, or a `Compu` prefix) —
+    /// SolPhishHunter arXiv:2505.04094 attack class.
     Impersonation,
     /// Coordinated mass-drain pattern across MULTIPLE instructions in one
     /// transaction (Phase 2): approve-then-transfer, authority-hijack-then-
@@ -385,8 +411,6 @@ const TRUSTED_CPI_ROOTS: &[&str] = TRUSTED_COMPOSABILITY_PROGRAMS;
 /// drainer heuristic. Same underlying list; see the doc comment above.
 const DEX_PROGRAMS: &[&str] = TRUSTED_COMPOSABILITY_PROGRAMS;
 
-/// Assess a transaction for adversarial risk patterns.
-///
 /// Universal CPI whitelist: fundamental Solana programs that are ALWAYS safe to call.
 /// These are system-level programs that any protocol can legitimately invoke:
 ///  - System Program: native SOL transfers, account creation
@@ -408,16 +432,6 @@ fn is_universal_cpi(cpi_target: &str) -> bool {
     UNIVERSAL_CPI_WHITELIST.contains(&cpi_target)
 }
 
-/// Prefix-match an input discriminator against a known selector, mirroring
-/// the manifest convention (`crate::manifest::discriminator_matches`: manifest
-/// "06" matches input "0600000000000000").
-///
-/// Width-substitution guard: the risk checks MUST NOT compare by exact
-/// equality — an attacker can pad a selector to its full 8-byte form (e.g.
-/// "0600000000000000" for SetAuthority) and sail through manifest resolution
-/// (which prefix-matches) while an exact-equality risk check would silently
-/// not fire. The manifest and the risk engine must agree on discriminator
-/// semantics, or the intent-mismatch gates are trivially bypassable.
 /// The first eight characters of an identifier, for a reason string.
 ///
 /// By CHARACTER, not byte: `assess` is public, and an identifier a caller
@@ -431,9 +445,41 @@ pub(crate) fn short_id(id: &str) -> &str {
     }
 }
 
-fn disc_matches(selector: &str, input_disc: &str) -> bool {
-    let s = selector.to_lowercase();
-    let i = input_disc.to_lowercase();
+/// A discriminator as every risk rule reads it: surrounding whitespace
+/// removed, an optional `0x`/`0X` prefix removed, lower-cased.
+///
+/// Round 29 (audit 2026-10-20, R-2): each check lower-cased on its own and
+/// none removed a `0x`, so a declared `0x06` on SPL Token was not a
+/// SetAuthority to Check 2 (`"0x06".starts_with("06")` is false). The manifest
+/// resolver then refused it as non-hex, so it never reached an approval — but
+/// that was a second layer catching what this one should have named. Every
+/// rule here, and `tx_pattern_analysis`, now reads discriminators through
+/// this one function. Non-hex characters are deliberately NOT rejected here:
+/// a prefix that names a risky selector still names it (`06zz` is refused as
+/// a SetAuthority), which is the fail-closed direction for a rule that blocks.
+pub fn normalize_discriminator(discriminator: &str) -> String {
+    let d = discriminator.trim();
+    let d = d
+        .strip_prefix("0x")
+        .or_else(|| d.strip_prefix("0X"))
+        .unwrap_or(d);
+    d.to_ascii_lowercase()
+}
+
+/// Prefix-match an input discriminator against a known selector, mirroring
+/// the manifest convention (`crate::manifest::discriminator_matches`: manifest
+/// "06" matches input "0600000000000000"). Both sides go through
+/// [`normalize_discriminator`].
+///
+/// Width-substitution guard: the risk checks MUST NOT compare by exact
+/// equality — an attacker can pad a selector to its full 8-byte form (e.g.
+/// "0600000000000000" for SetAuthority) and sail through manifest resolution
+/// (which prefix-matches) while an exact-equality risk check would silently
+/// not fire. The manifest and the risk engine must agree on discriminator
+/// semantics, or the intent-mismatch gates are trivially bypassable.
+pub(crate) fn disc_matches(selector: &str, input_disc: &str) -> bool {
+    let s = normalize_discriminator(selector);
+    let i = normalize_discriminator(input_disc);
     !s.is_empty() && i.starts_with(&s)
 }
 
@@ -493,7 +539,34 @@ pub fn token_cpi_from_untrusted_root(
 
 /// Pure, deterministic (Constitution P2). Based on transaction structure and
 /// known risk signatures, not runtime behavior.
+///
+/// Swap semantics (Checks 8 and 9) come from the SEED manifests here; a
+/// caller holding the registry the verification core actually uses — seed
+/// plus merged community manifests — calls [`assess_in`] so a community
+/// manifest tagged `swap` gets them too.
 pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
+    assess_impl(input, &is_swap_program)
+}
+
+/// [`assess`] with swap semantics read from `registry` (Round 29, audit
+/// 2026-10-20, R-8). `is_swap_program` consults the seed manifests only, so
+/// a community manifest tagged `"category": "swap"` and merged into a
+/// verification core never got swap semantics: a swap intent on it failed
+/// Check 9 as unsupported, and Check 8's FakeSwap rule never applied to it.
+pub fn assess_in(
+    input: &RiskAssessmentInput,
+    registry: &crate::manifest::ManifestRegistry,
+) -> Result<RiskVerdict, RiskError> {
+    assess_impl(input, &|id: &str| is_swap_program_in(registry, id))
+}
+
+fn assess_impl(
+    input: &RiskAssessmentInput,
+    is_swap: &dyn Fn(&str) -> bool,
+) -> Result<RiskVerdict, RiskError> {
+    // One reading of the discriminator for every rule below (R-2).
+    let discriminator = normalize_discriminator(&input.instruction_discriminator);
+
     // P0 Check 1: Unexpected CPI targets (G6 mitigation)
     // Universal CPI whitelist (System, Token, Compute Budget) is always allowed.
     // For known protocols: unexpected CPI targets are NON-BLOCKING warnings
@@ -546,15 +619,13 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
             continue;
         }
         if input.program_id == pattern.program_id {
-            if !input.instruction_discriminator.is_empty()
-                && disc_matches(pattern.discriminator, &input.instruction_discriminator)
-            {
+            if !discriminator.is_empty() && disc_matches(pattern.discriminator, &discriminator) {
                 return Ok(RiskVerdict::Blocked {
                     pattern: pattern.pattern,
                     reason: pattern.description.to_string(),
                 });
             }
-            if input.instruction_discriminator.is_empty()
+            if discriminator.is_empty()
                 && (pattern.pattern == RiskPattern::AuthorityHijack
                     || pattern.pattern == RiskPattern::Drainer)
             {
@@ -587,10 +658,10 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
             // Refusing rather than guessing, for the same reason the empty
             // arm above refuses: a declaration that cannot identify the
             // instruction is not a declaration (P12 fail-closed).
-            if !input.instruction_discriminator.is_empty() {
-                let declared = input.instruction_discriminator.to_lowercase();
-                let selector = pattern.discriminator.to_lowercase();
-                if declared.len() < selector.len() && selector.starts_with(&declared) {
+            if !discriminator.is_empty() {
+                let declared = discriminator.as_str();
+                let selector = normalize_discriminator(pattern.discriminator);
+                if declared.len() < selector.len() && selector.starts_with(declared) {
                     return Ok(RiskVerdict::Blocked {
                         pattern: pattern.pattern,
                         reason: format!(
@@ -730,27 +801,24 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     }
 
     // P0 Check 6a: MaliciousAccountChange - CloseAccount when intent is not "close"
+    //
+    // Check 2 refuses every token CloseAccount except one the pipeline read
+    // from the bytes as refunding its own authority (Round 21), so this is
+    // the rule for exactly that close: refunding is fine, declaring it as
+    // something else (a "swap", a "transfer") is not. Reachable only on that
+    // exemption, which is why it is kept and Check 7 was not (R-1).
     if !input.proposed_intent_type.is_empty()
         && canonical_intent(&input.proposed_intent_type) != "close"
+        && (input.program_id == TOKEN_PROGRAM_ID || input.program_id == TOKEN_2022_PROGRAM_ID)
+        && disc_matches("09", &discriminator)
     {
-        let close_discriminators = ["09", "0x09"];
-        for close_disc in &close_discriminators {
-            if disc_matches(close_disc, &input.instruction_discriminator) {
-                let token_programs = [
-                    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-                    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-                ];
-                if token_programs.contains(&input.program_id.as_str()) {
-                    return Ok(RiskVerdict::Blocked {
-                        pattern: RiskPattern::MaliciousAccountChange,
-                        reason: format!(
-                            "CloseAccount instruction detected but declared intent is {} - account closure not declared in intent",
-                            input.proposed_intent_type
-                        ),
-                    });
-                }
-            }
-        }
+        return Ok(RiskVerdict::Blocked {
+            pattern: RiskPattern::MaliciousAccountChange,
+            reason: format!(
+                "CloseAccount instruction detected but declared intent is {} - account closure not declared in intent",
+                input.proposed_intent_type
+            ),
+        });
     }
 
     // P0 Check 6b: MaliciousAccountChange - Allocate/CreateAccount when intent is not "create"
@@ -762,10 +830,7 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
         //   00000000 CreateAccount, 03000000 CreateAccountWithSeed,
         //   08000000 Allocate, 09000000 AllocateWithSeed
         let create_discs = ["00000000", "03000000", "08000000", "09000000"];
-        if create_discs
-            .iter()
-            .any(|d| disc_matches(d, &input.instruction_discriminator))
-        {
+        if create_discs.iter().any(|d| disc_matches(d, &discriminator)) {
             return Ok(RiskVerdict::Blocked {
                 pattern: RiskPattern::MaliciousAccountChange,
                 reason: format!(
@@ -776,39 +841,18 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
         }
     }
 
-    // P0 Check 7: PermissionEscalation - intent mismatch for Approve
-    // If the instruction is Approve (0x04) but the declared intent is NOT approve/revoke,
-    // someone is granting delegate authority without declaring it.
-    if !input.proposed_intent_type.is_empty()
-        && canonical_intent(&input.proposed_intent_type) != "approve"
-    {
-        let approve_discriminators = ["04", "0x04"];
-        for approve_disc in &approve_discriminators {
-            if disc_matches(approve_disc, &input.instruction_discriminator) {
-                let token_programs = [
-                    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-                    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-                ];
-                if token_programs.contains(&input.program_id.as_str()) {
-                    return Ok(RiskVerdict::Blocked {
-                        pattern: RiskPattern::PermissionEscalation,
-                        reason: format!(
-                            "Approve instruction detected but declared intent is {} - delegate authority grant not declared in intent",
-                            input.proposed_intent_type
-                        ),
-                    });
-                }
-            }
-        }
-    }
+    // (There is no Check 7. It refused an SPL / Token-2022 Approve declared as
+    // anything but "approve", and no input could reach it: Check 2 refuses
+    // every Approve and ApproveChecked under any intent, "approve" included.
+    // Removed in Round 29, audit 2026-10-20, R-1; the numbering is kept so
+    // reports and documents that cite a check by number stay correct.)
 
     // P0 Check 8: FakeSwap — swap intent on known DEX but no output/credit in state changes
-    if let Some(_pattern) = detect_fake_swap(
+    if let Some(_pattern) = detect_fake_swap_with(
         &input.program_id,
-        &input.accounts,
         &input.expected_state_changes,
         &input.proposed_intent_type,
-        input.extracted_output_token.as_deref(),
+        is_swap,
     ) {
         return Ok(RiskVerdict::Blocked {
             pattern: RiskPattern::FakeSwap,
@@ -817,8 +861,8 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     }
 
     // P0 Check 9: Intent-Program mismatch — intent type not supported by the program
-    if let Some(_pattern) =
-        detect_intent_program_mismatch(&input.program_id, &input.proposed_intent_type)
+    if !input.proposed_intent_type.is_empty()
+        && !program_supports_intent_with(&input.program_id, &input.proposed_intent_type, is_swap)
     {
         return Ok(RiskVerdict::Blocked {
             pattern: RiskPattern::PermissionEscalation,
@@ -855,19 +899,27 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
         }
     }
 
-    // P0 Check 10: System-account impersonation (ISA) — a fund-movement
-    // instruction whose counterparty vanity-impersonates an official account.
+    // P0 Check 10a: System-account impersonation (ISA) — a fund movement
+    // whose DESTINATION vanity-impersonates an official account.
     //
     // Grounding: SolPhishHunter (arXiv:2505.04094) documents this as a real
-    // attack class — phishers grind addresses that end in 5+ '1' chars or start
-    // with "Compu" (e.g. `...DxbLhV11111`, `CompuV3LmCTW7AG...`) so wallet UIs
-    // that truncate addresses display them as official system accounts.
-    // Random 32-byte keys almost never end in 5+ zero bytes (~1 in 2^40), so a
-    // transfer counterparty with this shape is deliberately ground.
-    //
-    // Only applied to known fund-movement discriminators (System transfer 0x02,
-    // Token/Token-2022 transfer 0x03 and transferChecked 0x0c) to avoid flagging
-    // legitimate program-authority usage of similar-looking PDAs.
+    // attack class — phishers grind addresses that end in a run of '1' chars
+    // or start with "Compu" (e.g. `...DxbLhV11111`, `CompuV3LmCTW7AG...`) so
+    // wallet UIs that truncate addresses display them as official system
+    // accounts. See `detect_system_account_impersonation` for the threshold
+    // and why only the destination is judged.
+    if let Some(impersonator) =
+        detect_system_account_impersonation(&input.program_id, &discriminator, &input.accounts)
+    {
+        return Ok(RiskVerdict::Blocked {
+            pattern: RiskPattern::Impersonation,
+            reason: format!(
+                "System-account impersonation: fund movement to {} whose address shape impersonates an official system account (vanity run of trailing 1s or Compu prefix)",
+                impersonator
+            ),
+        });
+    }
+
     // P0 Check 10b: value moving to an address that cannot spend it.
     //
     // Stated as the invariant rather than as a signature: a transfer is only
@@ -876,29 +928,13 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     // sign for them — so lamports or tokens sent there are permanently locked.
     // Whether that is an attack, a bug in an agent, or a mistyped address does
     // not change the outcome for the user's funds.
-    if let Some(dead_end) = detect_unspendable_counterparty(
-        &input.program_id,
-        &input.instruction_discriminator,
-        &input.accounts,
-    ) {
+    if let Some(dead_end) =
+        detect_unspendable_counterparty(&input.program_id, &discriminator, &input.accounts)
+    {
         return Ok(RiskVerdict::Blocked {
             pattern: RiskPattern::UnspendableDestination,
             reason: format!(
                 "fund movement whose counterparty is {dead_end} — a native program, loader or sysvar. No key exists for that address and no program can sign for it, so anything sent there is permanently unrecoverable"
-            ),
-        });
-    }
-
-    if let Some(impersonator) = detect_system_account_impersonation(
-        &input.program_id,
-        &input.instruction_discriminator,
-        &input.accounts,
-    ) {
-        return Ok(RiskVerdict::Blocked {
-            pattern: RiskPattern::Impersonation,
-            reason: format!(
-                "System-account impersonation: fund movement to/from {} whose address shape impersonates an official system account (vanity 11111 suffix or Compu prefix)",
-                impersonator
             ),
         });
     }
@@ -910,7 +946,7 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     // what it was doing — fail closed (P12). This extends protection to every
     // onboarded protocol without per-protocol detection logic: tagging the
     // manifest is the mechanism. Instructions WITH a declared intent are left
-    // to the intent-mismatch checks (6a/6b/7) which require a concrete
+    // to the intent-mismatch checks (6a/6b/9/9b) which require a concrete
     // declared class to compare against.
     //
     // Round 21: except a close the pipeline read from the bytes as paying its
@@ -986,10 +1022,29 @@ fn collect_cpi_warnings(input: &RiskAssessmentInput) -> Vec<String> {
 /// on known protocols are surfaced in the L7 layer report and the result summary
 /// instead of being discarded. Deterministic and pure (Constitution P2);
 /// `assess` is a thin wrapper returning only the binary verdict.
+///
+/// An out-of-manifest CPI from a MANIFESTED root is a warning, not a block
+/// (audit 2026-10-20, R-7, kept deliberately): the manifest vouches for its
+/// root program, Check 1b still blocks an undeclared TOKEN-program CPI from a
+/// root that is not a trusted composability program, and the observed CPI
+/// tree is judged structurally by `tx_pattern_analysis`. Blocking every
+/// undeclared callee would refuse ordinary aggregator routes through venues
+/// Graphite has not onboarded, which no manifest can enumerate in advance.
 pub fn assess_with_warnings(
     input: &RiskAssessmentInput,
 ) -> Result<RiskAssessmentDetail, RiskError> {
     let verdict = assess(input)?;
+    let warnings = collect_cpi_warnings(input);
+    Ok(RiskAssessmentDetail { verdict, warnings })
+}
+
+/// [`assess_with_warnings`] with swap semantics read from `registry` — see
+/// [`assess_in`] (R-8).
+pub fn assess_with_warnings_in(
+    input: &RiskAssessmentInput,
+    registry: &crate::manifest::ManifestRegistry,
+) -> Result<RiskAssessmentDetail, RiskError> {
+    let verdict = assess_in(input, registry)?;
     let warnings = collect_cpi_warnings(input);
     Ok(RiskAssessmentDetail { verdict, warnings })
 }
@@ -1021,7 +1076,12 @@ fn detect_drainer_pattern(accounts: &[String], expected_changes: &[String]) -> b
             .iter()
             .filter(|c| !c.trim().is_empty())
             .count();
-        if meaningful_count > 0 && unique_count / meaningful_count >= 6 {
+        // The ratio as an exact comparison (Round 29, audit 2026-10-20, R-6).
+        // `unique / meaningful >= 6` in integer division was the same test —
+        // floor(u/m) >= 6 exactly when u >= 6m — but read as if 11 accounts
+        // over 2 changes (5.5:1) could round either way. Stated without
+        // division, there is nothing to round.
+        if meaningful_count > 0 && unique_count >= 6 * meaningful_count {
             return true;
         }
     }
@@ -1073,6 +1133,78 @@ fn detect_compositional_drain(cpi_targets: &[String], program_id: &str) -> bool 
     }
 
     false
+}
+
+/// Check 4 over what the simulator EXECUTED, counted with multiplicity
+/// (Round 29, audit 2026-10-20, R-5).
+///
+/// Check 4 inside [`assess`] counts the list it is handed, and the pipeline
+/// hands it observed callees sorted and deduplicated, so a program re-entered
+/// five times arrived once and the revisit rule could never fire on observed
+/// CPIs. And because the declared targets and the undeclared observed ones
+/// were judged by two separate `assess` calls, a five-program chain split
+/// three/two between them never reached the five-target bound in either.
+///
+/// `declared` is the request's `cpi_targets`; `observed` is every callee the
+/// simulator executed, ONE ENTRY PER INVOCATION (duplicates kept), e.g. every
+/// node of the observed CPI tree at depth >= 1. The two are judged together.
+/// Universal infrastructure (System, the token programs, ATA, Memo, Compute
+/// Budget, the loaders, Stake, Vote) is excluded first, as Check 4 excludes
+/// it: a swap calls the Token Program several times as a matter of course.
+///
+/// Two rules, from a root that is not a trusted composability program:
+///
+/// - a security-relevant program invoked three or more times — a flat list
+///   cannot tell nested re-entry from side-by-side hops, so the bar is the
+///   one the tree rule (`tx_pattern_analysis`, Rule 2) uses for re-entry
+///   along a single path, not Check 4's "any repeat";
+/// - five or more distinct security-relevant programs across declared and
+///   observed together.
+///
+/// A trusted composability root (an aggregator) is exempt from both: a route
+/// legitimately visits the same venue program on more than one hop. Its
+/// observed tree is still judged structurally by `analyze_observed_cpi_trace`.
+pub fn compositional_drain_in_execution(
+    program_id: &str,
+    declared: &[String],
+    observed: &[String],
+) -> Option<RiskVerdict> {
+    if TRUSTED_CPI_ROOTS.contains(&program_id) {
+        return None;
+    }
+    let mut counts: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+    for target in observed {
+        if !UNIVERSAL_INFRASTRUCTURE_CPIS.contains(&target.as_str()) {
+            *counts.entry(target.as_str()).or_default() += 1;
+        }
+    }
+    if let Some((program, n)) = counts.iter().find(|(_, n)| **n >= 3) {
+        return Some(RiskVerdict::Blocked {
+            pattern: RiskPattern::CompositionalDrainPattern,
+            reason: format!(
+                "the simulator executed program {} {n} times under root {} — repeated security-relevant CPI, the compositional drain signature",
+                short_id(program),
+                short_id(program_id)
+            ),
+        });
+    }
+    let distinct: std::collections::BTreeSet<&str> = declared
+        .iter()
+        .chain(observed.iter())
+        .map(String::as_str)
+        .filter(|t| !UNIVERSAL_INFRASTRUCTURE_CPIS.contains(t) && *t != program_id)
+        .collect();
+    if distinct.len() >= 5 {
+        return Some(RiskVerdict::Blocked {
+            pattern: RiskPattern::CompositionalDrainPattern,
+            reason: format!(
+                "{} distinct security-relevant programs declared or executed under untrusted root {} — deep CPI chain, the compositional drain signature",
+                distinct.len(),
+                short_id(program_id)
+            ),
+        });
+    }
+    None
 }
 
 /// Number of DISTINCT account identities referenced by a set of expected
@@ -1167,8 +1299,7 @@ fn detect_hidden_transfer(accounts: &[String], expected_changes: &[String]) -> b
     accounts.len() >= threshold
 }
 
-/// Detect FakeSwap: swap intent on a swap program but no output/credit state changes.
-/// Is this program a swap venue?
+/// Is this program a swap venue, by the SEED manifests?
 ///
 /// Read from the manifests, not from a list kept beside them. There used to be
 /// a hard-coded `SWAP_PROGRAMS` array here that had to be edited in step with
@@ -1202,12 +1333,43 @@ pub fn is_swap_program(program_id: &str) -> bool {
         .contains(program_id)
 }
 
+/// Is this program a swap venue, by the manifest `registry` holds for it?
+///
+/// The registry a verification core actually uses carries the seed manifests
+/// AND the community manifests merged into it, so this is the reading a core
+/// should use (R-8). A seed program answers exactly as [`is_swap_program`].
+pub fn is_swap_program_in(registry: &crate::manifest::ManifestRegistry, program_id: &str) -> bool {
+    registry
+        .get(program_id)
+        .is_some_and(|m| m.protocol.category == "swap")
+}
+
+/// FakeSwap (Check 8): a declared swap intent (`swap`, `trade` or
+/// `exchange`) on a swap-category program whose manifest-declared expected
+/// state changes are non-empty and none of which mentions a credit or an
+/// output. It is not "a swap intent on a program that does not swap" — that is
+/// Check 9's intent-program mismatch. Swap semantics come from the seed
+/// manifests; see [`assess_in`] for the registry-aware reading.
 pub fn detect_fake_swap(
     program_id: &str,
     _accounts: &[String],
     expected_state_changes: &[String],
     proposed_intent_type: &str,
     _extracted_output_token: Option<&str>,
+) -> Option<RiskPattern> {
+    detect_fake_swap_with(
+        program_id,
+        expected_state_changes,
+        proposed_intent_type,
+        &is_swap_program,
+    )
+}
+
+fn detect_fake_swap_with(
+    program_id: &str,
+    expected_state_changes: &[String],
+    proposed_intent_type: &str,
+    is_swap: &dyn Fn(&str) -> bool,
 ) -> Option<RiskPattern> {
     // Every synonym the vocabulary treats as a swap is held to the swap
     // standard — see `canonical_intent`. Matching the bare literal let
@@ -1216,7 +1378,7 @@ pub fn detect_fake_swap(
         return None;
     }
 
-    if !is_swap_program(program_id) {
+    if !is_swap(program_id) {
         return None;
     }
 
@@ -1256,21 +1418,11 @@ impl RiskPattern {
     }
 }
 
-/// Whether `program_id` can legitimately serve `intent_type`.
-///
-/// This must stay ALIGNED with the semantic layer's intent vocabulary
-/// (verification.rs L5) and with the sibling P0 checks (6a/6b/7). In C21 the
-/// list was expanded to the full L5 vocabulary — `create`/`create_account`,
-/// `approve`, `revoke` — because the previous version returned `false` for
-/// them, so P0 Check 9 contradicted Check 6b/7 and blocked every legitimate
-/// create/approve/revoke transaction even when the instruction matched the
-/// intent exactly. The fail-closed default for genuinely unknown intents is
-/// unchanged.
 /// Collapse a declared intent to its CANONICAL form.
 ///
 /// The intent vocabulary has documented synonym groups (`swap|trade|exchange`,
 /// `close|close_account`, `create|create_account`, `transfer|send`,
-/// `stake|delegate`, `approve|revoke`). `program_supports_intent` honoured
+/// `stake|delegate`). `program_supports_intent` honoured
 /// them; the individual risk checks did not — each compared against a single
 /// literal. That inconsistency broke in BOTH directions (2026-09-05 red-team):
 ///
@@ -1298,34 +1450,66 @@ pub(crate) fn canonical_intent(intent_type: &str) -> &str {
         "create" | "create_account" => "create",
         // approve and revoke are OPPOSITE directions of the delegate
         // capability, and are kept apart (A3-01, 2026-09-29 audit). Merging
-        // them made "revoke" a valid declaration for an Approve: Check 7 read
-        // a revoke intent as the approve case, and an unlimited
-        // ApproveChecked declared as "revoke" was approved.
+        // them made "revoke" a valid declaration for an Approve, and an
+        // unlimited ApproveChecked declared as "revoke" was approved.
         other => other,
     }
 }
 
+/// Whether `program_id` can legitimately serve `intent_type` (Check 9), with
+/// swap programs read from the SEED manifests. See
+/// [`program_supports_intent_in`] for the registry-aware reading.
+///
+/// This must stay ALIGNED with the semantic layer's intent vocabulary
+/// (verification.rs L5, `manifest::INTENT_DECLARES`) and with the sibling P0
+/// checks (6a/6b). In C21 the list was expanded to the full L5 vocabulary —
+/// `create`/`create_account`, `approve`, `revoke` — because the previous
+/// version returned `false` for them, so Check 9 contradicted Check 6b and
+/// blocked every legitimate create/revoke transaction even when the
+/// instruction matched the intent exactly. The fail-closed default for
+/// genuinely unknown intents is unchanged.
 pub(crate) fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
+    program_supports_intent_with(program_id, intent_type, &is_swap_program)
+}
+
+/// [`program_supports_intent`] with swap programs read from `registry` — the
+/// registry a verification core actually uses, seed plus merged community
+/// manifests (Round 29, audit 2026-10-20, R-8).
+pub fn program_supports_intent_in(
+    registry: &crate::manifest::ManifestRegistry,
+    program_id: &str,
+    intent_type: &str,
+) -> bool {
+    program_supports_intent_with(program_id, intent_type, &|id: &str| {
+        is_swap_program_in(registry, id)
+    })
+}
+
+fn program_supports_intent_with(
+    program_id: &str,
+    intent_type: &str,
+    is_swap: &dyn Fn(&str) -> bool,
+) -> bool {
     match canonical_intent(intent_type) {
-        "swap" | "trade" | "exchange" => is_swap_program(program_id),
-        "stake" | "delegate" => {
+        "swap" => is_swap(program_id),
+        "stake" => {
             program_id == "Stake11111111111111111111111111111111111111"
                 // C56: liquid staking programs serve the "stake" intent (their
                 // manifests were onboarded and the AI layer maps them to stake).
                 || program_id == "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD"
                 || program_id == "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy"
         }
-        "close" | "close_account" => {
-            program_id == "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-                || program_id == "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        "close" => {
+            program_id == TOKEN_PROGRAM_ID
+                || program_id == TOKEN_2022_PROGRAM_ID
                 // Jupiter DCA positions are opened AND closed on-chain (closeDca).
                 || program_id == "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M"
         }
-        "transfer" | "send" => true,
+        "transfer" => true,
         // L5 vocabulary: create/initialize/allocate/assign on account-creating
         // programs. Matches Check 6b's expectation that CreateAccount/
         // Allocate with intent "create" is the DECLARED case.
-        "create" | "create_account" => {
+        "create" => {
             const CREATE_PROGRAMS: &[&str] = &[
                 "11111111111111111111111111111111", // System (CreateAccount/Allocate/Assign)
                 "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL", // ATA (CreateAssociatedTokenAccount)
@@ -1336,16 +1520,16 @@ pub(crate) fn program_supports_intent(program_id: &str, intent_type: &str) -> bo
             ];
             CREATE_PROGRAMS.contains(&program_id)
         }
-        // L5 vocabulary: Approve/ApproveChecked (Check 7's declared case).
-        "approve" => {
-            program_id == "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-                || program_id == "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-        }
-        // L5 vocabulary: Revoke (Check 7's declared case).
-        "revoke" => {
-            program_id == "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-                || program_id == "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-        }
+        // `approve` is RECOGNISED on the token programs and never VERIFIABLE
+        // (Round 29, audit 2026-10-20). Check 2 refuses every Approve and
+        // ApproveChecked under any intent, and `manifest::INTENT_DECLARES`
+        // gives `approve` no class to declare (a delegate grant is an
+        // `authority_change`, a hand-over). It stays recognised here so the
+        // refusal names its real cause — the delegate grant — rather than a
+        // vocabulary mismatch.
+        "approve" => program_id == TOKEN_PROGRAM_ID || program_id == TOKEN_2022_PROGRAM_ID,
+        // Revoke removes a delegate: verifiable on the token programs.
+        "revoke" => program_id == TOKEN_PROGRAM_ID || program_id == TOKEN_2022_PROGRAM_ID,
         // SECURITY FIX: Default to false for unknown intent types.
         // Previously returned true, meaning any intent type outside
         // swap/stake/close/transfer would never trigger PermissionEscalation.
@@ -1365,76 +1549,107 @@ pub fn detect_intent_program_mismatch(program_id: &str, intent_type: &str) -> Op
     None
 }
 
-/// Detect fund movement to/from an address that impersonates an official system
-/// account (ISA attack class, SolPhishHunter arXiv:2505.04094).
-///
-/// The heuristic mirrors the paper's own detector: a counterparty whose base58
-/// address ends in 5+ '1' characters (vanity-ground trailing zero bytes) or
-/// starts with "Compu" (mimicking ComputeBudget1111...) is treated as
-/// impersonating an official account. Official programs themselves are excluded
-/// by exact match so legitimate interactions with the real system/ComputeBudget
-/// programs are never flagged.
-///
-/// Only fund-movement instructions are considered: System transfer (0x02) and
-/// SPL Token/Token-2022 transfer (0x03) / transferChecked (0x0c). Non-fund
-/// instructions (assign, approve, mint, ...) are out of scope — those have
-/// their own P0 checks.
 const SYSTEM_PROGRAM_ID: &str = "11111111111111111111111111111111";
 const TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const TOKEN_2022_PROGRAM_ID: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 
 /// Addresses that exist on chain but that nobody can spend from: native
-/// programs, loaders and sysvars. They are runtime- or loader-owned, no private
-/// key exists for them, and no program can sign for them.
+/// programs, loaders, precompiles and sysvars. They are runtime- or
+/// loader-owned, no private key exists for them, and no program can sign for
+/// them.
 ///
 /// They appear in transactions constantly — as the program being invoked, or as
 /// a read-only reference — and never as the counterparty of a transfer.
+///
+/// Round 29 (audit 2026-10-20, R-4): the list named twelve of them. The rest of
+/// the runtime's own addresses — the Instructions sysvar, the Address Lookup
+/// Table and Config programs, the signature-verification precompiles, the
+/// remaining sysvars and loaders — are just as unspendable, and each ends in a
+/// long run of '1's, so a transfer to one was reported as an IMPERSONATION of
+/// an official account when it is the official account. Every entry is a valid
+/// 32-byte key (`tests::unspendable_addresses_are_valid_pubkeys`).
 const UNSPENDABLE_ADDRESSES: &[&str] = &[
     SYSTEM_PROGRAM_ID,
     TOKEN_PROGRAM_ID,
     TOKEN_2022_PROGRAM_ID,
     "ComputeBudget111111111111111111111111111111",
-    "SysvarRent111111111111111111111111111111111",
-    "SysvarC1ock11111111111111111111111111111111",
-    "SysvarRecentB1ockHashes11111111111111111111",
     "Stake11111111111111111111111111111111111111",
     "Vote111111111111111111111111111111111111111",
+    "Config1111111111111111111111111111111111111",
+    "AddressLookupTab1e1111111111111111111111111",
+    "Feature111111111111111111111111111111111111",
+    "ZkTokenProof1111111111111111111111111111111",
+    "ZkE1Gama1Proof11111111111111111111111111111",
+    // Signature-verification precompiles.
+    "Ed25519SigVerify111111111111111111111111111",
+    "KeccakSecp256k11111111111111111111111111111",
+    "Secp256r1SigVerify1111111111111111111111111",
+    // Loaders.
+    "BPFLoader1111111111111111111111111111111111",
     "BPFLoader2111111111111111111111111111111111",
     "BPFLoaderUpgradeab1e11111111111111111111111",
+    "LoaderV411111111111111111111111111111111111",
     // 43 characters. The 42-character form that was here until 2026-09-08
     // base58-decodes to 31 bytes, so it is not a valid pubkey and could never
     // equal any account Graphite sees — a dead entry in a security allowlist,
     // which is the kind that is never noticed because nothing fails.
     "NativeLoader1111111111111111111111111111111",
+    // Sysvars.
+    "SysvarC1ock11111111111111111111111111111111",
+    "SysvarEpochRewards1111111111111111111111111",
+    "SysvarEpochSchedu1e111111111111111111111111",
+    "SysvarFees111111111111111111111111111111111",
+    "Sysvar1nstructions1111111111111111111111111",
+    "SysvarLastRestartS1ot1111111111111111111111",
+    "SysvarRecentB1ockHashes11111111111111111111",
+    "SysvarRent111111111111111111111111111111111",
+    "SysvarRewards111111111111111111111111111111",
+    "SysvarS1otHashes111111111111111111111111111",
+    "SysvarS1otHistory11111111111111111111111111",
+    "SysvarStakeHistory1111111111111111111111111",
 ];
 
-/// Whether this (program, discriminator) pair moves value.
+/// Whether this (program, discriminator) pair moves value — the one
+/// definition the Risk Engine and the transaction-pattern analyzer share
+/// (`tx_pattern_analysis::value_movement`, Round 29, audit 2026-10-20, R-3).
 ///
-/// System transfer (0x02), SPL Token / Token-2022 transfer (0x03) and
-/// transferChecked (0x0c). Their account lists are `[from, to]`,
-/// `[source, dest, authority]` and `[source, mint, dest, authority]` — no slot
-/// in any of them is ever a native program or sysvar.
+/// Transfers: System `Transfer` (02) and `TransferWithSeed` (0b), SPL Token /
+/// Token-2022 `Transfer` (03) and `TransferChecked` (0c), Token-2022
+/// `TransferCheckedWithFee` (1a 01). Withdrawals: System
+/// `WithdrawNonceAccount` (05) and Token-2022's two withdrawals of withheld
+/// fees (1a 02 from the mint, 1a 03 from accounts). Classic SPL Token has no
+/// 1a family.
 ///
-/// Round 20: Token-2022's transfer-fee extension moves value too —
-/// `TransferCheckedWithFee` (0x1a 0x01, `[source, mint, dest, authority]`)
-/// and the two withdrawals of withheld fees (0x1a 0x02 from the mint,
-/// 0x1a 0x03 from accounts, each `[mint, dest, authority, ..]`). Until now a
-/// fee-bearing transfer to an address ground to impersonate a system account
-/// was not a fund movement for the checks below. Classic SPL Token has no
-/// 0x1a family.
+/// Until Round 29 this named System `Transfer` alone among System
+/// instructions, so a `TransferWithSeed` or a nonce withdrawal to an
+/// impersonating or unspendable address was not a fund movement here, while
+/// the pattern analyzer already counted `TransferWithSeed` as one.
 pub fn is_fund_movement(program_id: &str, discriminator: &str) -> bool {
-    let d = discriminator.to_lowercase();
-    match program_id {
-        p if p == SYSTEM_PROGRAM_ID => d.starts_with("02"),
-        p if p == TOKEN_PROGRAM_ID => d.starts_with("03") || d.starts_with("0c"),
-        p if p == TOKEN_2022_PROGRAM_ID => {
-            d.starts_with("03")
-                || d.starts_with("0c")
-                || d.starts_with("1a01")
-                || d.starts_with("1a02")
-                || d.starts_with("1a03")
-        }
-        _ => false,
+    crate::tx_pattern_analysis::value_movement(program_id, discriminator).is_some()
+}
+
+/// The accounts a fund movement sends value TO, as the impersonation and
+/// unspendable-destination checks judge them.
+///
+/// The destination slot of the instruction's layout when the account list
+/// reaches it — never the source, the mint, the base, a sysvar or the signing
+/// authority (R-4): a user whose own wallet happens to end in a run of '1's
+/// was refused for sending from it, and a nonce withdrawal (which names the
+/// RecentBlockhashes and Rent sysvars) could not have been judged at all.
+/// A list too short to reach the destination slot is malformed for this
+/// instruction; then every account is judged, the fail-closed reading.
+fn fund_movement_destinations<'a>(
+    program_id: &str,
+    discriminator: &str,
+    accounts: &'a [String],
+) -> Vec<&'a String> {
+    let Some(movement) = crate::tx_pattern_analysis::value_movement(program_id, discriminator)
+    else {
+        return Vec::new();
+    };
+    match accounts.get(movement.destination) {
+        Some(destination) => vec![destination],
+        None => accounts.iter().collect(),
     }
 }
 
@@ -1444,58 +1659,362 @@ fn detect_unspendable_counterparty(
     discriminator: &str,
     accounts: &[String],
 ) -> Option<String> {
-    if !is_fund_movement(program_id, discriminator) {
-        return None;
-    }
-    accounts
-        .iter()
+    fund_movement_destinations(program_id, discriminator, accounts)
+        .into_iter()
         .find(|acc| UNSPENDABLE_ADDRESSES.contains(&acc.as_str()))
         .cloned()
 }
 
+/// How many trailing '1' characters make an address an impersonation of an
+/// official account (Round 29, audit 2026-10-20, R-4: was five).
+///
+/// A trailing '1' is a base58 ZERO DIGIT, not a zero byte (the comment here
+/// used to say "5+ zero bytes, ~1 in 2^40", which is wrong): each of a random
+/// key's low-order base58 digits is close to uniform over 58 values, so a
+/// random address ends in four '1's about once in 58^4 ≈ 11.3 million, and in
+/// five about once in 656 million. Grinding either is cheap, so five bought
+/// no protection over four against an attacker and let a four-'1' grind
+/// through. Measured against the committed mainnet sample
+/// (`fixtures/mainnet/sample-2026-09-23-last-2-blocks.json`) and the pinned
+/// real transactions: no address there ends in four or more '1's except the
+/// official accounts listed above and a Jito read-only marker account, which
+/// is never a transfer destination. Only destinations are judged, so the
+/// residual false-positive rate is that ~1 in 11.3 million per transfer — and
+/// the error is a refusal, the safe direction.
+const VANITY_TRAILING_ONES: usize = 4;
+
+/// Value sent to an address ground to resemble an official system account
+/// (ISA attack class, SolPhishHunter arXiv:2505.04094): a destination whose
+/// base58 address ends in [`VANITY_TRAILING_ONES`] or more '1' characters, or
+/// starts with "Compu" (mimicking `ComputeBudget1111...`). The official
+/// accounts themselves are excluded by exact match — sending to one is Check
+/// 10b's unspendable destination, not an impersonation.
+///
+/// Only fund movements are considered ([`is_fund_movement`]); non-fund
+/// instructions (assign, approve, mint, ...) have their own P0 checks. Only
+/// the DESTINATION is judged (see `fund_movement_destinations`).
 fn detect_system_account_impersonation(
     program_id: &str,
     discriminator: &str,
     accounts: &[String],
 ) -> Option<String> {
-    if !is_fund_movement(program_id, discriminator) {
-        return None;
-    }
-
-    // Exact official addresses are handled by
-    // `detect_unspendable_counterparty`, which BLOCKS them rather than
-    // exempting them. Skipping them here keeps this check to what it is named
-    // for: addresses ground to RESEMBLE an official account.
-    const OFFICIAL: &[&str] = UNSPENDABLE_ADDRESSES;
-
-    for acc in accounts {
-        if acc.len() < 32 {
-            continue; // not a plausible pubkey — ignore garbage inputs
-        }
-        if OFFICIAL.contains(&acc.as_str()) {
-            continue;
-        }
-        let ends_vanity = acc.ends_with("11111");
-        let compu_prefix = acc.starts_with("Compu");
-        if ends_vanity || compu_prefix {
-            return Some(acc.clone());
-        }
-    }
-    None
+    let vanity_suffix = "1".repeat(VANITY_TRAILING_ONES);
+    fund_movement_destinations(program_id, discriminator, accounts)
+        .into_iter()
+        .filter(|acc| acc.len() >= 32) // not a plausible pubkey — ignore garbage inputs
+        .filter(|acc| !UNSPENDABLE_ADDRESSES.contains(&acc.as_str()))
+        .find(|acc| acc.ends_with(&vanity_suffix) || acc.starts_with("Compu"))
+        .cloned()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// `CHECKED_PATTERNS` is the number of labelled checks in `assess`, read
-    /// from this file's own source, so adding or removing a check without
-    /// updating the reported count fails here.
+    const WALLET_A: &str = "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU";
+    const WALLET_B: &str = "DuFgLf6zzf2N9v3iT4NrkdTPDSD2xK52CCnx6Ag2ckTP";
+    const MINT: &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
+    fn input(program: &str, disc: &str, accounts: &[&str], intent: &str) -> RiskAssessmentInput {
+        RiskAssessmentInput {
+            program_id: program.to_string(),
+            accounts: accounts.iter().map(|a| a.to_string()).collect(),
+            instruction_discriminator: disc.to_string(),
+            expected_account_count: Some(accounts.len()),
+            proposed_intent_type: intent.to_string(),
+            ..Default::default()
+        }
+    }
+
+    fn pattern_of(v: &RiskVerdict) -> Option<RiskPattern> {
+        match v {
+            RiskVerdict::Blocked { pattern, .. } => Some(*pattern),
+            RiskVerdict::Passed => None,
+        }
+    }
+
+    /// Round 29 (R-2): a `0x` prefix, upper case or surrounding whitespace no
+    /// longer hides a risky selector from Check 2.
+    #[test]
+    fn a_0x_prefixed_or_cased_discriminator_is_read_like_any_other() {
+        for disc in ["0x06", "0X06", " 06 ", "0x0600000000000000"] {
+            let v = assess(&input(
+                TOKEN_PROGRAM_ID,
+                disc,
+                &[WALLET_A, WALLET_B],
+                "transfer",
+            ))
+            .unwrap();
+            assert_eq!(
+                pattern_of(&v),
+                Some(RiskPattern::AuthorityHijack),
+                "{disc:?} is SetAuthority: {v:?}"
+            );
+        }
+        let v = assess(&input(
+            TOKEN_PROGRAM_ID,
+            "0X0D",
+            &[WALLET_A, WALLET_B],
+            "approve",
+        ))
+        .unwrap();
+        assert_eq!(pattern_of(&v), Some(RiskPattern::PermissionEscalation));
+        assert_eq!(normalize_discriminator(" 0xAbC "), "abc");
+        assert!(disc_matches("0x09", "09000000"));
+    }
+
+    /// Round 29 (R-1): an Approve is refused by Check 2 under EVERY intent,
+    /// "approve" included — which is why Check 7 could never fire and was
+    /// removed.
+    #[test]
+    fn every_approve_is_refused_by_check_2_whatever_the_intent() {
+        for intent in ["approve", "transfer", "revoke", "swap", ""] {
+            for disc in ["04", "0d"] {
+                for program in [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID] {
+                    let v = assess(&input(program, disc, &[WALLET_A, WALLET_B], intent)).unwrap();
+                    match v {
+                        RiskVerdict::Blocked { pattern, reason } => {
+                            assert_eq!(pattern, RiskPattern::PermissionEscalation);
+                            assert!(reason.contains("grants delegate authority"), "{reason}");
+                        }
+                        RiskVerdict::Passed => panic!("{program} {disc} as {intent:?} passed"),
+                    }
+                }
+            }
+        }
+    }
+
+    /// Round 29 (R-3): System TransferWithSeed and WithdrawNonceAccount are
+    /// fund movements, and the definition is the one the pattern analyzer
+    /// uses.
+    #[test]
+    fn transfer_with_seed_and_nonce_withdrawal_are_fund_movements() {
+        assert!(is_fund_movement(SYSTEM_PROGRAM_ID, "0b000000"));
+        assert!(is_fund_movement(SYSTEM_PROGRAM_ID, "05000000"));
+        assert!(is_fund_movement(TOKEN_2022_PROGRAM_ID, "1a01"));
+        assert!(!is_fund_movement(TOKEN_PROGRAM_ID, "1a01"));
+        assert!(!is_fund_movement(SYSTEM_PROGRAM_ID, "01000000"));
+        // TransferWithSeed [from, base, to] to a vanity address.
+        let v = assess(&input(
+            SYSTEM_PROGRAM_ID,
+            "0b000000",
+            &[
+                WALLET_A,
+                WALLET_B,
+                "iBGtY2LBEmTiVrmPCgHRGdCPZJcDEmmkDxbLhV11111",
+            ],
+            "transfer",
+        ))
+        .unwrap();
+        assert_eq!(pattern_of(&v), Some(RiskPattern::Impersonation), "{v:?}");
+        // A nonce withdrawal names two sysvars as read-only slots; only the
+        // recipient is judged, so an honest one is not refused for them...
+        let honest = [
+            WALLET_A,
+            WALLET_B,
+            "SysvarRecentB1ockHashes11111111111111111111",
+            "SysvarRent111111111111111111111111111111111",
+            WALLET_A,
+        ];
+        assert_eq!(
+            detect_unspendable_counterparty(
+                SYSTEM_PROGRAM_ID,
+                "05000000",
+                &honest.map(String::from)
+            ),
+            None
+        );
+        // ...and one paying a sysvar is.
+        let mut to_sysvar = honest.map(String::from);
+        to_sysvar[1] = "SysvarC1ock11111111111111111111111111111111".to_string();
+        assert!(
+            detect_unspendable_counterparty(SYSTEM_PROGRAM_ID, "05000000", &to_sysvar).is_some()
+        );
+    }
+
+    /// Round 29 (R-4): the sender is not judged — a user's own wallet may end
+    /// in a run of '1's — and four trailing '1's on a DESTINATION are enough.
+    #[test]
+    fn impersonation_judges_the_destination_not_the_signing_wallet() {
+        let vanity_wallet = "iBGtY2LBEmTiVrmPCgHRGdCPZJcDEmmkDxbLhV11111";
+        let v = assess(&input(
+            SYSTEM_PROGRAM_ID,
+            "02000000",
+            &[vanity_wallet, WALLET_B],
+            "transfer",
+        ))
+        .unwrap();
+        assert_eq!(
+            v,
+            RiskVerdict::Passed,
+            "sending FROM one's own vanity wallet"
+        );
+        // SPL transfer [source, dest, authority]: an authority ending in 1s is
+        // the signer, not a counterparty.
+        let v = assess(&input(
+            TOKEN_PROGRAM_ID,
+            "03",
+            &[WALLET_A, WALLET_B, vanity_wallet],
+            "transfer",
+        ))
+        .unwrap();
+        assert_eq!(v, RiskVerdict::Passed);
+        // Four trailing '1's on the destination.
+        let four = "DuFgLf6zzf2N9v3iT4NrkdTPDSD2xK52CCnx6Ag21111";
+        assert!(!four.ends_with("11111"));
+        let v = assess(&input(
+            SYSTEM_PROGRAM_ID,
+            "02000000",
+            &[WALLET_A, four],
+            "transfer",
+        ))
+        .unwrap();
+        assert_eq!(pattern_of(&v), Some(RiskPattern::Impersonation), "{v:?}");
+        // Three is not.
+        let three = "DuFgLf6zzf2N9v3iT4NrkdTPDSD2xK52CCnx6Ag2c111";
+        let v = assess(&input(
+            SYSTEM_PROGRAM_ID,
+            "02000000",
+            &[WALLET_A, three],
+            "transfer",
+        ))
+        .unwrap();
+        assert_eq!(v, RiskVerdict::Passed);
+        // TransferChecked [source, mint, dest, authority]: the mint is not judged.
+        let v = assess(&input(
+            TOKEN_PROGRAM_ID,
+            "0c",
+            &[WALLET_A, four, WALLET_B, WALLET_A],
+            "transfer",
+        ))
+        .unwrap();
+        assert_eq!(v, RiskVerdict::Passed);
+    }
+
+    /// Round 29 (R-4): the runtime's other unspendable addresses are named as
+    /// unspendable, not as impersonations of themselves.
+    #[test]
+    fn unspendable_addresses_are_valid_pubkeys_and_labelled_unspendable() {
+        for a in UNSPENDABLE_ADDRESSES {
+            assert!(
+                crate::solana_types::Pubkey::from_base58(a).is_ok(),
+                "{a} is not a 32-byte key"
+            );
+        }
+        for dest in [
+            "Sysvar1nstructions1111111111111111111111111",
+            "AddressLookupTab1e1111111111111111111111111",
+            "Config1111111111111111111111111111111111111",
+            "Ed25519SigVerify111111111111111111111111111",
+            "SysvarS1otHashes111111111111111111111111111",
+        ] {
+            let v = assess(&input(
+                SYSTEM_PROGRAM_ID,
+                "02000000",
+                &[WALLET_A, dest],
+                "transfer",
+            ))
+            .unwrap();
+            assert_eq!(
+                pattern_of(&v),
+                Some(RiskPattern::UnspendableDestination),
+                "{dest}: {v:?}"
+            );
+        }
+    }
+
+    /// Round 29 (R-5): observed CPIs counted with multiplicity, declared and
+    /// observed judged together.
+    #[test]
+    fn compositional_drain_counts_executed_cpis_with_multiplicity() {
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        let root = "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD";
+        // One program re-entered three times — the pipeline used to hand
+        // Check 4 a deduplicated list, where it was one entry.
+        assert!(
+            compositional_drain_in_execution(root, &[], &s(&["prog_a", "prog_a", "prog_a"]))
+                .is_some()
+        );
+        assert!(compositional_drain_in_execution(root, &[], &s(&["prog_a", "prog_a"])).is_none());
+        // Five distinct programs split three declared / two observed.
+        assert!(
+            compositional_drain_in_execution(root, &s(&["p1", "p2", "p3"]), &s(&["p4", "p5"]))
+                .is_some()
+        );
+        // Infrastructure is not counted; a trusted aggregator is exempt.
+        assert!(compositional_drain_in_execution(
+            root,
+            &[],
+            &s(&[
+                TOKEN_PROGRAM_ID,
+                TOKEN_PROGRAM_ID,
+                TOKEN_PROGRAM_ID,
+                SYSTEM_PROGRAM_ID
+            ])
+        )
+        .is_none());
+        assert!(compositional_drain_in_execution(
+            "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+            &[],
+            &s(&["venue", "venue", "venue"])
+        )
+        .is_none());
+    }
+
+    /// Round 29 (R-6): the drainer ratio at its exact boundary.
+    #[test]
+    fn the_drainer_ratio_is_exact_at_its_boundary() {
+        let accounts = |n: usize| (0..n).map(|i| format!("acct{i}")).collect::<Vec<_>>();
+        let two = vec!["debits a".to_string(), "credits b".to_string()];
+        assert!(!detect_drainer_pattern(&accounts(11), &two), "5.5 : 1");
+        assert!(detect_drainer_pattern(&accounts(12), &two), "6 : 1");
+    }
+
+    /// Round 29 (R-8): a community manifest tagged `swap`, in the registry a
+    /// core uses, gets swap semantics through `assess_in`.
+    #[test]
+    fn a_community_swap_manifest_gets_swap_semantics_through_the_registry() {
+        let program = "GdP9U5aYx7f2kQzVwNmT8jRcL4hB6eX3sDnWqA1uMoH";
+        let mut registry = crate::manifest::ManifestRegistry::new();
+        registry
+            .load_from_json(&format!(
+                r#"{{"graphite_manifest_version":"1.0",
+                "protocol":{{"name":"Community AMM","program_id":"{program}","category":"swap"}},
+                "version":{{"label":"1.0.0"}},
+                "instructions":[{{"name":"swap","discriminator":"01","accounts":[],
+                  "expected_state_changes":["credits accounts.out with the output"],
+                  "allowed_cpis":[],"risk_rules":[]}}]}}"#
+            ))
+            .expect("community manifest loads");
+        let mut swap = input(program, "01", &[WALLET_A, MINT], "swap");
+        swap.expected_state_changes = vec!["credits accounts.out with the output".to_string()];
+        assert_eq!(
+            pattern_of(&assess(&swap).unwrap()),
+            Some(RiskPattern::PermissionEscalation),
+            "seed-only reading: not a swap program"
+        );
+        assert_eq!(assess_in(&swap, &registry).unwrap(), RiskVerdict::Passed);
+        // ...and is held to the FakeSwap standard there.
+        swap.expected_state_changes = vec!["debits accounts.in".to_string()];
+        assert_eq!(
+            pattern_of(&assess_in(&swap, &registry).unwrap()),
+            Some(RiskPattern::FakeSwap)
+        );
+        assert!(program_supports_intent_in(&registry, program, "exchange"));
+        assert!(is_swap_program_in(
+            &crate::manifest::load_seed_manifests(),
+            "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
+        ));
+    }
+
+    /// `CHECKED_PATTERNS` is the number of labelled checks in `assess` (whose
+    /// body is `assess_impl`), read from this file's own source, so adding or
+    /// removing a check without updating the reported count fails here.
     #[test]
     fn checked_patterns_counts_the_labelled_checks() {
         let src = include_str!("risk_engine.rs");
-        let start = src.find("pub fn assess(").expect("assess");
-        let end = start + src[start..].find("\n}\n").expect("end of assess");
+        let start = src.find("fn assess_impl(").expect("assess_impl");
+        let end = start + src[start..].find("\n}\n").expect("end of assess_impl");
         let labels = src[start..end]
             .lines()
             .filter(|l| l.trim_start().starts_with("// P0 Check "))
@@ -1551,7 +2070,7 @@ mod tests {
             assess(&input).unwrap(),
             RiskVerdict::Blocked {
                 pattern: RiskPattern::Impersonation,
-                reason: "System-account impersonation: fund movement to/from iBGtY2LBEmTiVrmPCgHRGdCPZJcDEmmkDxbLhV11111 whose address shape impersonates an official system account (vanity 11111 suffix or Compu prefix)".to_string(),
+                reason: "System-account impersonation: fund movement to iBGtY2LBEmTiVrmPCgHRGdCPZJcDEmmkDxbLhV11111 whose address shape impersonates an official system account (vanity run of trailing 1s or Compu prefix)".to_string(),
             }
         );
     }
@@ -1593,7 +2112,7 @@ mod tests {
     #[test]
     fn test_high_risk_class_with_declared_intent_not_gated_by_check_10() {
         // A declared intent takes the instruction out of Check 10's
-        // scope — the intent-mismatch checks (6a/6b/7) handle it instead.
+        // scope — the intent-mismatch checks (6a/6b/9/9b) handle it instead.
         // Here intent matches a transfer-shaped instruction, so Check 10
         // must NOT be the blocker for a non-high-risk class.
         let input = RiskAssessmentInput {
@@ -1654,7 +2173,7 @@ mod tests {
             assess(&input).unwrap(),
             RiskVerdict::Blocked {
                 pattern: RiskPattern::Impersonation,
-                reason: "System-account impersonation: fund movement to/from CompuV3LmCTW7AGGnM6YBftCJkKP3ZKkK1fCAY8L7eM1 whose address shape impersonates an official system account (vanity 11111 suffix or Compu prefix)".to_string(),
+                reason: "System-account impersonation: fund movement to CompuV3LmCTW7AGGnM6YBftCJkKP3ZKkK1fCAY8L7eM1 whose address shape impersonates an official system account (vanity run of trailing 1s or Compu prefix)".to_string(),
             }
         );
     }

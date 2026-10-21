@@ -27,11 +27,22 @@ fn token_2022_transfer(source: &str, destination: &str) -> TransactionInstructio
     }
 }
 
+/// One labelled case.
+///
+/// The label (`category`, `expected_approved`) is hand-written beside the
+/// engine it scores (audit 2026-10-20, B-1), so each case states its ground
+/// truth in words — what the transaction DOES, independent of what Graphite
+/// answers — and the composition test pins that every case has one. A case
+/// the engine gets wrong stays labelled by its ground truth and is counted as
+/// the error it is.
 #[derive(Debug, Clone)]
 struct BenchmarkCase {
     label: &'static str,
-    category: &'static str, // "safe" | "malicious" | "unknown"
+    category: &'static str, // "safe" | "malicious" | "unknown" (unscored)
     expected_approved: bool,
+    /// Why `expected_approved` is the right answer, in terms of what the
+    /// transaction does.
+    ground_truth: &'static str,
     input: VerificationInput,
 }
 
@@ -142,10 +153,18 @@ pub fn run_benchmark() {
             elapsed.as_micros(),
             mark
         );
+        if !correct {
+            println!("    ground truth: {}", case.ground_truth);
+        }
     }
 
     let total = cases.len();
     let scored = cases.iter().filter(|c| c.category != "unknown").count();
+    let unscored = total - scored;
+    // Latency is over the cases that VERIFIED (audit 2026-10-20, B-4): an
+    // errored case recorded no latency but was counted in the denominator,
+    // which understated the average.
+    let verified = latencies_us.len();
     let correct = true_positives + true_negatives;
 
     let precision = if (true_positives + false_positives) > 0 {
@@ -166,8 +185,8 @@ pub fn run_benchmark() {
         0.0
     };
 
-    let avg_latency = if total > 0 {
-        total_latency_us / total as u128
+    let avg_latency = if verified > 0 {
+        total_latency_us / verified as u128
     } else {
         0
     };
@@ -190,6 +209,10 @@ pub fn run_benchmark() {
     println!("\n📊 Results:\n");
     println!("  Total cases:      {}", total);
     println!("  Scored cases:     {} (safe + malicious only)", scored);
+    println!(
+        "  Unscored cases:   {}  (unknown protocol: the expected refusal is documented policy, not a detection)",
+        unscored
+    );
     println!("  Correct:          {}/{}", correct, scored);
     println!(
         "  Errors:           {}  (did not verify; not scored as blocks)",
@@ -214,18 +237,21 @@ pub fn run_benchmark() {
         "  False Negatives:  {}  (malicious → approved)",
         false_negatives
     );
-    println!("  Avg Latency:      {}μs", avg_latency);
+    println!(
+        "  Avg Latency:      {}μs  (over the {} cases that verified)",
+        avg_latency, verified
+    );
     println!("  p50 Latency:      {}μs", p50);
     println!("  p95 Latency:      {}μs", p95);
     println!("  p99 Latency:      {}μs", p99);
     println!(
-        "  Sequential thru:  {:.0} verifies/s ({} cases, single-threaded)",
-        if total > 0 {
-            total as f64 / (total_latency_us as f64 / 1_000_000.0)
+        "  Sequential thru:  {:.0} verifies/s ({} verified cases, single-threaded)",
+        if verified > 0 && total_latency_us > 0 {
+            verified as f64 / (total_latency_us as f64 / 1_000_000.0)
         } else {
             0.0
         },
-        total
+        verified
     );
     println!();
 
@@ -265,74 +291,62 @@ pub fn run_benchmark() {
     );
     println!();
 
-    // ─── Baseline Comparison (Constitution P16 requirement) ───
-    // BENCHMARK.md requires a comparison row against at least one honest baseline.
-    // "Simulation only" baseline: approve if compute_units > 0 (simulation "succeeded"),
-    // block if compute_units == 0 (simulation "failed"). No verification logic at all.
-    // This is the weakest possible defense — it catches nothing that simulation doesn't.
+    // ─── Baseline comparison (Constitution P16) ───
+    //
+    // The comparison row stands for "simulation only": approve whatever
+    // simulates. In this suite every case carries `compute_units > 0`, so the
+    // rule approves EVERY case — it is an approve-all baseline, and is named
+    // that (audit 2026-10-20, B-4: it was printed as "Simulation only" with a
+    // precision computed from zero blocks and a latency of zero, which read as
+    // measurements). Its row says what it is: recall 0%, precision undefined
+    // (it blocks nothing), no latency to compare.
     let mut baseline_tp = 0; // malicious correctly blocked
     let mut baseline_tn = 0; // safe correctly approved
     let mut baseline_fp = 0; // safe incorrectly blocked
     let mut baseline_fn = 0; // malicious incorrectly approved
-    let mut baseline_total_latency_us: u128 = 0;
-
     for case in &cases {
-        let start = Instant::now();
-        // Baseline: "simulation only" — approve if compute_units > 0, block otherwise
         let baseline_approved = case.input.compute_units > 0;
-        let elapsed = start.elapsed();
-        baseline_total_latency_us += elapsed.as_micros();
-
         match (case.category, baseline_approved, case.expected_approved) {
             ("safe", false, true) => baseline_fp += 1,
             ("safe", true, true) => baseline_tn += 1,
             ("malicious", true, false) => baseline_fn += 1,
             ("malicious", false, false) => baseline_tp += 1,
-            ("unknown", _, _) => {}
             _ => {}
         }
     }
-
-    let baseline_scored = cases.iter().filter(|c| c.category != "unknown").count();
     let baseline_correct = baseline_tp + baseline_tn;
-    let baseline_precision = if (baseline_tp + baseline_fp) > 0 {
-        baseline_tp as f64 / (baseline_tp + baseline_fp) as f64 * 100.0
-    } else {
-        0.0
-    };
-    let baseline_recall = if (baseline_tp + baseline_fn) > 0 {
-        baseline_tp as f64 / (baseline_tp + baseline_fn) as f64 * 100.0
-    } else {
-        0.0
-    };
-    let baseline_avg_latency = if total > 0 {
-        baseline_total_latency_us / total as u128
-    } else {
-        0
+    let percent = |num: usize, den: usize| -> String {
+        if den == 0 {
+            "n/a".to_string()
+        } else {
+            format!("{:.1}%", num as f64 / den as f64 * 100.0)
+        }
     };
 
-    println!("┌────────────────────────────────────────────────────────────────┐");
-    println!("│  Baseline Comparison (Constitution P16)                       │");
-    println!("├──────────────────────┬───────────────┬──────────┬───────────────┤");
-    println!("│ Tool                 │ Precision     │ Recall   │ Avg Latency  │");
-    println!("├──────────────────────┼───────────────┼──────────┼──────────────┤");
+    println!("Baseline comparison (Constitution P16) — scored cases only:");
     println!(
-        "│ Simulation only      │ {:>8.1}%     │ {:>6.1}%  │ {:>6}μs       │",
-        baseline_precision, baseline_recall, baseline_avg_latency
+        "  {:<44} precision {:>6}  recall {:>6}",
+        "Approve-all (stands for \"simulation only\")",
+        percent(baseline_tp, baseline_tp + baseline_fp),
+        percent(baseline_tp, baseline_tp + baseline_fn),
     );
     println!(
-        "│ Graphite v0.1.0      │ {:>8.1}%     │ {:>6.1}%  │ {:>6}μs       │",
-        precision, recall, avg_latency
-    );
-    println!("└──────────────────────┴───────────────┴──────────┴───────────────┘");
-    println!();
-    println!(
-        "  Baseline: {} correct / {} scored (TP={}, TN={}, FP={}, FN={})",
-        baseline_correct, baseline_scored, baseline_tp, baseline_tn, baseline_fp, baseline_fn
+        "  {:<44} precision {:>6}  recall {:>6}  avg {}μs",
+        format!("Graphite {}", env!("CARGO_PKG_VERSION")),
+        percent(true_positives, true_positives + false_positives),
+        percent(true_positives, true_positives + false_negatives),
+        avg_latency
     );
     println!(
-        "  Graphite: {} correct / {} scored (TP={}, TN={}, FP={}, FN={})",
+        "  Approve-all: {} correct / {} scored (TP={}, TN={}, FP={}, FN={})",
+        baseline_correct, scored, baseline_tp, baseline_tn, baseline_fp, baseline_fn
+    );
+    println!(
+        "  Graphite:    {} correct / {} scored (TP={}, TN={}, FP={}, FN={})",
         correct, scored, true_positives, true_negatives, false_positives, false_negatives
+    );
+    println!(
+        "  ({unscored} unknown-protocol case(s) are verified and listed above but scored by neither row.)"
     );
     println!();
 }
@@ -394,22 +408,16 @@ fn make_input_with_intent(
     }
 }
 
-fn good_evidence() -> BehaviorEvidence {
-    BehaviorEvidence {
-        has_signed_manifest: false,
-        community_verified_count: 5,
-        battle_tested_tx_count: 50000,
-        simulation_match_count: 100,
-    }
-}
-
+/// The `behavior_evidence` every case sends: none.
+///
+/// `verify` ignores request-body evidence (P7 — a tier is earned in the
+/// Semantic Graph, never asserted by the caller). Half the cases used to send
+/// a "good" record — 50,000 battle-tested transactions, five community
+/// verifications — which changed no verdict and read as if it did (audit
+/// 2026-10-20, B-1). Every case now sends the empty record, so nothing in a
+/// case suggests evidence it does not have.
 fn no_evidence() -> BehaviorEvidence {
-    BehaviorEvidence {
-        has_signed_manifest: false,
-        community_verified_count: 0,
-        battle_tested_tx_count: 0,
-        simulation_match_count: 0,
-    }
+    BehaviorEvidence::default()
 }
 
 fn build_benchmark_cases() -> Vec<BenchmarkCase> {
@@ -419,6 +427,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             label: "System Transfer (legitimate)",
             category: "safe",
             expected_approved: true,
+            ground_truth: "a wallet paying another wallet with a transfer intent: the ordinary benign shape",
             input: make_input(
                 "11111111111111111111111111111111",
                 "02000000",
@@ -431,13 +440,14 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                     min_confidence: 0.40,
                     min_trust_tier: crate::semantic_graph_store::TrustTier::OfficialManifest,
                 },
-                good_evidence(),
+                no_evidence(),
             ),
         },
         BenchmarkCase {
             label: "SPL Token Transfer (legitimate)",
             category: "safe",
             expected_approved: true,
+            ground_truth: "a token transfer from the user's account declared as a transfer: benign",
             input: make_input(
                 "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
                 "03",
@@ -451,7 +461,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                     min_confidence: 0.40,
                     min_trust_tier: crate::semantic_graph_store::TrustTier::OfficialManifest,
                 },
-                good_evidence(),
+                no_evidence(),
             ),
         },
         // External review R2 (2026-10-01): this case was labelled a legitimate
@@ -463,6 +473,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             label: "SPL Token Burn declared as a transfer (external review R2)",
             category: "malicious",
             expected_approved: false,
+            ground_truth: "a Burn labelled 'transfer' misstates what it does; no intent declares a burn",
             input: make_input(
                 "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
                 "08",
@@ -476,7 +487,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                     min_confidence: 0.40,
                     min_trust_tier: crate::semantic_graph_store::TrustTier::OfficialManifest,
                 },
-                good_evidence(),
+                no_evidence(),
             ),
         },
         // MALICIOUS cases (should be blocked)
@@ -484,6 +495,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             label: "Unverified CPI (potential exploit)",
             category: "malicious",
             expected_approved: false,
+            ground_truth: "a token transfer invoking a program no manifest describes: unverifiable code given execution",
             input: make_input(
                 "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
                 "03",
@@ -497,13 +509,14 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                     min_confidence: 0.40,
                     min_trust_tier: crate::semantic_graph_store::TrustTier::OfficialManifest,
                 },
-                good_evidence(),
+                no_evidence(),
             ),
         },
         BenchmarkCase {
             label: "Deep CPI chain (compositional drain)",
             category: "malicious",
             expected_approved: false,
+            ground_truth: "a System transfer that re-enters one unknown program three times: the compositional drain shape",
             input: make_input(
                 "11111111111111111111111111111111",
                 "02000000",
@@ -516,13 +529,14 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                     min_confidence: 0.40,
                     min_trust_tier: crate::semantic_graph_store::TrustTier::OfficialManifest,
                 },
-                good_evidence(),
+                no_evidence(),
             ),
         },
         BenchmarkCase {
             label: "Authority hijack (SetAuthority)",
             category: "malicious",
             expected_approved: false,
+            ground_truth: "SetAuthority hands control of the account to another key",
             // REAL SetAuthority discriminator is 0x06 (the risk engine's
             // RISKY_PATTERNS entry). C26 clean-room correction: this case
             // previously used 0b (ThawAccount), which the suite blocked via
@@ -546,6 +560,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             label: "Account drain (CloseAccount)",
             category: "malicious",
             expected_approved: false,
+            ground_truth: "CloseAccount sends the account's lamports to a destination the intent never named",
             input: make_input(
                 "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
                 "09",
@@ -564,6 +579,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             label: "Unknown protocol (no manifest)",
             category: "unknown",
             expected_approved: false,
+            ground_truth: "unscored: no manifest, so the expected outcome is the documented fail-closed refusal, not a judgement of the program",
             input: make_input(
                 "4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi",
                 "03000000",
@@ -574,9 +590,10 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             ),
         },
         BenchmarkCase {
-            label: "Unknown protocol with no evidence",
+            label: "Unknown protocol (no manifest, unknown selector)",
             category: "unknown",
             expected_approved: false,
+            ground_truth: "unscored: no manifest and an unknown selector; the expected outcome is the documented fail-closed refusal",
             input: make_input(
                 "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
                 "ff00ff",
@@ -591,6 +608,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             label: "FakeSwap — swap intent on System Program (wrong program for swap)",
             category: "malicious",
             expected_approved: false,
+            ground_truth: "a swap intent on a program that cannot swap misstates the transaction",
             input: {
                 let mut inp = make_input(
                     "11111111111111111111111111111111",
@@ -604,7 +622,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                         min_confidence: 0.40,
                         min_trust_tier: crate::semantic_graph_store::TrustTier::OfficialManifest,
                     },
-                    good_evidence(),
+                    no_evidence(),
                 );
                 inp.proposed_intent.intent_type = "swap".to_string();
                 inp.proposed_intent.raw_natural_language = "Swap 1 SOL for USDC".to_string();
@@ -616,6 +634,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             label: "Simulation spoofing — 50000 compute vs 150 baseline",
             category: "malicious",
             expected_approved: false,
+            ground_truth: "a System transfer whose compute is 300x its program's baseline is not the transfer it claims to be",
             input: {
                 let mut inp = make_input(
                     "11111111111111111111111111111111",
@@ -629,7 +648,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                         min_confidence: 0.40,
                         min_trust_tier: crate::semantic_graph_store::TrustTier::OfficialManifest,
                     },
-                    good_evidence(),
+                    no_evidence(),
                 );
                 inp.compute_units = 50000;
                 inp
@@ -639,6 +658,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             label: "Normal compute with baseline — not flagged",
             category: "safe",
             expected_approved: true,
+            ground_truth: "a System transfer within its program's compute baseline: benign",
             input: {
                 let mut inp = make_input(
                     "11111111111111111111111111111111",
@@ -652,7 +672,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                         min_confidence: 0.40,
                         min_trust_tier: crate::semantic_graph_store::TrustTier::OfficialManifest,
                     },
-                    good_evidence(),
+                    no_evidence(),
                 );
                 inp.compute_units = 160;
                 inp
@@ -663,6 +683,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             label: "SPL Token SetAuthority hijack",
             category: "malicious",
             expected_approved: false,
+            ground_truth: "SetAuthority hands control of the account to another key",
             // C26 clean-room correction: the real SetAuthority discriminator
             // is 0x06, not 0b (ThawAccount). With 0b the case was blocked by
             // the transfer-vs-ThawAccount L5 semantic mismatch, so the suite
@@ -679,24 +700,36 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                     min_confidence: 0.40,
                     min_trust_tier: crate::semantic_graph_store::TrustTier::OfficialManifest,
                 },
-                good_evidence(),
+                no_evidence(),
             ),
         },
-        // === REAL MAINNET EXPLOIT CASES (P16: actual on-chain data) ===
-        // Pinned from tests/real_onchain_exploits.rs — real transaction
-        // structures (program IDs, account addresses, CPI targets) from real
-        // mainnet exploit transactions, not synthetic reconstructions.
+        // === REAL-RECONSTRUCTED MAINNET EXPLOIT CASES ===
+        // Each is RECONSTRUCTED from a real mainnet exploit transaction
+        // (audit 2026-10-20, B-3: they were labelled "REAL", which overclaims).
+        // What is real: the program ids, the account addresses and the CPI
+        // targets, taken from the transaction (tests/real_onchain_exploits.rs,
+        // scripts/real_exploit_*.json). What is reconstructed: everything
+        // the verifier is handed beyond that — the declared intent
+        // ("transfer"), the wallet profile, the compute numbers, the
+        // discriminator re-encoded as hex, and the `transaction_instructions`
+        // and `cpi_trace`, which are hand-written SLICES of the real
+        // instruction list and inner instructions (each case says which).
+        // None carries the transaction's bytes, so every one verifies in
+        // descriptive scope.
         BenchmarkCase {
-            label: "REAL: STMT drainer TX 64tsGGe (CLINKSINK, mainnet)",
+            label: "REAL-RECONSTRUCTED: STMT drainer TX 64tsGGe (CLINKSINK, mainnet)",
             category: "malicious",
             expected_approved: false,
+            ground_truth: "documented drainer transaction (CLINKSINK) sweeping a victim's token accounts",
             // Real tx structure (slot 423650628): drainer program 4PG6e9...
             // made 21 Token-2022 CPI transfers, each sweeping one of the
             // victim's 20 token accounts to a single destination. Pinned from
-            // tests/real_onchain_exploits.rs; transaction_instructions carry
-            // a faithful slice (5 of the 20 drained accounts → the tx's one
-            // non-writable destination account) so the benchmark exercises
-            // the Phase 2 mass-sweep detector on real data. Discriminator
+            // tests/real_onchain_exploits.rs. Reconstructed: the real sweeps
+            // were CPIs INSIDE the drainer's one instruction; here five of them
+            // (5 of the 20 drained accounts → the tx's one destination) are
+            // handed over as top-level `transaction_instructions`, so the case
+            // exercises the multi-instruction sweep rule, not the CPI-trace
+            // fan-out rule the real shape would meet. Discriminator
             // "07": the on-chain instruction data byte 0x07 (base58 "8"
             // decoded to hex — the pipeline requires valid hex).
             input: {
@@ -746,15 +779,18 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             },
         },
         BenchmarkCase {
-            label: "REAL: AAT drainer TX 524t8LW (SlowMist, mainnet)",
+            label: "REAL-RECONSTRUCTED: AAT drainer TX 524t8LW (SlowMist, mainnet)",
             category: "malicious",
             expected_approved: false,
+            ground_truth: "documented AAT drainer (SlowMist): Approve x2 then System assign of the victim's account",
             // SlowMist-documented AAT attack (slot 382532590, $3M+ stolen):
             // Approve (SPL Token) x2 then assign (System Program) on the
             // victim's token accounts — the attacker takes OWNERSHIP. Pinned
-            // from tests/real_onchain_exploits.rs; transaction_instructions
-            // model the Approve x2 + assign flow so the benchmark exercises
-            // the Phase 2 ownership-theft detector on real data. Discriminator
+            // from tests/real_onchain_exploits.rs. Reconstructed: the
+            // `transaction_instructions` MODEL the documented Approve x2 +
+            // assign flow with the transaction's real account addresses; their
+            // account order and the trace's discriminators are written from
+            // the write-up, not decoded from the transaction. Discriminator
             // "0900000000000000": base58 "2WK48GNSUQf" decoded to its real
             // 8 instruction bytes (selector 0x09) — valid hex for the
             // pipeline.
@@ -852,18 +888,29 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             },
         },
         BenchmarkCase {
-            label: "REAL: Wormhole $320M hack TX 5fKWY7X (mainnet, Feb 2022)",
+            label: "REAL-RECONSTRUCTED: Wormhole $320M hack TX 5fKWY7X (mainnet, Feb 2022)",
             category: "malicious",
             expected_approved: false,
-            // Real tx (slot 119009680, Feb 2 2022): attacker called Wormhole's
-            // verify_signatures with a FAKE SysvarClock account, then minted
-            // 120,000 wETH. The single inner CPI went to the System Program
-            // (the trace below) — the exploit was the spoofed sysvar ACCOUNT,
-            // not an unknown CPI target. The block comes from the
-            // unknown-program ceiling (Wormhole is not in the manifest
-            // registry), honestly NOT from the trace layer. Discriminator
-            // "08c7d6bf130f7825": first 8 bytes of the base58-decoded real
-            // instruction data — valid hex for the pipeline.
+            ground_truth: "the Wormhole exploit transaction (Feb 2022)",
+            // Real tx (slot 119009680, Feb 2 2022): the attack got guardian
+            // signatures "verified" by passing Wormhole a SPOOFED sysvar
+            // account, then minted 120,000 wETH. The single inner CPI went to
+            // the System Program (the trace below) — the exploit was the
+            // spoofed ACCOUNT, not an unknown CPI target, and nothing here
+            // models the forged account's contents.
+            //
+            // Corrected Round 29 (audit 2026-10-20, B-2): this said the block
+            // came from the "unknown-program ceiling (Wormhole is not in the
+            // manifest registry)" and that 08 was verify_signatures. Both were
+            // wrong. `wormhole-core.json` IS a seed manifest, and its 08 is
+            // `PostMessageUnreliable` (VerifySignatures is 07). The case is
+            // refused by Risk Engine Check 3 (Drainer): nine accounts against
+            // an instruction whose manifest declares two and one state change
+            // — and `real_cases_exercise_phase2_detectors` asserts exactly
+            // that, so the attribution cannot drift again. It is NOT evidence
+            // that Graphite detects the Wormhole exploit's mechanism.
+            // Discriminator "08c7d6bf130f7825": first 8 bytes of the
+            // base58-decoded real instruction data.
             input: {
                 let mut inp = make_input(
                     "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
@@ -900,9 +947,10 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             },
         },
         BenchmarkCase {
-            label: "REAL: fresh drainer chain TX 2AWwL6dk (Aug 2026, mainnet)",
+            label: "REAL-RECONSTRUCTED: fresh drainer chain TX 2AWwL6dk (Aug 2026, mainnet)",
             category: "malicious",
             expected_approved: false,
+            ground_truth: "drainer chain through a known malicious helper program",
             // Live-fetched from api.mainnet-beta.solana.com (slot 438712938,
             // Aug 2026): a fresh drainer chain. Unknown program 8MjG72...
             // (disc 0490844774179750, 4 accts) -> unknown program GieMfa5...
@@ -914,7 +962,9 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             // 3H5qEiPQQgrtgsM2RHdn9z6i8qdGFVBjmn8ih7jQgDMP) minting 660,854
             // tokens to the victim's account. Raw evidence:
             // scripts/real_exploit_2AWwL6dk_aug2026.json. All accounts are
-            // the real on-chain addresses from the transaction.
+            // the real on-chain addresses from the transaction. Reconstructed:
+            // the primary's account list is the union of the transaction's
+            // keys, and the GieMfa5 sibling carries none of its 19 accounts.
             input: {
                 let mut inp = make_input(
                     "8MjG72ZWmkG4SKES7WK2fGrrR14hBhokTJiHgaedqJ5L",
@@ -1011,9 +1061,10 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             },
         },
         BenchmarkCase {
-            label: "REAL: AAT mass drain TX 3PbK87 (mainnet, Dec 2025)",
+            label: "REAL-RECONSTRUCTED: AAT mass drain TX 3PbK87 (mainnet, Dec 2025)",
             category: "malicious",
             expected_approved: false,
+            ground_truth: "documented AAT drainer program draining many victim accounts",
             // Live-fetched from api.mainnet-beta.solana.com (slot 382864866,
             // Dec 2025): 20 top-level calls to the SlowMist AAT drainer
             // 3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs (real on-chain
@@ -1038,8 +1089,8 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                     WalletProfile::TradingBot,
                     no_evidence(),
                 );
-                // 20 real drainer calls in one transaction (a faithful
-                // slice of the 20 carried below); each spends one distinct
+                // The transaction made 20 drainer calls; six are carried
+                // below (reconstructed slice), each spending one distinct
                 // victim account to the same attacker front.
                 let attacker = "Fxc7Tpt1qqbrSc7hM7MSvvTs5jFVaa1iGaMeNevoNAV3".to_string();
                 let victim = "AzFiF4NEcaZJzao28Hm4vYtKttqfUh31qFq3oSmZVj31".to_string();
@@ -1077,6 +1128,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             label: "SYNTHETIC: AAT-style mass drain (real program ID, synthetic accounts)",
             category: "malicious",
             expected_approved: false,
+            ground_truth: "the AAT drainer program, called with fabricated accounts",
             input: make_input(
                 "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs",
                 "0a",
@@ -1101,6 +1153,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             label: "SYNTHETIC: CLINKSINK-style token drain (real program ID, synthetic accounts)",
             category: "malicious",
             expected_approved: false,
+            ground_truth: "the CLINKSINK drainer program, called with fabricated accounts",
             input: make_input(
                 "4PG6e97DLCn2PRN4ZMmTLg83jsetrDkvamr3JiXoiffa",
                 "08",
@@ -1120,7 +1173,114 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                 no_evidence(),
             ),
         },
+        // === Benign shapes (audit 2026-10-20, B-1) ===
+        // The suite had three safe cases against fifteen malicious, so a gate
+        // that refused nearly everything scored well. These are the shapes an
+        // agent wallet sends every day.
+        BenchmarkCase {
+            label: "SPL Token TransferChecked (legitimate)",
+            category: "safe",
+            expected_approved: true,
+            ground_truth: "a TransferChecked of USDC from the user's account, declared as a transfer: benign",
+            input: make_input(
+                SPL_TOKEN,
+                "0c",
+                &[
+                    "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+                    "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
+                ],
+                &[],
+                honest_default_profile(),
+                no_evidence(),
+            ),
+        },
+        BenchmarkCase {
+            label: "ATA CreateIdempotent (legitimate)",
+            category: "safe",
+            expected_approved: true,
+            ground_truth: "creating the user's own associated token account (idempotent), declared as a create: benign",
+            input: make_input_with_intent(
+                "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+                "01",
+                &[
+                    "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                    "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+                    "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    SYSTEM,
+                    SPL_TOKEN,
+                ],
+                &[],
+                honest_default_profile(),
+                no_evidence(),
+                "create",
+            ),
+        },
+        BenchmarkCase {
+            label: "Compute budget + System Transfer (legitimate)",
+            category: "safe",
+            expected_approved: true,
+            ground_truth: "a System transfer with a SetComputeUnitLimit beside it: the most common transaction shape there is",
+            input: {
+                let mut inp = make_input(
+                    SYSTEM,
+                    "02000000",
+                    &[
+                        "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                        "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+                    ],
+                    &[],
+                    honest_default_profile(),
+                    no_evidence(),
+                );
+                inp.transaction_instructions = vec![TransactionInstruction {
+                    program_id: "ComputeBudget111111111111111111111111111111".to_string(),
+                    instruction_discriminator: "02".to_string(),
+                    account_addresses: vec![],
+                    cpi_targets: vec![],
+                }];
+                inp
+            },
+        },
+        BenchmarkCase {
+            label: "System Transfer + SPL Memo (legitimate)",
+            category: "safe",
+            expected_approved: true,
+            ground_truth: "a System transfer carrying a memo signed by the sender: benign",
+            input: {
+                let mut inp = make_input(
+                    SYSTEM,
+                    "02000000",
+                    &[
+                        "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                        "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+                    ],
+                    &[],
+                    honest_default_profile(),
+                    no_evidence(),
+                );
+                inp.transaction_instructions = vec![TransactionInstruction {
+                    program_id: "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr".to_string(),
+                    instruction_discriminator: "696e766f696365".to_string(), // "invoice"
+                    account_addresses: vec!["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string()],
+                    cpi_targets: vec![],
+                }];
+                inp
+            },
+        },
     ]
+}
+
+/// The profile the safe cases use: the Phase-1 honest default
+/// (`min_confidence` 0.40 at `OfficialManifest`), the bar a known, clean,
+/// intent-aligned protocol can meet on a fresh core.
+fn honest_default_profile() -> WalletProfile {
+    WalletProfile::Custom {
+        min_confidence: 0.40,
+        min_trust_tier: crate::semantic_graph_store::TrustTier::OfficialManifest,
+    }
 }
 
 #[cfg(test)]
@@ -1168,22 +1328,35 @@ mod tests {
     #[test]
     fn benchmark_composition_is_pinned_and_honestly_labeled() {
         let cases = build_benchmark_cases();
-        assert_eq!(cases.len(), 20, "case count must be pinned");
+        assert_eq!(cases.len(), 24, "case count must be pinned");
 
         let safe = cases.iter().filter(|c| c.category == "safe").count();
         let malicious = cases.iter().filter(|c| c.category == "malicious").count();
         let unknown = cases.iter().filter(|c| c.category == "unknown").count();
-        assert_eq!(safe + malicious, 18, "18 scored cases");
+        assert_eq!(safe + malicious, 22, "22 scored cases");
+        assert_eq!(safe, 7, "B-1: seven benign shapes, not three");
         assert_eq!(unknown, 2);
+        // B-1: every case states its ground truth.
+        for c in &cases {
+            assert!(!c.ground_truth.trim().is_empty(), "{}", c.label);
+            assert_eq!(
+                c.input.behavior_evidence,
+                BehaviorEvidence::default(),
+                "{}: request evidence is ignored by verify, so no case sends any",
+                c.label
+            );
+        }
 
-        // 5 REAL mainnet exploit cases + 2 SYNTHETIC, all honestly labeled.
+        // 5 REAL-RECONSTRUCTED mainnet exploit cases + 2 SYNTHETIC, all
+        // honestly labeled (B-3: they are reconstructions, not the bytes).
+        assert!(!cases.iter().any(|c| c.label.starts_with("REAL:")));
         let real = cases
             .iter()
-            .filter(|c| c.label.starts_with("REAL:"))
+            .filter(|c| c.label.starts_with("REAL-RECONSTRUCTED:"))
             .count();
         assert_eq!(
             real, 5,
-            "5 real mainnet exploit cases (STMT/AAT/Wormhole/2AWwL6dk/3PbK87)"
+            "5 reconstructed mainnet exploit cases (STMT/AAT/Wormhole/2AWwL6dk/3PbK87)"
         );
         let synthetic = cases
             .iter()
@@ -1253,7 +1426,7 @@ mod tests {
         }
         assert!(malicious >= 10, "malicious-case diversity: {malicious}");
         println!(
-            "benchmark composition: {safe} safe / {malicious} malicious / {unknown} unknown — {real} REAL mainnet + {synthetic} SYNTHETIC drainer cases (P16, honestly labeled)"
+            "benchmark composition: {safe} safe / {malicious} malicious / {unknown} unknown (unscored) — {real} REAL-RECONSTRUCTED mainnet + {synthetic} SYNTHETIC drainer cases (P16, honestly labeled)"
         );
     }
 
@@ -1262,9 +1435,10 @@ mod tests {
     /// detectors, not merely by the unknown-program ceiling: the STMT case's
     /// mass-sweep slice must produce a MultiInstructionDrain finding, and the
     /// AAT case's Approve+assign flow the ownership-theft finding. Wormhole is
-    /// the honest exception: its CPI trace is all known programs, so the block
-    /// comes from the unknown-program ceiling — asserted explicitly so nobody
-    /// overclaims the trace layer.
+    /// the honest exception: its CPI trace is all known programs and its
+    /// program is a seed manifest, so the block comes from Risk Engine Check 3
+    /// (Drainer, account-to-change ratio) — asserted explicitly so nobody
+    /// overclaims the trace layer or the exploit's detection (B-2).
     #[test]
     fn real_cases_exercise_phase2_detectors() {
         use crate::verification::GraphiteCore;
@@ -1299,22 +1473,53 @@ mod tests {
             r.risk_verdict.findings
         );
 
-        // Wormhole: known-program trace → NO CpiTraceAnomaly; blocked by the
-        // unknown-program ceiling, which is the honest attribution.
+        // Wormhole (B-2): wormhole-core.json is a SEED manifest, so there is
+        // no unknown-program ceiling here; the trace is all known programs, so
+        // no CpiTraceAnomaly either. What refuses it is Risk Engine Check 3 —
+        // nine accounts against PostMessageUnreliable's two declared ones.
         let wormhole = cases
             .iter()
             .find(|c| c.label.contains("Wormhole"))
             .expect("Wormhole case present");
         let r = core.verify(&wormhole.input).unwrap();
         assert!(!r.approved);
+        assert!(r.manifest_found, "wormhole-core.json is a seed manifest");
+        assert_eq!(r.instruction_name, "PostMessageUnreliable");
         assert!(
             !r.risk_verdict
                 .findings
                 .iter()
                 .any(|f| f.pattern == "CpiTraceAnomaly"),
-            "Wormhole trace is all known programs; block must come from the unknown-program ceiling, got: {:?}",
+            "Wormhole trace is all known programs, got: {:?}",
             r.risk_verdict.findings
         );
+        assert!(
+            r.risk_verdict
+                .findings
+                .iter()
+                .any(|f| f.pattern == "Drainer" && f.reason.contains("account-to-change ratio")),
+            "the refusal is Check 3's drainer ratio, got: {:?}",
+            r.risk_verdict.findings
+        );
+    }
+
+    /// B-1: the benign shapes are approved by a fresh core — the suite's
+    /// safe cases are not a list the engine happens to refuse.
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
+    #[test]
+    fn the_benign_shapes_are_approved() {
+        let core = crate::verification::GraphiteCore::new();
+        for case in build_benchmark_cases()
+            .into_iter()
+            .filter(|c| c.category == "safe" && !c.label.contains("baseline"))
+        {
+            let r = core.verify(&case.input).unwrap();
+            assert!(
+                r.approved,
+                "{} must be approved: {} / {:?}",
+                case.label, r.summary, r.risk_verdict
+            );
+        }
     }
 
     /// Manual scaling probe (run: cargo test --release --lib soak -- --ignored
