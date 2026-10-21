@@ -114,8 +114,12 @@ type ExecutionCheckResult struct {
 	ChainBytesUnavailable  *string           `json:"chain_bytes_unavailable,omitempty"`
 	ChainInconsistent      *string           `json:"chain_inconsistent,omitempty"`
 	InclusionWitness       *InclusionWitness `json:"inclusion_witness,omitempty"`
-	RecordedVerdicts       *RecordedVerdicts `json:"recorded_verdicts,omitempty"`
-	AuditRecorded          bool              `json:"audit_recorded"`
+	// InclusionAssurance says what the account of inclusion rests on
+	// (Round 30): single_provider, witnessed, witnessed_not_independent,
+	// witness_disputed or witness_unavailable. Empty from older servers.
+	InclusionAssurance string            `json:"inclusion_assurance,omitempty"`
+	RecordedVerdicts   *RecordedVerdicts `json:"recorded_verdicts,omitempty"`
+	AuditRecorded      bool              `json:"audit_recorded"`
 }
 
 // ReconciliationVariant names the reconciliation ("ApprovedAndExecuted",

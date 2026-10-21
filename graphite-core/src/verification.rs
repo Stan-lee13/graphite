@@ -581,6 +581,15 @@ fn compare_instruction_accounts(
 /// are one endpoint, and a trimmed-string compare let an operator configure
 /// the primary as its own witness by adding a slash. Unparseable input falls
 /// back to the trimmed string.
+///
+/// Round 30 (G-08): one non-loopback HOST is one endpoint, whatever the
+/// port, path, query or credentials. A managed provider's URL differs by
+/// nothing but its API key — `https://p.example/?api-key=A` and
+/// `?api-key=B` — and the comparison above took the two for two sources, so
+/// the same provider under a second key was attached as its own witness.
+/// Loopback hosts are still told apart by port: two local processes (a test
+/// harness, two tunnels) are two endpoints, and L8 reports them as one
+/// machine's view (`rpc_client::witness_independence`).
 #[cfg(feature = "rpc")]
 fn same_endpoint(a: &str, b: &str) -> bool {
     /// Scheme, host, effective port, path without a trailing slash, query.
@@ -594,6 +603,26 @@ fn same_endpoint(a: &str, b: &str) -> bool {
             url.path().trim_end_matches('/'),
             url.query(),
         ))
+    }
+    /// The host, when it is not loopback.
+    fn remote_host(u: &str) -> Option<String> {
+        let facts = crate::rpc_client::validate_endpoint(u).ok()?;
+        if facts.loopback {
+            return None;
+        }
+        let url = reqwest::Url::parse(u.trim()).ok()?;
+        Some(
+            url.host_str()?
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .trim_end_matches('.')
+                .to_ascii_lowercase(),
+        )
+    }
+    if let (Some(x), Some(y)) = (remote_host(a), remote_host(b)) {
+        if x == y {
+            return true;
+        }
     }
     match (key(a), key(b)) {
         (Some(x), Some(y)) => x == y,
@@ -1765,6 +1794,11 @@ pub struct ExecutionAudit {
     /// witness is configured.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inclusion_witness: Option<InclusionWitness>,
+    /// What this reconciliation's account of inclusion rests on: one
+    /// provider, or a witness that agrees, disputes, or was not reached
+    /// (Round 30, G-08). Always present.
+    #[serde(default)]
+    pub inclusion_assurance: InclusionAssurance,
     /// Every verdict the trail holds for the key the execution resolved by,
     /// as `(approved, refused)` counts. The record above is the LAST one; an
     /// artifact refused and then re-verified under a looser profile shows
@@ -1804,6 +1838,55 @@ pub struct InclusionWitness {
     pub commitment: Option<crate::rpc_client::InclusionCommitment>,
     /// The comparison, in words.
     pub detail: String,
+}
+
+/// How much an L8 reconciliation's account of the chain rests on (Round 30,
+/// G-08). L8 asks RPC providers, not the chain: no light-client proof is
+/// checked, so the strongest account it can give is two independent
+/// providers agreeing. This says which account a reconciliation had, so a
+/// reader never takes one provider's word for more than it is.
+#[cfg(feature = "rpc")]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum InclusionAssurance {
+    /// No witness is configured: everything L8 knows about inclusion came
+    /// from the primary RPC. The default for records written before this
+    /// field existed — the weakest claim.
+    #[default]
+    SingleProvider,
+    /// An independent witness answered and agrees with the primary.
+    Witnessed,
+    /// A witness answered and agrees, but it is not an independent provider
+    /// (`rpc_client::WitnessIndependence`): one operator's view twice.
+    WitnessedNotIndependent,
+    /// The witness answered and disagrees with the primary.
+    WitnessDisputed,
+    /// A witness is configured and could not be consulted in time.
+    WitnessUnavailable,
+}
+
+#[cfg(feature = "rpc")]
+impl InclusionAssurance {
+    fn of(witness: Option<&InclusionWitness>, independent: bool) -> Self {
+        match witness {
+            None => Self::SingleProvider,
+            Some(w) if w.seen.is_none() && !w.agrees => Self::WitnessUnavailable,
+            Some(w) if !w.agrees => Self::WitnessDisputed,
+            Some(_) if independent => Self::Witnessed,
+            Some(_) => Self::WitnessedNotIndependent,
+        }
+    }
+
+    /// The wire name, for messages.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SingleProvider => "single_provider",
+            Self::Witnessed => "witnessed",
+            Self::WitnessedNotIndependent => "witnessed_not_independent",
+            Self::WitnessDisputed => "witness_disputed",
+            Self::WitnessUnavailable => "witness_unavailable",
+        }
+    }
 }
 
 /// The join key an L8 reconciliation actually used, most authoritative
@@ -2682,6 +2765,17 @@ pub struct GraphiteCore {
     /// See `InclusionWitness`.
     #[cfg(feature = "rpc")]
     inclusion_witness: Option<SolanaRpcClient>,
+    /// The operator's assessment of whether the witness is a different
+    /// provider from the primary (Round 30). `None` judges the two URLs
+    /// (`rpc_client::witness_independence`); see `set_witness_independence`.
+    #[cfg(feature = "rpc")]
+    witness_independence: Option<crate::rpc_client::WitnessIndependence>,
+    /// High-assurance L8 (Round 30): no conclusion about the chain's state —
+    /// executed, failed, or not there — without an independent witness's
+    /// agreement. The alarm on a blocked transaction is never withheld. See
+    /// `set_require_independent_witness`.
+    #[cfg(feature = "rpc")]
+    require_independent_witness: bool,
     /// Optional durability directory (snapshots + audit trail).
     data_dir: Option<PathBuf>,
     /// Snapshot outcomes, shared across clones so /health sees every write.
@@ -2878,6 +2972,10 @@ impl GraphiteCore {
             rpc_client: None,
             #[cfg(feature = "rpc")]
             inclusion_witness: None,
+            #[cfg(feature = "rpc")]
+            witness_independence: None,
+            #[cfg(feature = "rpc")]
+            require_independent_witness: false,
             data_dir: None,
             persistence: Arc::new(PersistenceCounters::default()),
             data_dir_lock: None,
@@ -2903,6 +3001,10 @@ impl GraphiteCore {
             rpc_client: None,
             #[cfg(feature = "rpc")]
             inclusion_witness: None,
+            #[cfg(feature = "rpc")]
+            witness_independence: None,
+            #[cfg(feature = "rpc")]
+            require_independent_witness: false,
             data_dir: None,
             persistence: Arc::new(PersistenceCounters::default()),
             data_dir_lock: None,
@@ -2925,6 +3027,10 @@ impl GraphiteCore {
             rpc_client: None,
             #[cfg(feature = "rpc")]
             inclusion_witness: None,
+            #[cfg(feature = "rpc")]
+            witness_independence: None,
+            #[cfg(feature = "rpc")]
+            require_independent_witness: false,
             data_dir: None,
             persistence: Arc::new(PersistenceCounters::default()),
             data_dir_lock: None,
@@ -3279,6 +3385,47 @@ impl GraphiteCore {
     #[cfg(feature = "rpc")]
     pub fn has_inclusion_witness(&self) -> bool {
         self.inclusion_witness.is_some()
+    }
+
+    /// Record the operator's assessment of the witness's independence
+    /// (Round 30, G-08), replacing the URL-only judgement. The server passes
+    /// the stricter of the URL check and a DNS check
+    /// (`rpc_client::witness_independence_resolved`).
+    #[cfg(feature = "rpc")]
+    pub fn set_witness_independence(
+        &mut self,
+        independence: crate::rpc_client::WitnessIndependence,
+    ) {
+        self.witness_independence = Some(independence);
+    }
+
+    /// Whether the attached witness counts as an independent provider.
+    /// `None` when no witness (or no primary) is attached.
+    #[cfg(feature = "rpc")]
+    pub fn witness_independence(&self) -> Option<crate::rpc_client::WitnessIndependence> {
+        let (primary, witness) = (self.rpc_client.as_ref()?, self.inclusion_witness.as_ref()?);
+        Some(self.witness_independence.clone().unwrap_or_else(|| {
+            crate::rpc_client::witness_independence(primary.endpoint(), witness.endpoint())
+        }))
+    }
+
+    /// High-assurance L8 (Round 30, G-08; operator decision, P14). On, a
+    /// reconciliation that states what the chain holds — the approved
+    /// transaction executed, failed, is not there, or the blocked one did not
+    /// land — needs an independent witness that agrees; anything less is
+    /// `Unavailable`, with `inclusion_assurance` saying why. The alarm on a
+    /// blocked transaction either source saw is never withheld. Off by
+    /// default; the server's `GRAPHITE_L8_HIGH_ASSURANCE` sets it, and
+    /// refuses to start without an independent witness.
+    #[cfg(feature = "rpc")]
+    pub fn set_require_independent_witness(&mut self, on: bool) {
+        self.require_independent_witness = on;
+    }
+
+    /// See `set_require_independent_witness`.
+    #[cfg(feature = "rpc")]
+    pub fn requires_independent_witness(&self) -> bool {
+        self.require_independent_witness
     }
 
     /// Permit durable-nonce transactions (operator decision, P14).
@@ -3982,6 +4129,34 @@ impl GraphiteCore {
             }
         };
 
+        // What the account of inclusion above rests on (Round 30, G-08), and
+        // in high-assurance mode what it may conclude: a statement of what
+        // the chain holds, in either direction, needs an independent witness
+        // that agrees. One provider — or one provider's view twice — can
+        // censor, lag or lie, and nothing inside its answers shows it. The
+        // alarm is never withheld; neither is an answer about Graphite's own
+        // trail (`NoVerificationOnRecord`) or one that is already
+        // `Unavailable`.
+        let independent = self.witness_independence().is_some_and(|i| i.is_distinct());
+        let inclusion_assurance = InclusionAssurance::of(inclusion_witness.as_ref(), independent);
+        let reconciliation = match reconciliation {
+            r @ (ExecutionReconciliation::ApprovedAndExecuted
+            | ExecutionReconciliation::ApprovedButFailedOnChain { .. }
+            | ExecutionReconciliation::BlockedAndNotExecuted
+            | ExecutionReconciliation::NotFound)
+                if self.require_independent_witness
+                    && inclusion_assurance != InclusionAssurance::Witnessed =>
+            {
+                ExecutionReconciliation::Unavailable {
+                    reason: format!(
+                        "high-assurance L8 states what the chain holds only when an independent witness agrees; this account is {} (without that requirement it would have read {r:?})",
+                        inclusion_assurance.as_str()
+                    ),
+                }
+            }
+            r => r,
+        };
+
         ExecutionAudit {
             signature: signature.to_string(),
             chain_status,
@@ -3999,6 +4174,7 @@ impl GraphiteCore {
             chain_bytes_unavailable,
             chain_inconsistent,
             inclusion_witness,
+            inclusion_assurance,
             recorded_verdicts,
         }
     }
@@ -10001,10 +10177,19 @@ mod tests {
             "https://rpc.example:443/"
         ));
         assert!(!same_endpoint("https://a.example", "https://b.example"));
-        assert!(!same_endpoint(
+        // Round 30 (G-08): one remote host under two API keys is one
+        // provider's endpoint, not two. This asserted the opposite until the
+        // R30 review found the same provider attachable as its own witness.
+        assert!(same_endpoint(
             "https://a.example/?k=1",
             "https://a.example/?k=2"
         ));
+        assert!(same_endpoint(
+            "https://a.example/v1/x",
+            "https://a.example:8443/v2/y"
+        ));
+        // Two local processes on two ports remain two endpoints.
+        assert!(!same_endpoint("http://127.0.0.1:1", "http://127.0.0.1:2"));
     }
 
     /// F4 (review of the 2026-09-29 audit's fix): a declared sibling carries

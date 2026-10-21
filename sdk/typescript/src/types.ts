@@ -547,6 +547,23 @@ export interface LifecycleEventReceipt {
  */
 export type InclusionCommitment = "processed" | "confirmed" | "finalized";
 
+/** See `ExecutionCheckResult.inclusion_assurance` (Round 30). */
+export type InclusionAssurance =
+  | "single_provider"
+  | "witnessed"
+  | "witnessed_not_independent"
+  | "witness_disputed"
+  | "witness_unavailable";
+
+/** Every `InclusionAssurance`, for runtime checks. */
+export const INCLUSION_ASSURANCES: readonly InclusionAssurance[] = [
+  "single_provider",
+  "witnessed",
+  "witnessed_not_independent",
+  "witness_disputed",
+  "witness_unavailable",
+];
+
 /**
  * A second RPC's account of the signature, held against the primary's
  * (Round 12). Present when the server has `GRAPHITE_RPC_WITNESS_URL`.
@@ -642,6 +659,14 @@ export interface ExecutionCheckResult {
   chain_inconsistent?: string | null;
   /** The inclusion witness's account, when one is attached; `null` otherwise. */
   inclusion_witness?: InclusionWitness | null;
+  /**
+   * What this reconciliation's account of inclusion rests on (Round 30): one
+   * provider's word, an independent witness that agrees, a witness that is
+   * not an independent provider, one that disagrees, or one that could not
+   * be reached. L8 asks RPC providers; it checks no light-client proof.
+   * Absent from servers older than Round 30.
+   */
+  inclusion_assurance?: InclusionAssurance;
   /**
    * Every verdict the trail holds for the key the execution resolved by, as
    * counts (Round 17, F-16-11): `refused > 0` beside an approval means the

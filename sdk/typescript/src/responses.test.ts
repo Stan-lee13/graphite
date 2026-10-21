@@ -221,6 +221,18 @@ test("T1: a receipt or an L8 answer about something else is refused", () => {
     validateExecutionCheckResult({ ...EXECUTION, reconciliation: refusedElsewhere, discrepancy: true }) ?? "",
     /discrepancy/,
   );
+  // Round 30: the assurance label is optional; when sent it is one of five,
+  // and an unknown one is never read as any of them.
+  for (const label of ["single_provider", "witnessed", "witnessed_not_independent", "witness_disputed", "witness_unavailable"]) {
+    assert.equal(validateExecutionCheckResult({ ...EXECUTION, inclusion_assurance: label }), null, label);
+  }
+  for (const label of ["proven", null, 1, "WITNESSED"]) {
+    assert.match(
+      validateExecutionCheckResult({ ...EXECUTION, inclusion_assurance: label }) ?? "",
+      /inclusion_assurance/,
+      String(label),
+    );
+  }
 });
 
 test("the validator requires what the Core always emits and refuses what it never does", () => {
