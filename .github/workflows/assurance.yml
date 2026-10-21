@@ -108,10 +108,16 @@ jobs:
       # lists the missed ones that were triaged by hand.
       matrix:
         include:
+          # risk_engine.rs: a round-robin quarter of its 233 mutants scored
+          # 57 of 57 viable against these suites after Round 30's tests
+          # (39 of 57 against the risk suites alone). 0.90 leaves room for the
+          # three quarters not yet measured locally. The other floors are
+          # PROVISIONAL (not yet measured): raise each to its first measured
+          # score, rounded down.
           - file: src/risk_engine.rs
             shard: 0/1
-            floor: "RISK_FLOOR"
-            tests: --lib --test adversarial_tests --test secondary_instruction_risk --test p0_validation_attacks --test omega_red_team --test integration_tests --test cert_revalidation_attacks
+            floor: "0.90"
+            tests: --lib --test adversarial_tests --test secondary_instruction_risk --test p0_validation_attacks --test omega_red_team --test integration_tests --test cert_revalidation_attacks --test regression_corpus --test truncated_discriminator --test round21_open_list --test mainnet_conformance --test real_exploit_tests --test real_world_attacks --test extreme_adversarial --test round22_remaining --test hell_mode_tests --test deep_extreme_tests --test protocol_expansion_tests --test intent_synonym_consistency --test campaign_invariants --test release_evaluation
           - file: src/simulation_integrity.rs
             shard: 0/1
             floor: "0.60"
@@ -192,12 +198,14 @@ jobs:
       - name: Install cargo-llvm-cov
         run: cargo install cargo-llvm-cov --locked --version "$CARGO_LLVM_COV_VERSION"
       - name: Measure, and fail below the floor
-        # The floor is the measured line coverage of the library when this
-        # job was added, rounded down (see the Round 30 report). It only ever
-        # moves up.
+        # The floor is 78: the line coverage the library's OWN unit tests
+        # reach (78.42% of 37,650 lines, measured when this job was added,
+        # Round 30), rounded down. This job adds every integration suite, so
+        # it measures at least that; raise the floor to the first number this
+        # job reports, and only ever upward.
         run: |
           cargo llvm-cov --release --all-features --lib --tests \
-            --fail-under-lines 70 --summary-only --json --output-path coverage.json
+            --fail-under-lines 78 --summary-only --json --output-path coverage.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

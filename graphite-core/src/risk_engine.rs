@@ -2891,4 +2891,133 @@ mod tests {
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);
     }
+
+    // ── Round 30: mutants no test killed (cargo mutants, scoped and wide) ──
+
+    fn strings(xs: &[&str]) -> Vec<String> {
+        xs.iter().map(|x| x.to_string()).collect()
+    }
+
+    /// `accounts.<name>` references count by distinct name, wherever in a
+    /// fragment they start, and only fall back to role words when there are
+    /// none.
+    #[test]
+    fn referenced_account_identities_counts_distinct_dotted_names() {
+        assert_eq!(
+            referenced_account_identities(&strings(&[
+                "debits accounts.pool_vault",
+                "credits accounts.fee_receiver",
+                "credits accounts.user_ata, then accounts.pool_vault again",
+            ])),
+            3,
+            "three distinct names, none of them a role word"
+        );
+        // A reference that does not start the fragment is still that name.
+        assert_eq!(
+            referenced_account_identities(&strings(&["the_accounts.pool", "accounts.pool"])),
+            1
+        );
+        assert_eq!(
+            referenced_account_identities(&strings(&[
+                "debits the source token balance",
+                "credits the destination",
+            ])),
+            2,
+            "role-word fallback"
+        );
+        assert_eq!(
+            referenced_account_identities(&strings(&["nothing named"])),
+            1,
+            "the fail-safe floor"
+        );
+    }
+
+    /// The deep-chain count leaves out the root itself and universal
+    /// infrastructure: four distinct foreign programs under an untrusted root
+    /// are not five, however often System or the root appear.
+    #[test]
+    fn the_deep_chain_count_excludes_the_root_and_infrastructure() {
+        const ROOT: &str = "Root111111111111111111111111111111111111111";
+        let declared = strings(&[
+            "Prog1111111111111111111111111111111111111111",
+            "Prog2222222222222222222222222222222222222222",
+            "Prog3333333333333333333333333333333333333333",
+            "Prog4444444444444444444444444444444444444444",
+        ]);
+        let observed = strings(&[ROOT, "11111111111111111111111111111111"]);
+        assert_eq!(
+            compositional_drain_in_execution(ROOT, &declared, &observed),
+            None
+        );
+        let mut five = declared.clone();
+        five.push("Prog5555555555555555555555555555555555555555".to_string());
+        assert!(matches!(
+            compositional_drain_in_execution(ROOT, &five, &observed),
+            Some(RiskVerdict::Blocked {
+                pattern: RiskPattern::CompositionalDrainPattern,
+                ..
+            })
+        ));
+    }
+
+    /// A manifest with no allowed-CPI list gives no "not in the allowed list"
+    /// warning; one with a list warns about each CPI outside it.
+    #[test]
+    fn cpi_warnings_need_an_allowed_list_to_compare_against() {
+        let mut i = input(
+            "Root111111111111111111111111111111111111111",
+            "01",
+            &[WALLET_A],
+            "transfer",
+        );
+        i.cpi_targets = strings(&["Prog1111111111111111111111111111111111111111"]);
+        assert!(collect_cpi_warnings(&i).is_empty());
+        i.allowed_cpis = strings(&["Prog2222222222222222222222222222222222222222"]);
+        assert_eq!(collect_cpi_warnings(&i).len(), 1);
+    }
+
+    /// The public FakeSwap entry point (the engine calls the registry-aware
+    /// one) still flags a swap whose declared changes produce no output.
+    #[test]
+    fn the_public_fake_swap_check_flags_a_swap_with_no_output() {
+        const JUP: &str = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+        assert_eq!(
+            detect_fake_swap(
+                JUP,
+                &[],
+                &strings(&["debits accounts.source"]),
+                "swap",
+                None
+            ),
+            Some(RiskPattern::FakeSwap)
+        );
+        assert_eq!(
+            detect_fake_swap(
+                JUP,
+                &[],
+                &strings(&["credits accounts.destination with the output"]),
+                "swap",
+                None
+            ),
+            None
+        );
+    }
+
+    /// Check 9 against a registry: the System Program does not serve a stake
+    /// intent (L5 relies on this too — a stake intent declares the transfer
+    /// class, so without it a System Transfer would pass as a stake).
+    #[test]
+    fn the_registry_aware_check_9_refuses_an_intent_the_program_does_not_serve() {
+        let registry = crate::manifest::load_seed_manifests();
+        assert!(!program_supports_intent_in(
+            &registry,
+            "11111111111111111111111111111111",
+            "stake"
+        ));
+        assert!(program_supports_intent_in(
+            &registry,
+            "Stake11111111111111111111111111111111111111",
+            "stake"
+        ));
+    }
 }
