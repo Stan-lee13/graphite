@@ -139,7 +139,7 @@ python3 -m pytest test_intent_parser.py -v
 python3 test_intent_parser.py
 ```
 
-44 tests: every intent class, parameter extraction, risk hints, confidence
+The tests (count in [docs/CURRENT.md](../docs/CURRENT.md#numbers-as-of-this-pages-commit)) cover every intent class, parameter extraction, risk hints, confidence
 components, manifest grounding (no fabricated IDs), determinism, the P1
 invariant, the Round 29 label cases, the server's status codes, header
 checks, deadline and connection cap, and a performance smoke test (must

@@ -68,7 +68,7 @@ cluster `SOLANA_RPC_URL` names.
 
 ```bash
 npm run typecheck
-npm test                 # the SAK-specific tests (9): the gated wallet, the SAK agent and
+npm test                 # the SAK-specific tests (counts: docs/CURRENT.md): the gated wallet, the SAK agent and
                          # the keys' reachability, delegation to the guard, the cap,
                          # and .env.example naming every variable read
 ```

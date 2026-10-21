@@ -97,7 +97,7 @@ cd integrations/vercel-ai && npm run typecheck && npm test
 
 The tests run the tools inside the AI SDK's own tool loop (`generateText`), with the SDK's
 scripted test model (`ai/test`) standing in for a hosted model and loopback stand-ins for
-the RPC, the Core and the AI layer (9 tests): execution through the guard, approval holding
+the RPC, the Core and the AI layer (counts in [docs/CURRENT.md](../../docs/CURRENT.md#numbers-as-of-this-pages-commit)): execution through the guard, approval holding
 the call by default and under `GRAPHITE_TOOL_APPROVAL`, an approved transfer executing end
 to end against a loopback Core that approves with the real digests, the cap, a request the
 user never wrote, a malformed input, and the refusal of a guard without a cap.

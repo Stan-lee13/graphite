@@ -306,7 +306,7 @@ verdict on what actually landed.
 
 ```bash
 npm run typecheck
-npm test                 # 249 tests: the guard end to end (incl. an APPROVED transfer and swap
+npm test                 # (counts: docs/CURRENT.md) the guard end to end (incl. an APPROVED transfer and swap
                          # driven through the whole lifecycle against a loopback Core that
                          # approves with the real digests), its CLI, BoundTransaction gate
                          # (legacy, v0, v1), execution-boundary fuzz, TOCTOU signing boundary,

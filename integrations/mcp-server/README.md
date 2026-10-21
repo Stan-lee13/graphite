@@ -80,4 +80,4 @@ their hints, a block that asks nobody, a person approving the resolved transacti
 then executes against a loopback Core that approves with the real digests) and declining or
 cancelling (verified, but nothing signed, recorded or sent), a client that cannot elicit,
 the cap, the confirmation setting, and the stdio server started as its own process — which
-shows the guard's logs never reach stdout (9 tests).
+shows the guard's logs never reach stdout. (Test counts for every package: [docs/CURRENT.md](../../docs/CURRENT.md#numbers-as-of-this-pages-commit).)

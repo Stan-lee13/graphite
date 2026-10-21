@@ -41,3 +41,19 @@ nothing and exits 1 when the tree is stale.
 
 `build_manifests.py` (one level up) refuses to overwrite an existing manifest unless
 `--force` is given.
+
+## Rendering the coverage page
+
+`render_coverage.py` writes `docs/protocol-coverage.md` from the manifests,
+`protocols/battle_tested_evidence.json`, the program census in `out/` and the recorded
+full-pipeline figures in `out/mainnet_sample_named.json`. Since Round 29 no figure in it is
+a literal in the script and the page carries no render date, so the same inputs give the
+same bytes; `tests/docs_match_the_registry.rs` compares its table with the loaded registry.
+Two sentences on the page come from those data files and are known to be off — the
+sample's registry is recorded as 131 manifests (`tools/mainnet-sample/README.md` says 129),
+and the "transaction versions in the same sample" line is the 80-block census's — and
+`docs/CURRENT.md` states the correct figures.
+
+`fetch_onchain_idls.py` fetches a program's own on-chain Anchor IDL. The older
+`fetch_idl.py` and its `verified_idls.json` output were removed in Round 29: the script
+derived the IDL address with a wrong on-curve test and its output was empty.

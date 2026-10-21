@@ -69,20 +69,20 @@ Every commit to `main` must pass the full CI gate (`.github/workflows/ci.yml`), 
 
 - [ ] `cargo fmt --all -- --check` clean (0 diffs)
 - [ ] `cargo clippy --all-targets --all-features -- -D warnings` passes (0 warnings)
-- [ ] `cargo test --release` passes (0 failures — currently 1,849 tests, 15 ignored; `--include-ignored` for the live RPC corpus and the mainnet sample)
-- [ ] `cargo test --release --no-default-features --lib` (341) and `--no-default-features --features cli` (1,594) pass — the feature matrix is tested, not just checked
+- [ ] `cargo test --release --all-features` passes with 0 failures (`--include-ignored` adds the live RPC corpus, the mainnet samples and the soak benchmarks); the current counts for every suite are in [docs/CURRENT.md](docs/CURRENT.md#numbers-as-of-this-pages-commit), and nowhere else
+- [ ] `cargo test --release --no-default-features --lib` and `--no-default-features --features cli` pass — the feature matrix is tested, not just checked
 - [ ] `cargo audit --deny warnings` clean
 - [ ] Container builds, boots, `/health` answers, `/data` is writable, unauthenticated `/verify` is `401`, and a keyless container refuses to start
-- [ ] TypeScript SDK `npm run build` + `npm test`; agent guard `npm run typecheck` + `npm test` (170) and the regenerated artifact fixture + corpus show no diff; Vercel AI SDK tools, MCP server and SAK adapter `npm run typecheck` + `npm test` each
+- [ ] TypeScript SDK `npm run build` + `npm test`; agent guard `npm run typecheck` + `npm test` and the regenerated artifact fixture + corpus show no diff; Vercel AI SDK tools, MCP server and SAK adapter `npm run typecheck` + `npm test` each
 - [ ] Go SDK `gofmt` / `go vet` / `go test ./...` pass
 - [ ] SDK live-server suites against a running Core: `GRAPHITE_URL=http://127.0.0.1:7331 GRAPHITE_API_KEY=… npm test` in `sdk/typescript`, and `go test -tags liveserver ./...` in `sdk/go` with the same two variables. They are SKIPPED when `GRAPHITE_URL` is unset, so a green offline run says nothing about them; CI sets it in the container job. (`GRAPHITE_URL` is the SDK tests' variable only: the SAK bridge reads `GRAPHITE_CORE_URL` and refuses `GRAPHITE_URL` on its own.)
-- [ ] Python AI layer `pytest` passes (35)
+- [ ] Python AI layer `pytest` passes; `tools/mainnet-sample` `python3 test_mainnet_sample.py` passes
 - [ ] Dashboard `npm run typecheck` + `npm test` + `npm run build`
 - [ ] No new `unwrap()` or `panic!()` in the verification hot path
 - [ ] Constitution principles checked (P1-P16)
 - [ ] No public performance claim without reproducible benchmark (P16)
 - [ ] Layer names match `graphite-engineering-skill/ARCHITECTURE.md` section 3.12
-- [ ] Test count and metrics updated in README.md, `docs/CURRENT.md` and the round report if changed
+- [ ] Test counts updated in `docs/CURRENT.md` (and the round report), the one live document that states them — `tests/docs_numbers_match_the_code.rs` fails if another one does; other counts (risk checks, manifests and instructions, corpus size, mutations, residual codes, dashboard views) are checked against the code by the same test
 - [ ] A security fix carries its reproduction as a test and a deliberate-break note (fix reverted → test fails)
 - [ ] No new credential, RPC URL or key in source, fixtures, logs or reports; no attack against a public RPC — mock it on loopback
 
