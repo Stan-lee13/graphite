@@ -185,7 +185,10 @@ fn cluster(knobs: Shared) -> String {
             let body = match method.as_str() {
                 // The program-account read of a deployment check.
                 "getMultipleAccounts" if slice == Some(36) => {
-                    let addrs = body_json["params"][0].as_array().cloned().unwrap_or_default();
+                    let addrs = body_json["params"][0]
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default();
                     if matches!(k.deployment, Deployment::Unreadable) {
                         r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32005,"message":"node is behind"}}"#.to_string()
                     } else {
@@ -230,9 +233,14 @@ fn cluster(knobs: Shared) -> String {
                     )
                 }
                 "getMultipleAccounts" => {
-                    let count = body_json["params"][0].as_array().map(|a| a.len()).unwrap_or(0);
+                    let count = body_json["params"][0]
+                        .as_array()
+                        .map(|a| a.len())
+                        .unwrap_or(0);
                     let vals: Vec<String> = (0..count)
-                        .map(|i| account(if i == 0 { 1_000_000_000 } else { 1_000_000 }, SYSTEM, &[]))
+                        .map(|i| {
+                            account(if i == 0 { 1_000_000_000 } else { 1_000_000 }, SYSTEM, &[])
+                        })
                         .collect();
                     format!(
                         r#"{{"jsonrpc":"2.0","id":1,"result":{{"context":{{"slot":{}}},"value":[{}]}}}}"#,
@@ -363,7 +371,10 @@ fn layer<'a>(
 fn warned(r: &VerificationResult, needle: &str) -> bool {
     r.summary.contains(needle)
         || r.layers.iter().any(|l| l.reason.contains(needle))
-        || r.risk_verdict.findings.iter().any(|f| f.reason.contains(needle))
+        || r.risk_verdict
+            .findings
+            .iter()
+            .any(|f| f.reason.contains(needle))
 }
 
 /// Operator-asserted evidence a reviewed program would carry: two reviewer
@@ -422,7 +433,11 @@ async fn a_verify_key_holder_cannot_raise_a_programs_evidence() {
         self_approved, 20,
         "the attack must be approving its own requests for this test to mean anything"
     );
-    assert_eq!(samples(&core), 0, "a request below the floor trained the baseline");
+    assert_eq!(
+        samples(&core),
+        0,
+        "a request below the floor trained the baseline"
+    );
     assert_eq!(shadow(&core), 0);
     let after = core
         .verify_async(&describe(3_000_000, WalletProfile::Gaming))
@@ -480,7 +495,11 @@ async fn a_verdict_clearing_the_built_in_floor_is_evidence() {
         .await
         .unwrap();
     assert!(!strict.approved, "{}", strict.summary);
-    assert_eq!(samples(&core), 2, "a stricter caller's refusal is still an observation");
+    assert_eq!(
+        samples(&core),
+        2,
+        "a stricter caller's refusal is still an observation"
+    );
     // And the same bytes again are not a third.
     let _ = core
         .verify_async(&describe(5_000_002, WalletProfile::Gaming))
@@ -530,13 +549,19 @@ async fn no_refusal_class_trains_any_accumulator() {
         ("errored simulation", Row::Sim(Simulation::Errored)),
         ("unobtainable simulation", Row::Sim(Simulation::RpcError)),
         ("incomplete simulation", Row::Sim(Simulation::Incomplete)),
-        ("simulation without post-state", Row::Sim(Simulation::NoPostState)),
+        (
+            "simulation without post-state",
+            Row::Sim(Simulation::NoPostState),
+        ),
         ("unmatched sibling", Row::UnmatchedSibling),
         ("unlocated instruction", Row::Unlocated),
         ("contradicting intent", Row::WrongIntent),
         ("risk block", Row::RiskBlock),
     ];
-    for policy in [ObservationPolicy::BuiltinFloor, ObservationPolicy::OperatorBootstrap] {
+    for policy in [
+        ObservationPolicy::BuiltinFloor,
+        ObservationPolicy::OperatorBootstrap,
+    ] {
         for (name, row) in &rows {
             let knobs: Shared = Arc::default();
             let mut core = core_at(&cluster(Arc::clone(&knobs)));
@@ -557,12 +582,17 @@ async fn no_refusal_class_trains_any_accumulator() {
                 Row::Unlocated => input.instruction_data = Some(transfer_data(6_000_001)),
                 Row::WrongIntent => input.proposed_intent.intent_type = "swap".to_string(),
                 Row::RiskBlock => {
-                    input.cpi_targets = vec!["Evi1111111111111111111111111111111111111111".to_string()]
+                    input.cpi_targets =
+                        vec!["Evi1111111111111111111111111111111111111111".to_string()]
                 }
             }
             let r = core.verify_async(&input).await.unwrap();
             assert!(!r.approved, "{policy:?} / {name}: approved: {}", r.summary);
-            assert_eq!(samples(&core), 0, "{policy:?} / {name} trained the baseline");
+            assert_eq!(
+                samples(&core),
+                0,
+                "{policy:?} / {name} trained the baseline"
+            );
             assert_eq!(shadow(&core), 0, "{policy:?} / {name} trained the shadow");
             assert!(
                 core.shape_baselines(SYSTEM).is_empty(),
@@ -571,7 +601,10 @@ async fn no_refusal_class_trains_any_accumulator() {
         }
     }
     // The control: the same core and request, unrefused, trains under both.
-    for policy in [ObservationPolicy::BuiltinFloor, ObservationPolicy::OperatorBootstrap] {
+    for policy in [
+        ObservationPolicy::BuiltinFloor,
+        ObservationPolicy::OperatorBootstrap,
+    ] {
         let mut core = core_at(&cluster(Arc::default()));
         core.set_observation_policy(policy);
         seed_reviewed(&mut core);
@@ -613,14 +646,29 @@ fn shapes_learn_apart_and_judge_once_mature() {
         cpi_hops: 0,
     };
     for i in 0..MIN_SAMPLES {
-        store.record_observation(SYSTEM, Some(&alone), &usage(150), Some(&format!("a{i}")), Some(10));
+        store.record_observation(
+            SYSTEM,
+            Some(&alone),
+            &usage(150),
+            Some(&format!("a{i}")),
+            Some(10),
+        );
     }
     for i in 0..3 {
-        store.record_observation(SYSTEM, Some(&beside), &usage(30_000), Some(&format!("b{i}")), Some(5));
+        store.record_observation(
+            SYSTEM,
+            Some(&beside),
+            &usage(30_000),
+            Some(&format!("b{i}")),
+            Some(5),
+        );
     }
     // The same identity again is nothing, in the shape too.
     store.record_observation(SYSTEM, Some(&beside), &usage(30_000), Some("b0"), Some(1));
-    assert_eq!(store.shape_baseline(&alone).unwrap().sample_count, MIN_SAMPLES);
+    assert_eq!(
+        store.shape_baseline(&alone).unwrap().sample_count,
+        MIN_SAMPLES
+    );
     assert_eq!(store.shape_baseline(&beside).unwrap().sample_count, 3);
     assert_eq!(
         store.get_simulation_baseline(SYSTEM).unwrap().sample_count,
@@ -633,7 +681,13 @@ fn shapes_learn_apart_and_judge_once_mature() {
     let (_, by_shape) = store.baseline_for(SYSTEM, Some(&beside)).unwrap();
     assert!(!by_shape, "an immature shape falls back to the program");
     // A shape named for another program is not this program's.
-    store.record_observation(SYSTEM, Some("Other/transfer/00"), &usage(1), Some("c"), None);
+    store.record_observation(
+        SYSTEM,
+        Some("Other/transfer/00"),
+        &usage(1),
+        Some("c"),
+        None,
+    );
     assert!(store.shape_baseline("Other/transfer/00").is_none());
 }
 
@@ -741,7 +795,11 @@ async fn an_upgrade_withdraws_the_programs_evidence() {
         .await
         .unwrap();
     assert_eq!(upgraded.program_upgrades.len(), 1);
-    assert!(warned(&upgraded, "its evidence was withdrawn"), "{}", upgraded.summary);
+    assert!(
+        warned(&upgraded, "its evidence was withdrawn"),
+        "{}",
+        upgraded.summary
+    );
     let retired = core.retired_evidence();
     assert_eq!(retired.len(), 1);
     assert_eq!(retired[0].baseline_samples, 2);
@@ -754,12 +812,18 @@ async fn an_upgrade_withdraws_the_programs_evidence() {
         })
     );
     assert_eq!(
-        retired[0].evidence.as_ref().map(|e| e.community_verified_count),
+        retired[0]
+            .evidence
+            .as_ref()
+            .map(|e| e.community_verified_count),
         Some(2)
     );
     let behavior = core.program_behavior(SYSTEM).unwrap();
     assert_eq!(behavior.evidence.community_verified_count, 0);
-    assert!(behavior.evidence.has_signed_manifest, "the manifest's signature stays");
+    assert!(
+        behavior.evidence.has_signed_manifest,
+        "the manifest's signature stays"
+    );
 
     let next = core
         .verify_async(&describe(8_000_004, WalletProfile::Gaming))
@@ -811,7 +875,11 @@ async fn a_deployment_newer_than_the_evidence_at_first_sighting_withdraws_it() {
         );
         assert_eq!(core.retired_evidence().len(), usize::from(withdrawn));
         // This verdict's own observation is of the code that runs now.
-        assert_eq!(samples(&core), if withdrawn { 1 } else { 4 }, "{deployed_at}");
+        assert_eq!(
+            samples(&core),
+            if withdrawn { 1 } else { 4 },
+            "{deployed_at}"
+        );
     }
 }
 
@@ -831,7 +899,11 @@ async fn a_simulation_of_replaced_code_is_not_recorded() {
             .verify_async(&describe(9_500_000, official_floor()))
             .await
             .unwrap();
-        assert_eq!(samples(&core), u64::from(recorded), "simulated at {sim_slot}");
+        assert_eq!(
+            samples(&core),
+            u64::from(recorded),
+            "simulated at {sim_slot}"
+        );
     }
 }
 

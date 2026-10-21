@@ -454,7 +454,11 @@ async fn policy_refusals_teach_nothing_unless_the_operator_opts_in() {
         .verify_async(&describe(2_000_030, WalletProfile::Gaming))
         .await
         .unwrap();
-    assert!(!after_self_approval.approved, "{}", after_self_approval.summary);
+    assert!(
+        !after_self_approval.approved,
+        "{}",
+        after_self_approval.summary
+    );
 
     // The operator's bootstrap policy — library and CLI only — restores it.
     let mut opted = core_at(&endpoint);

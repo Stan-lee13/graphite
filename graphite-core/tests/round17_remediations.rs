@@ -292,9 +292,7 @@ fn core_at(endpoint: &str) -> GraphiteCore {
     // they pin — identity, soundness, the shadow — are still exercised
     // rather than passing because nothing trains at all. The default is
     // pinned in `audit_2026_10_20_simulation_gate`.
-    core.set_observation_policy(
-        graphite_core::verification::ObservationPolicy::OperatorBootstrap,
-    );
+    core.set_observation_policy(graphite_core::verification::ObservationPolicy::OperatorBootstrap);
     core
 }
 

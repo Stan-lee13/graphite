@@ -184,16 +184,13 @@ pub fn evaluate_policy(input: &PolicyInput) -> Result<PolicyVerdict, PolicyError
     // (e.g., 0.7999999999999999 should pass a 0.80 threshold)
     //
     // Round 30 (K-13): NaN-safe. Every comparison with NaN is false, so a NaN
-    // confidence passed `actual < min` — and a NaN `min_confidence` (a
-    // `Custom` profile built in code; JSON cannot carry one) admitted every
-    // score. Neither is a number a threshold can be checked against, so
-    // either refuses: a gate that cannot be evaluated is closed.
+    // confidence passed `actual < min`. It is not a number a threshold can be
+    // checked against, so it refuses: a gate that cannot be evaluated is
+    // closed. (A non-finite `min_confidence` is refused above, as an invalid
+    // profile.)
     const EPSILON: f64 = 1e-9;
     let actual_confidence = input.confidence_result.confidence;
-    if !actual_confidence.is_finite()
-        || !min_confidence.is_finite()
-        || actual_confidence < min_confidence - EPSILON
-    {
+    if !actual_confidence.is_finite() || actual_confidence < min_confidence - EPSILON {
         return Ok(PolicyVerdict::RejectedBelowThreshold {
             required: min_confidence,
             actual: actual_confidence,
@@ -256,25 +253,25 @@ mod tests {
             risk_verdict: RiskVerdict::Passed,
             profile,
         };
-        for (confidence, profile) in [
-            (f64::NAN, WalletProfile::Gaming),
-            (f64::INFINITY, WalletProfile::Gaming),
-            (
-                0.99,
-                WalletProfile::Custom {
-                    min_confidence: f64::NAN,
-                    min_trust_tier: TrustTier::Unknown,
-                },
-            ),
-        ] {
+        for confidence in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
             assert!(
                 matches!(
-                    evaluate_policy(&input(confidence, profile)).unwrap(),
+                    evaluate_policy(&input(confidence, WalletProfile::Gaming)).unwrap(),
                     PolicyVerdict::RejectedBelowThreshold { .. }
                 ),
-                "{confidence} under {profile:?}"
+                "{confidence}"
             );
         }
+        // A NaN threshold is refused one step earlier, as an invalid
+        // profile — never evaluated as a bar every score clears.
+        assert!(evaluate_policy(&input(
+            0.99,
+            WalletProfile::Custom {
+                min_confidence: f64::NAN,
+                min_trust_tier: TrustTier::Unknown,
+            },
+        ))
+        .is_err());
         // The control: a real number above a real bar passes.
         assert_eq!(
             evaluate_policy(&input(0.99, WalletProfile::Gaming)).unwrap(),

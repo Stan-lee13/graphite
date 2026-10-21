@@ -197,13 +197,9 @@ pub fn anchor_of(baseline: &ComputeBaseline) -> BaselineAnchor {
 /// positive. A snapshot carrying one that cannot is dropped like any other
 /// invalid baseline.
 pub fn anchor_is_valid(anchor: &BaselineAnchor) -> bool {
-    [
-        anchor.compute_units,
-        anchor.account_writes,
-        anchor.cpi_hops,
-    ]
-    .iter()
-    .all(|v| v.is_finite() && *v >= 0.0)
+    [anchor.compute_units, anchor.account_writes, anchor.cpi_hops]
+        .iter()
+        .all(|v| v.is_finite() && *v >= 0.0)
         && [
             anchor.compute_units_spread,
             anchor.account_writes_spread,
@@ -1277,6 +1273,9 @@ mod tests {
         // the C28 defense must not rely on the poisoned pair.)
         b.mean_compute_units = 5000.0;
         b.std_compute_units = 2000.0;
+        // These tests isolate the C28 statistic; the Round 30 anchor (which
+        // also catches this) is the subject of its own tests below.
+        b.anchor = None;
         // The window stays honest (recent real observations).
         assert!(b.recent_compute_units.len() <= ROBUST_WINDOW);
         assert!(b.recent_compute_units.iter().all(|&c| c < 2000));
@@ -1591,18 +1590,20 @@ mod tests {
         highest
     }
 
-    /// A slow drip: 3,000 observations, each at the very edge of what the
-    /// check accepts. The adaptive-only baseline walks: the band its first
-    /// ten samples set ended at 150,000 CU; the drip gets well past it. The
-    /// anchored one never accepts a figure beyond that first band.
+    /// A slow drip: 10,000 observations, each at the very edge of what the
+    /// check accepts. The band the first ten samples set ends at 150,000 CU.
+    /// The adaptive-only baseline walks past it — slowly, because A2-06 and
+    /// S1 winsorize what it learns (measured: 153,409 CU after 3,000) — and
+    /// nothing bounds how far it eventually goes. The anchored one never
+    /// accepts a figure beyond the first band, however long the drip.
     #[test]
     fn a_slow_drip_cannot_walk_an_anchored_baseline() {
-        let unanchored = drip(3_000, false, false);
+        let unanchored = drip(10_000, false, false);
         assert!(
-            unanchored > 200_000,
+            unanchored > 150_000,
             "the attack must work on the adaptive-only baseline for this test to mean anything: {unanchored}"
         );
-        let anchored = drip(3_000, true, false);
+        let anchored = drip(10_000, true, false);
         assert!(
             anchored <= 150_000,
             "the anchored baseline accepted {anchored} CU, beyond its first band"

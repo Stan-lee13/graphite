@@ -3429,8 +3429,12 @@ impl GraphiteCore {
                             let reason = format!(
                                 "deployed at slot {deploy_slot}, after the observations its evidence was built from began (slot {since}) and before Graphite first read its deployment"
                             );
-                            self.graph()
-                                .retire_program_evidence(program, reason.clone(), None, now);
+                            self.graph().retire_program_evidence(
+                                program,
+                                reason.clone(),
+                                None,
+                                now,
+                            );
                             tracing::warn!("program {program}: evidence withdrawn: {reason}");
                             notes.push(format!(
                                 "ProgramEvidenceWithdrawn: {program} was {reason}; that evidence described code that no longer runs and was withdrawn"
@@ -8444,8 +8448,9 @@ impl GraphiteCore {
         // the RPC budget). An answer that cannot be read records nothing and
         // changes nothing: it is neither a refusal nor an approval.
         #[cfg(feature = "rpc")]
-        let (program_upgrades, deployment_notes): (Vec<ProgramUpgrade>, Vec<String>) =
-            match &self.rpc_client {
+        let (program_upgrades, deployment_notes): (Vec<ProgramUpgrade>, Vec<String>) = match &self
+            .rpc_client
+        {
             None => (Vec::new(), Vec::new()),
             Some(client) => {
                 let registry = self.registry();

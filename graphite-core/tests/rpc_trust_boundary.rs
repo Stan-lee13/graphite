@@ -113,9 +113,7 @@ fn core_against(rpc: &HostileRpc) -> GraphiteCore {
     // baseline only with the operator's bootstrap policy (`ObservationPolicy::OperatorBootstrap`, which the server cannot select since Round 30). Under it, so the tests of
     // what MAY enter the baseline (plausible figures, complete balances)
     // still test that rule rather than passing because nothing enters.
-    core.set_observation_policy(
-        graphite_core::verification::ObservationPolicy::OperatorBootstrap,
-    );
+    core.set_observation_policy(graphite_core::verification::ObservationPolicy::OperatorBootstrap);
     core
 }
 
