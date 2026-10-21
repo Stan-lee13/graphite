@@ -425,7 +425,9 @@ fn a_request_cannot_supply_the_privileges() {
     assert!(wire.get("transaction_privileges").is_none(), "{wire}");
     let mut injected = wire.clone();
     injected["transaction_privileges"] = serde_json::json!({"signers": [], "writable": []});
-    let back: StateDiff = serde_json::from_value(injected).unwrap();
+    // Refused outright since the audit of 2026-10-20 (F4).
+    assert!(serde_json::from_value::<StateDiff>(injected).is_err());
+    let back: StateDiff = serde_json::from_value(wire).unwrap();
     assert!(back.transaction_privileges.is_none());
 }
 

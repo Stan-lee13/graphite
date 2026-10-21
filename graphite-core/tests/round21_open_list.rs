@@ -774,7 +774,10 @@ fn a_request_cannot_supply_the_executed_list_or_the_epoch() {
     injected["token2022_executed"] =
         serde_json::json!([{"position": "x", "accounts": [], "data": []}]);
     injected["fee_epoch"] = serde_json::json!({"simulated_epoch": 1, "durable_nonce": false});
-    let back: StateDiff = serde_json::from_value(injected).unwrap();
+    // Since the audit of 2026-10-20 (F4) a diff naming a field the Core
+    // keeps for itself is refused outright, not read with the field dropped.
+    assert!(serde_json::from_value::<StateDiff>(injected).is_err());
+    let back: StateDiff = serde_json::from_value(wire).unwrap();
     assert!(back.token2022_executed.is_none() && back.fee_epoch.is_none());
     assert_eq!(back.deltas.len(), d.deltas.len());
 }
@@ -838,7 +841,9 @@ fn a_change_another_instruction_makes_is_not_a_diff_that_fails_to_correspond() {
     let wire = serde_json::to_value(diff(deltas(), None, None, None)).unwrap();
     let mut injected = wire.clone();
     injected["transaction_accounts"] = serde_json::json!([b58(&THIRD)]);
-    let back: StateDiff = serde_json::from_value(injected).unwrap();
+    // Refused outright since the audit of 2026-10-20 (F4).
+    assert!(serde_json::from_value::<StateDiff>(injected).is_err());
+    let back: StateDiff = serde_json::from_value(wire).unwrap();
     assert!(back.transaction_accounts.is_none());
 }
 
