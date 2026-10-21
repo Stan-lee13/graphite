@@ -35,9 +35,32 @@ full advisory labeler:
 - **Per-signal confidence.** `confidence_of_parse` is computed from
   phrase/parameters/token/protocol signals with a `confidence_components`
   breakdown instead of a hardcoded number.
-- **Fast & deterministic.** Precompiled regexes, single pass, no network, no
-  randomness. Micro-benchmark: ~47,000 parses/sec, p50 ~21 µs (measured
-  2026-08-08, Windows, CPython 3.13).
+- **Fast & deterministic.** Precompiled regexes, no network, no randomness.
+  Throughput depends heavily on the machine and its load, so treat any
+  figure as that machine's: ~47,000 parses/sec, p50 ~21 µs on 2026-08-08
+  (Windows, CPython 3.13, the parser before Round 29); 12,000–17,000
+  parses/sec, p50 ~31–41 µs on 2026-10-20 on a shared 4-core Linux build box
+  under load (CPython 3.13), where Round 29's clause detection made the
+  parser about a quarter slower than the one before it on the same box. Run
+  `--bench` on your own hardware. The test suite's floor is 500 parses/sec.
+
+## Round 29 (audit 2026-10-20) — labels that say what was asked
+
+- **One action per label.** A text that asks for two things ("Swap 1 SOL for
+  USDC then send 2 SOL to X") is labelled `unknown` with a
+  `MULTIPLE_INTENTS` warning; it used to come back as just the transfer.
+- **Negation.** "Don't send 5 SOL to X" is `unknown` with `NEGATED_INTENT`;
+  it used to be a transfer with no warning.
+- **"delegate" as a noun.** "Revoke the delegate authority" is `revoke`; it
+  used to be `stake`.
+- **Not every withdrawal is a stake withdrawal.** "claim rewards", "withdraw
+  liquidity from Orca", withdrawing fees or collateral: `unknown` with
+  `WITHDRAWAL_UNMODELED`. "Unstake 3 SOL" and "Withdraw 1 jitoSOL" stay
+  `stake`.
+- **Stop words are not tokens.** "stake my SOL" extracts `SOL` (it extracted
+  `my`); "Approve the transaction" extracts no token (it extracted `the`);
+  "Approve spending of 500 USDC" extracts amount `500` and token `USDC` (it
+  extracted the token `500`).
 
 ## Usage
 
@@ -82,8 +105,24 @@ confidence score. Conflating these two numbers is a Constitution P1 violation.
 - Advisory only: suggestions and warnings can never weaken a decision.
 - No private key, no wallet address history, no telemetry: input text leaves
   the process only as the JSON response.
-- Server hardening: 64 KiB body cap, robust Content-Length parsing (413/400,
-  never an unbounded read), non-dict bodies rejected.
+- Server hardening: 64 KiB body cap and robust Content-Length parsing, never
+  an unbounded read — 413 only when the declared length is over the cap;
+  400 for a non-integer or negative Content-Length, a body shorter than
+  declared, a non-JSON body or one without a `text` field; 408 when the body
+  does not arrive in time (Round 29: every failure but the timeout used to
+  answer 413).
+- Round 29 (PY1): a whole-request deadline (15 s, accept to response) on top
+  of the 10 s per-read timeout — a client dribbling a byte every few seconds
+  no longer keeps its thread — and at most 32 connections served at once;
+  the 33rd is answered `503` immediately and closed.
+- Round 29 (PY2): `POST` requires `Content-Type: application/json` (415
+  otherwise — a web page cannot send JSON cross-origin without a preflight);
+  a request carrying an `Origin` header (a browser) is refused with 403
+  unless that origin is listed in `GRAPHITE_AI_LAYER_ALLOWED_ORIGINS`
+  (comma-separated); and while bound to loopback, a `Host` header that does
+  not name loopback (`localhost`, `127.x.x.x`, `[::1]`) is refused with 403,
+  which defeats DNS rebinding. Bound elsewhere (`GRAPHITE_AI_LAYER_HOST`),
+  the Host check is off; the Origin and Content-Type checks stay.
 - Round 19 (F-19-C5): binds `127.0.0.1` by default (it used to bind `0.0.0.0`,
   exposing an unauthenticated service whose answer feeds transfer construction);
   one thread per request (`ThreadingHTTPServer`) and a 10 s socket timeout, so
@@ -96,10 +135,12 @@ confidence score. Conflating these two numbers is a Constitution P1 violation.
 
 ```bash
 python3 -m pytest test_intent_parser.py -v
-# or
+# or, with nothing but the standard library:
 python3 test_intent_parser.py
 ```
 
-35 tests: every intent class, parameter extraction, risk hints, confidence
+44 tests: every intent class, parameter extraction, risk hints, confidence
 components, manifest grounding (no fabricated IDs), determinism, the P1
-invariant, and a performance smoke test (must exceed 10k parses/sec).
+invariant, the Round 29 label cases, the server's status codes, header
+checks, deadline and connection cap, and a performance smoke test (must
+exceed 500 parses/sec, with every socket connect refused while it parses).

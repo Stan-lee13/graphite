@@ -19,14 +19,23 @@ GRAPHITE_MAINNET_SAMPLE=$PWD/mainnet_sample.json \
 
 `PROBE_BLOCKS` sets how many blocks (default 8, ~10,000 transactions).
 `GRAPHITE_RPC_URL` overrides the endpoint; without it the keyless public
-mainnet endpoint is used, the same default the other live tests take.
+mainnet endpoint is used, the same default the other live tests take. The
+sample records which it was in `endpoint_kind` (`public mainnet` or
+`operator-supplied (GRAPHITE_RPC_URL)`), never the URL, which may carry a
+key.
 
 **It reads and nothing else.** One request at a time, a pause between blocks,
 and it stops rather than retrying on a 429 — a public endpoint is somebody
-else's infrastructure. A stop on a 429 writes no sample and exits non-zero, so
-a script calling it never mistakes an aborted fetch for a sample. No credentials are read, written or needed. Nothing
-here touches a wallet, a key, a fund or a live protocol, and no transaction is
-ever submitted.
+else's infrastructure. A stop on a 429, an endpoint that cannot be reached
+after a few attempts, or (with `--slots`) a requested slot that cannot be
+fetched writes no sample and exits non-zero, so a script calling it never
+mistakes an aborted or incomplete fetch for a sample. No credentials are
+read, written or needed. Nothing here touches a wallet, a key, a fund or a
+live protocol, and no transaction is ever submitted.
+
+`verify_sample.py` refetches a recorded sample's slots and compares every row
+field for field (`SAMPLES.md`); `test_mainnet_sample.py` tests both tools
+without the network.
 
 ## What the test asserts
 
@@ -147,24 +156,26 @@ risk Clear 24 before the round's last fix and **33** after it — eight of the
 nine were `SyncNative` transactions refused on their PumpSwap sibling's raw
 account count (F-22-12).
 
-## Recorded results (2026-09-22, Round 18)
+## Recorded results (sample fetched 2026-09-22, Round 18)
 
-10,617 transactions from 8 blocks, 195 distinct programs, against the 131-manifest
-registry:
+10,617 transactions from 8 blocks, fetched on 2026-09-22 (the Round 18 report,
+dated 2026-09-23, records the same fetch date), 195 distinct programs, against
+the 129-manifest registry Round 18 ended with:
 
 | | |
 |---|---|
 | parse failures | 0 of 8,788 |
 | L2 discriminator-contradiction false positives | 0 |
-| version-1 transactions (refused by name) | 1,829 (17.2%) |
+| version-1 transactions (refused by name) | 1,829 of 10,617 (17.2%) |
 | reached a verdict | 8,767 |
 | risk Clear | 6,190 |
 | primary program has a manifest | 1,498 of 8,767 (17.1%) — **1,498 of 3,405 (44.0%) excluding validator votes** |
 
 The last row is the one Round 18 moved. On the **same sample**, against the
 33-manifest registry this round started from, it was 708 of 3,405 — **20.8%**.
-Onboarding 98 programs from their own on-chain Anchor IDLs roughly doubled the
-share of non-vote mainnet traffic whose primary program Graphite can name.
+Onboarding 96 programs from their own on-chain Anchor IDLs (33 → 129
+manifests) roughly doubled the share of non-vote mainnet traffic whose
+primary program Graphite can name.
 
 Validator vote transactions are reported separately because no agent ever signs
 one; they are 5,362 of the 8,767 and including them moves every percentage

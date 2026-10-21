@@ -911,6 +911,12 @@ kbd {
 .app.phone .page-title h1 {
   font-size: 24px;
 }
+/* How old the numbers on screen are (Round 29, D3). */
+.freshness {
+  margin-top: -8px;
+  font-size: 12px;
+  color: var(--fg-4);
+}
 
 /* Figures sit in one hairline row. No cards: the numbers are the content. */
 .figures {
@@ -918,6 +924,9 @@ kbd {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   border-top: 1px solid var(--hairline);
   border-bottom: 1px solid var(--hairline);
+}
+.figures.five {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 .figure {
   display: flex;
@@ -1485,6 +1494,11 @@ a.row-main:hover .row-title {
     opacity 150ms var(--ease),
     height 400ms var(--ease);
 }
+/* A descriptive approval judged words, not bytes (W22; Round 29, D4). */
+.slat.warn {
+  background: var(--warn);
+  opacity: 0.8;
+}
 .slat.block {
   background: var(--block);
   opacity: 0.95;
@@ -1551,6 +1565,9 @@ a.row-main:hover .row-title {
 }
 .chart .pt.pass {
   fill: var(--pass);
+}
+.chart .pt.warn {
+  fill: var(--warn);
 }
 .chart .pt.block {
   fill: var(--block);
@@ -1787,6 +1804,23 @@ a.row-main:hover .row-title {
 }
 .field-error {
   color: var(--block);
+}
+/* "Remember the key on this device" (Round 29, D6). */
+.field-check {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: -4px 0 18px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.field-check input {
+  margin-top: 2px;
+  accent-color: var(--brand);
+}
+.field-check .field-help {
+  display: block;
+  margin-top: 4px;
 }
 
 .search-field {

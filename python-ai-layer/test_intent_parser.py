@@ -298,7 +298,12 @@ def test_program_ids_match_manifests():
         "amm-routing-realp6.json": "swap",
         "amm-v3-hpnfyc.json": "swap",
         "bonkswap-bswp6b.json": "swap",
-        "bubblegum-bgumap.json": "stake",
+        # Round 29 (audit 2026-10-20, PY5): the intent class a user would
+        # ask this program for, not the manifest's `category` field, which
+        # files these four under "staking": Bubblegum is compressed NFTs,
+        # Bridge Cards is card payments, Data Credits is Helium's metered
+        # credits and Store is an oracle feed store. None serves "stake".
+        "bubblegum-bgumap.json": None,
         "byreal-clmm-realqq.json": "swap",
         "cargo-cargo2.json": None,
         "cc-vrf-ccvrfu.json": None,
@@ -346,12 +351,12 @@ def test_program_ids_match_manifests():
         "arcium-arcj82.json": "swap",
         "atlas-fee-payer-apr1me.json": None,
         "bo-sc-man1cx.json": "swap",
-        "bridge-cards-cardwa.json": "stake",
+        "bridge-cards-cardwa.json": None,
         "bridge-fcw1ub.json": "swap",
         "brrr-lend-g3v8wx.json": None,
         "ccip-offramp-offqsm.json": None,
         "crafting-craft2.json": None,
-        "data-credits-credmb.json": "stake",
+        "data-credits-credmb.json": None,
         "debot-router-g7mvcm.json": "swap",
         "doorcash-67g5hh.json": None,
         "escrow-5bd9ua.json": None,
@@ -381,7 +386,7 @@ def test_program_ids_match_manifests():
         "spl-account-compression-cmtdvx.json": None,
         "squads-smart-account-program-smrtzf.json": None,
         "stable-swap-swapny.json": "swap",
-        "store-hevsko.json": "stake",
+        "store-hevsko.json": None,
         "swift-mayan3.json": None,
         "tarb-bwrzqc.json": None,
         "tuktuk-tuktuk.json": None,
@@ -400,8 +405,9 @@ def test_program_ids_match_manifests():
     }
     expected_manifests = set(manifest_to_intent.keys())
     # The map is the expectation; the count below only guards against an
-    # accidental duplicate key silently shrinking it. Round 18 onboarded 49
-    # programs from their own on-chain IDLs, taking the set from 33 to 82.
+    # accidental duplicate key silently shrinking it. Round 18 onboarded 96
+    # programs from their own on-chain IDLs, taking the set from 33 to 129;
+    # later rounds brought it to 137.
     assert len(expected_manifests) == 137, f"expected 137 manifests, map has {len(expected_manifests)}"
 
     all_manifests = sorted(glob.glob(os.path.join(manifest_dir, "*.json")))
@@ -677,14 +683,24 @@ def test_performance_smoke(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def _serve(handler_timeout=None):
+def _serve(handler_timeout=None, deadline=None, max_connections=None):
     """Start the real server on an ephemeral loopback port; returns
-    (server, port). `handler_timeout` shortens the per-read timeout for the
-    test that waits it out."""
+    (server, port). `handler_timeout` shortens the per-read timeout,
+    `deadline` the whole-request deadline, and `max_connections` the
+    connection cap, for the tests that wait them out."""
     handler = _ip.IntentParserHandler
+    overrides = {}
     if handler_timeout is not None:
-        handler = type("ShortTimeoutHandler", (_ip.IntentParserHandler,), {"timeout": handler_timeout})
-    server = _ip.make_server("127.0.0.1", 0)
+        overrides["timeout"] = handler_timeout
+    if deadline is not None:
+        overrides["deadline"] = deadline
+    if overrides:
+        handler = type("ShortTimeoutHandler", (_ip.IntentParserHandler,), overrides)
+    if max_connections is not None:
+        server_cls = type("CappedServer", (_ip.IntentParserServer,), {"max_connections": max_connections})
+        server = server_cls(("127.0.0.1", 0), handler)
+    else:
+        server = _ip.make_server("127.0.0.1", 0)
     server.RequestHandlerClass = handler
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, server.server_address[1]
@@ -769,43 +785,254 @@ def test_the_body_cap_holds_on_the_real_server():
     print("✓ test_the_body_cap_holds_on_the_real_server passed")
 
 
-if __name__ == "__main__":
-    test_bounded_body_rejects_oversized_and_malformed_content_length()
-    test_transfer_intent()
-    test_transfer_all_my()
-    test_swap_intent()
-    test_buy_intent_reverses_input_output()
-    test_sell_intent()
-    test_slippage_extraction()
-    test_stake_intent()
-    test_withdraw_classified_as_stake()
-    test_close_create_approve_revoke()
-    test_unknown_intent()
-    test_unmodeled_intents_fail_closed_with_warning()
-    test_garbage_input()
-    test_impersonation_vanity_warning()
-    test_approve_and_close_warnings()
-    test_authority_change_warning()
-    test_no_destination_warning()
-    test_unknown_token_warning()
-    test_confidence_of_parse_not_verification()
-    test_confidence_reflects_extraction_quality()
-    test_advisory_fields_cannot_decide()
-    test_suggested_swap_discriminator_is_deployed_route_v2()
-    test_determinism()
-    test_program_ids_match_manifests()
-    test_protocol_candidates_grounded()
-    test_transfer_candidates()
-    test_destination_is_never_a_prefix_of_the_typed_word()
-    test_a_destination_is_case_sensitive_base58()
-    test_standalone_fallback_parses_every_modelled_intent()
-    test_a_bad_manifest_costs_only_itself()
-    import pytest
+# ---------------------------------------------------------------------------
+# Round 29 (audit 2026-10-20). Label quality (PY3), honest status codes
+# (PY4), who may ask (PY2), and a bounded server (PY1).
+# ---------------------------------------------------------------------------
+_DEST = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
 
-    with pytest.MonkeyPatch.context() as mp:
-        test_performance_smoke(mp)
-    test_bind_host_defaults_to_loopback()
-    test_a_stalled_client_does_not_stall_other_callers()
-    test_a_short_body_times_out_and_is_refused()
-    test_the_body_cap_holds_on_the_real_server()
-    print("\n✅ All AI layer tests passed.")
+
+def _codes(result):
+    return [w["code"] for w in result["advisory_warnings"]]
+
+
+def test_revoke_is_not_read_as_stake():
+    # "delegate" here is a noun; it was labelled stake.
+    for text in ("Revoke the delegate authority", "Revoke delegate authority", "Revoke the delegate"):
+        assert parse_intent(text)["intent_type"] == "revoke", text
+    # "delegate" as a verb is still a stake.
+    assert parse_intent("Delegate 2.5 mSOL")["intent_type"] == "stake"
+    print("✓ test_revoke_is_not_read_as_stake passed")
+
+
+def test_a_negated_action_is_not_labelled_as_that_action():
+    for text in (f"Don't send 5 SOL to {_DEST}", f"Do not send 5 SOL to {_DEST}",
+                 "Never swap 1 SOL for USDC", "don’t stake 3 SOL"):
+        r = parse_intent(text)
+        assert r["intent_type"] == "unknown", text
+        assert "NEGATED_INTENT" in _codes(r), text
+        assert r["extracted_parameters"] is None, text
+    print("✓ test_a_negated_action_is_not_labelled_as_that_action passed")
+
+
+def test_two_actions_in_one_text_are_not_one_label():
+    for text in (f"Swap 1 SOL for USDC then send 2 SOL to {_DEST}",
+                 f"Send 1 SOL to {_DEST} and send 2 SOL to {_DEST}",
+                 "Stake 3 SOL and swap 1 SOL for USDC"):
+        r = parse_intent(text)
+        assert r["intent_type"] == "unknown", text
+        assert "MULTIPLE_INTENTS" in _codes(r), text
+    # One action that happens to contain a second verb is still one action.
+    assert parse_intent("Withdraw stake from the validator")["intent_type"] == "stake"
+    assert parse_intent(f"Transfer 1 SOL to {_DEST} and set authority to me")["intent_type"] == "transfer"
+    print("✓ test_two_actions_in_one_text_are_not_one_label passed")
+
+
+def test_stop_words_are_not_tokens():
+    assert parse_intent("stake my SOL")["extracted_parameters"] == {"input_token": "SOL"}
+    approve_tx = parse_intent("Approve the transaction")
+    assert (approve_tx["extracted_parameters"] or {}).get("input_token") is None
+    assert "UNKNOWN_TOKEN" not in _codes(approve_tx)
+    spend = parse_intent("Approve spending of 500 USDC")["extracted_parameters"]
+    assert spend == {"amount": "500", "input_token": "USDC"}, spend
+    assert parse_intent("Withdraw stake from the validator")["extracted_parameters"] is None
+    print("✓ test_stop_words_are_not_tokens passed")
+
+
+def test_claims_and_liquidity_withdrawals_are_not_stake():
+    for text in ("claim rewards", "Claim my rewards", "withdraw liquidity from Orca",
+                 "Withdraw my collateral", "withdraw fees"):
+        r = parse_intent(text)
+        assert r["intent_type"] == "unknown", text
+        assert "WITHDRAWAL_UNMODELED" in _codes(r), text
+    # A stake withdrawal is still one.
+    assert parse_intent("Withdraw 1 jitoSOL")["intent_type"] == "stake"
+    assert parse_intent("Unstake 3 SOL")["intent_type"] == "stake"
+    print("✓ test_claims_and_liquidity_withdrawals_are_not_stake passed")
+
+
+def _bounded_status(cl_value):
+    req = _bounded_body(cl_value)
+    assert IntentParserHandler._read_bounded_body(req) is None
+    return req._body_error[0]
+
+
+def test_body_failures_have_honest_status_codes():
+    # PY4: only an oversized declaration is 413; malformed is 400.
+    assert _bounded_status(str(_ip.MAX_BODY_BYTES + 1)) == 413
+    assert _bounded_status("abc") == 400
+    assert _bounded_status("-1") == 400
+    assert _bounded_status("1.5") == 400
+    server, port = _serve()
+    try:
+        for declared, sent, want in ((10, 3, 400),):
+            s = socket.create_connection(("127.0.0.1", port), timeout=5)
+            s.sendall(b"POST /parse HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n"
+                      + f"Content-Length: {declared}\r\n\r\n".encode() + b"x" * sent)
+            s.shutdown(socket.SHUT_WR)  # short body, then EOF
+            reply = s.recv(4096)
+            s.close()
+            assert reply.split(b" ", 2)[1] == str(want).encode(), reply[:60]
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn.putrequest("POST", "/parse")
+        conn.putheader("Content-Type", "application/json")
+        conn.putheader("Content-Length", "twelve")
+        conn.endheaders()
+        assert conn.getresponse().status == 400
+    finally:
+        server.shutdown()
+        server.server_close()
+    print("✓ test_body_failures_have_honest_status_codes passed")
+
+
+def _post(port, headers, body=b'{"text": "Swap 1 SOL for USDC"}'):
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    conn.putrequest("POST", "/parse", skip_host="Host" in headers)
+    for k, v in headers.items():
+        conn.putheader(k, v)
+    conn.putheader("Content-Length", str(len(body)))
+    conn.endheaders(body)
+    resp = conn.getresponse()
+    resp.read()
+    return resp.status
+
+
+def test_only_json_from_non_browsers_on_this_host(monkeypatch):
+    monkeypatch.delenv(_ip.ALLOWED_ORIGINS_ENV, raising=False)
+    server, port = _serve()
+    try:
+        json_ct = {"Content-Type": "application/json"}
+        assert _post(port, json_ct) == 200
+        assert _post(port, {**json_ct, "Host": f"localhost:{port}"}) == 200
+        assert _post(port, {**json_ct, "Host": f"[::1]:{port}"}) == 200
+        # A form or text/plain POST is what a page can send without a preflight.
+        assert _post(port, {"Content-Type": "text/plain"}) == 415
+        assert _post(port, {"Content-Type": "application/x-www-form-urlencoded"}) == 415
+        assert _post(port, {}) == 415
+        # A browser page, by its Origin header.
+        assert _post(port, {**json_ct, "Origin": "https://evil.example"}) == 403
+        # DNS rebinding: the attacker's name, re-pointed at 127.0.0.1.
+        assert _post(port, {**json_ct, "Host": f"rebind.evil.example:{port}"}) == 403
+        # An origin the operator listed is served.
+        monkeypatch.setenv(_ip.ALLOWED_ORIGINS_ENV, "https://console.example, https://other.example")
+        assert _post(port, {**json_ct, "Origin": "https://console.example"}) == 200
+        assert _post(port, {**json_ct, "Origin": "https://evil.example"}) == 403
+    finally:
+        server.shutdown()
+        server.server_close()
+    print("✓ test_only_json_from_non_browsers_on_this_host passed")
+
+
+def test_a_dribbling_client_is_cut_off_at_the_deadline():
+    # Each read completes well inside the per-read timeout; only a deadline on
+    # the whole request ends it.
+    assert 0 < _ip.IntentParserHandler.deadline <= 60
+    server, port = _serve(handler_timeout=2.0, deadline=1.0)
+    s = socket.create_connection(("127.0.0.1", port), timeout=10)
+    try:
+        s.sendall(b"POST /parse HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n"
+                  b"Content-Length: 1000\r\n\r\n")
+        started = time.monotonic()
+        reply = b""
+        while time.monotonic() - started < 6.0:
+            try:
+                s.sendall(b"x")
+            except OSError:
+                break
+            s.settimeout(0.3)
+            try:
+                chunk = s.recv(4096)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            reply += chunk
+            if not chunk or reply:
+                break
+        elapsed = time.monotonic() - started
+        assert elapsed < 4.0, f"a dribbling client held its thread {elapsed:.1f}s"
+        assert reply == b"" or b" 408 " in reply.split(b"\r\n", 1)[0], reply[:60]
+    finally:
+        s.close()
+        server.shutdown()
+        server.server_close()
+    print("✓ test_a_dribbling_client_is_cut_off_at_the_deadline passed")
+
+
+def test_connections_are_capped_and_the_overflow_is_refused_fast():
+    server, port = _serve(max_connections=2)
+    stalled = [_stall(port), _stall(port)]
+    try:
+        time.sleep(0.3)
+        started = time.monotonic()
+        third = socket.create_connection(("127.0.0.1", port), timeout=5)
+        reply = third.recv(4096)
+        third.close()
+        assert reply.startswith(b"HTTP/1.0 503"), reply[:40]
+        assert time.monotonic() - started < 2.0
+    finally:
+        for s in stalled:
+            s.close()
+    try:
+        # Slots come back when the stalled connections go.
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                assert _post(port, {"Content-Type": "application/json"}) == 200
+                break
+            except (AssertionError, OSError, http.client.HTTPException):
+                if time.monotonic() > deadline:
+                    raise
+                time.sleep(0.1)
+    finally:
+        server.shutdown()
+        server.server_close()
+    print("✓ test_connections_are_capped_and_the_overflow_is_refused_fast passed")
+
+
+class _MonkeyPatch:
+    """The slice of pytest's monkeypatch the tests use, so running this file
+    directly needs nothing beyond the standard library (Round 29, PY5: the
+    direct run used to import pytest)."""
+
+    def __init__(self):
+        self._undo = []
+
+    def setattr(self, target, name, value):
+        old = getattr(target, name)
+        self._undo.append(lambda: setattr(target, name, old))
+        setattr(target, name, value)
+
+    def setenv(self, name, value):
+        old = os.environ.get(name)
+        self._undo.append(lambda: os.environ.__setitem__(name, old) if old is not None else os.environ.pop(name, None))
+        os.environ[name] = value
+
+    def delenv(self, name, raising=True):
+        if name not in os.environ:
+            if raising:
+                raise KeyError(name)
+            return
+        self.setenv(name, os.environ[name])
+        del os.environ[name]
+
+    def undo(self):
+        while self._undo:
+            self._undo.pop()()
+
+
+if __name__ == "__main__":
+    # Every test_* function, in file order; no pytest needed.
+    import inspect
+
+    tests = [(n, f) for n, f in list(globals().items()) if n.startswith("test_") and callable(f)]
+    for name, fn in tests:
+        if "monkeypatch" in inspect.signature(fn).parameters:
+            mp = _MonkeyPatch()
+            try:
+                fn(mp)
+            finally:
+                mp.undo()
+        else:
+            fn()
+    print(f"\n✅ All {len(tests)} AI layer tests passed.")

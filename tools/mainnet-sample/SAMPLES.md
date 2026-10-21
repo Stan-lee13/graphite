@@ -10,12 +10,30 @@ gives the same rows:
 python tools/mainnet-sample/fetch_mainnet.py --slots <slots below> --out sample.json
 ```
 
-Checked on 2026-10-03: slot 451887084 of the 2026-09-30 sample, fetched again
-from the public endpoint, gave the same 1,242 rows (bytes, outcome, compute
-units and loaded addresses), in the same order. The file a fetch writes today
-does not hash to the values below: the fetcher now also records its slot list
-(`"slots"`), which the files below predate. The hashes identify the exact files
-the published runs read; the slot lists are how to get the same transactions.
+`--slots` fails, writing nothing, if any slot it names cannot be fetched
+(Round 29: such a slot used to be reported "skipped" and the file written
+without it).
+
+**What can and cannot be reproduced.** The ROWS can; the FILE's hash cannot.
+The file a fetch writes today does not hash to the values below, for two
+reasons: the fetcher now also records its slot list (`"slots"`), which the
+files below predate, and those files were fetched head first, so their rows
+run newest block first, while `--slots` fetches in the order given. The
+hashes identify the exact files the published runs read; the slot lists are
+how to get the same transactions; and `verify_sample.py` is how to check
+that you did — it refetches a recorded file's slots in its own row order and
+compares every row field for field (slot, version, bytes, outcome, compute
+units, loaded addresses; none is volatile for a finalized block):
+
+```bash
+python tools/mainnet-sample/verify_sample.py <recorded.json>                     # refetch and compare
+python tools/mainnet-sample/verify_sample.py <recorded.json> --against <yours.json>  # offline
+```
+
+Checked by hand on 2026-10-03, before that tool existed: slot 451887084 of
+the 2026-09-30 sample, fetched again from the public endpoint, gave the same
+1,242 rows (bytes, outcome, compute units and loaded addresses), in the same
+order.
 
 | Sample | Rows | Versions (legacy / v0 / v1) | SHA-256 of the file | Slots |
 |---|---:|---|---|---|
@@ -39,8 +57,20 @@ two blocks of the 2026-09-23 sample (slots 449808325 and 449808725, 2,284
 transactions as the chain executed them: legacy, v0 and v1), written by
 `make_committed_subset.py`, which refuses a source whose hash is not in the
 table above and chooses whole blocks by position, never rows by content.
-Regenerating it gives the same bytes (SHA-256
-`79681f646cda8c3c85da686b27450dda3c69bd0691acc6714b654ab33a4515b0`).
+Regenerating it **from the recorded 2026-09-23 file** gives the same bytes
+(SHA-256 `79681f646cda8c3c85da686b27450dda3c69bd0691acc6714b654ab33a4515b0`);
+only a holder of that file can do that, because a refetch does not
+reproduce the source file's hash (above). Anyone can check the slice's
+transactions against the chain itself:
+
+```bash
+python tools/mainnet-sample/verify_sample.py graphite-core/fixtures/mainnet/sample-2026-09-23-last-2-blocks.json
+```
+
+which refetches slots 449808725 and 449808325 and compares all 2,284 rows.
+`tools/mainnet-sample/test_mainnet_sample.py` runs the same comparison on
+every CI run against an endpoint stand-in that serves the slice's own blocks,
+so the comparison itself is tested; it does not contact mainnet.
 
 `tests/mainnet_conformance.rs::the_committed_mainnet_blocks_give_the_recorded_verdicts_every_run`
 runs it through the whole pipeline on every `cargo test`, with no network and no
