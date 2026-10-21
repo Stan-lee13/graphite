@@ -42,6 +42,7 @@ import os
 import re
 import socket
 import threading
+import unicodedata
 import argparse
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from typing import Dict, Any, List, Optional, Tuple
@@ -82,9 +83,12 @@ _RX = {
     # ('0', a Cyrillic homoglyph, '-', '.', '_') stopped the group short, and
     # the prefix — at 43 characters usually a valid key nobody holds — came
     # back as the destination. Such a word now yields no destination at all.
+    # Round 30: amounts are ASCII digits only. `\d` matches every Unicode
+    # digit, so "Send ５ SOL" and "Send 1০ SOL" (a Bengali zero) came back as
+    # transfers of "５" and "1০" — strings Python's float() reads as 5 and 10.
     "transfer": re.compile(
         r"\b(?:transfer|send|pay)\s+"
-        r"(?:(?P<amount_all>all|entire|my)\s+(?:my\s+)?|(?P<amount>\d+(?:\.\d+)?)\s+)"
+        r"(?:(?P<amount_all>all|entire|my)\s+(?:my\s+)?|(?P<amount>[0-9]+(?:\.[0-9]+)?)\s+)"
         r"(?P<token>[A-Za-z0-9]+)"
         r"(?:\s+(?:to|into)\s+(?P<destination>(?-i:[1-9A-HJ-NP-Za-km-z]{32,44}))"
         r"(?=[.,;:!?)\]'\"]*(?:\s|$)))?",
@@ -92,13 +96,13 @@ _RX = {
     ),
     "swap": re.compile(
         r"\b(?:swap|exchange|trade|convert|sell)\s+"
-        r"(?:(?P<amount>\d+(?:\.\d+)?)\s+)?"
+        r"(?:(?P<amount>[0-9]+(?:\.[0-9]+)?)\s+)?"
         r"(?P<token>[A-Za-z0-9]+)\s+(?:for|into|to)\s+"
         r"(?P<output_token>[A-Za-z0-9]+)",
         re.IGNORECASE,
     ),
     "buy": re.compile(
-        r"\bbuy\s+(?:(?P<amount>\d+(?:\.\d+)?)\s+)?"
+        r"\bbuy\s+(?:(?P<amount>[0-9]+(?:\.[0-9]+)?)\s+)?"
         r"(?P<output_token>[A-Za-z0-9]+)\s+with\s+(?P<token>[A-Za-z0-9]+)",
         re.IGNORECASE,
     ),
@@ -106,13 +110,13 @@ _RX = {
     # amount/token are skipped ("stake my SOL" took "my" as the token).
     "stake": re.compile(
         r"\b(?:stake|delegate)\s+" + _DETERMINERS +
-        r"(?:(?P<amount>\d+(?:\.\d+)?)\s+)?"
+        r"(?:(?P<amount>[0-9]+(?:\.[0-9]+)?)\s+)?"
         r"(?P<token>[A-Za-z0-9]+)?",
         re.IGNORECASE,
     ),
     "withdraw": re.compile(
         r"\b(?P<verb>unstake|withdraw|claim)\s+" + _DETERMINERS +
-        r"(?:(?P<amount>\d+(?:\.\d+)?)\s+)?"
+        r"(?:(?P<amount>[0-9]+(?:\.[0-9]+)?)\s+)?"
         r"(?P<token>[A-Za-z0-9]+)?",
         re.IGNORECASE,
     ),
@@ -129,22 +133,22 @@ _RX = {
     # and "Approve the transaction" took "the".
     "approve": re.compile(
         r"\bapprove\s+(?:spending\s+)?(?:of\s+)?" + _DETERMINERS +
-        r"(?:(?P<amount>\d+(?:\.\d+)?)\s+)?"
+        r"(?:(?P<amount>[0-9]+(?:\.[0-9]+)?)\s+)?"
         r"(?P<token>[A-Za-z0-9]+)?",
         re.IGNORECASE,
     ),
     "revoke": re.compile(r"\brevoke\b", re.IGNORECASE),
     # Unmodeled-but-detectable intents -> label "unknown" + advisory warning.
     "mint": re.compile(
-        r"\bmint\s+(?:(?P<amount>\d+(?:\.\d+)?)\s+)?(?P<token>[A-Za-z0-9]+)",
+        r"\bmint\s+(?:(?P<amount>[0-9]+(?:\.[0-9]+)?)\s+)?(?P<token>[A-Za-z0-9]+)",
         re.IGNORECASE,
     ),
     "bridge": re.compile(
-        r"\bbridge\s+(?:(?P<amount>\d+(?:\.\d+)?)\s+)?(?P<token>[A-Za-z0-9]+)",
+        r"\bbridge\s+(?:(?P<amount>[0-9]+(?:\.[0-9]+)?)\s+)?(?P<token>[A-Za-z0-9]+)",
         re.IGNORECASE,
     ),
     "lending": re.compile(r"\b(?:lend|borrow|liquidat|supply)\b", re.IGNORECASE),
-    "slippage": re.compile(r"with\s+(\d+(?:\.\d+)?)\s*%\s*slippage", re.IGNORECASE),
+    "slippage": re.compile(r"with\s+([0-9]+(?:\.[0-9]+)?)\s*%\s*slippage", re.IGNORECASE),
     # Round 29 (audit 2026-10-20, PY3): "Don't send 5 SOL to <addr>" was
     # labelled a transfer with no warning. A negation ahead of the verb makes
     # the label "unknown".
@@ -455,6 +459,135 @@ def _risk_hints(intent: str, params: Dict[str, Any], text: str) -> List[Dict[str
 
 
 # ---------------------------------------------------------------------------
+# Whole-text checks (Round 30). A label names ONE action the text plainly
+# asks for now. The agent guard's grammar (integrations/agent-guard/
+# intent-grounding.ts) refuses questions, conditions, deferrals, negations
+# anywhere, two amounts, two addresses and non-ASCII digits; this layer
+# labelled every one of those as the action they mention ("should I send 5
+# SOL to X?" -> transfer). The guard re-grounds the label in the user's text,
+# so this was not a bypass of the guard, but any other consumer of the label
+# took a question for a request. The same texts are now "unknown" here, with
+# the reason, so the advisory label never says more than the text does.
+# ---------------------------------------------------------------------------
+
+# The guard's NEGATION list (intent-grounding.ts), anywhere in the text: the
+# Round 29 check looked only before the verb, so "Send 5 SOL to X, not 50"
+# and "Send 5 SOL to X. Actually no, don't." were transfers.
+_NEGATION_ANYWHERE = re.compile(
+    r"(?<![0-9A-Za-z])(?:not|no|never|don['’]?t|dont|do\s+not|won['’]?t|shouldn['’]?t|"
+    r"mustn['’]?t|cancel(?:s|led|ling)?|stop|abort|undo|instead|refrain(?:s|ed|ing)?|"
+    r"hold(?:ing)?\s+off)(?![0-9A-Za-z])|n['’]t(?![0-9A-Za-z])",
+    re.IGNORECASE,
+)
+_CONDITIONAL = re.compile(
+    r"(?<![0-9A-Za-z])(?:if|when|whenever|unless|once|after|before|until)(?![0-9A-Za-z])", re.IGNORECASE
+)
+_DEFERRED = re.compile(
+    r"(?<![0-9A-Za-z])(?:tomorrow|tonight|later|next|soon|schedule[ds]?|every|daily|weekly)(?![0-9A-Za-z])",
+    re.IGNORECASE,
+)
+# A standalone number: not part of a word or an address.
+_NUMBER = re.compile(r"(?<![0-9A-Za-z.])[0-9]+(?:\.[0-9]+)?(?![0-9A-Za-z])")
+# An address-shaped word (base58, 32-44 characters).
+_ADDRESS_WORD = re.compile(r"(?<![0-9A-Za-z])[1-9A-HJ-NP-Za-km-z]{32,44}(?![0-9A-Za-z])")
+# Double-quoted spans: "...", “...”, `...`. Single quotes are apostrophes too
+# often ("let's") to delimit anything.
+_QUOTED = re.compile(r"\"[^\"]*\"|“[^”]*”|`[^`]*`")
+
+# Secret material (Round 30). A pasted private key or seed phrase was echoed
+# back in `raw_natural_language` — and from there into whatever the caller
+# logs or forwards. A 64-byte secret key is 86-88 base58 characters; a
+# keypair file is a JSON array of 64 byte values.
+_SECRET_BASE58 = re.compile(r"(?<![0-9A-Za-z])[1-9A-HJ-NP-Za-km-z]{80,90}(?![0-9A-Za-z])")
+_SECRET_BYTE_ARRAY = re.compile(r"\[\s*(?:[0-9]{1,3}\s*,\s*){31,}[0-9]{1,3}\s*\]")
+_SECRET_WORDS = re.compile(
+    r"\b(?:seed\s+phrase|seed|mnemonic|recovery\s+phrase|secret\s+phrase|private\s+key|secret\s+key)\b",
+    re.IGNORECASE,
+)
+_REDACTED = "[redacted: the text contained what looks like a private key or seed phrase]"
+
+
+def _secret_material(text: str) -> bool:
+    return bool(
+        _SECRET_BASE58.search(text) or _SECRET_BYTE_ARRAY.search(text) or _SECRET_WORDS.search(text)
+    )
+
+
+def _unsafe_characters(text: str) -> Optional[Dict[str, Any]]:
+    """Invisible/bidirectional controls, non-ASCII digits, and words that
+    mix Latin with Cyrillic or Greek letters. Each can make a text read one
+    way and parse another: "Ѕend" (a Cyrillic S) does not match "send", an
+    RLO can reorder what is displayed, a zero-width space splits a number."""
+    if text.isascii():
+        # Only C0 controls and DEL can be wrong in ASCII text.
+        bad = next((c for c in text if (c < " " and c not in "\t\n\r") or c == "\x7f"), None)
+        if bad is None:
+            return None
+    for ch in text:
+        cat = unicodedata.category(ch)
+        if cat == "Cf" or (cat == "Cc" and ch not in "\t\n\r"):
+            return {
+                "code": "INVISIBLE_CHARACTERS",
+                "severity": "high",
+                "message": f"the text contains an invisible or direction-changing character "
+                           f"(U+{ord(ch):04X}); what is displayed may not be what is parsed",
+            }
+        if cat == "Nd" and not ("0" <= ch <= "9"):
+            return {
+                "code": "NON_ASCII_DIGITS",
+                "severity": "high",
+                "message": f"the text contains a non-ASCII digit ({ch!r}, U+{ord(ch):04X}); amounts are "
+                           "read in ASCII digits only",
+            }
+    for word in re.findall(r"\w+", text):
+        has_latin = any("a" <= c.lower() <= "z" for c in word)
+        if has_latin and any(
+            unicodedata.name(c, "").startswith(("CYRILLIC", "GREEK")) for c in word
+        ):
+            return {
+                "code": "MIXED_SCRIPT",
+                "severity": "high",
+                "message": f"the word {word!r} mixes Latin letters with Cyrillic or Greek ones "
+                           "(a lookalike); it is not read as the word it resembles",
+            }
+    return None
+
+
+def _text_refusals(text: str) -> List[Dict[str, Any]]:
+    """Why `text` is not one plain, immediate request (empty when it is)."""
+    out: List[Dict[str, Any]] = []
+    unsafe = _unsafe_characters(text)
+    if unsafe:
+        out.append(unsafe)
+    if "?" in text:
+        out.append({"code": "QUESTION", "severity": "high",
+                    "message": "the text is a question, not a request"})
+    m = _CONDITIONAL.search(text)
+    if m:
+        out.append({"code": "CONDITIONAL", "severity": "high",
+                    "message": f"the text is conditional ('{m.group(0)}'); a label is for an action "
+                               "asked for now, unconditionally"})
+    m = _DEFERRED.search(text)
+    if m:
+        out.append({"code": "DEFERRED", "severity": "high",
+                    "message": f"the text defers or schedules the action ('{m.group(0)}')"})
+    slip = _RX["slippage"].search(text)
+    numbers = [n for n in _NUMBER.finditer(text)
+               if not (slip and slip.start() <= n.start() < slip.end())]
+    if len(numbers) > 1:
+        out.append({"code": "MULTIPLE_AMOUNTS", "severity": "high",
+                    "message": "the text names more than one amount ("
+                               + ", ".join(n.group(0) for n in numbers[:4])
+                               + "); one label carries one"})
+    addresses = {a.group(0) for a in _ADDRESS_WORD.finditer(text)}
+    if len(addresses) > 1:
+        out.append({"code": "MULTIPLE_ADDRESSES", "severity": "high",
+                    "message": f"the text names {len(addresses)} different addresses; one label "
+                               "carries one destination"})
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Clause detection.
 # ---------------------------------------------------------------------------
 # Regex kind -> Core intent. Order is the tie-break when two kinds match at
@@ -519,6 +652,15 @@ def parse_intent(natural_language: str) -> Dict[str, Any]:
     text = (natural_language or "").strip()
     if not text:
         return _unknown_result(natural_language)
+    # Round 30: a private key or seed phrase is never echoed back.
+    if _secret_material(text):
+        return _unknown_result(_REDACTED, [{
+            "code": "SECRET_MATERIAL",
+            "severity": "high",
+            "message": "the text appears to contain a private key or seed phrase; it is not labelled "
+                       "or echoed back. Never paste a key into a request: anyone who sees it controls "
+                       "the wallet",
+        }])
 
     params: Dict[str, Any] = {}
 
@@ -528,8 +670,9 @@ def parse_intent(natural_language: str) -> Dict[str, Any]:
     # the swap; a text that asks for two things is now "unknown" with a
     # warning, because one label cannot describe it.
     clauses = _clauses(text)
+    refusals = _text_refusals(text)
     if not clauses:
-        return _unknown_result(natural_language)
+        return _unknown_result(natural_language, refusals)
     if len(clauses) > 1:
         kinds = ", ".join(k for _s, _e, k, _m in clauses)
         return _unknown_result(natural_language, [{
@@ -537,16 +680,28 @@ def parse_intent(natural_language: str) -> Dict[str, Any]:
             "severity": "high",
             "message": f"the text asks for more than one action ({kinds}) — one intent label "
                        "cannot describe it; split it into one request per action",
-        }])
+        }] + refusals)
     start_at, _end, matched_kind, m = clauses[0]
-    negation = _RX["negation"].search(text, 0, start_at)
+    # Round 30: anywhere in the text, not only before the verb.
+    negation = _NEGATION_ANYWHERE.search(text)
     if negation:
+        where = "before" if negation.start() < start_at else "with"
         return _unknown_result(natural_language, [{
             "code": "NEGATED_INTENT",
             "severity": "high",
-            "message": f"the text negates the action ('{negation.group(0)}' before "
+            "message": f"the text negates the action ('{negation.group(0)}' {where} "
                        f"'{m.group(0).split()[0]}') — it is not labelled as that action",
-        }])
+        }] + refusals)
+    # Round 30: 'He said "send 5 SOL to X"' reports a request; it is not one.
+    if any(q.start() < start_at < q.end() for q in _QUOTED.finditer(text)):
+        refusals = [{
+            "code": "REPORTED_SPEECH",
+            "severity": "high",
+            "message": "the action is inside quotation marks — quoted or reported text is not a "
+                       "request from the person asking",
+        }] + refusals
+    if refusals:
+        return _unknown_result(natural_language, refusals)
 
     intent = _KIND_TO_INTENT[matched_kind]
     phrase_strength = 1.0
@@ -754,7 +909,7 @@ def _is_loopback_name(host: str) -> bool:
     h = host.strip().lower()
     if h in _LOOPBACK_HOST_NAMES:
         return True
-    m = re.fullmatch(r"127\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})", h)
+    m = re.fullmatch(r"127\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})", h)
     return bool(m) and all(int(o) <= 255 for o in m.groups())
 
 
@@ -772,6 +927,24 @@ def resolve_bind_host(environ=None) -> str:
     env = os.environ if environ is None else environ
     value = (env.get(BIND_HOST_ENV) or "").strip()
     return value or DEFAULT_BIND_HOST
+
+
+class DuplicateKeyError(ValueError):
+    pass
+
+
+def _no_duplicate_keys(pairs: List[Tuple[str, Any]]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for k, v in pairs:
+        if k in out:
+            raise DuplicateKeyError(f"duplicate key {k!r}")
+        out[k] = v
+    return out
+
+
+def _short(e: BaseException) -> str:
+    """An error's message, bounded, for a response body."""
+    return str(e)[:200]
 
 
 class IntentParserHandler(BaseHTTPRequestHandler):
@@ -896,13 +1069,26 @@ class IntentParserHandler(BaseHTTPRequestHandler):
             self._send_json(415, {"error": "Content-Type must be application/json"}, close=True)
             return
 
+        # Round 30: what a request may be is stated, not discovered by the
+        # parser failing on it. A non-string `text` used to reach
+        # parse_intent and come back as "'int' object has no attribute
+        # 'strip'"; a duplicated key was resolved silently (last wins), so
+        # two readers of the same body could disagree about the text.
         try:
-            request = json.loads(body.decode("utf-8"))
-            if not isinstance(request, dict) or "text" not in request:
-                raise ValueError("request must be a JSON object with a 'text' field")
-            result = parse_intent(request.get("text", ""))
-        except Exception as e:
-            self._send_json(400, {"error": str(e)})
+            request = json.loads(body.decode("utf-8"), object_pairs_hook=_no_duplicate_keys)
+        except (ValueError, RecursionError) as e:
+            self._send_json(400, {"error": f"request body is not valid JSON: {_short(e)}"})
+            return
+        if not isinstance(request, dict) or "text" not in request:
+            self._send_json(400, {"error": "request must be a JSON object with a 'text' field"})
+            return
+        if not isinstance(request["text"], str):
+            self._send_json(400, {"error": "'text' must be a string"})
+            return
+        try:
+            result = parse_intent(request["text"])
+        except Exception:  # noqa: BLE001 - never a success, never the text back
+            self._send_json(500, {"error": "the labeler failed on this text"})
             return
         self._send_json(200, result)
 
