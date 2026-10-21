@@ -6,8 +6,10 @@
 //! The runtime is the authority, and it is stricter than the SDK: bincode with
 //! trailing bytes rejected, the ShortU16 alias check, `Message::sanitize`,
 //! `VersionedTransaction::sanitize`. This binary decodes every byte string
-//! with the agave crates (`solana-transaction`, `solana-message`) exactly the
-//! way a validator's packet path does, and requires:
+//! with the Anza SDK crates (`solana-transaction`, `solana-message`, the
+//! crates whose decoder and `sanitize` the validator itself calls — not the
+//! agave validator crates) exactly the way a validator's packet path does,
+//! and requires:
 //!
 //! 1. **Never looser than the runtime.** Every byte string Graphite parses,
 //!    the runtime decodes and sanitizes. A transaction the runtime would
@@ -21,19 +23,35 @@
 //!    over the unconditionally reserved keys), which Graphite may exceed only
 //!    by keeping an invoked program id writable when a lookup table could
 //!    load the upgradeable loader.
-//! 3. **No panic** on any input.
+//! 3. **No panic** on any input, in any Graphite function the oracle calls:
+//!    the parse, and every frame helper the comparison uses
+//!    (`message_bytes`, `unsigned_artifact`, `filled_signature_slots`,
+//!    `simulation_identity`). Each is run under `catch_unwind` and a panic in
+//!    any of them is a failure, tallied by function (Round 29, audit
+//!    2026-10-20: only `parse_transaction` was wrapped, so a panic in a
+//!    helper aborted the run instead of being reported).
 //!
 //! Where Graphite is stricter than the runtime, that is measured and printed
 //! (an honest transaction refused at the gate is an outage, not a bypass) and
 //! is a failure only when it is not one of the documented, deliberate
 //! refusals.
 //!
-//! Inputs: the recorded corpus (ten shapes and their 1,659 byte-level
-//! mutations, read exactly as the Rust and TypeScript tests read them) and a
-//! seeded structure-aware generator that builds transactions with every kind
-//! of malformed header, index, length, encoding and frame the format allows,
-//! plus raw byte damage on top. Deterministic per seed; the seed and the
-//! iteration count are printed so any run can be reproduced.
+//! Inputs: the recorded corpus (every shape and byte-level mutation in
+//! `sak_bridge_corpus.json` — 15 shapes and 2,897 mutations when this was
+//! written; the run prints the counts it read — read exactly as the Rust and
+//! TypeScript tests read them) and a seeded structure-aware generator that
+//! builds transactions with every kind of malformed header, index, length,
+//! encoding and frame the format allows, plus raw byte damage on top.
+//! Deterministic per seed; the seed and the iteration count are printed so
+//! any run can be reproduced.
+//!
+//! Round 29 (audit 2026-10-20): the generator never produced a frame past
+//! the account-lock limit, the 256-account limit or the instruction-trace
+//! limit, so three of Graphite's refusals (`TooManyAccountLocks`,
+//! `TooManyAccounts`, `TooManyInstructions`) were never compared with the
+//! runtime. A systematic limits pass now builds frames on each side of each
+//! limit, and the generator reaches them too; the run fails if any of the
+//! three is never seen.
 //!
 //! Round 19 (F-19-V1): v1 frames (SIMD-0385) too. v1 has no bincode/serde
 //! wire encoding — the crates' serde impl for `VersionedMessage::V1` says it
@@ -143,7 +161,39 @@ fn graphite_reason(e: &ArtifactParseError) -> String {
     }
 }
 
+/// Panics in Graphite's functions, by function (property 3).
+#[derive(Default)]
+struct Panics {
+    by_function: BTreeMap<&'static str, u64>,
+    examples: Vec<String>,
+}
+
+impl Panics {
+    /// Run one Graphite function under `catch_unwind`. A panic is tallied
+    /// under `function` and comes back as `Err`, so the frame is reported
+    /// and the run goes on to the next one.
+    fn guard<T>(
+        &mut self,
+        function: &'static str,
+        label: &str,
+        f: impl FnOnce() -> T,
+    ) -> Result<T, String> {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+            Ok(v) => Ok(v),
+            Err(_) => {
+                *self.by_function.entry(function).or_insert(0) += 1;
+                if self.examples.len() < 40 {
+                    self.examples.push(format!("{label}: {function} PANICKED"));
+                }
+                Err(format!("{function} PANICKED"))
+            }
+        }
+    }
+}
+
 struct Tally {
+    /// Property 3: every panic in a Graphite function. Fatal.
+    panics: Panics,
     both_accept: u64,
     both_reject: u64,
     /// Graphite accepted, the runtime refused. Fatal.
@@ -162,6 +212,7 @@ struct Tally {
 impl Tally {
     fn new() -> Self {
         Self {
+            panics: Panics::default(),
             both_accept: 0,
             both_reject: 0,
             graphite_looser: Vec::new(),
@@ -174,21 +225,18 @@ impl Tally {
     }
 
     fn check(&mut self, label: &str, bytes: &[u8]) {
-        // Property 3: no panic, on either side of the comparison.
-        let graphite = std::panic::catch_unwind(|| parse_transaction(bytes));
-        let graphite = match graphite {
-            Ok(r) => r,
-            Err(_) => {
-                self.graphite_looser
-                    .push(format!("{label}: parse_transaction PANICKED"));
-                return;
-            }
+        // Property 3: no panic in any Graphite function the oracle calls.
+        let Ok(graphite) = self
+            .panics
+            .guard("parse_transaction", label, || parse_transaction(bytes))
+        else {
+            return;
         };
         let runtime = runtime_decode(bytes);
         match (graphite, runtime) {
             (Ok(parsed), RuntimeVerdict::Accepted(tx)) => {
                 self.both_accept += 1;
-                if let Err(why) = same_transaction(bytes, &parsed, &tx) {
+                if let Err(why) = same_transaction(bytes, &parsed, &tx, label, &mut self.panics) {
                     self.disagreements.push(format!("{label}: {why}"));
                 }
             }
@@ -250,8 +298,16 @@ fn short_reason(why: &str) -> String {
 }
 
 /// agave's reserved account keys that are active with no feature gate
-/// (`ReservedAccount::new_active` in agave's `reserved-account-keys`), from
-/// the agave id crate — the set a cluster demotes whatever its feature set.
+/// (`ReservedAccount::new_active` in agave's `reserved-account-keys`), as
+/// ids from the SDK id crate — the set a cluster demotes whatever its
+/// feature set.
+///
+/// The MEMBERSHIP is hand-mirrored: agave's `reserved-account-keys` crate
+/// pulls in the feature-set crate and is not in this lockfile. So it is
+/// cross-checked instead (`check_reserved_classification`): every program
+/// and sysvar id the SDK id crate exports must be classified here or in
+/// `not_always_reserved`, so an id added to the crate fails the run until
+/// someone decides which side it belongs on.
 #[allow(deprecated)]
 fn always_reserved() -> std::collections::BTreeSet<solana_message::Address> {
     use solana_sdk_ids::*;
@@ -281,6 +337,105 @@ fn always_reserved() -> std::collections::BTreeSet<solana_message::Address> {
     .collect()
 }
 
+/// Every other program and sysvar id the SDK id crate exports: reserved by
+/// agave only behind a feature gate (`ReservedAccount::new_pending`), or not
+/// reserved at all (the incinerator). Graphite must leave each writable.
+fn not_always_reserved() -> std::collections::BTreeSet<solana_message::Address> {
+    use solana_sdk_ids::*;
+    [
+        // Behind `add_new_reserved_account_keys`.
+        address_lookup_table::id(),
+        compute_budget::id(),
+        ed25519_program::id(),
+        loader_v4::id(),
+        secp256k1_program::id(),
+        zk_elgamal_proof_program::id(),
+        zk_token_proof_program::id(),
+        sysvar::id(),
+        sysvar::epoch_rewards::id(),
+        sysvar::last_restart_slot::id(),
+        // Behind `enable_secp256r1_precompile`.
+        secp256r1_program::id(),
+        // Not reserved.
+        incinerator::id(),
+    ]
+    .into_iter()
+    .collect()
+}
+
+/// The cross-check for the hand-mirrored reserved set (Round 29, audit
+/// 2026-10-20). Reads every id the SDK id crate declares — from the crate's
+/// own source, which cargo unpacked to build this binary — and requires each
+/// to be in exactly one of `always_reserved` and `not_always_reserved`. A
+/// crate upgrade that adds an id fails here until it is classified (and, if
+/// it is always reserved, added to Graphite's `ALWAYS_DEMOTED_KEYS`). The
+/// source not being found is a failure too: an unchecked mirror is the thing
+/// this exists to prevent.
+fn check_reserved_classification() -> Result<usize, String> {
+    let always = always_reserved();
+    let other = not_always_reserved();
+    if let Some(k) = always.intersection(&other).next() {
+        return Err(format!("{k} is classified both ways"));
+    }
+    let lock =
+        std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.lock"))
+            .map_err(|e| format!("Cargo.lock: {e}"))?;
+    let version = lock
+        .split("[[package]]")
+        .find(|p| p.contains("name = \"solana-sdk-ids\""))
+        .and_then(|p| p.lines().find_map(|l| l.strip_prefix("version = \"")))
+        .and_then(|v| v.strip_suffix('"'))
+        .ok_or("solana-sdk-ids is not in Cargo.lock")?
+        .to_string();
+    let cargo_home = std::env::var_os("CARGO_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cargo")))
+        .ok_or("neither CARGO_HOME nor HOME is set")?;
+    let registry = cargo_home.join("registry").join("src");
+    let source = std::fs::read_dir(&registry)
+        .map_err(|e| format!("{}: {e}", registry.display()))?
+        .flatten()
+        .map(|d| {
+            d.path()
+                .join(format!("solana-sdk-ids-{version}"))
+                .join("src")
+                .join("lib.rs")
+        })
+        .find(|p| p.is_file())
+        .ok_or(format!(
+            "the source of solana-sdk-ids {version} is not under {}",
+            registry.display()
+        ))?;
+    let text =
+        std::fs::read_to_string(&source).map_err(|e| format!("{}: {e}", source.display()))?;
+    let mut declared = 0usize;
+    for (at, _) in text.match_indices("declare_") {
+        let rest = &text[at..];
+        if !(rest.starts_with("declare_id!(\"") || rest.starts_with("declare_deprecated_id!(\"")) {
+            continue;
+        }
+        let id = rest.split('"').nth(1).ok_or("unterminated id literal")?;
+        let address: solana_message::Address = id
+            .parse()
+            .map_err(|e| format!("{id} in {}: {e:?}", source.display()))?;
+        if !always.contains(&address) && !other.contains(&address) {
+            return Err(format!(
+                "{id} (declared in {}) is classified neither as always reserved nor as not",
+                source.display()
+            ));
+        }
+        declared += 1;
+    }
+    if declared != always.len() + other.len() {
+        return Err(format!(
+            "{} ids classified but {declared} declared in {}",
+            always.len() + other.len(),
+            source.display()
+        ));
+    }
+    Ok(declared)
+}
+
 /// Round 22: frames whose header marks every reserved key writable. Random
 /// frames almost never name a reserved id, so without this pass a wrong
 /// demotion list would pass the oracle. Each frame names the fee payer, the
@@ -300,6 +455,59 @@ fn run_reserved_keys(tally: &mut Tally) -> usize {
     let invoked = solana_message::Address::new_from_array([7u8; 32]);
     let payer = solana_message::Address::new_from_array([1u8; 32]);
     let mut n = 0;
+    // Round 29: every id that is NOT always reserved, header-writable, in
+    // frames of its own (with the always-reserved ones the frame would pass
+    // the packet size). Graphite must call each writable, as the runtime
+    // does under the always-reserved set.
+    for with_loader in [false, true] {
+        let mut keys = vec![payer];
+        keys.extend(not_always_reserved());
+        if with_loader {
+            keys.push(solana_sdk_ids::bpf_loader_upgradeable::id());
+        }
+        keys.push(invoked);
+        let message = VersionedMessage::Legacy(solana_message::legacy::Message {
+            header: MessageHeader {
+                num_required_signatures: 1,
+                num_readonly_signed_accounts: 0,
+                num_readonly_unsigned_accounts: 0,
+            },
+            account_keys: keys,
+            recent_blockhash: Hash::new_from_array([9u8; 32]),
+            instructions: vec![CompiledInstruction {
+                program_id_index: (not_always_reserved().len() + 1 + usize::from(with_loader))
+                    as u8,
+                accounts: vec![0],
+                data: vec![1, 2, 3],
+            }],
+        });
+        let tx = VersionedTransaction {
+            signatures: vec![Default::default()],
+            message,
+        };
+        let bytes = bincode::serialize(&tx).expect("serialize");
+        let label = format!("not-always-reserved keys, loader present: {with_loader}");
+        let before = tally.both_accept;
+        tally.check(&label, &bytes);
+        if tally.both_accept == before {
+            tally
+                .disagreements
+                .push(format!("{label}: not accepted by both"));
+        }
+        if let Ok(Ok(parsed)) = tally
+            .panics
+            .guard("parse_transaction", &label, || parse_transaction(&bytes))
+        {
+            for k in not_always_reserved() {
+                if !parsed.writable.contains(&k.to_string()) {
+                    tally
+                        .disagreements
+                        .push(format!("{label}: {k} demoted by Graphite"));
+                }
+            }
+        }
+        n += 1;
+    }
     for with_loader in [false, true] {
         let mut keys = vec![payer];
         keys.extend(
@@ -371,7 +579,10 @@ fn run_reserved_keys(tally: &mut Tally) -> usize {
             }
             // The two feature-gated sysvars stay writable to Graphite, and so
             // does the invoked program when the loader may be present.
-            if let Ok(parsed) = parse_transaction(&bytes) {
+            let frame_label = format!("reserved keys, {label}, loader present: {with_loader}");
+            if let Ok(Ok(parsed)) = tally.panics.guard("parse_transaction", &frame_label, || {
+                parse_transaction(&bytes)
+            }) {
                 for k in gated {
                     if !parsed.writable.contains(&k.to_string()) {
                         tally.disagreements.push(format!(
@@ -392,18 +603,103 @@ fn run_reserved_keys(tally: &mut Tally) -> usize {
     n
 }
 
+/// Round 29 (audit 2026-10-20): frames on each side of the three count
+/// limits — 64 vs 65 top-level instructions (the instruction trace), 64 vs
+/// 65 accounts (the bank's lock limit, reached through a lookup table), and
+/// 256 vs 257 accounts (the u8 index space the sanitizer enforces) — in
+/// legacy and v0. The random generator almost never builds these, so
+/// without this pass Graphite's `TooManyInstructions`,
+/// `TooManyAccountLocks` and `TooManyAccounts` were never compared with the
+/// runtime at all. Each frame is otherwise valid, so the limit is the only
+/// thing that can decide it.
+fn run_limits(tally: &mut Tally) -> usize {
+    use solana_message::compiled_instruction::CompiledInstruction;
+    use solana_message::{v0, Hash, MessageHeader};
+    let keys: Vec<solana_message::Address> = (1u8..=3)
+        .map(|i| solana_message::Address::new_from_array([i; 32]))
+        .collect();
+    let header = MessageHeader {
+        num_required_signatures: 1,
+        num_readonly_signed_accounts: 0,
+        num_readonly_unsigned_accounts: 1,
+    };
+    let blockhash = Hash::new_from_array([9u8; 32]);
+    let ix = |accounts: Vec<u8>| CompiledInstruction {
+        program_id_index: 2,
+        accounts,
+        data: vec![],
+    };
+    let mut frames: Vec<(String, VersionedMessage)> = Vec::new();
+    for count in [64usize, 65] {
+        let instructions: Vec<CompiledInstruction> = (0..count).map(|_| ix(vec![])).collect();
+        frames.push((
+            format!("legacy, {count} instructions"),
+            VersionedMessage::Legacy(solana_message::legacy::Message {
+                header,
+                account_keys: keys.clone(),
+                recent_blockhash: blockhash.clone(),
+                instructions: instructions.clone(),
+            }),
+        ));
+        frames.push((
+            format!("v0, {count} instructions"),
+            VersionedMessage::V0(v0::Message {
+                header,
+                account_keys: keys.clone(),
+                recent_blockhash: blockhash.clone(),
+                instructions,
+                address_table_lookups: vec![],
+            }),
+        ));
+    }
+    // 3 static keys plus `loaded` from one table: 64, 65, 256 and 257 in all.
+    for loaded in [61usize, 62, 253, 254] {
+        let indexes: Vec<u8> = (0..loaded).map(|i| i as u8).collect();
+        let (writable, readonly) = indexes.split_at(loaded / 2);
+        frames.push((
+            format!("v0, {} accounts", 3 + loaded),
+            VersionedMessage::V0(v0::Message {
+                header,
+                account_keys: keys.clone(),
+                recent_blockhash: blockhash.clone(),
+                // The last loaded account, so the index space is used.
+                instructions: vec![ix(vec![0, (2 + loaded).min(255) as u8])],
+                address_table_lookups: vec![v0::MessageAddressTableLookup {
+                    account_key: solana_message::Address::new_from_array([8u8; 32]),
+                    writable_indexes: writable.to_vec(),
+                    readonly_indexes: readonly.to_vec(),
+                }],
+            }),
+        ));
+    }
+    let n = frames.len();
+    for (label, message) in frames {
+        let tx = VersionedTransaction {
+            signatures: vec![Default::default()],
+            message,
+        };
+        let bytes = bincode::serialize(&tx).expect("serialize");
+        tally.check(&format!("limits, {label}"), &bytes);
+    }
+    n
+}
+
 /// Property 2: both accepted — is it the same transaction?
 fn same_transaction(
     bytes: &[u8],
     parsed: &ArtifactMessage,
     tx: &VersionedTransaction,
+    label: &str,
+    panics: &mut Panics,
 ) -> Result<(), String> {
     // The message as the runtime serializes it for signing:
     // `VersionedMessage::serialize()` (wincode; for v1 that is `0x81` + the
     // body, the bytes `VersionedTransaction::try_new` signs). For legacy and
     // v0 the bincode encoding must be the same bytes too.
     let runtime_message = tx.message.serialize();
-    let graphite_message = message_bytes(bytes).map_err(|e| format!("message_bytes: {e}"))?;
+    let graphite_message = panics
+        .guard("message_bytes", label, || message_bytes(bytes))?
+        .map_err(|e| format!("message_bytes: {e}"))?;
     if runtime_message.as_slice() != graphite_message {
         return Err(format!(
             "message bytes differ: runtime {} bytes, Graphite {} bytes",
@@ -427,8 +723,9 @@ fn same_transaction(
     }
     let runtime_unsigned =
         wincode::serialize(&zeroed).map_err(|e| format!("wincode serialize: {e}"))?;
-    let graphite_unsigned =
-        unsigned_artifact(bytes).map_err(|e| format!("unsigned_artifact: {e}"))?;
+    let graphite_unsigned = panics
+        .guard("unsigned_artifact", label, || unsigned_artifact(bytes))?
+        .map_err(|e| format!("unsigned_artifact: {e}"))?;
     if runtime_unsigned != graphite_unsigned {
         return Err(
             "unsigned artifact differs from the frame with the runtime's signatures zeroed"
@@ -440,13 +737,17 @@ fn same_transaction(
         .iter()
         .filter(|s| s.as_ref().iter().any(|b| *b != 0))
         .count();
-    if filled_signature_slots(bytes) != Ok(runtime_filled) {
+    let graphite_filled = panics.guard("filled_signature_slots", label, || {
+        filled_signature_slots(bytes)
+    })?;
+    if graphite_filled != Ok(runtime_filled) {
         return Err(format!(
-            "filled signature slots: runtime {runtime_filled}, Graphite {:?}",
-            filled_signature_slots(bytes)
+            "filled signature slots: runtime {runtime_filled}, Graphite {graphite_filled:?}"
         ));
     }
-    simulation_identity(bytes).map_err(|e| format!("simulation_identity: {e}"))?;
+    panics
+        .guard("simulation_identity", label, || simulation_identity(bytes))?
+        .map_err(|e| format!("simulation_identity: {e}"))?;
     let version = match &tx.message {
         VersionedMessage::Legacy(_) => None,
         VersionedMessage::V0(_) => Some(0u8),
@@ -801,7 +1102,7 @@ fn generate(rng: &mut Rng) -> Vec<u8> {
         1 if !well_formed => 255,
         _ => rng.below(keys.saturating_sub(signers).max(1) as u64 + 1) as usize,
     };
-    let lookups: Vec<(usize, usize)> = if version == Some(0) {
+    let mut lookups: Vec<(usize, usize)> = if version == Some(0) {
         (0..rng.below(4))
             .map(|_| {
                 let w = rng.below(5) as usize;
@@ -816,6 +1117,11 @@ fn generate(rng: &mut Rng) -> Vec<u8> {
     } else {
         Vec::new()
     };
+    // Sometimes a table loading enough to cross the lock limit (64) or the
+    // account limit (256) (Round 29).
+    if version == Some(0) && rng.chance(25) {
+        lookups.push((40 + rng.below(140) as usize, rng.below(100) as usize));
+    }
     let loaded: usize = lookups.iter().map(|(w, r)| w + r).sum();
     let shape = Shape {
         version,
@@ -858,9 +1164,16 @@ fn generate(rng: &mut Rng) -> Vec<u8> {
     out.extend_from_slice(&rng.fill(32)); // blockhash
 
     let total_keys = shape.keys + loaded;
-    let instruction_count = match rng.below(6) {
-        0 => 0,
-        _ => 1 + rng.below(5) as usize,
+    // Sometimes enough small instructions to cross the 64-entry trace
+    // (Round 29); small, or the frame is too large before the count matters.
+    let many_instructions = rng.chance(40);
+    let instruction_count = if many_instructions {
+        58 + rng.below(12) as usize
+    } else {
+        match rng.below(6) {
+            0 => 0,
+            _ => 1 + rng.below(5) as usize,
+        }
     };
     // Legal index space for a well-formed frame: programs from the static
     // keys past the payer, accounts from the whole universe.
@@ -878,7 +1191,11 @@ fn generate(rng: &mut Rng) -> Vec<u8> {
             _ => legal_program(rng),
         };
         out.push(program_index.min(255) as u8);
-        let account_count = rng.below(6) as usize;
+        let account_count = if many_instructions {
+            rng.below(2) as usize
+        } else {
+            rng.below(6) as usize
+        };
         emit(rng, account_count, &mut out);
         for _ in 0..account_count {
             let idx = match rng.below(10) {
@@ -890,6 +1207,7 @@ fn generate(rng: &mut Rng) -> Vec<u8> {
             out.push(idx.min(255) as u8);
         }
         let data_len = match rng.below(8) {
+            _ if many_instructions => rng.below(3) as usize,
             0 => 0,
             1 => 100 + rng.below(200) as usize,
             _ => rng.below(40) as usize,
@@ -1342,8 +1660,19 @@ fn main() {
     let mut tally = Tally::new();
     let (entries, mutations) = run_corpus(&corpus, &mut tally);
     println!("corpus: {entries} shapes, {mutations} mutations");
+    match check_reserved_classification() {
+        Ok(n) => println!("reserved keys: all {n} ids of the SDK id crate are classified"),
+        Err(e) => {
+            println!("FAIL: the reserved-key mirror does not check against the SDK id crate: {e}");
+            std::process::exit(1);
+        }
+    }
     let reserved_frames = run_reserved_keys(&mut tally);
     println!("reserved keys: {reserved_frames} frames with every reserved key header-writable");
+    let limit_frames = run_limits(&mut tally);
+    println!(
+        "limits: {limit_frames} frames either side of the instruction, lock and account limits"
+    );
 
     let mut rng = Rng(seed | 1);
     let mut generated_accepted = 0u64;
@@ -1397,6 +1726,14 @@ fn main() {
     }
 
     let mut failed = false;
+    if !tally.panics.by_function.is_empty() {
+        failed = true;
+        println!();
+        println!("FAIL: Graphite panicked: {:?}", tally.panics.by_function);
+        for l in &tally.panics.examples {
+            println!("  {l}");
+        }
+    }
     if !tally.graphite_looser.is_empty() {
         failed = true;
         println!();
@@ -1435,6 +1772,25 @@ fn main() {
         "DuplicateAccountKey",
         "TooManyInstructions",
     ];
+    // Round 29: the count limits must have been decided at least once, by
+    // the runtime or by Graphite's deliberate refusal; a run that never
+    // reaches one compares nothing about it.
+    let exercised = |reason: &str| {
+        tally.graphite_stricter.contains_key(reason) || tally.graphite_reasons.contains_key(reason)
+    };
+    let unexercised: Vec<&str> = [
+        "TooManyAccountLocks",
+        "TooManyAccounts",
+        "TooManyInstructions",
+    ]
+    .into_iter()
+    .filter(|r| !exercised(r))
+    .collect();
+    if !unexercised.is_empty() {
+        failed = true;
+        println!();
+        println!("FAIL: refusals never exercised against the runtime: {unexercised:?}");
+    }
     let unexpected: Vec<&String> = tally
         .graphite_stricter
         .keys()

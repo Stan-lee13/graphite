@@ -37,6 +37,15 @@
 //! Keys are stored as the SHA-256 of the index key (`id:…`, `tx:…`, `ch:…`,
 //! `lc:…`), so every entry has the same width. Two keys of one archive with
 //! the same digest refuse the build, and the archive is scanned instead.
+//!
+//! Corruption-evident, NOT tamper-evident: every hash here is unkeyed and
+//! nothing chains one archive to the next, so whoever can write the data
+//! directory can rewrite an archive and its index together, or delete an
+//! archive and its index, and every check above still passes. A keyed MAC
+//! would not change that while its key sits in the same directory. The data
+//! directory must be writable by the Graphite process alone; the counts an
+//! index answers with are additionally checked against the archive record
+//! they point at (`super::index_entry_is_plausible`).
 
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
@@ -325,8 +334,10 @@ impl ArchiveIndex {
         let mut entry = [0u8; LIFECYCLE_ENTRY as usize];
         file.seek(SeekFrom::Start(base + at * LIFECYCLE_ENTRY))?;
         // Bounded twice: by the section, and by the per-key bound the
-        // archive's lifecycle index was built under.
-        while at < self.lifecycle && offsets.len() <= super::MAX_LIFECYCLE_HISTORY {
+        // archive's lifecycle index was built under. `<`, not `<=`
+        // (Round 29, audit 2026-10-20): `<=` read, and returned, one entry
+        // past the bound.
+        while at < self.lifecycle && offsets.len() < super::MAX_LIFECYCLE_HISTORY {
             file.read_exact(&mut entry)?;
             if entry[0..32] != digest {
                 break;
@@ -335,5 +346,94 @@ impl ArchiveIndex {
             at += 1;
         }
         Ok(offsets)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_index(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "graphite-archive-index-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("audit.jsonl.1700000000000-000000.idx")
+    }
+
+    /// Round 29 (audit 2026-10-20): `lifecycle_offsets` stops at the
+    /// per-key bound. Its loop condition was `<=`, which returned
+    /// `MAX_LIFECYCLE_HISTORY + 1` offsets for a key with more entries.
+    #[test]
+    fn lifecycle_offsets_never_exceed_the_per_key_bound() {
+        let path = temp_index("bound");
+        let key = "lc:id:gr-1".to_string();
+        let mut lifecycle = HashMap::new();
+        lifecycle.insert(
+            key.clone(),
+            (0..(super::super::MAX_LIFECYCLE_HISTORY as u64 + 6))
+                .map(|i| i * 100)
+                .collect::<Vec<u64>>(),
+        );
+        let index = write(
+            &path,
+            1_000_000,
+            &[7u8; 32],
+            IndexSource {
+                last: &HashMap::new(),
+                counts: &HashMap::new(),
+                lifecycle: &lifecycle,
+            },
+        )
+        .unwrap();
+        let offsets = index.lifecycle_offsets(&key).unwrap();
+        assert_eq!(offsets.len(), super::super::MAX_LIFECYCLE_HISTORY);
+        assert_eq!(offsets[0], 0);
+        assert!(index.lifecycle_offsets("lc:id:other").unwrap().is_empty());
+        std::fs::remove_dir_all(path.parent().unwrap()).ok();
+    }
+
+    /// An index checks only against the archive bytes it was built from,
+    /// and a flipped byte anywhere in it fails its trailer.
+    #[test]
+    fn an_index_checks_against_its_archive_and_its_own_trailer() {
+        let path = temp_index("check");
+        let mut last = HashMap::new();
+        let mut counts = HashMap::new();
+        last.insert("id:gr-1".to_string(), 42u64);
+        counts.insert("id:gr-1".to_string(), (1usize, 2usize));
+        write(
+            &path,
+            500,
+            &[1u8; 32],
+            IndexSource {
+                last: &last,
+                counts: &counts,
+                lifecycle: &HashMap::new(),
+            },
+        )
+        .unwrap();
+        let index = open_checked(&path, 500, &[1u8; 32]).expect("checks");
+        assert_eq!(
+            index.verification("id:gr-1").unwrap(),
+            Some(VerificationEntry {
+                last_offset: 42,
+                approved: 1,
+                refused: 2
+            })
+        );
+        assert_eq!(index.verification("id:gr-2").unwrap(), None);
+        assert!(open_checked(&path, 501, &[1u8; 32]).is_none());
+        assert!(open_checked(&path, 500, &[2u8; 32]).is_none());
+        let mut bytes = std::fs::read(&path).unwrap();
+        bytes[HEADER_LEN as usize + 40] ^= 1;
+        std::fs::write(&path, &bytes).unwrap();
+        assert!(open_checked(&path, 500, &[1u8; 32]).is_none());
+        std::fs::remove_dir_all(path.parent().unwrap()).ok();
     }
 }
