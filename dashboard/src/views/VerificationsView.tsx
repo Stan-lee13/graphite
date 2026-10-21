@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { api, type ConfidencePoint } from "../api";
-import { countWindow, verdictKind, verdictLabel, verdictTone, windowLabel } from "../figures";
+import { countWindow, verdictKind, verdictLabel, verdictMeaning, verdictTone, windowLabel } from "../figures";
 import { hrefFor } from "../router";
 import { useLayout, usePolling } from "../usePolling";
 import { CopyId, Empty, Fault, Figure, Freshness, PageHead, Section, Skeleton, State, fmt, pollFault, relTime, shortTime } from "../ui";
@@ -23,7 +23,21 @@ const FLOORS = [
   { at: 0.95, label: "Treasury" },
 ];
 
-type Filter = "all" | "approved" | "refused";
+type Filter = "all" | "executable" | "approved" | "refused";
+
+const FILTER_LABEL: Record<Filter, string> = {
+  all: "All",
+  executable: "Executable",
+  approved: "Approved",
+  refused: "Refused",
+};
+
+const FILTER_EMPTY: Record<Filter, string> = {
+  all: "Nothing here",
+  executable: "Nothing executable",
+  approved: "Nothing approved",
+  refused: "Nothing refused",
+};
 
 export function VerificationsView() {
   const layout = useLayout();
@@ -47,7 +61,15 @@ export function VerificationsView() {
 
   const listed = [...pts]
     .reverse()
-    .filter((p) => (filter === "all" ? true : filter === "approved" ? p.approved : !p.approved))
+    .filter((p) =>
+      filter === "all"
+        ? true
+        : filter === "executable"
+          ? verdictKind(p) === "executable"
+          : filter === "approved"
+            ? p.approved
+            : !p.approved,
+    )
     .slice(0, 100);
 
   return (
@@ -59,18 +81,23 @@ export function VerificationsView() {
       <div className="figures five">
         <Figure label="On record" value={loading ? "—" : fmt.int(data.count)} sub="all time" />
         <Figure
-          label={`Bound to bytes, ${winLabel}`}
-          value={loading ? "—" : fmt.int(win.bound)}
-          sub={win.n ? fmt.pct(win.bound / win.n) : undefined}
-          tone={win.bound > 0 ? "pass" : "idle"}
+          label={`Executable, ${winLabel}`}
+          value={loading ? "—" : fmt.int(win.executable)}
+          sub={win.n ? `${fmt.pct(win.executable / win.n)} may be signed` : undefined}
+          tone={win.executable > 0 ? "pass" : "idle"}
         />
         <Figure
-          label={`Descriptive, ${winLabel}`}
-          value={loading ? "—" : fmt.int(win.descriptive)}
-          sub="approved as described, no bytes"
-          tone={win.descriptive > 0 ? "warn" : "idle"}
+          label={`Not executable, ${winLabel}`}
+          value={loading ? "—" : fmt.int(win.notExecutable)}
+          sub={loading ? undefined : `approved for analysis only; ${fmt.int(win.descriptive)} with no bytes`}
+          tone={win.notExecutable > 0 ? "warn" : "idle"}
         />
-        <Figure label={`Refused, ${winLabel}`} value={loading ? "—" : fmt.int(win.refused)} tone={win.refused > 0 ? "block" : "idle"} />
+        <Figure
+          label={`Refused, ${winLabel}`}
+          value={loading ? "—" : fmt.int(win.refused + win.inconclusive)}
+          sub={loading || !win.inconclusive ? undefined : `${fmt.int(win.inconclusive)} inconclusive`}
+          tone={win.refused + win.inconclusive > 0 ? "block" : "idle"}
+        />
         <Figure label="Mean confidence" value={loading ? "—" : fmt.score(mean)} sub={winLabel} />
       </div>
 
@@ -92,9 +119,9 @@ export function VerificationsView() {
           title="Recent"
           meta={
             <div className="seg" role="radiogroup" aria-label="Show">
-              {(["all", "approved", "refused"] as Filter[]).map((f) => (
+              {(["all", "executable", "approved", "refused"] as Filter[]).map((f) => (
                 <button key={f} type="button" role="radio" aria-checked={filter === f} className={filter === f ? "on" : undefined} onClick={() => setFilter(f)}>
-                  {f === "all" ? "All" : f === "approved" ? "Approved" : "Refused"}
+                  {FILTER_LABEL[f]}
                 </button>
               ))}
             </div>
@@ -102,7 +129,7 @@ export function VerificationsView() {
           flush
         >
           {listed.length === 0 ? (
-            <Empty title={filter === "approved" ? "Nothing approved" : "Nothing refused"} />
+            <Empty title={FILTER_EMPTY[filter]} />
           ) : layout === "phone" ? (
             <ul className="rows">
               {listed.map((p) => (
@@ -209,18 +236,14 @@ function Chart({ pts, compact }: { pts: ConfidencePoint[]; compact: boolean }) {
 }
 
 /**
- * An approval is about bytes only when the verdict carries their digest. A
- * descriptive approval says the request, as described, was acceptable; it
- * does not constrain what gets signed, and is shown as such (W22).
+ * An approval is about bytes only when the verdict carries their digest, and
+ * is something a signer may act on only when the Core reports it executable
+ * (Round 30). A descriptive approval says the request, as described, was
+ * acceptable; it does not constrain what gets signed (W22).
  */
 function Verdict({ p }: { p: ConfidencePoint }) {
   const kind = verdictKind(p);
-  const title =
-    kind === "bound"
-      ? `bound to ${p.transaction_sha256}`
-      : kind === "descriptive"
-        ? "approved as described, not bound to transaction bytes"
-        : undefined;
+  const title = p.transaction_sha256 ? `${verdictMeaning(kind)}; bound to ${p.transaction_sha256}` : verdictMeaning(kind);
   return (
     <State kind={verdictTone(kind)} title={title}>
       {verdictLabel(kind)}

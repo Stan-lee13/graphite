@@ -18,10 +18,23 @@ export function isLoopbackHost(hostname: string): boolean {
 }
 
 /**
+ * The plain-http loopback hosts the built console's Content-Security-Policy
+ * can name in `connect-src` (csp.ts LOOPBACK_HTTP). Round 30: a CSP host
+ * source cannot be an IPv6 literal (Chrome drops `http://[::1]:*` as invalid)
+ * nor a range (127.0.0.0/8), so a Core at http://[::1] or http://127.0.0.2
+ * passed this rule and was then blocked by the CSP — reported as "No
+ * response from the Core" with advice about CORS that could not help. Those
+ * addresses are refused here, before sending, with the reason.
+ */
+export const CSP_LOOPBACK_HOSTS: readonly string[] = ["localhost", "127.0.0.1"];
+
+/**
  * Why the console must not talk to `base`, or null when it may. `pageOrigin`
  * is `window.location.origin`, used when `base` is empty (same origin).
+ * `buildOrigin` is the origin of a build-time `VITE_GRAPHITE_API`, which the
+ * CSP names explicitly.
  */
-export function insecureBaseReason(base: string, pageOrigin: string): string | null {
+export function insecureBaseReason(base: string, pageOrigin: string, buildOrigin: string | null = null): string | null {
   let url: URL;
   try {
     url = new URL(base || pageOrigin);
@@ -40,11 +53,18 @@ export function insecureBaseReason(base: string, pageOrigin: string): string | n
   }
   if (url.protocol === "https:") return null;
   if (url.protocol === "http:") {
-    if (isLoopbackHost(url.hostname)) return null;
+    if (isLoopbackHost(url.hostname)) {
+      // Same origin is the CSP's 'self', whatever the address.
+      if (!base || CSP_LOOPBACK_HOSTS.includes(url.hostname.toLowerCase()) || url.origin === buildOrigin) return null;
+      return (
+        `${url.origin} is on this machine, but the console's Content-Security-Policy can only name ` +
+        "http://localhost and http://127.0.0.1 for a plain-http Core. Use one of those (with the same port)."
+      );
+    }
     return (
       `${url.origin} is plain http:// to another machine: the API key and everything the Core ` +
       "returns would cross the network unencrypted. Serve the Core over https://, or use http:// " +
-      "only on this machine (localhost, 127.0.0.1, [::1])."
+      "only on this machine (localhost, 127.0.0.1)."
     );
   }
   return `${url.protocol} is not a Core address. Use https://, or http:// on this machine.`;

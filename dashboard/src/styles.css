@@ -26,8 +26,12 @@
 
   --fg: #ececf1;
   --fg-2: #b4b4bd;
-  --fg-3: #82828d;
-  --fg-4: #585862;
+  /* Round 30: --fg-4 was #585862, 2.7:1 on the canvas and 2.3:1 on a
+     hovered row, and --fg-3 fell to 4.3:1 on raised surfaces; both carry
+     text (figure notes, freshness, axis labels, placeholders). Both now
+     clear WCAG AA's 4.5:1 on every surface they are drawn on. */
+  --fg-3: #9a9aa4;
+  --fg-4: #868691;
 
   /* The logo's inner glow. */
   --brand: #9b7bff;
@@ -841,6 +845,7 @@ kbd {
   padding: 0 10px;
   border-radius: var(--r);
   color: var(--fg-2);
+  cursor: pointer;
 }
 .palette-item svg {
   width: 15px;
@@ -962,12 +967,13 @@ kbd {
 .figure-value.idle {
   color: var(--fg-3);
 }
+/* Round 30: the note under a figure wraps instead of being cut with an
+   ellipsis. It is where a figure says what it counts ("approved for
+   analysis only…"), and a truncated qualifier reads as no qualifier. */
 .figure-sub {
   font-size: 12px;
   color: var(--fg-4);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .app.phone .figures {
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1149,7 +1155,7 @@ table.data tbody tr:last-child td {
 table.data tbody tr:hover td {
   background: var(--raised);
 }
-table.data tr[aria-selected] td {
+table.data tr:has(a[aria-current]) td {
   background: var(--brand-wash);
 }
 table.data tr.flag td:first-child {
@@ -1195,6 +1201,9 @@ table.data.counters .row-sub {
   display: block;
   margin: 2px 0 0;
   font-size: 11px;
+  /* Round 30: a metric name is one long word; on a phone it pushed the
+     table wider than the screen. */
+  overflow-wrap: anywhere;
 }
 .cell-link {
   font-weight: 500;
@@ -1520,6 +1529,34 @@ a.row-main:hover .row-title {
   justify-content: space-between;
   font-size: 11.5px;
   color: var(--fg-4);
+}
+/* Round 30: what the colours count, in words. */
+.tape-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--fg-3);
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.slat-key {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.slat-key.pass {
+  background: var(--pass);
+}
+.slat-key.warn {
+  background: var(--warn);
+}
+.slat-key.block {
+  background: var(--block);
 }
 
 /* ------------------------------------------------------------------- chart */

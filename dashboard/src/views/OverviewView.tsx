@@ -75,8 +75,8 @@ export function OverviewView() {
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     .slice(0, 6);
 
-  // `/api/protocols/top` reports observed counts for its five rows only; a
-  // program outside them has an unknown count here, not a zero (D10).
+  // A program `/api/protocols/top` did not return has an unknown count here,
+  // not a zero (D10); the console asks for every row (Round 30).
   const observedBy = new Map((top.data?.top ?? []).map((t) => [t.program_id, t.observed_verifications]));
   const topRows = [...nodes]
     .map((node) => ({ node, observed: observedBy.get(node.program_id) }))
@@ -104,7 +104,7 @@ export function OverviewView() {
         <Figure
           label="Approved"
           value={loading || !totals ? "—" : fmt.int(totals.approved)}
-          sub={loading || !totals ? undefined : "all time, bound and descriptive"}
+          sub={loading || !totals ? undefined : "all time, executable or not"}
         />
         <Figure
           label="Refused"
@@ -117,16 +117,16 @@ export function OverviewView() {
           tone={totals && totals.refused > 0 ? "block" : "idle"}
         />
         <Figure
-          label={`Bound to bytes, ${winLabel}`}
-          value={loading ? "—" : fmt.int(win.bound)}
-          sub={loading || !win.n ? undefined : `${fmt.pct(win.bound / win.n)} of those verdicts`}
-          tone={win.bound > 0 ? "pass" : "idle"}
+          label={`Executable, ${winLabel}`}
+          value={loading ? "—" : fmt.int(win.executable)}
+          sub={loading || !win.n ? undefined : `${fmt.pct(win.executable / win.n)} of those verdicts may be signed`}
+          tone={win.executable > 0 ? "pass" : "idle"}
         />
         <Figure
-          label={`Descriptive, ${winLabel}`}
-          value={loading ? "—" : fmt.int(win.descriptive)}
-          sub="approved as described, no bytes"
-          tone={win.descriptive > 0 ? "warn" : "idle"}
+          label={`Not executable, ${winLabel}`}
+          value={loading ? "—" : fmt.int(win.notExecutable)}
+          sub={loading ? undefined : `approved for analysis only; ${fmt.int(win.descriptive)} with no bytes`}
+          tone={win.notExecutable > 0 ? "warn" : "idle"}
         />
         <Figure
           label="Programs"
@@ -314,9 +314,25 @@ function Tape({ points, total }: { points: ConfidencePoint[]; total: number }) {
   }, [total, reduced]);
 
   const n = points.length;
+  const c = countWindow(points);
   return (
     <div className="tape-wrap">
-      <ol className="tape" aria-label={`The last ${n} verdicts, oldest first; green is bound to bytes, amber descriptive, red refused`}>
+      {/* Round 30: the slats carry colour only, so the counts they stand for
+          are written out beside them — a legend for the eye and the text for
+          a screen reader, which the 120 empty list items never gave. */}
+      <p className="tape-legend">
+        <span className="legend-item">
+          <i className="slat-key pass" aria-hidden="true" /> {fmt.int(c.executable)} executable
+        </span>
+        <span className="legend-item">
+          <i className="slat-key warn" aria-hidden="true" /> {fmt.int(c.notExecutable + c.inconclusive)} approved but not executable, or inconclusive
+        </span>
+        <span className="legend-item">
+          <i className="slat-key block" aria-hidden="true" /> {fmt.int(c.refused)} refused
+        </span>
+        <span className="sr-only">, of the last {fmt.int(n)} verdicts.</span>
+      </p>
+      <ol className="tape" aria-hidden="true">
         {points.map((p, i) => (
           <li
             key={p.audit_trail_id}

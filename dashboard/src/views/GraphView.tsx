@@ -221,7 +221,10 @@ export function GraphView({ selected }: { selected?: string }) {
           </div>
         ) : (
           <div className="graph-main">
-            <svg className="graph-canvas" viewBox={`0 0 ${W} ${g.H}`} role="img" aria-label="Program CPI graph, laid out in call order">
+            {/* Round 30 (axe nested-interactive): a group, not an image — an
+                image's children are hidden from assistive technology, and
+                these are buttons. */}
+            <svg className="graph-canvas" viewBox={`0 0 ${W} ${g.H}`} role="group" aria-label="Program CPI graph, laid out in call order">
               {g.columns.map((col, ci) => {
                 const x = g.columns.length === 1 ? (X_FIRST + X_LAST) / 2 : X_FIRST + (ci / (g.columns.length - 1)) * (X_LAST - X_FIRST);
                 return (
@@ -250,6 +253,7 @@ export function GraphView({ selected }: { selected?: string }) {
                     className={`node-g ${selected === n.program_id ? "active" : ""}`}
                     onClick={() => toggle(n.program_id)}
                     role="button"
+                    aria-pressed={selected === n.program_id}
                     tabIndex={0}
                     aria-label={`${n.name}, ${p.fanIn} inbound, ${p.fanOut} outbound`}
                     onKeyDown={(ev) => {

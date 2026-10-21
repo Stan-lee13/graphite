@@ -14,16 +14,21 @@ export function ProgramsView({ selected }: { selected?: string }) {
   const layout = useLayout();
   const top = usePolling(() => api.topProtocols(), 5000);
   const graph = usePolling(() => api.graph(), 5000);
-  const manifests = usePolling(() => api.manifests(), 30000);
+  // Round 30: `/manifests` is every manifest in full (about 4.6 MB for the
+  // shipped set) and changes only on a registry update or restart; it was
+  // refetched every 30 s for as long as this view was open.
+  const manifests = usePolling(() => api.manifests(), 300_000);
   const [q, setQ] = useState("");
 
   const fault = pollFault(top, graph);
   if (fault) return <Fault error={fault} />;
   const loading = !top.data || !graph.data;
 
-  // Round 29 (audit 2026-10-20, D10): `/api/protocols/top` reports observed
-  // counts for its five rows only. Every other program's count is unknown to
-  // the console — not zero, and not "no traffic".
+  // Round 29 (audit 2026-10-20, D10): a program `/api/protocols/top` did not
+  // return has an unknown count — not zero, and not "no traffic". Round 30:
+  // the console asks for every row (`?limit=500`), so on a current Core
+  // every program has its count; the unknown case remains for older Cores
+  // that ignore the limit and send five.
   const observedBy = new Map((top.data?.top ?? []).map((t) => [t.program_id, t.observed_verifications]));
   const all = [...(graph.data?.nodes ?? [])]
     .map((node) => ({ node, observed: observedBy.get(node.program_id) }))
@@ -48,7 +53,7 @@ export function ProgramsView({ selected }: { selected?: string }) {
     <>
       <PageHead
         title="Programs"
-        desc="Every program with a manifest in the semantic graph: the five the Core reports verification counts for come first, then by mainnet census."
+        desc="Every program with a manifest in the semantic graph, the most verified here first, then by mainnet census."
         actions={
           <label className="search-field">
             <Search aria-hidden="true" />
@@ -119,9 +124,11 @@ export function ProgramsView({ selected }: { selected?: string }) {
             </thead>
             <tbody>
               {rows.map(({ node, observed }) => (
-                <tr key={node.program_id} className={node.quarantined ? "flag" : undefined} aria-selected={selected === node.program_id || undefined}>
+                // Round 30 (axe aria-prohibited-attr): aria-selected belongs to
+                // grid rows, not a table's; the open row's link says it instead.
+                <tr key={node.program_id} className={node.quarantined ? "flag" : undefined}>
                   <td>
-                    <a className="cell-link" href={hrefFor("programs", node.program_id)}>
+                    <a className="cell-link" href={hrefFor("programs", node.program_id)} aria-current={selected === node.program_id || undefined}>
                       {node.name}
                       {node.manifest_version && <span className="row-sub">{versionLabel(node.manifest_version)}</span>}
                     </a>
@@ -190,7 +197,7 @@ function httpUrl(raw: string | undefined): string | undefined {
   }
 }
 
-const NOT_REPORTED = "The Core reports verification counts only for the five programs at the top of /api/protocols/top.";
+const NOT_REPORTED = "This Core did not report a verification count for this program (a Core before Round 29 reports only its top five).";
 
 function observedText(observed: number | undefined): string {
   if (observed === undefined) return "count not reported";
