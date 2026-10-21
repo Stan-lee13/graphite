@@ -159,3 +159,59 @@ fn replaying_a_superseded_submission_does_not_roll_the_manifest_back() {
         in_force
     );
 }
+
+/// R30 (deliberate break of A3-07): the test above passes with the A3-07
+/// check deleted — its replay is submitted with no regression corpus, so it is
+/// refused by the P10 gate whatever else holds, and its assertion accepts any
+/// error. Here the replay carries a corpus and the refusal must be A3-07's:
+/// a byte-identical old version, and an old LABEL on new content that names
+/// the head as its predecessor (which the lineage rule alone would admit).
+#[test]
+fn a_label_or_content_already_accepted_is_refused_as_such() {
+    use graphite_core::manifest_registry::RegistryError;
+    let reviewer = SigningKey::from_bytes(&[9u8; 32]);
+    let reviewer_b58 = bs58::encode(reviewer.verifying_key().to_bytes()).into_string();
+    let mut engine = ManifestRegistryEngine::new();
+    engine.register_reviewer(&reviewer_b58, 1_000).unwrap();
+    let mut store = SemanticGraphStore::new();
+    let gate_core = GraphiteCore::new();
+    let mut corpus = RegressionCorpus::new();
+    record_fixture(&mut corpus, &fixture_input(), false, "a3");
+
+    let v1 = attested(manifest("1.0.0", &[], None), &reviewer, &reviewer_b58);
+    let v1_replay = v1.clone();
+    engine
+        .submit(&mut store, v1, Some((&corpus, &gate_core)))
+        .expect("v1 accepted");
+    let v2 = attested(
+        manifest("2.0.0", &[USER], Some("1.0.0")),
+        &reviewer,
+        &reviewer_b58,
+    );
+    engine
+        .submit(&mut store, v2, Some((&corpus, &gate_core)))
+        .expect("v2 accepted");
+
+    let replay = engine.submit(&mut store, v1_replay, Some((&corpus, &gate_core)));
+    assert!(
+        matches!(replay, Err(RegistryError::VersionAlreadyAccepted(ref l)) if l == "1.0.0"),
+        "{replay:?}"
+    );
+
+    // The old label again, on content that pins the slot and names the head.
+    let relabelled = attested(
+        manifest("1.0.0", &[USER], Some("2.0.0")),
+        &reviewer,
+        &reviewer_b58,
+    );
+    let r = engine.submit(&mut store, relabelled, Some((&corpus, &gate_core)));
+    assert!(
+        matches!(r, Err(RegistryError::VersionAlreadyAccepted(ref l)) if l == "1.0.0"),
+        "{r:?}"
+    );
+    let in_force: Vec<String> = engine
+        .accepted_manifests()
+        .map(|m| m.version.label.clone())
+        .collect();
+    assert_eq!(in_force, vec!["2.0.0".to_string()]);
+}
