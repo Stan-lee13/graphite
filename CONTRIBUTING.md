@@ -65,7 +65,7 @@ Every PR must satisfy all 16 Constitution principles. The most commonly violated
 
 ## PR Checklist
 
-Every commit to `main` must pass the full CI gate (`.github/workflows/ci.yml`), which runs on every push:
+Every commit to `main` must pass the full CI gate (`.github/workflows/ci.yml`), which runs on every pull request, merge-queue entry and push to `main`; its `CI gate` job needs every other job, and is the one check the prepared rulesets (`.github/rulesets/main.json`) require once an owner applies them. Since Round 30 each suite's log is counted against a floor of passing tests, and a new `#[ignore]` (not named in `.github/test-allowlists/rust-ignored.txt`), a Go `t.Skip` or an extra node/pytest skip fails the job — so a test you delete or skip needs the floor or the allowlist changed in the same PR, with a reason:
 
 - [ ] `cargo fmt --all -- --check` clean (0 diffs)
 - [ ] `cargo clippy --all-targets --all-features -- -D warnings` passes (0 warnings)

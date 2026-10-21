@@ -1,10 +1,12 @@
-# AUDIT FINAL — verdict (2026-10-21, after Round 29)
+# AUDIT FINAL — verdict (2026-10-22, after Round 30)
 
 **Scope:** the whole repository, audited in six areas at `3327fcf` ([`00-map.md`](00-map.md)) and
 fixed in Round 23. An external review of the result followed (R1–R26 with W1–W26); its items were
 re-verified one at a time and answered through `eb17aa5` and Round 24; a second external review
 (E1–E10) was answered in Round 25; a full-repository audit of `19a2974` (2026-10-20: 4 HIGH,
-16 MEDIUM, LOW and informational items by area) was answered in Round 29. **Internal engineering
+16 MEDIUM, LOW and informational items by area) was answered in Round 29; a forensic whole-repository
+audit of `29e4356` (2026-10-21: twelve leads G-01 … G-12, 0 P0, 5 P1, 14 P2, 35 P3) was answered in
+Round 30 (`../docs/audit-r30/findings-registry.md`). **Internal engineering
 work by the maintainer and AI engineering agents, plus external reviews answered here. Not an
 independent third-party audit and not a certification.** The independent audit remains an owner
 decision (R-M4).
@@ -73,11 +75,14 @@ that alone (a documented limitation; the agent guard refuses it).
   Round 24 (R2, R3, R3-b and W11–W25), B104–B107 from Round 25 (E3, E3b, E8), B108 from Round 26
   (the committed mainnet blocks catch a verdict change), B109–B111 from Round 27 (upgrade detection), B112–B125 from Round 28 (the archive index, the
   emission table, the contract gate). Round 29 adds B126 (the RPC-client and state-diff fixes
-  reverted: 28 failures, every new test but its two controls) and B127 (the contract gate), . Outside
+  reverted: 28 failures, every new test but its two controls) and B127 (the contract gate). Outside
   the numbered harness, each Round 29 area's own revert runs are listed in the round report
   (core pipeline, server and CLI, audit trail and parser, agent guard, SDKs and schema, dashboard
-  and AI layer: caught); the risk engine and registry, and the protocol data and attack suites,
-  were not break-tested. B62 and B99 were
+  and AI layer: caught). The risk engine and registry, and the protocol data and attack suites,
+  were not break-tested in Round 29; Round 30 broke every one of their checks (62 mutants and six
+  fix breaks, R30-F-3): nine were caught by no test or almost none, and each now has its own
+  test, broken and caught. Every Round 30 fix was reverted against its own test; the records are
+  in `../docs/audit-r30/findings-registry.md`. B62 and B99 were
   missed on their first run because their tests did not exercise the reverted rule; each test was
   corrected and the break caught. TypeScript: 11 of 11 caught (TSB1–TSB5 in Round 24, TSB6–TSB11
   in Round 25).
@@ -138,12 +143,15 @@ Recorded, not hidden. Each is in `01-findings.md` or `02-roadmap-gap.md` with it
 - the approval path on live traffic: offline, approval is unreachable by design;
 - attack classes beyond the repository's suites, the 37 documented real exploits and the
   deliberate breaks;
-- the Round 29 fixes outside the RPC client, the state diff and the contract gate, against their
-  own reversal.
+- the two proptest suites under the Round 30 risk mutants; the CLI exit-code mapping on its own
+  (tested through the decision rule).
+- the per-shape, anchored L3 baselines (Round 30) against real RPC traffic: the conformance set
+  runs offline.
 
 ## Bottom line
 
 Graphite fails closed where this work looked. Its fixes are pinned by tests that catch their own
 reversal, and its cost on four days of real mainnet traffic is measured and attributed. It
-should run as a supervised pilot with branch protection on first. It should not be described as
-independently audited until it is.
+should run as a supervised pilot with branch protection on first — Round 30 prepared the
+rulesets; an owner has to apply them. Since Round 30 only `executable: true` permits signing.
+It should not be described as independently audited until it is.

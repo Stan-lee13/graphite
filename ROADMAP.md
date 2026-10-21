@@ -3,7 +3,7 @@
 ## Phase 1 (COMPLETE — v0.1.0-alpha, frozen)
 
 - [x] Core verification engine (Rust)
-- [x] 8-layer pipeline (L1-L7 inside every /verify; L8 post-submission via POST /verify/execution; L3/L4/L8 live-validated against real RPC)
+- [x] 8-layer pipeline (L1-L7 inside every /verify; L8 post-submission via POST /verify/execution; L3/L4/L8 checked by hand against real RPC through ignored live tests, no run artifact kept)
 - [x] 33 protocol manifests (16 base + Tier-0: ATA, Compute Budget, BPF Loaders + Drift, Kamino, Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi + C56: Raydium CLMM/CPMM, Marinade, SPL Stake Pool, Orca TokenSwap V2)
 - [x] Risk engine: 11 attack pattern detectors and thirteen checks at the time (today's counts: [docs/CURRENT.md](docs/CURRENT.md))
 - [x] Confidence engine with 0.55 cap on unknown protocols (P6/P12)
@@ -94,14 +94,14 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 
 ### Month 3: Live Integration + Dashboard
 - [x] Live SAK integration on devnet — **re-verified on-chain Aug 8, 2026** (signature `xHa4dyuFS6JmSaTsmhcMpEtwbWnPjBoUGwk3wNixD2uw2Wmeui6GhnSmmdzNVkv85zXSd6g7QYhHymAjciwP3jJ` re-fetched: finalized System transfer, slot 481727834)
-- [x] L3 Simulation Verification live-validated against real RPC — `tests/l3_live_simulation.rs` (C40): real simulateTransaction returns a result, partial/no-baseline results are non-events, malformed payloads fail safely
-- [x] L8 Execution Verification live-validated against mainnet — `tests/l8_live_mainnet.rs` (C40): Confirmed (real signature, slot 438408575), UnknownSignature (fabricated), Unavailable (unreachable RPC)
+- [x] L3 Simulation Verification checked by hand against real RPC (ignored test, no run artifact kept) — `tests/l3_live_simulation.rs` (C40): real simulateTransaction returns a result, partial/no-baseline results are non-events, malformed payloads fail safely
+- [x] L8 Execution Verification checked by hand against mainnet (ignored test, no run artifact kept) — `tests/l8_live_mainnet.rs` (C40): Confirmed (real signature, slot 438408575), UnknownSignature (fabricated), Unavailable (unreachable RPC)
 - [x] React dashboard showing live verification state (read-only /api endpoints; five views at the time, eight today)
 - [x] 1,000+ meaningful regression fixtures — **2,747-fixture corpus at C52** (C41 + C52; the committed corpus has since grown, see README): dev 2,676 (manifest-driven synthetic) + regression 31 (re-pinned attack classes) + holdout 40 (37 real mainnet exploits — 35 SolPhishHunter + 2 live-fetched — + 3 real mainnet txs, independently labeled, never used for tuning); replay 0 divergences, byte-identical across runs (C42 registry determinism fix)
 - [x] Real holdout evaluation — holdout n=38: precision 1.000, recall 1.000, F1 1.000, 0 false negatives (C41)
 - [x] 22-manifest revalidation — all program IDs base58-decode to 32 bytes; Kamino V2 stub layouts rebuilt from live on-chain decoded streams (C42); Orca roles fixed to real SDK layouts (C41); universal-CPI audit: infra exclusion is per-target and cannot shield a malicious caller (C42)
 - [x] Public deployment endpoint — **image builds + runs + security-tested live (C54)**: the Dockerfile had 3 real defects (toolchain pinned too old for the locked clap tree; `--features server` never built the `graphite` bin which requires `cli`; wrong target-dir COPY path) — all fixed; `docker build` now succeeds (185MB), container runs non-root (uid 999), HEALTHCHECK healthy, and auth (401s), rate limiting (429 on concurrent burst), CORS default-deny + allowlist, audit log, and hostile/oversized bodies (422/413, server survives) were verified against the deployed container. Still no public internet endpoint — TLS/DNS/monitoring are reverse-proxy platform concerns, documented in docker-compose.yml
-- [x] Phase 2 certification — report upgraded **CONDITIONAL GO → GO** (docs/phase2-certification-report.md, §7/§10/§11)
+- [x] Phase 2 certification — report upgraded **CONDITIONAL GO → GO** (docs/phase2-certification-report.md, §7/§10/§11). *Historical: an internal Phase 2 milestone of 2026-08, superseded by every later round; it is not a production or independent certification — the current verdict is in [docs/CURRENT.md](docs/CURRENT.md).*
 - [x] Tag v0.2.0-beta — tagged at C54 (Cargo.toml 0.1.1 → 0.2.0-beta)
 
 ### Phase 2 Exit Criteria
@@ -109,7 +109,7 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [x] SAK integration executes real devnet transactions after Graphite approval — 5 finalized devnet txs, re-verified on-chain 2026-08-08
 - [x] Protocol Manifest Registry accepts signed community submissions — CLI operator path live-verified (signed → ACCEPTED at derived tier; unregistered → REJECTED)
 - [x] Plugin framework has 2+ real plugins
-- [x] L3, L4 and L8 live-validated against real RPC (2026-09-07/08) — L3 grows its own baseline from live devnet observations, L4 caught an undeclared owner reassignment that L1/L2/L5 all passed, and L8 is reachable in production as POST /verify/execution + `graphite execution` with reconciliation against the append-only record
+- [x] L3, L4 and L8 checked by hand against real RPC (2026-09-07/08; no run artifact kept) — L3 grows its own baseline from live devnet observations, L4 caught an undeclared owner reassignment that L1/L2/L5 all passed, and L8 is reachable in production as POST /verify/execution + `graphite execution` with reconciliation against the append-only record
 - [x] TOCTOU prevention via AuditBind middleware
 - [x] Dashboard shows live verification state
 - [x] 1,000+ meaningful regression fixtures (2,181 corpus, C41)
@@ -162,6 +162,7 @@ prove its test fails without it; Round 29's report says which of its fixes were.
 - [x] **Real traffic on every commit, and upgrades noticed (Rounds 26–27):** two finalized mainnet blocks (2,284 transactions) committed and run through the whole pipeline on every `cargo test`, the verdicts' SHA-256 pinned; a redeployed or re-authorised manifested program reported, and quarantined on the operator's flag
 - [x] **The archives are indexed, the lifecycle is exhaustive, the contract is gated (Round 28):** persisted archive indexes (822 ms → 2.2 ms); every lifecycle event names its emitter; the schemas diffed against the last release tag, version `0.3.0-beta`
 - [x] **The audit remediated (Round 29, 2026-10-21):** a full-repository audit of `19a2974` (4 HIGH, 16 MEDIUM) answered — a failed or incomplete simulation refuses with an RPC attached; a swap held to its route's own minimum on six decoded programs; one transfer grammar; refusals no longer train confidence unless the operator opts in; the verdict's tier is the weakest program's; a registry that owns its corpus, enforces lineage and signs a domain-tagged message; L8 writes an `execution_check` unless it saw inclusion; every adapter requires a cap and a person sees the resolved transaction; 16 risk checks (an unreachable Check 7 removed); 3,541 instructions with corrected classes; an honest holdout (37 of 37 exploits refused, the one benign swap refused offline); the mainnet pin moved on 3 of 2,277 rows, each attributed. Report: `docs/round29-the-audit-remediated-2026-10-21.md`
+- [x] **The forensic audit remediated (Round 30, 2026-10-22):** a whole-repository audit of `29e4356` — every verdict says whether it permits signing (`decision`, `executable`; G-01); a verify-key holder's self-approved requests no longer train evidence and the learning opt-in is retired (G-02); per-shape anchored baselines (G-03); an upgrade withdraws evidence (G-04); a hash-chained audit trail, tamper-evident when keyed, with `graphite audit verify` / `checkpoint` (G-07); L8 inclusion assurance and a high-assurance mode (G-08); honest intents for 21 grounded withdraw/claim/close/burn/configure instructions (G-06, R-M13/R-M14 in part); a read-only key; the guard executes only a decision it recomputes and persists its duplicate-send record; CI fails on missing tests; rulesets prepared. Report: `docs/round30-forensic-audit-and-remediation-2026-10-22.md`
 - [x] Test counts for every suite, kept in one place: [docs/CURRENT.md](docs/CURRENT.md#numbers-as-of-this-pages-commit). CI green on each round's closing commit, not on every commit: run #155 on `58a9ad8` failed the runtime-oracle job and `8d30931` (#156) fixed it
 
 ## Phase 3 (Production) — what gates it
@@ -170,13 +171,16 @@ Not a feature list; a list of what has to be true before real user funds go thro
 the public service. Owner decisions are marked.
 
 - [ ] **Independent third-party audit** — every report so far is internal engineering work and says so (owner)
-- [ ] **Branch protection on `main`** — required CI, no force-push; today CI is advisory because the branch accepts direct pushes (owner)
+- [ ] **Branch protection on `main`** — required CI, no force-push; today CI is advisory because the branch accepts direct pushes. Round 30 prepared the rulesets (`.github/rulesets/main.json`, `main-review.json`, `release-tags.json`), CODEOWNERS and one `CI gate` check to require; applying them is the owner's (STOP-SHIP)
+- [ ] **A generated, test-pinned release evaluation (R-P1)** <!-- WS-E --> — pending the WS-E merge
+- [ ] **Coverage-guided fuzzing, scheduled mutation testing, a coverage floor (R-P11, R-P12, R-P15)** <!-- WS-E --> — pending the WS-E merge
+- [ ] **The 155 unreadable value-moving declarations that only warn (Round 30, R30-F-1)** — tighten or keep, an owner decision
 - [x] Token-2022 `TransferFee` modelled — transfers and harvests in Round 20; withdrawals, several transfers into one account and send-and-receive in Round 21, by replaying the executed instructions; the epoch read; a pending schedule always judged (Round 22). Transfer hooks that run a program judged by what the bytes let them reach (Round 22)
 - [x] **Message version 1 parsed** — done in Round 19 (it was 17.0% of the 19,458-transaction mainnet sample of 2026-09-23 and refused by name until then); the v1 config values surfaced in `scope.compute_budget` in Round 21, with the legacy/v0 Compute Budget instructions
 - [ ] **Manifest coverage of the traffic that has no published IDL.** Round 18 took the manifested share of non-vote mainnet transactions from 20.8% to 44.0% by onboarding every heavily used program that publishes its own on-chain Anchor IDL. The programs that now dominate the unmanifested remainder do not publish one: Round 22 measured 71% of the drainer heuristic's refusals as programs signed by five or fewer fee payers — bots' own programs. A per-protocol route remains for any with real users
 - [x] A hard L2 failure on an unparseable artifact — done in Round 9: no `instruction_data`, or an artifact that does not parse, fails L2
 - [x] Graphite's parser checked against Solana's own decoder over the mutation corpus — done in Round 12 (`tools/runtime-oracle`, in CI over the corpus and ~628,500 frames per seed today, with the Anza SDK crates); this line contradicted the Round 12 entry above for six rounds
-- [ ] `content_hash` renamed to say it is an instruction-level identifier
+- [x] `content_hash` renamed to say it is an instruction-level identifier — `instruction_bind_key` in the verdict, `content_hash` deprecated (Round 30, R-M10); lifecycle request bodies keep the old name
 - [x] Persisted archive index so a node with years of audit archives does not scan them on every lookup (Round 28, R-M11)
 - [ ] Mainnet deployment; enterprise integrations
 

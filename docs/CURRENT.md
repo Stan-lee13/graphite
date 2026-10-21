@@ -5,7 +5,7 @@ other file in `docs/` is a dated record of what was true when it was written;
 each carries a banner pointing here. When this file and a report disagree,
 this file is current and the report is history.
 
-Updated: 2026-10-21, after Round 29 — the full-repository audit of 2026-10-20 remediated: a failed or incomplete simulation refuses with an RPC attached, a swap is held to its route's own minimum, refusals no longer train confidence, the registry owns its corpus (see `git log -1 -- docs/CURRENT.md`).
+Updated: 2026-10-22, after Round 30 — the forensic whole-repository audit of `29e4356` remediated: every verdict says whether it permits signing (`decision`, `executable`); evidence trains only at the built-in floor; baselines are per shape and anchored; an upgrade withdraws evidence; the audit trail is hash-chained and, keyed, tamper-evident; L8 says what its answer rests on; honest intents for 21 grounded withdraw/claim/close/burn/configure instructions (see `git log -1 -- docs/CURRENT.md`). Round 30 report: `round30-forensic-audit-and-remediation-2026-10-22.md` in this directory.
 If that commit is not HEAD, later commits may have moved things;
 `git log --oneline -- docs/CURRENT.md` shows when this page last changed.
 
@@ -17,18 +17,31 @@ A deterministic, pre-signature verification gate between an AI agent and a
 Solana wallet. It takes a description of an intended transaction plus,
 whenever possible, the exact serialized transaction bytes, runs an eight-layer
 pipeline over them, and returns `approved: true | false` with a full account
-of what was and was not observed. **AI never decides** (Constitution P1); the
+of what was and was not observed — and, since Round 30, a `decision`: only
+`executable_approved` (`executable: true`) permits signing; an approval whose
+bytes nothing simulated is `analysis_only`. **AI never decides** (Constitution P1); the
 verdict is deterministic (P2) and explainable (P3); anything Graphite cannot
 observe is refused rather than assumed (P12).
 
 ## Security status
 
 ```
-Overall:                         CONDITIONAL — security-hardened alpha
+Overall:                         CONDITIONAL — security-hardened alpha. Round 30 verdict: RELEASE BLOCKED on
+                                 owner and external gates (branch rules not applied, no independent audit, no
+                                 production deployment or operations); the code is READY FOR INDEPENDENT AUDIT
 Exact transaction identity:      enforced (artifact_bound scope, transaction_sha256, message-equality at signing);
                                  an artifact without instruction_data, or one that does not parse, FAILS L2 (Round 9)
+Execution decision:              every verdict carries `decision` (executable_approved | analysis_only |
+                                 inconclusive | blocked) and `executable`, computed once in the Core: executable
+                                 only when approved, risk Clear, policy Approved, artifact_bound AND simulated,
+                                 every residual inherent, no layer Failed. No RPC → analysis_only; a refusal for
+                                 missing evidence → inconclusive. The TS and Go SDKs, the agent guard and the
+                                 dashboard recompute it and refuse a disagreement or an unknown value; `graphite
+                                 verify` exits 0 only for executable_approved, 3 for analysis_only (Round 30, G-01)
 Residuals at execution:          gated — scope.unobserved_codes; the bridge refuses any non-inherent residual
-                                 the operator has not accepted by code (GRAPHITE_ACCEPT_UNOBSERVED)
+                                 the operator has not accepted by code (GRAPHITE_ACCEPT_UNOBSERVED); a verdict
+                                 executed under an accepted residual is recorded as analysis_only, on the
+                                 operator's named acceptance, never as executable_approved
 ALT / v0 account identity:       enforced (runtime numbering rebuilt; all-or-nothing resolution; owner checked)
 Privilege source:                the transaction's header / tables, never the caller's description; the fee
                                  payer's writable flag is structural and is not an escalation (Round 20); L4
@@ -72,7 +85,10 @@ Measured on real mainnet:        19,458 transactions fetched 2026-09-23 (12,134 
                                  blocks (2,284 transactions) ARE committed and run on every cargo test with
                                  the verdict file's SHA-256 pinned (equal to the full run's for those rows).
                                  Round 29 re-pinned them on 2026-10-21: 3 of 2,277 rows changed, each attributed
-                                 to the manifest reclassification in the test's comment; 0 approvals before and after
+                                 to the manifest reclassification in the test's comment; 0 approvals before and after.
+                                 Round 30 re-pinned them once more: the harness no longer takes a durable-nonce
+                                 advance as a transaction's primary (rows 442, 1272, 1366 now read their System
+                                 transfer and are still refused at L2); 0 approvals before and after
 Manifest coverage of the chain:  137 manifests / 3,541 instructions (129 / 3,195 when the sample below was measured). On a 10,617-transaction mainnet sample
                                  fetched on 2026-09-22 (not in the repo; 1,829 of it, 17.2%, version 1),
                                  44.0% of non-vote transactions have a manifested primary program, up from 20.8%
@@ -91,12 +107,22 @@ Verdict trust tier:              the MINIMUM over every top-level program the tr
                                  declared siblings, artifact instructions), each tiered like the primary; an
                                  unmanifested sibling makes it Unknown, refused on every built-in profile (Round 29).
                                  The evidence signals stay the primary's
+Grounded intents:                `withdraw`, `claim`, `burn` and `configure` (and `close` widened) since Round 30, each
+                                 for named instructions only (src/intent_grants.rs, 21 grants) and only when the
+                                 transaction's own accounts show the proceeds or rent go to the signer (its
+                                 associated token account, derived; the same key; a PDA seeded by it). A failed fact
+                                 leaves the manifest's class in force and names itself in the refusal. The Core does
+                                 not judge a withdrawal's minimum outputs; the guard builds only transfers and swaps
+L4 under an unreadable manifest: a signer's token debit or lamport loss under a silent or unreadable declaration is
+                                 Critical unless the instruction's class moves value (Round 30, R30-F-1); a manifest
+                                 line may not start with `graphite:`
 Simulation as a gate:            with an RPC client and an artifact, an errored simulation is SimulationFailed (L3
                                  Failed) and one that could not be obtained or is incomplete (RPC error, timeout,
                                  budget, implausible answer, unreadable callee report, unrebuildable CPI tree,
                                  missing pre/post diff) is VerificationIncomplete; both refuse (Round 29). WITHOUT an
-                                 RPC client nothing is simulated: L3 Inconclusive, `not_simulated` residual, and the
-                                 Core does not refuse for that alone (the agent guard's ResidualPolicy does)
+                                 RPC client nothing is simulated: L3 Inconclusive, `not_simulated` residual, and every
+                                 approval is `decision: analysis_only` — never permission to sign (Round 30). The
+                                 server says so at startup and on /health (`verification_mode`, `rpc_attached`)
 Message version 1:               parsed since Round 19 (17.0% of the sample): never looser than agave's wincode
                                  decoder + sanitize (runtime oracle, ~628,500 frames per CI seed, 0 looser);
                                  3,302 of 3,302 real v1 transactions read and bound; ≤ 4,096 bytes; the config
@@ -128,10 +154,15 @@ What trains the baseline:        only a sound, risk-clear, successfully simulate
                                  its third ask before); identities remembered exactly per program (16,384, never
                                  forgotten; a full memory routes to the shadow); a uniform history is a ±25% band;
                                  refused-but-clean executions accumulate in a shadow /health reports and an
-                                 operator can promote (Round 17). Since Round 29 a request refused ONLY by the
-                                 policy threshold trains nothing unless GRAPHITE_LEARN_FROM_POLICY_REFUSALS=1 (on,
-                                 any verify-key holder can raise a program's confidence for every caller: three
-                                 byte-distinct transfers take an OfficialManifest program from 0.44 to 0.64)
+                                 operator can promote (Round 17). Since Round 30 a simulation counts only when the
+                                 verdict clears the weakest BUILT-IN bar on its own (0.55 / HeuristicInferred) —
+                                 never the profile the request named, so a verify-key holder's self-approved
+                                 requests teach nothing (R30-B-1); GRAPHITE_LEARN_FROM_POLICY_REFUSALS is retired
+                                 and refuses startup; operator seeding is `graphite evidence seed` / `baseline`.
+                                 Baselines are kept per transaction SHAPE (program, instruction, the other top-level
+                                 programs) once 10 samples exist, and a mature baseline is ANCHORED: a value more
+                                 than 2σ from the anchor is flagged, so a slow drip cannot walk the band (R30-B-2).
+                                 A detected upgrade or authority change withdraws the program's evidence (R30-B-3)
 Observed CPI targets:            read from the simulation's innerInstructions and judged by the same rules as a
                                  declaration; declaring nothing switches nothing off (Round 17). Since Round 19 the
                                  whole observed call TREE (by stackHeight, with accounts and data) is judged by the
@@ -148,7 +179,15 @@ L8 execution attribution:        joined on the chain's bytes (signature slots ze
 L8 inclusion evidence:           commitment read (processed proves nothing); an RPC contradicting itself or answering
                                  malformed draws no conclusion; redirects refused; optional independent witness
                                  (GRAPHITE_RPC_WITNESS_URL) must agree before an approval is reported executed;
-                                 a blocked transaction sighted by either endpoint alarms (Round 12)
+                                 a blocked transaction sighted by either endpoint alarms (Round 12). Since Round 30
+                                 every reconciliation says what it rests on (`inclusion_assurance`: single_provider,
+                                 witnessed, witnessed_not_independent, witness_disputed, witness_unavailable); a
+                                 witness on the same host, registrable domain or resolved address — or the same
+                                 provider under another API key — is not independent; GRAPHITE_L8_HIGH_ASSURANCE=1
+                                 withholds every chain statement an independent witness does not agree with (never
+                                 the BlockedButExecuted alarm) and refuses to start without https on both, an
+                                 independent witness and distinct GRAPHITE_RPC_PROVIDER / GRAPHITE_RPC_WITNESS_PROVIDER
+                                 names. Two providers agreeing is not a light-client proof
 Parser vs the runtime:           never looser than agave's decoder + sanitize, proven in CI over the corpus and
                                  seeded generated frames — bincode and wincode, legacy, v0 and v1; frames naming
                                  one account twice, lookups resolving a named address and non-table lookup
@@ -159,19 +198,28 @@ Parser vs the runtime:           never looser than agave's decoder + sanitize, p
                                  refused, as the runtime refuses them; PDA derivation tries bumps 255..1
 SDKs and schema:                 both SDKs validate every verdict against the v1 schema's rules (the schema
                                  requires scope; a verdict without it is refused) and allow plain http only to
-                                 loopback; VerificationResult has 21 fields, at parity across Rust, the schema,
-                                 TypeScript and Go; Go bounds bodies (16 MiB) and has a 30 s no-redirect default
-                                 client (Round 29)
+                                 loopback; VerificationResult has 24 fields (Round 30 added `decision`, `executable`
+                                 and `instruction_bind_key`, which carries `content_hash`'s value under an honest
+                                 name; `content_hash` is deprecated), at parity across Rust, the schema, TypeScript
+                                 and Go; the schema states the decision invariants; Go bounds bodies (16 MiB) and has
+                                 a 30 s no-redirect default client (Round 29), the TS client bounds them too (16 MiB,
+                                 64 KiB for errors) and captures fetch at load (Round 30)
 Operator console and AI layer:   the dashboard shows the server's whole-trail totals, labels window figures "last
                                  N", shows a failed /metrics read as unknown, keeps the key per tab by default and
                                  ships a strict CSP and no source maps; the advisory AI layer answers 400/408/413/
-                                 415/403, has a 15 s request deadline and at most 32 connections (Round 29)
+                                 415/403, has a 15 s request deadline and at most 32 connections (Round 29). Since
+                                 Round 30 the console draws an approval green only when it is executable_approved;
+                                 it checks every answer's shape, clears a previous Core's figures on a connection
+                                 change, shows L8 assurance and audit integrity, and passed an axe scan with 0
+                                 violations on every view; the AI layer labels a question, a conditional, a negation,
+                                 quoted speech or two amounts `unknown`, and never echoes key material
 Lifecycle sequence:              every report checked against the rows on record — duplicate / out of order /
                                  unpreceded / signature conflict — recorded, never refused (Round 12)
 One writer per data directory:   an exclusive lock on graphite.lock, taken by the server AND by every CLI command
                                  that writes (Rounds 12, 19); snapshots carry a generation, so an older one never
                                  replaces a newer one; a corrupt snapshot refuses to start instead of starting
-                                 fresh and lifting every quarantine
+                                 fresh and lifting every quarantine. Since Round 30 the audit trail has its own
+                                 exclusive writer lock, and `graphite execution` opens it read-only
 Lifecycle on the trail:          the bridge records signing before submission and submission after it, and runs
                                  L8 at the end, with the exact keys; every lifecycle row carries verdict_on_record
                                  and the key that resolved it
@@ -180,7 +228,12 @@ Server authentication:           required by default, ≥ 32 characters; GRAPHIT
                                  the verify key) and is disabled without one (Round 19); the concurrency permit is
                                  taken after rate limiting, authentication and receipt of the body (2 s). Every
                                  GRAPHITE_* variable is parsed strictly: a value that does not parse refuses to start;
-                                 a keyless dev instance answers 421 to a non-loopback Host (Round 29)
+                                 a keyless dev instance answers 421 to a non-loopback Host (Round 29). Since Round 30
+                                 an optional read-only key (GRAPHITE_READ_API_KEY) opens only GET /metrics, /manifests
+                                 and /api/* — the dashboard's key; auth follows the route that matched, and exactly
+                                 one Authorization header is accepted. RPC, witness and AI URLs naming link-local,
+                                 cloud-metadata, unspecified, multicast or broadcast addresses refuse to start, and a
+                                 resolver re-checks every host name at connect time
 Signing before the verdict:      never, in the reference bridge (Round 19): the pre-verdict simulation is unsigned by
                                  construction, and SolanaAgentKit holds a wallet that cannot sign
 Request path:                    no per-request deep copy of state (/health ~1 ms; 960 verifies/s in-process with
@@ -195,26 +248,49 @@ Request path:                    no per-request deep copy of state (/health ~1 m
                                  /health on neither and is exempt from rate limiting (Round 29)
 Container health:                `graphite healthcheck` (the image's HEALTHCHECK) passes any 2xx from /health;
                                  `--strict` also fails on `degraded: true`, for an orchestrator that should
-                                 replace a node whose audit trail is failing. The image keeps the default
+                                 replace a node whose audit trail is failing. The image keeps the default; the
+                                 compose file uses `--strict` and a 30 s stop grace (Round 30), and CI checks that a
+                                 real /verify is recorded, survives a recreate, and that a stop exits 0
 Repository integrity:            CI token read-only; actions pinned by commit SHA; base images pinned by digest;
-                                 toolchain 1.98.1 in CI and in the container; Go, cargo-audit and Python (hash-locked) pinned;
-                                 runner image (ubuntu-24.04) and Node (20.20.2, 22.23.3) exact; npm installs run no
-                                 dependency install scripts; the Cargo and Python lockfiles audited, and six npm
-                                 lockfiles through a gate that fails on any moderate, high or critical advisory not
-                                 listed with its reachability reasoning in .github/npm-audit/ (Round 29); every job
-                                 time-bounded; CI runs on pushes to main and v* tags and on pull requests
-Audit trail integrity:           corruption-evident, NOT tamper-evident: records, archive indexes and fixture
-                                 hashes are unkeyed and unchained, so the data directory must be writable only by
-                                 the Graphite process. Archive order no longer follows the wall clock, only exact
-                                 archive names count, a failed append is undone or appends stop (Round 29)
+                                 toolchain 1.98.1 in CI and in the container, and the declared MSRV (1.89) built by
+                                 its own job (Round 30); Go, cargo-audit and Python (hash-locked) pinned; runner
+                                 image (ubuntu-24.04) and Node (22.23.3) exact; npm installs run no dependency
+                                 install scripts; the Cargo and Python lockfiles audited, and six npm lockfiles
+                                 through a gate that fails on any moderate, high or critical advisory not listed
+                                 with its reachability reasoning in .github/npm-audit/ (Round 29), each entry with a
+                                 review-by date at most 120 days out (Round 30); every job time-bounded and run under
+                                 bash with pipefail; every suite's log is counted against a floor of passing tests,
+                                 and a new ignore or skip outside an allowlist fails (Round 30); one `CI gate` job
+                                 needs every other job. CI runs on pull requests, the merge queue, pushes to main
+                                 and v* tags, and weekly. Branch rules that would make it binding are prepared, not
+                                 applied (below)
+Audit trail integrity:           hash-chained since Round 30: every record carries its sequence number, the previous
+                                 record's hash and its own, across rotation. With GRAPHITE_AUDIT_KEY_FILE (hex, ≥ 32
+                                 bytes, mode 600, outside the data directory) each link also carries an HMAC-SHA256:
+                                 TAMPER-EVIDENT against anyone without the key. Without a key it is CORRUPTION-EVIDENT
+                                 only — a writer to the data directory can rewrite it coherently. Neither shows a
+                                 dropped tail or a restored older backup on its own: that needs a checkpoint
+                                 (`graphite audit checkpoint`, or one per rotation in GRAPHITE_AUDIT_ANCHOR_DIR) kept
+                                 where the server cannot rewrite it, and `graphite audit verify --checkpoint`. One
+                                 writer per trail (an exclusive lock); /health reports `audit.integrity`. Archive
+                                 order no longer follows the wall clock, only exact archive names count, a failed
+                                 append is undone or appends stop (Round 29)
 Request objects:                 every nested request object refuses unknown fields, not only the top level (Round 29)
 Agent guard (the signing side):  a transfer must match one grammar ([please] send|transfer|pay <amount> SOL to
                                  <address>); a swap runs only on six decoded programs, exact-in, its route's own
                                  minimum held to the simulated delivery, a slippage bound and a price floor; a
                                  per-transaction cap is required in every adapter; a confirm hook shows the resolved
-                                 transaction before signing (Round 29)
+                                 transaction before signing (Round 29). Since Round 30 it executes only a verdict
+                                 whose decision it recomputes and agrees with; a confirmation is exactly `true`,
+                                 within confirmTimeoutMs (120 s), on a frozen summary naming the digest to be signed,
+                                 and the Vercel tools require one; a repeat is keyed by its effect, an in-flight one
+                                 refused, and an unresolved submission recorded before the bytes leave (durable with
+                                 GRAPHITE_GUARD_STATE_FILE); the signing classes are frozen, fetch is captured at load
+                                 (guard and SDK client), the key is a non-extractable WebCrypto key; unsupported
+                                 operations (wSOL wrap/unwrap) are refused by name (GUARD_CAPABILITIES)
 Independent third-party audit:   NOT PERFORMED — every campaign report is internal engineering work
-Branch protection on main:       ABSENT — an owner decision; see "Not yet done"
+Branch protection on main:       ABSENT — rulesets, CODEOWNERS and the `CI gate` job are prepared (Round 30,
+                                 .github/rulesets/); an owner must apply them; see "Not yet done"
 ```
 
 "Conditional" means: no known way to turn a blocked verdict into an executed
@@ -317,7 +393,7 @@ transaction under the stated threat model, and no external party has yet tried.
 | Remaining-account interfaces are declared | Round 22 (F-22-06): `variable_accounts` on sixteen instructions whose own traffic passes variable account lists | `remaining_account_interfaces_are_declared_variable` |
 | The priority fee is read | Round 21 (F-21-10): `tx_artifact::compute_budget_request` → `scope.compute_budget`; `ExcessivePriorityFee` | `round21_open_list::compute_budget` (3), `round19_v1_transactions::the_v1_header_is_the_compute_budget` |
 | With an RPC, a failed or incomplete simulation refuses | Round 29 (audit H1): `SimulationFailed` (L3 Failed) and `VerificationIncomplete` risk findings; a simulation plugin's Block refuses | `tests/audit_2026_10_20_simulation_gate.rs` (`an_errored_simulation_is_refused`, `an_unobtainable_simulation_is_refused_as_incomplete`, `an_incomplete_simulation_response_is_refused`, `a_simulation_without_a_diff_is_refused`), `audit_2026_10_20_core_gates::a_simulation_plugin_block_refuses_the_verdict`; without an RPC the verdict is unchanged: `::without_an_rpc_client_an_artifact_verdict_is_unchanged` |
-| A refusal does not train confidence | Round 29 (M1): `GraphiteCore::set_learn_from_policy_refusals`, off unless `GRAPHITE_LEARN_FROM_POLICY_REFUSALS=1` | `audit_2026_10_20_simulation_gate::policy_refusals_teach_nothing_unless_the_operator_opts_in` |
+| A refusal does not train confidence | Round 29 (M1); Round 30 (R30-B-1): `ObservationPolicy::BuiltinFloor` — a simulation counts only when its verdict clears the weakest built-in bar on its own, never the request's profile; `GRAPHITE_LEARN_FROM_POLICY_REFUSALS` refuses startup | `audit_2026_10_20_simulation_gate::policy_refusals_teach_nothing_unless_the_operator_opts_in`, `tests/round30_trust_learning.rs` |
 | The verdict's tier is the weakest program's | Round 29 (M2): every top-level program tiered by `program_trust_tier`; the minimum is the verdict's | `audit_2026_10_20_core_gates::{an_unmanifested_sibling_sets_the_verdicts_tier, an_earned_primary_tier_is_held_to_its_siblings}` |
 | A misspelt nested field is refused, not dropped | Round 29: `deny_unknown_fields` on every nested request type | `audit_2026_10_20_core_gates::an_intent_with_an_unknown_field_is_refused`, `round29_state_diff::a_supplied_diff_with_an_unknown_field_is_refused` |
 | L8 records what it saw | Round 29 (M4, M9): an `execution_check` row unless inclusion was seen at a cluster-backed commitment; `getTransaction` at the configured commitment; a contradicted citation is `caller_keys_disagree`, never a discrepancy | `server::tests::an_l8_check_that_saw_nothing_is_not_a_confirmation`, `round29_rpc_client::get_transaction_asks_at_the_configured_commitment`, `audit_2026_10_20_simulation_gate::a_cited_refusal_of_other_bytes_is_not_an_alarm` |
@@ -331,13 +407,32 @@ transaction under the stated threat model, and no external party has yet tried.
 | A transfer request is one sentence the guard can parse | Round 29 (H3, M5): a positive grammar, anything else refused with the accepted form | `intent-grounding.test.ts` ("H3: the accepted form, and only it, is grounded") |
 | A person sees the resolved transaction; the key leaves the environment | Round 29 (M7, M8): `confirm(summary)`; `SOLANA_PRIVATE_KEY` deleted once read; ES-private collaborators | `guard-round29.test.ts` (M7, M8 cases) |
 | The documented numbers are the code's | Round 29: risk checks, the registry's size, the corpus size, mutations, residual codes and dashboard views derived and scanned in README, ARCHITECTURE, CURRENT, CONTRIBUTING, ROADMAP and two package READMEs; test counts allowed only on this page | `tests/docs_numbers_match_the_code.rs` |
+| Only `executable_approved` permits signing | Round 30 (G-01): `ExecutionDecision`, `execution_decision(&VerificationResult)` at the one place a result is built; schema invariants; TS `isExecutable`, Go `IsExecutable`, the guard's `assertExecutableVerdict` recompute and refuse disagreement; CLI exit 3 for `analysis_only` | `tests/round30_execution_decision.rs`, `tests/round30_decision_fixtures.rs` (`examples/decisions/*.json`, read by all three languages), `sdk/typescript/src/execution-decision.test.ts`, `integrations/agent-guard/guard-round30.test.ts`, `residual-policy.test.ts` |
+| A verify-key holder cannot raise a program's evidence | Round 30 (R30-B-1): `ObservationPolicy::BuiltinFloor`; 40 attacker-chosen requests across four profiles, sequential and 32 concurrent, add 0 samples | `tests/round30_trust_learning.rs` |
+| A baseline cannot be walked; shapes learn apart; an upgrade withdraws evidence | Round 30 (R30-B-2, B-3): shape baselines, `BaselineAnchor`, `retire_program_evidence`, first-sighting slot check | `tests/round30_trust_learning.rs` (`a_slow_drip_cannot_walk_an_anchored_baseline`, `an_upgrade_withdraws_the_programs_evidence`, …) |
+| No refusal class trains anything | Round 30 (R30-B-4) | `no_refusal_class_trains_any_accumulator` |
+| An altered audit record breaks the chain; keyed, it cannot be re-sealed without the key | Round 30 (R30-C-1..3): `durable::chain`, `graphite audit verify` / `checkpoint`, the trail's writer lock | `durable::chain_trail_tests` (15), `tests/round30_audit_chain.rs` |
+| L8 says what its answer rests on; high assurance withholds what one provider says | Round 30 (R30-D-1): `inclusion_assurance`, `rpc_client::witness_independence`, `GRAPHITE_L8_HIGH_ASSURANCE` | `tests/round30_l8_assurance.rs` |
+| Each route answers only to its key; no metadata address is an RPC | Round 30 (R30-D-2..4) | `server::tests` route surface, `tests/round30_server_wire.rs` |
+| A signer's loss under an unreadable declaration is Critical | Round 30 (R30-F-1): `DeclaredEffects::security_class`, `class_moves_value` | `tests/r30_declared_effects.rs`, `tests/r30_declared_effects_census.rs` |
+| Every risk check and registry check is caught by a test of its own | Round 30 (R30-F-3): the checks no test caught when broken now have isolated tests | `tests/r30_detector_isolation.rs`, `tests/r30_registry_manifest_breaks.rs`, `tests/r30_token2022_both_sides.rs`, `tests/r30_low_decode_manifests.rs` |
+| A grounded intent clears only its own instruction, paying its own signer | Round 30 (R30-G-1, G-2): `intent_grants` | `tests/round30_grounded_intents.rs` |
 
 ## What is NOT enforced (documented limitations)
 
-- **An honest agent has no intent for a withdrawal, a claim or a protocol close
-  (Round 24, R2-c).** Since R2 an intent declares only the security classes
-  `manifest::INTENT_DECLARES` lists, so these are refused whatever label they
-  carry: 219 of 48,855 executed mainnet transactions (roadmap R-M14).
+- **Honest intents exist for 21 instructions, not for whole classes (Round 30,
+  R-M14).** Since R2 an intent declares only the security classes
+  `manifest::INTENT_DECLARES` lists. Round 30 added `withdraw`, `claim`, `burn`
+  and `configure` (and widened `close`) for named Raydium, Meteora DLMM, Pump and
+  SPL Token / Token-2022 instructions and one marketplace `update_offer`, each
+  only when the transaction's own accounts show the funds stay with the signer.
+  Every other withdrawal, claim, protocol close, mint and admin setter is still
+  refused whatever label it carries (Round 24 measured 219 of 48,855 executed
+  transactions; not re-measured, the sample is not in the repository); MMM
+  `updatePool` stays refused (no IDL to ground it). **The Core does not judge a
+  withdrawal's minimum outputs**: a granted withdrawal with zero minimums, paid
+  to the owner, clears the Core, so a direct `/verify` caller carries the
+  sandwich risk; the agent guard builds no withdrawals.
 - **The Core does not bind amounts; the agent guard does.** `ExtractedParameters.amount`
   is carried, not compared, by the Core; lamports leaving the signer's wallet under a
   declared debit are disclosed (`SignerLamportsOutsideDeclaredDebit`), not refused (a
@@ -399,8 +494,14 @@ transaction under the stated threat model, and no external party has yet tried.
   positive conclusion; with `GRAPHITE_RPC_WITNESS_URL` two independent
   endpoints must agree before an approval is reported executed, and either
   endpoint's sighting of a blocked transaction alarms (Round 12). Two RPCs
-  behind one provider are two views of one answer; a light-client inclusion
-  proof is not built. Without a witness the reconciliation says
+  behind one provider are two views of one answer; since Round 30 a witness on
+  the same host, registrable domain or resolved address is labelled
+  `witnessed_not_independent`, but independence is judged from URLs, DNS and the
+  operator's own provider names (`GRAPHITE_RPC_PROVIDER`,
+  `GRAPHITE_RPC_WITNESS_PROVIDER`) — two companies on one cloud are not detected,
+  the registrable-domain check uses a short built-in suffix list, and behind an
+  HTTPS proxy only the proxy's address is checked. A light-client inclusion proof
+  is not built. Without a witness the reconciliation says
   `inclusion_witness: null`.
 - **The runtime oracle covers what it generates.** Agave's `wincode` decode
   path is not a second oracle; the generator is seeded and structure-aware,
@@ -435,23 +536,53 @@ transaction under the stated threat model, and no external party has yet tried.
 - **A compromised process is out of scope.** Deep copies, private fields and
   digest checks defend against callers and plugins that behave like
   JavaScript; not against code that rewrites the bridge module.
-- **Without RPC, L3 is Inconclusive** and the verdict's scope carries
-  `not_simulated`, which the reference bridge's `ResidualPolicy` refuses by
-  default. `approved` is still reachable: on trust the semantic graph has
-  already earned, or on evidence an operator seeded (`graphite evidence seed` /
-  `baseline`), confidence can clear a profile's threshold with no simulation.
-  An integration other than the reference bridge must refuse `not_simulated`
-  itself if it wants that guarantee. (With an RPC attached, a failed or
-  incomplete simulation refuses since Round 29.)
+- **Without RPC, L3 is Inconclusive and no approval is executable.** The verdict's
+  scope carries `not_simulated` and, since Round 30, `decision: analysis_only`,
+  `executable: false`. `approved` itself is still reachable — on trust the semantic
+  graph has earned, or on evidence an operator seeded — and keeps its old meaning
+  for compatibility: the pipeline did not refuse. It was never permission to sign;
+  a consumer that reads `approved` instead of `executable` (or the SDKs'
+  `isExecutable` / `IsExecutable`) signs what nothing simulated. (With an RPC
+  attached, a failed or incomplete simulation refuses since Round 29.)
 - **L3 does not flag deviations of 50% of the centre or less.** A signal is
   flagged only beyond 2.0 × max(spread, 0.25·|centre|, 1); the first 10
-  RPC-verified observations are learned unclamped and decide nothing. Deliberate:
-  baselines are per program.
+  RPC-verified observations are learned unclamped and decide nothing; L3 judges
+  the whole transaction's compute. Since Round 30 a mature baseline is per
+  transaction shape and anchored, so drift beyond 2σ of the anchor is flagged,
+  and a program whose costs genuinely move past its anchor is flagged until an
+  operator promotes its shadow. The false-positive effect of shapes and anchors
+  on real RPC traffic has not been measured (the conformance set runs offline).
+- **An upgrade sends a program back to the start (Round 30).** A detected
+  redeploy or upgrade-authority change withdraws the program's baselines,
+  counted identities and operator evidence (kept in `retired_evidence`); the
+  program sits near 0.44 confidence, refused by every built-in profile, until an
+  operator re-seeds it — a de facto quarantine whether or not
+  `GRAPHITE_QUARANTINE_ON_UPGRADE` is set. An RPC that lies about deployments can
+  therefore reset evidence (an availability risk inside the RPC trust boundary).
+  Loader-v4 programs are flagged `ProgramUpgradeUntracked`, not read.
 - **Without a witness, the primary RPC decides L8.** Without
   `GRAPHITE_RPC_WITNESS_URL` a hostile or broken primary can turn
-  `BlockedButExecuted` into `BlockedAndNotExecuted`, `NotFound` or `Unavailable`.
-- **The audit trail is corruption-evident, not tamper-evident.** Unkeyed hashes,
-  no hash chain; the data directory must be writable only by Graphite.
+  `BlockedButExecuted` into `BlockedAndNotExecuted`, `NotFound` or `Unavailable`;
+  the reconciliation says `inclusion_assurance: single_provider` (Round 30).
+- **The audit trail is tamper-evident only when keyed, and complete only against
+  a checkpoint (Round 30).** Without `GRAPHITE_AUDIT_KEY_FILE` the chain is
+  corruption-evident: a writer to the data directory can recompute it. Keyed, a
+  rewrite needs the key — but neither mode shows that the newest records were
+  dropped or an older backup restored; only a checkpoint kept where the server
+  cannot rewrite it does (`graphite audit verify --checkpoint`). Graphite writes
+  checkpoints; it cannot make their storage immutable.
+- **155 unreadable declarations of value-moving instructions still only warn
+  (Round 30, R30-F-1, owner decision).** A signer's loss under a silent or
+  unreadable declaration is Critical unless the instruction's class moves value
+  (transfer, withdraw, drain, stake, close, create, mint, unclassed); 155 shipped
+  instructions of those classes — Orca `swapV2`, Phoenix `Swap`, Solend deposits
+  among them — have placeholder prose, so a signer's loss there is a warning.
+  The W19 rule (lamports leaving the signer's wallet under a debit declared for
+  other, named accounts) likewise warns.
+- **The guard's duplicate-send record holds for one guard process.** With
+  `GRAPHITE_GUARD_STATE_FILE` it survives a restart; without it a restart forgets
+  an unresolved submission. Two guard processes with the same key share nothing.
+  A transfer's cap counts the amount, not the network fee (about 5,000 lamports).
 - **The address-poisoning rule has a residual false positive (Round 29, R-4).**
   The Risk Engine stopped judging the signing authority of an SPL transfer and
   judges a destination at four trailing `1`s. Judging no source at all would have
@@ -493,25 +624,34 @@ transaction under the stated threat model, and no external party has yet tried.
 |---|---|---|
 | Independent third-party audit | Not performed | Owner |
 | External review R2/R3 (a declared intent clearing a dangerous instruction) | **Closed in Round 24**: reproduced on `eb17aa5`, fixed by one intent-to-class table read by L5 and the Risk Engine, and by the control-change rules; one more case (R3-b) found by the round's own mainnet re-measurement and fixed | — |
-| Honest intents for withdrawals, claims and protocol closes | Open (R-M14): refused under any label since R2; measured cost 219 of 48,855 executed transactions | Engineering |
-| Protocol upgrade detection (ProgramData slot / upgrade authority watch) | **Done (Round 27)**: with an RPC, a manifested program redeployed or handed to a new upgrade authority since last seen is reported on the verdict (`program_upgrades`), on `/health` and in the metrics; `GRAPHITE_QUARANTINE_ON_UPGRADE=1` also quarantines it. The first sighting is the baseline, and earned evidence is not reset by an upgrade | — |
+| Honest intents for withdrawals, claims and protocol closes | **Partly done (Round 30, R-M14/R-M13)**: 21 grounded grants (`src/intent_grants.rs`); the rest stays refused; the 219 / 9 measured costs not re-measured (sample not in the repository); MMM `updatePool` needs its IDL | Engineering |
+| Protocol upgrade detection (ProgramData slot / upgrade authority watch) | **Done (Round 27; evidence reset Round 30)**: with an RPC, a manifested program redeployed or handed to a new upgrade authority since last seen is reported on the verdict (`program_upgrades`), on `/health` and in the metrics; `GRAPHITE_QUARANTINE_ON_UPGRADE=1` also quarantines it. Since Round 30 the upgrade withdraws the program's evidence and a first sighting whose deployment is newer than the evidence withdraws it too. Loader-v4 deployments are not read | — |
+| Execution decision (approved ≠ permission to sign) | **Done (Round 30, G-01)**: `decision` / `executable` on every verdict, recomputed by every client | — |
+| Tamper-evident audit trail | **Done when keyed (Round 30, G-07)**: hash chain + HMAC, `graphite audit verify` / `checkpoint`, anchor directory. Making the anchor storage immutable (WORM / object lock) and scheduling checkpoints is the operator's | Owner (deployment) |
+| The 155 unreadable value-moving declarations that only warn (R30-F-1), and the W19 rule | Owner decision: tighten (refusing those instructions until their manifests say what they move) or keep the warning | Owner |
+| Repository rulesets for `main` and release tags | **Prepared (Round 30)**: `.github/rulesets/main.json`, `main-review.json`, `release-tags.json`, `.github/CODEOWNERS`, steps in `docs/ops/branch-protection.md`; not applied | Owner |
+| Dependabot majors deferred in Round 30 | #41 (graphite-core group: 13 new crates incl. a compression backend), #12 (sha2 0.11 in the oracle), TypeScript 7 in six packages (#14, #18, #21, #23, #27, #28), #22 (React 19), #26 (rust 1.99 image, with the CI toolchain) | Owner / Engineering |
 | Rounds 15–16 findings | **Closed in Round 17** (every item, each with a regression test; see the Round 17 report and `SECURITY.md`) | — |
 | Identity mismatches on declared slots | **Diagnosed and mostly closed (Round 20)**: the fee payer's structural writable flag was read as an escalation, blocking every self-paid token transfer. Over the 19,458-transaction sample, identity/privilege blocks fell from 1,355 to 519 and 156 executed transactions went from Blocked to Clear; no other verdict loosened. The remainder is mostly declared read-only slots the transaction marks writable (247) — writability is per message, so a program really can write them — and fixed-address mismatches (156). Measured, not loosened | Engineering |
 | Manifests for the traffic that publishes no on-chain IDL | Measured (Round 22): the programs behind 71% of the drainer refusals are signed by five or fewer fee payers and publish no IDL — bots' own programs, not a wallet user's; the programs with an IDL and real users were already manifested and their refusals were fixed | Engineering |
-| Manifests below the decode bar | Open: 13 records measure a decode rate under 90% after Round 29 recomputed every rate against the loaded manifests (Bubblegum, Light System Program, Coinflow, Pump Fees, Account Compression, Doorcash, Main, Merkle Distributor, Ocr2, Oridion, Rush, Timelock, Zeta). Metaplex Token Metadata reached 100% in Round 29. Each is recorded in `battle_tested_evidence.json` with the unnamed leading bytes | Engineering |
-| Branch protection on `main` (required CI, no force-push) | Absent; conflicts with the standing push-to-main workflow. Until it is on, every CI gate is advisory | Owner |
+| Manifests below the decode bar | Open: 13 records measure a decode rate under 90% after Round 29 recomputed every rate against the loaded manifests (Bubblegum, Light System Program, Coinflow, Pump Fees, Account Compression, Doorcash, Main, Merkle Distributor, Ocr2, Oridion, Rush, Timelock, Zeta). Metaplex Token Metadata reached 100% in Round 29. Each is recorded in `battle_tested_evidence.json` with the unnamed leading bytes. Round 30 re-counted every manifest from the files (137, 137 unique program ids, 3,541 instructions, 46 unclassed) and showed an undescribed instruction of each of the 13 refused under all four built-in profiles even with evidence seeded (`tests/r30_low_decode_manifests.rs`); no manifest data was invented | Engineering |
+| Branch protection on `main` (required CI, no force-push) | **STOP-SHIP.** Absent; the rulesets above are ready to apply. Until they are, every CI gate is advisory | Owner |
 | GitHub private vulnerability reporting | Not enabled; once it is, link it from `.github/ISSUE_TEMPLATE/config.yml` | Owner |
-| The crate's publish flag; tagging `0.3.0-beta`; deployment | Owner decisions, unchanged by Round 29 | Owner |
+| Stale unprotected branches (`copilot/fix-rust-core-actions-job`, `phase2-development`) | Delete or protect them with the rulesets (K-14) | Owner |
+| The crate's publish flag; tagging `0.3.0-beta`; deployment | Owner decisions, unchanged by Rounds 29–30 | Owner |
+| The 2026-10-21 forensic brief (Round 30: G-01 … G-12, K-01 … K-20) | **Closed in Round 30** except the owner items in this table; see the Round 30 report and its findings registry (`docs/audit-r30/findings-registry.md`) | — |
 | The 2026-10-20 audit (4 HIGH, 16 MEDIUM, LOW and informational items by area) | **Closed in Round 29**: every finding fixed, documented above as a limitation, or listed here as an owner decision; see the Round 29 report and `AUDIT/01-findings.md` | — |
 | Version-1 transaction format | **Done (Round 19)**: parsed, never looser than agave, 3,302 of 3,302 real mainnet v1 transactions read and bound; config values surfaced in `scope.compute_budget` (Round 21) | — |
 | Token-2022 `TransferFee` modelling | **Done (Rounds 20–22)**: replayed exactly against the executed instructions (Round 21), a pending schedule always judged (Round 22) | — |
 | Transfer hooks that run a program | **Done where the bytes bound them (Round 22)**; a hook handed a signer or another program's writable account blocks | — |
-| `content_hash` → a name that says it is an instruction-level identifier | Open (it is the 64-bit AuditBind key, not the authoritative binding) | Engineering |
+| `content_hash` → a name that says it is an instruction-level identifier | **Done in the result (Round 30, R-M10)**: `instruction_bind_key` carries the value, `content_hash` is deprecated for one minor version; lifecycle request bodies keep the `content_hash` wire name | Engineering (request bodies) |
 | Runtime-decoder oracle over the mutation corpus | Done (Round 12: `tools/runtime-oracle`, in CI) | — |
-| Coverage-guided fuzzing of `parse_transaction` | Open (the `wincode` oracle and the v1 format are done: Round 19) | Engineering |
+| Coverage-guided fuzzing of `parse_transaction` | <!-- WS-E --> Pending the WS-E merge (Round 30) | Engineering |
+| Scheduled mutation testing and a coverage floor (R-P12, R-P15) | <!-- WS-E --> Pending the WS-E merge (Round 30) | Engineering |
+| A generated, test-pinned release evaluation (R-P1) | <!-- WS-E --> Pending the WS-E merge (Round 30) | Engineering |
 | Persisted archive index for the L8 / lifecycle join | **Done (Round 28)**: a count over three 64 MiB archives went from 822 ms to 2.2 ms | — |
 | Shared rate limiter for a horizontally deployed Graphite (single-instance today; 452 ns/check at one million buckets) | Open | Engineering |
-| Second-source inclusion check for L8 | Done for an independent RPC (Round 12: `GRAPHITE_RPC_WITNESS_URL`); light-client proof open | Engineering |
+| Second-source inclusion check for L8 | Done for an independent RPC (Round 12: `GRAPHITE_RPC_WITNESS_URL`); provider independence and a high-assurance mode (Round 30); light-client proof open | Engineering |
 
 ## Numbers (as of this page's commit)
 
@@ -519,42 +659,43 @@ transaction under the stated threat model, and no external party has yet tried.
 document links here, and `tests/docs_numbers_match_the_code.rs` fails if a live
 document states one elsewhere.
 
-Rust, from the final runs of Round 29 on 2026-10-21 (release builds; logs kept
-outside the repository), plus the 3 tests this page's commit adds to
-`tests/docs_numbers_match_the_code.rs`:
+Rust, from the integrated runs of Round 30 on 2026-10-21/22 at `1f5fc1f` (release
+builds, thin LTO off to fit the shared machine; logs kept outside the repository):
 
-- all features: **2,100 Rust tests pass**, 13 ignored (network- or
-  sample-dependent, plus two soak benchmarks), across 146 test targets;
-- the featureless library (`--no-default-features --lib`): **428 passed, 2 ignored**;
-- the cli-only build (`--no-default-features --features cli`): **1,780 passed, 4 ignored**.
+- all features: **2,224 Rust tests pass**, 0 failed, 13 ignored (network- or
+  sample-dependent, plus two soak benchmarks, each named in
+  `.github/test-allowlists/rust-ignored.txt`), across 159 test targets;
+- the featureless library (`--no-default-features --lib`): **459 passed, 2 ignored**;
+- the cli-only build (`--no-default-features --features cli`): **1,863 passed, 4 ignored**,
+  across 159 test targets.
 
-That run reported four failures, all since resolved: three Round 21/22 tests that
-expected a field the Core keeps for itself to be dropped rather than refused
-(updated in `d766a85`), and
-`docs_numbers_match_the_code::the_risk_check_count_is_the_engine`, which found
-that ARCHITECTURE still said there were twenty-three risk checks, and passes with this page's commit. On this
-commit only the three documentation tests were re-run, not the full suite.
-Clippy `-D warnings` (all three feature legs) and fmt clean.
+<!-- WS-E --> The WS-E merge (fuzz crate, `graphite benchmark --json`) adds tests; these counts are re-stated after it.
 
-TypeScript: agent guard 249; SolanaAgentKit adapter 9; MCP server 9; Vercel AI
-adapter 9; TypeScript SDK 50 (46 hermetic, 4 against a live server — run in
-CI's container job); dashboard 20. Go SDK: 52 top-level test functions, plus 5
-behind the `liveserver` tag. Python: AI layer 44; `tools/mainnet-sample` 7. The
-runtime oracle: ~628,500 frames per CI seed, bincode and wincode, legacy, v0
-and v1, never looser than the runtime.
+Clippy `-D warnings` (all three feature legs) and fmt clean at each workstream's
+head; the integrated tree type-checks on all three legs.
+
+TypeScript: agent guard 277; SolanaAgentKit adapter 9; MCP server 9; Vercel AI
+adapter 11; TypeScript SDK 59 (55 hermetic, 4 against a live server — run in
+CI's container job); dashboard 31, production build OK. Go SDK: 59 top-level
+test functions pass (0 skipped), plus 5 behind the `liveserver` tag; `gofmt` and
+`go vet` clean. Python: AI layer 50; `tools/mainnet-sample` 7 (at `29e4356`).
+The runtime oracle: ~628,500 frames per CI seed, bincode and wincode, legacy,
+v0 and v1, never looser than the runtime. The hosted CI run for the reference
+commit `29e4356` (run 39610913297) passed all 10 jobs.
 
 The holdout (`tests/regression_corpus.rs`): n = 38, 37 true positives, 1 false
 positive, 0 false negatives — precision 0.974, recall 1.000. The committed
 corpus: 13,013 fixtures (12,943 dev, 32 regression, 38 holdout).
 
 Reproduced from `cargo test` / `npm test` / `go test` / `pytest` output on
-2026-10-21, not estimated. CI for the commit is the GitHub Actions run for that
+2026-10-21/22, not estimated. CI for the commit is the GitHub Actions run for that
 SHA — the runs endpoint, not the combined-status endpoint.
 
 ## Report index (newest first)
 
 | Date | Report | What it records |
 |---|---|---|
+| 2026-10-22 | `round30-forensic-audit-and-remediation-2026-10-22.md`; findings: `docs/audit-r30/findings-registry.md`; ledger, architecture and history: `docs/audit-r30/README.md` | A forensic whole-repository audit of `29e4356` (the Round 29 merge) answered in one round by eleven workstreams: every verdict says whether it permits signing (G-01); a verify-key holder's self-approved requests no longer train evidence, and the learning opt-in is retired (G-02, R30-B-1); per-shape, anchored baselines (G-03); an upgrade withdraws evidence (G-04); a hash-chained, keyed audit trail with `graphite audit verify` / `checkpoint` (G-07); L8 inclusion assurance and a high-assurance mode (G-08); a signer's loss under an unreadable declaration is Critical (R30-F-1); 21 grounded intents for withdrawals, claims, closes, burns and owner configuration (G-06); the guard executes only a decision it recomputes, keys repeats by effect and persists them; a read-only key; a CI that fails on missing tests; rulesets prepared for an owner to apply. Every Round 29 check never broken has now been broken and caught. Release blocked on owner and external items (branch protection, independent audit, deployment) |
 | 2026-10-21 | [round29-the-audit-remediated-2026-10-21.md](round29-the-audit-remediated-2026-10-21.md) | A full-repository audit of `19a2974` (4 HIGH, 16 MEDIUM) answered in one round: with an RPC a failed or incomplete simulation now refuses (H1); the agent guard decodes six swap programs and holds a route's own minimum to the simulated delivery, a slippage bound and a price floor (H2, H4), and grounds a transfer in one grammar (H3); refusals no longer train confidence (M1); the verdict's tier is the weakest program's (M2); the registry owns its corpus and signs a domain-tagged message (M3); L8 writes an `execution_check` unless it saw inclusion (M4, M9); every adapter requires a cap and a person sees the resolved transaction (M6–M8); 16 risk checks; 3,541 instructions with corrected classes; an honest holdout (37/37 exploits refused, the one benign swap refused offline) and the mainnet pin moved on 3 of 2,277 rows, each attributed. Deliberate breaks run and caught for the core pipeline, server and CLI, RPC and state diff (28 failures on the reverted code), audit trail and parser, agent guard, SDKs and schema, dashboard, AI layer and contract gate; not run for the risk engine, registry, protocol data and attack suites |
 | 2026-10-17 | [round28-archive-index-lifecycle-contract-2026-10-17.md](round28-archive-index-lifecycle-contract-2026-10-17.md) | Each rotated audit archive has a persisted index, checked against the archive's SHA-256, and a count over three 64 MiB archives went from 822 ms to 2.2 ms (R-M11, W10); every lifecycle event names its emitter in an exhaustive `match` a test drives end to end, and `operator_action` is now pinned as unforgeable (R-P14, R28-2); the published schemas are diffed against the last release tag, whose first run found two caller-side breaks since `v0.2.0-beta` under the same version, so the crate is `0.3.0-beta` (R-M2, R28-1) |
 | 2026-10-16 | [round26-27-real-traffic-and-upgrades-2026-10-16.md](round26-27-real-traffic-and-upgrades-2026-10-16.md) | Two finalized mainnet blocks (2,284 executed transactions) committed and run through the whole pipeline on every `cargo test`, the verdict file's SHA-256 pinned and equal to the full measurement's (R-P2/R-P3); protocol upgrades noticed: with an RPC, a manifested program redeployed or handed to a new upgrade authority since last seen is reported on the verdict, on `/health` and in the metrics, and quarantined if the operator set `GRAPHITE_QUARANTINE_ON_UPGRADE` (R-M1); advisories published after Round 24 fixed (`quinn-proto`, `rustls`, three npm) |
