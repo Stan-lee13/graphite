@@ -17,35 +17,107 @@
 // be counted and coloured as a green "Approved" everywhere but one table
 // cell. It is now its own kind, counted and drawn apart.
 
+//
+// Round 30 (shared execution contract): an approval bound to bytes is still
+// not permission to sign. Only a verdict the Core reports as
+// `decision: "executable_approved"` with `executable: true` is; one judged
+// without a simulation, with an unobserved residual outside the inherent
+// set, or by a Core that does not report the decision at all, is an
+// approval for analysis. The console drew every bound approval green
+// "approved" — including the ones a Core with no RPC made, which no
+// consumer may sign on. Green now means executable and nothing else; every
+// other approval is amber and says which kind it is. An unknown decision
+// string, or a decision and `executable` that disagree, is drawn as not
+// executable: the fail-closed reading.
+
 import type { ConfidenceHistory, ConfidencePoint, PolicyViolations } from "./api";
 
-export type VerdictKind = "bound" | "descriptive" | "refused";
+export type VerdictKind =
+  /** decision "executable_approved", executable true, bound to bytes. */
+  | "executable"
+  /** Approved and bound, but the Core says it is not executable (or says
+   *  something this console does not recognise). */
+  | "analysis"
+  /** Approved and bound, from a Core that does not report the decision. */
+  | "unreported"
+  /** Approved as described: no bytes at all (W22). */
+  | "descriptive"
+  /** Refused because required evidence could not be obtained. */
+  | "inconclusive"
+  | "refused";
 
-export function verdictKind(p: Pick<ConfidencePoint, "approved" | "transaction_sha256">): VerdictKind {
-  if (!p.approved) return "refused";
-  return p.transaction_sha256 ? "bound" : "descriptive";
+export function verdictKind(
+  p: Pick<ConfidencePoint, "approved" | "transaction_sha256" | "decision" | "executable">,
+): VerdictKind {
+  if (!p.approved) return p.decision === "inconclusive" ? "inconclusive" : "refused";
+  if (!p.transaction_sha256) return "descriptive";
+  if (p.decision === undefined || p.decision === null) return "unreported";
+  return p.decision === "executable_approved" && p.executable === true ? "executable" : "analysis";
 }
 
-/** CSS tone for a verdict kind; descriptive is amber, never green. */
+/** CSS tone for a verdict kind. Green is spent on executable approvals only. */
 export function verdictTone(kind: VerdictKind): "pass" | "warn" | "block" {
-  return kind === "bound" ? "pass" : kind === "descriptive" ? "warn" : "block";
+  return kind === "executable" ? "pass" : kind === "refused" ? "block" : "warn";
 }
 
 export function verdictLabel(kind: VerdictKind): string {
-  return kind === "bound" ? "approved" : kind === "descriptive" ? "approved · descriptive" : "refused";
+  switch (kind) {
+    case "executable":
+      return "executable";
+    case "analysis":
+      return "approved · analysis only";
+    case "unreported":
+      return "approved · executability not reported";
+    case "descriptive":
+      return "approved · descriptive";
+    case "inconclusive":
+      return "inconclusive";
+    case "refused":
+      return "refused";
+  }
+}
+
+/** One sentence on what the kind means, for titles and the legend. */
+export function verdictMeaning(kind: VerdictKind): string {
+  switch (kind) {
+    case "executable":
+      return "approved, bound to these transaction bytes, and reported executable: the only verdict a signer may act on";
+    case "analysis":
+      return "approved for analysis only: the Core reports it is not executable (no simulation, or an unobserved residual)";
+    case "unreported":
+      return "approved and bound to bytes, but this Core does not report whether it is executable; treat it as not executable";
+    case "descriptive":
+      return "approved as described, not bound to transaction bytes; constrains nothing that is signed";
+    case "inconclusive":
+      return "refused because required evidence could not be obtained";
+    case "refused":
+      return "refused";
+  }
 }
 
 export interface WindowCounts {
   /** Points in the window the server returned. */
   n: number;
-  bound: number;
+  executable: number;
+  /** Approved, but not executable: analysis, unreported and descriptive. */
+  notExecutable: number;
   descriptive: number;
   refused: number;
+  inconclusive: number;
 }
 
 export function countWindow(series: readonly ConfidencePoint[]): WindowCounts {
-  const c: WindowCounts = { n: series.length, bound: 0, descriptive: 0, refused: 0 };
-  for (const p of series) c[verdictKind(p)]++;
+  const c: WindowCounts = { n: series.length, executable: 0, notExecutable: 0, descriptive: 0, refused: 0, inconclusive: 0 };
+  for (const p of series) {
+    const k = verdictKind(p);
+    if (k === "executable") c.executable++;
+    else if (k === "refused") c.refused++;
+    else if (k === "inconclusive") c.inconclusive++;
+    else {
+      c.notExecutable++;
+      if (k === "descriptive") c.descriptive++;
+    }
+  }
   return c;
 }
 

@@ -298,7 +298,7 @@ fn test_e2e_conservative_profile_rejects_unknown() {
 #[test]
 fn test_fix4_invalid_pubkey_in_transaction_builder_is_hard_error() {
     use graphite_core::account_resolution::{AccountIdentity, ResolvedAccount};
-    use graphite_core::transaction_builder::{build_transaction, TransactionPlan};
+    use graphite_core::transaction_builder::{summarize_instruction, InstructionPlan};
 
     let bad_account = ResolvedAccount {
         address: "NOT_A_VALID_BASE58_ADDRESS!!!".to_string(),
@@ -314,7 +314,7 @@ fn test_fix4_invalid_pubkey_in_transaction_builder_is_hard_error() {
         privilege_mismatch: false,
     };
 
-    let plan = TransactionPlan {
+    let plan = InstructionPlan {
         program_id: "11111111111111111111111111111111".to_string(),
         protocol_version: "1.0.0".to_string(),
         instruction_discriminator: "02000000".to_string(),
@@ -325,7 +325,7 @@ fn test_fix4_invalid_pubkey_in_transaction_builder_is_hard_error() {
         instruction_data: vec![],
     };
 
-    let result = build_transaction(&plan);
+    let result = summarize_instruction(&plan);
     assert!(
         result.is_err(),
         "Invalid pubkey must be a hard error, not silently defaulted"
@@ -341,7 +341,7 @@ fn test_fix4_invalid_pubkey_in_transaction_builder_is_hard_error() {
 #[test]
 fn test_fix4_invalid_program_id_is_hard_error() {
     use graphite_core::account_resolution::{AccountIdentity, ResolvedAccount};
-    use graphite_core::transaction_builder::{build_transaction, TransactionPlan};
+    use graphite_core::transaction_builder::{summarize_instruction, InstructionPlan};
 
     let good_account = ResolvedAccount {
         address: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(),
@@ -357,7 +357,7 @@ fn test_fix4_invalid_program_id_is_hard_error() {
         privilege_mismatch: false,
     };
 
-    let plan = TransactionPlan {
+    let plan = InstructionPlan {
         program_id: "TOO_SHORT_PROGRAM_ID".to_string(),
         protocol_version: "1.0.0".to_string(),
         instruction_discriminator: "02000000".to_string(),
@@ -368,7 +368,7 @@ fn test_fix4_invalid_program_id_is_hard_error() {
         instruction_data: vec![],
     };
 
-    let result = build_transaction(&plan);
+    let result = summarize_instruction(&plan);
     assert!(result.is_err(), "Invalid program_id must be a hard error");
     let err = result.unwrap_err().to_string();
     assert!(

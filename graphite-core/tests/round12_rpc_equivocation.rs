@@ -212,6 +212,8 @@ fn record(log: &AuditLog, signed: &[u8], approved: bool) -> AuditRecord {
         protocol_name: "System Program".to_string(),
         manifest_version: Some("1.0.0".to_string()),
         approved,
+        decision: None,
+        executable: None,
         confidence: if approved { 0.9 } else { 0.3 },
         risk_status: "Clear".to_string(),
         policy_verdict: if approved { "Approved" } else { "Rejected" }.to_string(),

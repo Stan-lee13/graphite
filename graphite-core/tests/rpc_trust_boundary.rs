@@ -110,10 +110,10 @@ fn core_against(rpc: &HostileRpc) -> GraphiteCore {
     }));
     // The transfers here are refused by the policy threshold on a fresh core
     // (0.44), and since the 2026-10-20 audit (M1) such a refusal teaches the
-    // baseline only with the operator's opt-in. Opted in, so the tests of
+    // baseline only with the operator's bootstrap policy (`ObservationPolicy::OperatorBootstrap`, which the server cannot select since Round 30). Under it, so the tests of
     // what MAY enter the baseline (plausible figures, complete balances)
     // still test that rule rather than passing because nothing enters.
-    core.set_learn_from_policy_refusals(true);
+    core.set_observation_policy(graphite_core::verification::ObservationPolicy::OperatorBootstrap);
     core
 }
 

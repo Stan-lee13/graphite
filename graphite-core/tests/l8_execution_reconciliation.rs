@@ -78,6 +78,8 @@ fn record(log: &AuditLog, content_hash: &str, approved: bool) {
         protocol_name: "System Program".to_string(),
         manifest_version: Some("1.0.0".to_string()),
         approved,
+        decision: None,
+        executable: None,
         confidence: if approved { 0.9 } else { 0.2 },
         risk_status: if approved { "Clear" } else { "Blocked" }.to_string(),
         policy_verdict: if approved { "Approved" } else { "Rejected" }.to_string(),

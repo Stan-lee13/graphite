@@ -139,6 +139,8 @@ fn record(id: &str, content_hash: &str, tx_sha: Option<&str>, approved: bool) ->
         protocol_name: "System Program".to_string(),
         manifest_version: Some("1.0.0".to_string()),
         approved,
+        decision: None,
+        executable: None,
         confidence: if approved { 0.9 } else { 0.3 },
         risk_status: if approved { "Clear" } else { "Blocked" }.to_string(),
         policy_verdict: if approved { "Approved" } else { "Rejected" }.to_string(),

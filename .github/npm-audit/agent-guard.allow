@@ -16,9 +16,12 @@
 # @solana/web3.js 1.x (its transactions are already compiled and signed by
 # @solana/kit; the Connection and the public types remain); npm's only offered
 # fix is web3.js 3.x, a major across the guard's public types.
-GHSA-528h-pc64-c93x@stream-json  # moderate  stream-json <=3.4.0: pick/ignore/filter/replace filters are O(depth^2) (DoS). stream-json is required only by jayson/lib/utils.js (its server-side request stream parser), which the browser client web3.js loads never requires: the guard process never loads stream-json.
-GHSA-hqr4-qq8f-hg3x@stream-json  # moderate  stream-json <=3.5.0: the JSONC parser re-scans accumulated comments per chunk (DoS). Same path as above: never loaded by the guard.
-GHSA-mjw6-4jj6-33hc@stream-json  # moderate  stream-json <3.6.0: prototype pollution in Assembler (this.current[this.key] on plain objects). The serious one of the three, in a process holding a key — and the reason moderate is now gated. Same path as above: jayson's client never requires stream-json, so no RPC answer reaches Assembler.
-GHSA-w5hq-g745-h8pq@uuid  # moderate  uuid <11.1.1: missing bounds check in v3/v5/v6 when a caller supplies an output buffer. jayson's client calls uuid.v4() with no buffer, so the unchecked write cannot happen. Forcing uuid across three majors into web3.js was judged riskier than the advisory.
+#
+# Re-checked 2026-10-21 (Round 30): the same four, same path; each entry now
+# carries a review-by date the gate enforces.
+GHSA-528h-pc64-c93x@stream-json  review-by:2027-01-20  # moderate  stream-json <=3.4.0: pick/ignore/filter/replace filters are O(depth^2) (DoS). stream-json is required only by jayson/lib/utils.js (its server-side request stream parser), which the browser client web3.js loads never requires: the guard process never loads stream-json.
+GHSA-hqr4-qq8f-hg3x@stream-json  review-by:2027-01-20  # moderate  stream-json <=3.5.0: the JSONC parser re-scans accumulated comments per chunk (DoS). Same path as above: never loaded by the guard.
+GHSA-mjw6-4jj6-33hc@stream-json  review-by:2027-01-20  # moderate  stream-json <3.6.0: prototype pollution in Assembler (this.current[this.key] on plain objects). The serious one of the three, in a process holding a key — and the reason moderate is now gated. Same path as above: jayson's client never requires stream-json, so no RPC answer reaches Assembler.
+GHSA-w5hq-g745-h8pq@uuid  review-by:2027-01-20  # moderate  uuid <11.1.1: missing bounds check in v3/v5/v6 when a caller supplies an output buffer. jayson's client calls uuid.v4() with no buffer, so the unchecked write cannot happen. Forcing uuid across three majors into web3.js was judged riskier than the advisory.
 #
 # Below the gate's threshold (low): none.

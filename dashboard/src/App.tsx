@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
   BookMarked,
@@ -18,6 +18,7 @@ import { refusalTotals } from "./figures";
 import { hrefFor, navigate, useRoute, type View } from "./router";
 import { useLayout, usePolling } from "./usePolling";
 import { CommandPalette } from "./CommandPalette";
+import { useModal } from "./ui";
 import { OverviewView } from "./views/OverviewView";
 import { ProgramsView } from "./views/ProgramsView";
 import { GraphView } from "./views/GraphView";
@@ -288,34 +289,52 @@ export function App() {
             </button>
           </nav>
 
-          {moreOpen && (
-            <>
-              <div className="scrim" onClick={() => setMoreOpen(false)} aria-hidden="true" />
-              <div className="sheet" role="dialog" aria-label="More">
-                <div className="sheet-grab" aria-hidden="true" />
-                <div className="sheet-head">
-                  <span>More</span>
-                  <button type="button" className="icon-btn" aria-label="Close" onClick={() => setMoreOpen(false)}>
-                    <X aria-hidden="true" />
-                  </button>
-                </div>
-                <div className="sheet-list">
-                  {PHONE_MORE.map((m) => (
-                    <a key={m.id} href={hrefFor(m.id)} className="sheet-item" aria-current={route.view === m.id ? "page" : undefined}>
-                      {m.icon}
-                      <span>{m.label}</span>
-                    </a>
-                  ))}
-                </div>
-                <div className="sheet-foot">{status}</div>
-              </div>
-            </>
-          )}
+          {moreOpen && <MoreSheet route={route.view} status={status} onClose={() => setMoreOpen(false)} />}
         </>
       )}
 
       {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
     </div>
+  );
+}
+
+/**
+ * The phone's More sheet. Round 30: it was a `role="dialog"` that did not
+ * take focus, did not hold it, ignored Escape and was not marked modal, so a
+ * screen reader user opened it and stayed on the tab bar behind the scrim.
+ */
+function MoreSheet({ route, status, onClose }: { route: View; status: ReactNode; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const first = useRef<HTMLAnchorElement>(null);
+  useModal(ref, true, onClose, first);
+  return (
+    <>
+      <div className="scrim" onClick={onClose} aria-hidden="true" />
+      <div className="sheet" role="dialog" aria-modal="true" aria-label="More" ref={ref} tabIndex={-1}>
+        <div className="sheet-grab" aria-hidden="true" />
+        <div className="sheet-head">
+          <span>More</span>
+          <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>
+            <X aria-hidden="true" />
+          </button>
+        </div>
+        <div className="sheet-list">
+          {PHONE_MORE.map((m, i) => (
+            <a
+              key={m.id}
+              ref={i === 0 ? first : undefined}
+              href={hrefFor(m.id)}
+              className="sheet-item"
+              aria-current={route === m.id ? "page" : undefined}
+            >
+              {m.icon}
+              <span>{m.label}</span>
+            </a>
+          ))}
+        </div>
+        <div className="sheet-foot">{status}</div>
+      </div>
+    </>
   );
 }
 

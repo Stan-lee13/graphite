@@ -9,6 +9,17 @@
 // (connection.ts).
 
 import { createConnectionStore, normaliseBase, type Connection } from "./connection";
+import { originOf } from "./csp";
+import {
+  ShapeError,
+  checkGraph,
+  checkHealth,
+  checkHistory,
+  checkManifests,
+  checkRegistry,
+  checkTop,
+  checkViolations,
+} from "./shape";
 import { fetchFromCore, insecureBaseReason, type CoreResponse } from "./transport";
 
 export { normaliseBase, storageGet, storageSet, type Connection } from "./connection";
@@ -51,6 +62,15 @@ export interface ConfidencePoint {
   transaction_sha256?: string | null;
   /** The manifest version the verdict was judged against. */
   manifest_version?: string | null;
+  /**
+   * The Core's execution decision (Round 30 shared contract):
+   * "executable_approved" | "analysis_only" | "inconclusive" | "blocked".
+   * Only "executable_approved" with `executable: true` permits signing; any
+   * other approval is drawn as not executable. Absent from Cores before the
+   * contract.
+   */
+  decision?: string | null;
+  executable?: boolean | null;
 }
 
 export interface ConfidenceHistory {
@@ -100,6 +120,8 @@ export interface TopProtocol {
 
 export interface TopProtocols {
   top: TopProtocol[];
+  /** How many programs the Core has in all (absent from older Cores). */
+  program_count?: number;
 }
 
 export interface RegistryRecord {
@@ -167,6 +189,16 @@ export interface Health {
   degraded?: boolean;
   degraded_reasons?: string[];
   inclusion_witness?: boolean;
+  /**
+   * Whether the Core has an RPC to simulate against; without one every
+   * approval is analysis only. Absent from Cores that do not report it, and
+   * then drawn as "not reported", never as either answer.
+   */
+  rpc_attached?: boolean;
+  /** Trusted baselines that have refused clean executions (Round 17). */
+  frozen_baseline_count?: number;
+  /** Programs found redeployed since last seen (R-M1). */
+  program_upgrades?: { detected?: number; quarantine_on_upgrade?: boolean };
   audit?: {
     enabled: boolean;
     writes_ok?: number;
@@ -175,7 +207,14 @@ export interface Health {
     archive_count?: number;
     rotations_ok?: number;
     rotations_failed?: number;
+    /** Round 30 (G-07): what the trail's integrity rests on. */
+    integrity?: "tamper_evident" | "corruption_evident";
+    chain_head_seq?: number | null;
+    anchors_failed?: number;
   };
+  /** Round 30 (G-08): whether the witness is another provider, and whether
+   *  every L8 conclusion needs it. */
+  l8_assurance?: { witness_independent?: boolean | null; high_assurance?: boolean };
   graph_persistence?: {
     enabled: boolean;
     snapshots_ok?: number;
@@ -192,6 +231,9 @@ export type Metrics = Map<string, number>;
 
 /** The shortest key the Core will start with; mirrors `MIN_API_KEY_CHARS`. */
 export const MIN_KEY_CHARS = 32;
+
+/** The build-time default Core's origin, which the CSP names (csp.ts). */
+const BUILD_ORIGIN = originOf(import.meta.env.VITE_GRAPHITE_API as string | undefined);
 
 const store = createConnectionStore({
   local: () => window.localStorage,
@@ -213,7 +255,8 @@ export type ApiErrorKind =
   | "unavailable" // 503: the Core is shedding load
   | "server" // any other non-2xx from the Core
   | "network" // no response at all: down, wrong URL, or CORS refused
-  | "insecure"; // refused before sending: plain http:// to a non-loopback host
+  | "malformed" // an answer, but not the shape this console reads
+  | "insecure";// refused before sending: plain http:// to a non-loopback host
 
 export class ApiError extends Error {
   constructor(
@@ -239,6 +282,8 @@ function describe(kind: ApiErrorKind, path: string, status?: number): string {
       return `The Core answered ${status ?? "an error"} for ${path}.`;
     case "network":
       return "No response from the Core.";
+    case "malformed":
+      return `The Core answered ${path} with something this console cannot read.`;
     case "insecure":
       return "The console refused to send the key over plain http:// to another machine.";
   }
@@ -246,7 +291,15 @@ function describe(kind: ApiErrorKind, path: string, status?: number): string {
 
 export function toApiError(e: unknown, path: string): ApiError {
   if (e instanceof ApiError) return e;
-  return new ApiError("network", path);
+  // Round 30: `request` already turns a failed fetch into "network". Anything
+  // else thrown while handling an answer is the answer being unreadable, and
+  // used to be reported as "No response from the Core".
+  return new ApiError(
+    "malformed",
+    path,
+    undefined,
+    `The answer to ${path} could not be read: ${e instanceof Error ? e.message : String(e)}.`,
+  );
 }
 
 function authHeaders(key: string): Record<string, string> {
@@ -258,7 +311,7 @@ function authHeaders(key: string): Record<string, string> {
 async function request(path: string, conn: Connection = getConnection()): Promise<CoreResponse> {
   // Round 19 (F-19-C6): checked on every request, before `fetch`, so the key
   // never leaves over cleartext to another machine — see transport.ts.
-  const insecure = insecureBaseReason(conn.base, window.location.origin);
+  const insecure = insecureBaseReason(conn.base, window.location.origin, BUILD_ORIGIN);
   if (insecure !== null) throw new ApiError("insecure", path, undefined, insecure);
   let resp: CoreResponse;
   try {
@@ -275,13 +328,27 @@ async function request(path: string, conn: Connection = getConnection()): Promis
   throw new ApiError("server", path, resp.status);
 }
 
-async function getJson<T>(path: string): Promise<T> {
+/**
+ * GET `path`, parse it, and check it has what the views read (shape.ts).
+ * Round 30: an answer that is not JSON, or JSON without those fields, is a
+ * "malformed" failure naming what is wrong — not a crash in the view, and
+ * not "No response" (it used to be either, depending on where it broke).
+ */
+async function getJson<T>(path: string, check: (v: unknown) => void): Promise<T> {
   const resp = await request(path);
+  let value: unknown;
   try {
-    return JSON.parse(resp.text) as T;
+    value = JSON.parse(resp.text);
   } catch {
-    throw new ApiError("server", path, resp.status, `The Core answered ${path} with something that is not JSON.`);
+    throw new ApiError("malformed", path, resp.status, `The Core answered ${path} with something that is not JSON.`);
   }
+  try {
+    check(value);
+  } catch (e) {
+    const why = e instanceof ShapeError ? e.message : String(e);
+    throw new ApiError("malformed", path, resp.status, `The Core's answer to ${path} is not what this console reads: ${why}.`);
+  }
+  return value as T;
 }
 
 /** Parse the Prometheus text exposition into name → value. */
@@ -308,14 +375,21 @@ function chronological(h: ConfidenceHistory): ConfidenceHistory {
   return { ...h, series };
 }
 
+/**
+ * Round 30: every program's count, not the default five rows. The Core caps
+ * `?limit=` at 500 (server.rs MAX_TOP_PROTOCOLS); a program beyond the rows
+ * returned is still "not reported", never zero.
+ */
+export const TOP_PROTOCOLS_LIMIT = 500;
+
 export const api = {
-  health: () => getJson<Health>("/health"),
-  graph: () => getJson<GraphSnapshot>("/api/graph"),
-  confidenceHistory: () => getJson<ConfidenceHistory>("/api/confidence-history").then(chronological),
-  policyViolations: () => getJson<PolicyViolations>("/api/policy-violations"),
-  topProtocols: () => getJson<TopProtocols>("/api/protocols/top"),
-  registry: () => getJson<RegistryState>("/api/registry"),
-  manifests: () => getJson<Manifest[]>("/manifests"),
+  health: () => getJson<Health>("/health", checkHealth),
+  graph: () => getJson<GraphSnapshot>("/api/graph", checkGraph),
+  confidenceHistory: () => getJson<ConfidenceHistory>("/api/confidence-history", checkHistory).then(chronological),
+  policyViolations: () => getJson<PolicyViolations>("/api/policy-violations", checkViolations),
+  topProtocols: () => getJson<TopProtocols>(`/api/protocols/top?limit=${TOP_PROTOCOLS_LIMIT}`, checkTop),
+  registry: () => getJson<RegistryState>("/api/registry", checkRegistry),
+  manifests: () => getJson<Manifest[]>("/manifests", checkManifests),
   metrics: async () => parseMetrics((await request("/metrics")).text),
 };
 
@@ -344,7 +418,22 @@ export async function testConnection(conn: Connection): Promise<ConnectionReport
   const c = { base: normaliseBase(conn.base), key: conn.key.trim(), remember: conn.remember };
   const report: ConnectionReport = { reachable: false, authorized: false };
   try {
-    const h = JSON.parse((await request("/health", { ...c, key: "" })).text) as Health;
+    const resp = await request("/health", { ...c, key: "" });
+    let h: Health;
+    try {
+      const v: unknown = JSON.parse(resp.text);
+      checkHealth(v);
+      h = v as Health;
+    } catch {
+      // Something answered, but not a Core (a proxy's page, another service
+      // on that port): not "reached" in the sense this report means.
+      throw new ApiError(
+        "malformed",
+        "/health",
+        resp.status,
+        "Something answered /health, but not with a Graphite Core's health report.",
+      );
+    }
     report.reachable = true;
     report.version = h.version;
     report.degraded = h.degraded === true;

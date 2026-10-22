@@ -599,10 +599,13 @@ fn lamports_into_a_signers_own_token_account_are_not_a_loss() {
     );
 }
 
-/// A silent manifest still cannot be contradicted, and prose Graphite cannot
-/// interpret still only warns.
+/// A silent manifest, or prose Graphite cannot interpret, no longer excuses a
+/// signer's loss unless the manifest's security class for the instruction is
+/// one that moves value (R30: this test pinned the warning for both; the loss
+/// now blocks, and the warning stands only under such a class —
+/// `tests/r30_declared_effects.rs`).
 #[test]
-fn a_signers_loss_under_silent_or_uninterpretable_prose_does_not_block() {
+fn a_signers_loss_under_silent_or_uninterpretable_prose_blocks_unless_its_class_moves_value() {
     let wallet = signer();
     let deltas = || {
         vec![
@@ -619,8 +622,19 @@ fn a_signers_loss_under_silent_or_uninterpretable_prose_does_not_block() {
         resolved(ATTACKER, "account", false),
     ];
     let silent = report(deltas(), &accounts, &[]);
-    assert!(!silent.blocked, "{:?}", silent.findings);
+    assert!(silent.blocked, "{:?}", silent.findings);
     let prose = report(deltas(), &accounts, &["frobnicate the widget"]);
+    assert!(prose.blocked, "{:?}", prose.findings);
+    assert_eq!(
+        severity_of(&prose, "UndeclaredSignerLamportDebit"),
+        Some(DiffSeverity::Critical)
+    );
+    let transfer_class = graphite_core::state_diff::security_class_line("transfer");
+    let prose = report(
+        deltas(),
+        &accounts,
+        &["frobnicate the widget", transfer_class.as_str()],
+    );
     assert!(!prose.blocked, "{:?}", prose.findings);
     assert_eq!(
         severity_of(&prose, "UninterpretableDeclarationWithSignerLamportDebit"),

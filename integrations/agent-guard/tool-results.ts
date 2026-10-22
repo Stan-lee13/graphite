@@ -7,7 +7,8 @@
  * who refused (the operator's spend policy, the grounding of the request in
  * its own words, a person who declined, or Graphite) and why.
  */
-import type { ExecutionOutcome } from "./guard.js";
+import { PriorSubmissionUnresolved, RequestInFlight, type ExecutionOutcome } from "./guard.js";
+import { UnsupportedCapability, type UnsupportedCapabilityCode } from "./capabilities.js";
 import { ConfirmationDeclined, SubmissionOutcomeUnknown } from "./execution-lifecycle.js";
 import { IntentGroundingError } from "./intent-grounding.js";
 import { ResidualPolicyRefusal } from "./residual-policy.js";
@@ -31,7 +32,22 @@ export interface GraphiteToolResult {
     | "person"
     | "graphite"
     | "submission-unknown"
+    | "duplicate-request"
+    | "unsupported"
     | "error";
+  /**
+   * Round 30: for `unsupported`, which capability (`GUARD_CAPABILITIES`
+   * lists every one the guard does not have).
+   */
+  unsupported?: UnsupportedCapabilityCode;
+  /**
+   * Round 30: the execution decision the guard acted on, when it executed:
+   * `executable_approved`, or `analysis_only` under residuals the operator
+   * accepted by name.
+   */
+  decision?: "executable_approved" | "analysis_only";
+  /** Round 30: anomalies seen on the way, e.g. an RPC that named another transaction id. */
+  anomalies?: string[];
   reason?: string;
   /** The transaction id, when it executed — or when its submission's outcome is unknown. */
   signature?: string;
@@ -76,11 +92,19 @@ export function toolResultOf(outcome: ExecutionOutcome): GraphiteToolResult {
   if (!outcome.verifiedExecution) {
     return { executed: false, refusedBy: "graphite", reason: v.summary, verdict };
   }
+  const lc = outcome.lifecycle;
+  const anomalies: string[] = [];
+  if (lc?.rpcReportedSignature) {
+    anomalies.push(`the RPC answered the submission with ${lc.rpcReportedSignature}; the signed bytes carry ${outcome.signature}`);
+  }
+  if (lc?.reconciliation?.discrepancy) anomalies.push("L8 reported a discrepancy: Graphite's decision did not govern");
   return {
     executed: true,
     signature: outcome.signature,
-    confirmed: outcome.lifecycle?.confirmed,
-    acceptedUnobserved: [...(outcome.lifecycle?.acceptedUnobserved ?? [])],
+    confirmed: lc?.confirmed,
+    acceptedUnobserved: [...(lc?.acceptedUnobserved ?? [])],
+    ...(lc ? { decision: lc.decision } : {}),
+    ...(anomalies.length > 0 ? { anomalies } : {}),
     verdict,
   };
 }
@@ -123,5 +147,13 @@ export function toolRefusalOf(e: unknown): GraphiteToolResult {
   if (e instanceof SubmissionOutcomeUnknown) {
     return { executed: false, refusedBy: "submission-unknown", reason, signature: e.signature };
   }
+  // Round 30: a repeat refused because an earlier submission of the same
+  // request may still land names that submission's signature, like the
+  // ambiguous send itself did (it used to be reported as a generic error).
+  if (e instanceof PriorSubmissionUnresolved) {
+    return { executed: false, refusedBy: "submission-unknown", reason, signature: e.signature };
+  }
+  if (e instanceof RequestInFlight) return { executed: false, refusedBy: "duplicate-request", reason };
+  if (e instanceof UnsupportedCapability) return { executed: false, refusedBy: "unsupported", unsupported: e.code, reason };
   return { executed: false, refusedBy: "error", reason };
 }

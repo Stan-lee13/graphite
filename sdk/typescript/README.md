@@ -33,6 +33,39 @@ authoritative record of every verification.
   verify the returned `audit_trail_id`/`content_hash` against a separately
   queried audit record.
 
+## Sign only on `isExecutable(result)` (Round 30)
+
+`approved` says whether the pipeline refused the transaction; it never said the
+transaction may be signed. A Core without `GRAPHITE_RPC_URL` simulates nothing, and its
+approvals carry `not_simulated`; a verdict without transaction bytes binds to nothing. Every
+verdict now carries `decision` — `executable_approved`, `analysis_only`, `inconclusive` or
+`blocked` — and `executable`. Gate signing on one call:
+
+```ts
+import { GraphiteClient, isExecutable, verifyTransactionDigest } from "@graphite/sdk";
+
+const result = await client.verify(input); // input.signed_transaction = the unsigned bytes
+if (!isExecutable(result)) {
+  throw new Error(`not executable: ${result.decision ?? "no decision"} — ${result.summary}`);
+}
+verifyTransactionDigest(bytes, result); // the bytes you sign are the bytes it verified
+```
+
+`isExecutable` recomputes the Core's rule from the verdict's own fields
+(`computeExecutionDecision`) and requires the server to agree: an approval that is not
+artifact-bound and simulated, carries a residual beyond `program_semantics` and
+`inner_instructions`, or reports a failed layer is not executable whatever `decision` says;
+a `decision` this SDK does not know is not executable; a server older than Round 30 (no
+`decision`) is judged by the recomputation alone. `verify` refuses a response whose
+`executable: true` its own fields contradict. An operator who has deliberately accepted a
+residual (the agent guard's `ResidualPolicy`) makes that decision in their own code, by
+name, and logs it — `isExecutable` never does.
+
+`instruction_bind_key` (Round 30) is `content_hash` under a name that says what it is: a
+64-bit key for the described instruction, which audit and lifecycle records bind to. The
+transaction's identity is `scope.transaction_sha256`. `content_hash` is deprecated and
+stays for one minor version; `instructionBindKey(result)` reads either.
+
 ## Send the bytes, require `artifact_bound`
 
 `VerificationInput.signed_transaction` carries the serialized transaction with its

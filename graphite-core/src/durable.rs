@@ -23,6 +23,11 @@ use std::sync::{Arc, Mutex};
 
 mod archive_index;
 use archive_index::ArchiveIndex;
+mod chain;
+pub use chain::{
+    AuditKey, ChainBreak, ChainLink, Checkpoint, CheckpointStatus, Integrity, TrailReport,
+    AUDIT_ANCHOR_ENV, AUDIT_KEY_ENV, CHAIN_FIELD,
+};
 
 /// Default size at which the ACTIVE audit file is rotated (64 MiB).
 ///
@@ -203,10 +208,106 @@ pub struct AuditLog {
     /// index then no longer described it. While this is set, appends are
     /// refused; each one first retries opening a fresh active file.
     detached_into: Arc<Mutex<Option<PathBuf>>>,
+    /// Where the next record joins the hash chain (Round 30, G-07): read
+    /// from the trail at open, advanced only by an append that was
+    /// acknowledged — a failed write that was cut back leaves it where it
+    /// was. Locked only under the append handle's lock.
+    chain_head: Arc<Mutex<chain::ChainHead>>,
+    /// The MAC key, when the operator configured one
+    /// (`GRAPHITE_AUDIT_KEY_FILE`): what makes the trail tamper-evident
+    /// rather than only corruption-evident (`chain.rs`).
+    key: Option<Arc<AuditKey>>,
+    /// Where a checkpoint is written at each rotation
+    /// (`GRAPHITE_AUDIT_ANCHOR_DIR`), for the operator to keep on storage
+    /// the writer cannot alter.
+    anchor_dir: Option<Arc<PathBuf>>,
+    /// Checkpoints that could not be written to `anchor_dir`.
+    anchors_failed: Arc<AtomicU64>,
+    /// Opened by `open_read_only`: every append is refused, and no writer
+    /// lock is held, so a reader can run beside the process that writes.
+    read_only: bool,
+    /// The exclusive lock on `.<log>.lock` a writer holds for its lifetime
+    /// (Round 30): two writers would each extend the chain from their own
+    /// head and fork it, and keep disjoint indexes of one file.
+    _writer_lock: Option<Arc<File>>,
     /// Test-only fault injection (`FAULT_*`): the I/O failures the paths
     /// above exist for cannot be produced on demand by a real filesystem.
     #[cfg(test)]
     faults: Arc<std::sync::atomic::AtomicU32>,
+}
+
+/// How a writable audit log is opened.
+#[derive(Debug, Clone)]
+pub struct AuditOptions {
+    /// Rotate the active file past this many bytes (0 = never).
+    pub rotate_bytes: u64,
+    /// Archives to keep (0 = all).
+    pub max_archives: usize,
+    /// MAC key; `None` leaves the trail corruption-evident only.
+    pub key: Option<AuditKey>,
+    /// Directory a checkpoint is written to at each rotation.
+    pub anchor_dir: Option<PathBuf>,
+}
+
+impl Default for AuditOptions {
+    fn default() -> Self {
+        Self {
+            rotate_bytes: DEFAULT_ROTATE_BYTES,
+            max_archives: 0,
+            key: None,
+            anchor_dir: None,
+        }
+    }
+}
+
+impl AuditOptions {
+    /// The key and anchor settings from their environment values
+    /// (`GRAPHITE_AUDIT_KEY_FILE`, `GRAPHITE_AUDIT_ANCHOR_DIR`), checked
+    /// against the data directory the trail lives in. Unset is `None`; set
+    /// but empty, a key file that cannot be used, or an anchor directory
+    /// that does not exist or lies inside the data directory is an error —
+    /// an operator who meant to key or anchor the trail must not get an
+    /// unkeyed or unanchored one silently.
+    pub fn with_env_values(
+        mut self,
+        key_file: Option<&str>,
+        anchor_dir: Option<&str>,
+        data_dir: &Path,
+    ) -> Result<Self, String> {
+        if let Some(raw) = key_file {
+            if raw.trim().is_empty() {
+                return Err(format!("{AUDIT_KEY_ENV} is set but empty"));
+            }
+            self.key = Some(
+                AuditKey::load(Path::new(raw.trim()), Some(data_dir))
+                    .map_err(|e| format!("{AUDIT_KEY_ENV}: {e}"))?,
+            );
+        }
+        if let Some(raw) = anchor_dir {
+            if raw.trim().is_empty() {
+                return Err(format!("{AUDIT_ANCHOR_ENV} is set but empty"));
+            }
+            let dir = PathBuf::from(raw.trim());
+            let resolved = std::fs::canonicalize(&dir)
+                .map_err(|e| format!("{AUDIT_ANCHOR_ENV} {}: {e}", dir.display()))?;
+            if !resolved.is_dir() {
+                return Err(format!(
+                    "{AUDIT_ANCHOR_ENV} {} is not a directory",
+                    dir.display()
+                ));
+            }
+            if let Ok(data) = std::fs::canonicalize(data_dir) {
+                if resolved.starts_with(&data) {
+                    return Err(format!(
+                        "{AUDIT_ANCHOR_ENV} {} is inside the data directory: a checkpoint kept beside the trail anchors nothing",
+                        dir.display()
+                    ));
+                }
+            }
+            self.anchor_dir = Some(resolved);
+        }
+        Ok(self)
+    }
 }
 
 /// `AuditLog::unacknowledged_from` when every byte of the active file was
@@ -219,6 +320,7 @@ const FAULT_SYNC: u32 = 1;
 const FAULT_TRUNCATE: u32 = 2;
 const FAULT_REOPEN: u32 = 4;
 const FAULT_RENAME_BACK: u32 = 8;
+const FAULT_ROTATE_RENAME: u32 = 16;
 
 /// The most program ids one archive's cached statistics keep by name.
 ///
@@ -281,6 +383,17 @@ pub struct AuditHealth {
     pub rotations_failed: u64,
     /// Rotated archives currently on disk.
     pub archive_count: u64,
+    /// Whether new records carry a MAC under an operator key (Round 30,
+    /// G-07). `false` is not a fault but a weaker posture: the chain is
+    /// corruption-evident, and a writer to the data directory can rewrite
+    /// it coherently.
+    pub tamper_evident: bool,
+    /// The newest record's position in the hash chain; `None` before the
+    /// first chained record.
+    pub chain_head_seq: Option<u64>,
+    /// Rotation checkpoints that could not be written to the anchor
+    /// directory. Non-zero is degraded.
+    pub anchors_failed: u64,
 }
 
 /// Which verification records a read selects.
@@ -446,6 +559,44 @@ fn parse_archive_name(stem: &str, name: &str) -> Option<ArchiveOrder> {
     Some((stamp, seq, extra))
 }
 
+/// The rotated archives of the log at `path`, oldest first, each with the
+/// order its name encodes. See `AuditLog::archives`.
+fn archives_of(path: &Path) -> Vec<(ArchiveOrder, PathBuf)> {
+    let Some(dir) = path.parent() else {
+        return Vec::new();
+    };
+    let Some(stem) = path.file_name().and_then(|s| s.to_str()) else {
+        return Vec::new();
+    };
+    let mut archives: Vec<(ArchiveOrder, PathBuf)> = match std::fs::read_dir(dir) {
+        Ok(entries) => entries
+            .flatten()
+            .filter_map(|e| {
+                let path = e.path();
+                let order = parse_archive_name(stem, path.file_name()?.to_str()?)?;
+                // A directory (or anything else that is not a file) with
+                // an archive's name is not one.
+                path.is_file().then_some((order, path))
+            })
+            .collect(),
+        Err(_) => return Vec::new(),
+    };
+    archives.sort();
+    archives
+}
+
+/// Walk the whole trail of the log at `path` against its hash chain:
+/// every archive, oldest first, then the active file. Read-only; safe
+/// beside a running writer. See `chain::verify_trail`.
+pub fn verify_audit_trail(
+    path: &Path,
+    keys: &[AuditKey],
+    checkpoint: Option<&Checkpoint>,
+) -> std::io::Result<TrailReport> {
+    let archives: Vec<PathBuf> = archives_of(path).into_iter().map(|(_, p)| p).collect();
+    chain::verify_trail(path, &archives, keys, checkpoint)
+}
+
 /// How many times in a row an archive's index could not be had at length
 /// `len`, per the state remembered for it.
 fn previous_failures(state: Option<&IndexState>, len: u64) -> u32 {
@@ -474,7 +625,7 @@ fn index_retry_wait(failures: u32) -> std::time::Duration {
 /// rotation can leave the archive name unlinked while the data survives. On
 /// Windows `MoveFileEx` is journaled by NTFS and directories cannot be
 /// opened for sync, so this is a no-op there.
-fn sync_dir(path: &Path) {
+pub(crate) fn sync_dir(path: &Path) {
     #[cfg(unix)]
     {
         if let Some(dir) = path.parent() {
@@ -675,6 +826,16 @@ pub struct AuditRecord {
     pub protocol_name: String,
     pub manifest_version: Option<String>,
     pub approved: bool,
+    /// The verdict's `decision` (Round 30, G-01): `executable_approved`,
+    /// `analysis_only`, `inconclusive` or `blocked`. `approved` alone never
+    /// said whether the transaction could be signed. `None` on rows written
+    /// before Round 30 and on rows that are not verifications — "not
+    /// reported", never read as either answer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision: Option<String>,
+    /// The verdict's `executable` (Round 30). `None` as `decision`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executable: Option<bool>,
     pub confidence: f64,
     pub risk_status: String,
     pub policy_verdict: String,
@@ -1167,9 +1328,34 @@ impl AuditLog {
         rotate_bytes: u64,
         max_archives: usize,
     ) -> std::io::Result<Self> {
+        Self::open_with_options(
+            path,
+            AuditOptions {
+                rotate_bytes,
+                max_archives,
+                ..AuditOptions::default()
+            },
+        )
+    }
+
+    /// Open for writing with every option, taking the writer lock on
+    /// `.<log>.lock` (Round 30): a second writer — another server, or a CLI
+    /// command beside a running one — is refused with `WouldBlock` instead
+    /// of forking the hash chain.
+    ///
+    /// The chain resumes after the newest chained record on disk, which
+    /// must match its own hash (and its MAC, when it is under `key`). A
+    /// trail whose newest record is MAC'd cannot be continued without a
+    /// key: that would downgrade it silently.
+    pub fn open_with_options(
+        path: impl AsRef<Path>,
+        options: AuditOptions,
+    ) -> std::io::Result<Self> {
         let path = path.as_ref().to_path_buf();
+        let lock = Self::take_writer_lock(&path)?;
         let existed = path.exists();
         let file = OpenOptions::new().create(true).append(true).open(&path)?;
+        let head = Self::resume_chain(&path, options.key.as_ref())?;
         if !existed {
             // Round 29 (audit 2026-10-20, audit trail): the directory entry
             // of a newly created log was never synced, so a power loss soon
@@ -1190,8 +1376,14 @@ impl AuditLog {
             torn_tail: Arc::new(std::sync::atomic::AtomicBool::new(torn)),
             file: std::sync::Arc::new(Mutex::new(file)),
             path: Arc::new(path),
-            rotate_bytes,
-            max_archives,
+            rotate_bytes: options.rotate_bytes,
+            max_archives: options.max_archives,
+            chain_head: Arc::new(Mutex::new(head)),
+            key: options.key.map(Arc::new),
+            anchor_dir: options.anchor_dir.map(Arc::new),
+            anchors_failed: Arc::new(AtomicU64::new(0)),
+            read_only: false,
+            _writer_lock: Some(Arc::new(lock)),
             writes_ok: Arc::new(AtomicU64::new(0)),
             writes_failed: Arc::new(AtomicU64::new(0)),
             rotation_seq: Arc::new(AtomicU64::new(0)),
@@ -1218,6 +1410,88 @@ impl AuditLog {
             #[cfg(test)]
             faults: Arc::new(std::sync::atomic::AtomicU32::new(0)),
         })
+    }
+
+    /// Open an existing trail to READ it: no writer lock, no file created,
+    /// and every append refused. For a process that only reads — `graphite
+    /// execution` beside a running server — so it never competes with the
+    /// writer for the lock or extends the chain from a head of its own.
+    pub fn open_read_only(path: impl AsRef<Path>) -> std::io::Result<Self> {
+        let path = path.as_ref().to_path_buf();
+        let file = File::open(&path)?;
+        let (active_index, lifecycle_index, active_counts) = build_indexes(&path);
+        let torn = ends_without_newline(&path);
+        Ok(Self {
+            torn_tail: Arc::new(std::sync::atomic::AtomicBool::new(torn)),
+            file: std::sync::Arc::new(Mutex::new(file)),
+            path: Arc::new(path),
+            rotate_bytes: 0,
+            max_archives: 0,
+            chain_head: Arc::new(Mutex::new(chain::ChainHead::genesis())),
+            key: None,
+            anchor_dir: None,
+            anchors_failed: Arc::new(AtomicU64::new(0)),
+            read_only: true,
+            _writer_lock: None,
+            writes_ok: Arc::new(AtomicU64::new(0)),
+            writes_failed: Arc::new(AtomicU64::new(0)),
+            rotation_seq: Arc::new(AtomicU64::new(0)),
+            last_stamp: Arc::new(Mutex::new(None)),
+            rotations_ok: Arc::new(AtomicU64::new(0)),
+            rotations_failed: Arc::new(AtomicU64::new(0)),
+            archive_stats: Arc::new(Mutex::new(HashMap::new())),
+            archive_indexes: Arc::new(Mutex::new(HashMap::new())),
+            index_build: Arc::new(Mutex::new(())),
+            archive_index_builds: Arc::new(AtomicU64::new(0)),
+            archive_scans: Arc::new(AtomicU64::new(0)),
+            index_jobs: Arc::new(AtomicU64::new(0)),
+            active_index: Arc::new(Mutex::new(active_index)),
+            lifecycle_index: Arc::new(Mutex::new(lifecycle_index)),
+            active_counts: Arc::new(Mutex::new(active_counts)),
+            active_count_scans: Arc::new(AtomicU64::new(0)),
+            active_lookup_scans: Arc::new(AtomicU64::new(0)),
+            last_rotation: Arc::new(Mutex::new(Some(std::time::Instant::now()))),
+            unacknowledged_from: Arc::new(AtomicU64::new(NO_UNACKNOWLEDGED_BYTES)),
+            detached_into: Arc::new(Mutex::new(None)),
+            #[cfg(test)]
+            faults: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+        })
+    }
+
+    /// The writer lock of the log at `path`: an exclusive advisory lock on
+    /// `.<log>.lock`, released by the OS on any exit. Dot-prefixed so it
+    /// never shares the `<log>.` prefix of the trail's archives.
+    fn take_writer_lock(path: &Path) -> std::io::Result<File> {
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let lock_path = path.with_file_name(format!(".{name}.lock"));
+        let lock = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&lock_path)?;
+        match lock.try_lock() {
+            Ok(()) => Ok(lock),
+            Err(std::fs::TryLockError::WouldBlock) => Err(std::io::Error::new(
+                std::io::ErrorKind::WouldBlock,
+                format!(
+                    "the audit trail {} is held by another writer ({} is locked). Two writers would fork its hash chain: stop the other process, or use the running server's endpoints",
+                    path.display(),
+                    lock_path.display()
+                ),
+            )),
+            Err(std::fs::TryLockError::Error(e)) => Err(e),
+        }
+    }
+
+    /// Where the chain resumes for the trail at `path` (`chain::resume_head`).
+    fn resume_chain(path: &Path, key: Option<&AuditKey>) -> std::io::Result<chain::ChainHead> {
+        let mut archives: Vec<PathBuf> = archives_of(path).into_iter().map(|(_, p)| p).collect();
+        archives.reverse();
+        chain::resume_head(path, &archives, key)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }
 
     /// Whether a test injected the fault `_bit`; always false outside tests.
@@ -1259,6 +1533,111 @@ impl AuditLog {
             rotations_ok: self.rotations_ok.load(Ordering::Relaxed),
             rotations_failed: self.rotations_failed.load(Ordering::Relaxed),
             archive_count: self.archives().len() as u64,
+            tamper_evident: self.key.is_some(),
+            chain_head_seq: {
+                let head = self.chain_head_now();
+                head.next_seq.checked_sub(1)
+            },
+            anchors_failed: self.anchors_failed.load(Ordering::Relaxed),
+        }
+    }
+
+    /// The chain head, as of now.
+    fn chain_head_now(&self) -> chain::ChainHead {
+        match self.chain_head.lock() {
+            Ok(g) => *g,
+            Err(poisoned) => *poisoned.into_inner(),
+        }
+    }
+
+    /// The id of the key new records are MAC'd under, when there is one.
+    pub fn key_id(&self) -> Option<&str> {
+        self.key.as_deref().map(AuditKey::id)
+    }
+
+    /// Walk the whole trail — every archive, then the active file — and
+    /// check every record against the hash chain, the MACs whose keys are in
+    /// `keys` (the configured key is always among them), and `checkpoint`.
+    /// Never consults an index.
+    pub fn verify(
+        &self,
+        keys: &[AuditKey],
+        checkpoint: Option<&Checkpoint>,
+    ) -> std::io::Result<TrailReport> {
+        let mut all: Vec<AuditKey> = keys.to_vec();
+        if let Some(k) = &self.key {
+            all.push((**k).clone());
+        }
+        verify_audit_trail(self.path.as_ref(), &all, checkpoint)
+    }
+
+    /// A checkpoint of the chain's head as this writer holds it: for an
+    /// operator to anchor outside the data directory. `None` before the
+    /// first chained record.
+    pub fn checkpoint(&self) -> Option<Checkpoint> {
+        let _guard = match self.file.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let head = self.chain_head_now();
+        let seq = head.next_seq.checked_sub(1)?;
+        Some(Checkpoint::new(
+            &self.log_name(),
+            seq,
+            &hex::encode(head.prev),
+            seq.saturating_add(1),
+            self.key.as_deref(),
+        ))
+    }
+
+    fn log_name(&self) -> String {
+        self.path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    }
+
+    /// Write a checkpoint of the head to the anchor directory, when one is
+    /// configured. Called under the append lock, after a rotation.
+    fn write_anchor(&self) {
+        let Some(dir) = &self.anchor_dir else {
+            return;
+        };
+        let head = self.chain_head_now();
+        let Some(seq) = head.next_seq.checked_sub(1) else {
+            return;
+        };
+        let cp = Checkpoint::new(
+            &self.log_name(),
+            seq,
+            &hex::encode(head.prev),
+            seq.saturating_add(1),
+            self.key.as_deref(),
+        );
+        let path = dir.join(format!("{}-checkpoint-{seq:020}.json", self.log_name()));
+        let written = serde_json::to_vec_pretty(&cp)
+            .map_err(std::io::Error::other)
+            .and_then(|bytes| {
+                let mut f = OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&path)?;
+                f.write_all(&bytes)?;
+                f.write_all(b"\n")?;
+                f.sync_all()
+            });
+        match written {
+            Ok(()) => {
+                sync_dir(&path);
+                tracing::info!("audit checkpoint seq {seq} written to {}", path.display());
+            }
+            Err(e) => {
+                self.anchors_failed.fetch_add(1, Ordering::Relaxed);
+                tracing::error!(
+                    "audit checkpoint seq {seq} could not be written to {}: {e}",
+                    path.display()
+                );
+            }
         }
     }
 
@@ -1285,27 +1664,7 @@ impl AuditLog {
 
     /// `archives`, each with the order its name encodes.
     fn archives_ordered(&self) -> Vec<(ArchiveOrder, PathBuf)> {
-        let Some(dir) = self.path.parent() else {
-            return Vec::new();
-        };
-        let Some(stem) = self.path.file_name().and_then(|s| s.to_str()) else {
-            return Vec::new();
-        };
-        let mut archives: Vec<(ArchiveOrder, PathBuf)> = match std::fs::read_dir(dir) {
-            Ok(entries) => entries
-                .flatten()
-                .filter_map(|e| {
-                    let path = e.path();
-                    let order = parse_archive_name(stem, path.file_name()?.to_str()?)?;
-                    // A directory (or anything else that is not a file) with
-                    // an archive's name is not one.
-                    path.is_file().then_some((order, path))
-                })
-                .collect(),
-            Err(_) => return Vec::new(),
-        };
-        archives.sort();
-        archives
+        archives_of(self.path.as_ref())
     }
 
     /// The trail as it is at one instant: the archive list and an open handle
@@ -1479,7 +1838,12 @@ impl AuditLog {
         let spawned = std::thread::Builder::new()
             .name("graphite-audit-index".to_string())
             .spawn(move || {
+                // Locals drop in reverse order: the job's clone of the log —
+                // and with it any share of the writer lock — is released
+                // before the count says the job is done, so a caller that
+                // waits for the count to reach zero can reopen the trail.
                 let _done = done;
+                let log = log;
                 job(&log);
             });
         if let Err(e) = spawned {
@@ -1816,9 +2180,12 @@ impl AuditLog {
         // running on NTFS). What breaks it is a FOREIGN handle without that
         // share mode — `rotation_failure_is_counted_and_never_drops_a_record`
         // reproduces exactly that.
-        let renamed = self
-            .next_archive_path(now)
-            .and_then(|archive| std::fs::rename(self.path.as_ref(), &archive).map(|_| archive));
+        let renamed = self.next_archive_path(now).and_then(|archive| {
+            if self.injected(FAULT_ROTATE_RENAME) {
+                return Err(std::io::Error::other("injected: rotation rename fails"));
+            }
+            std::fs::rename(self.path.as_ref(), &archive).map(|_| archive)
+        });
         let archive = match renamed {
             Ok(archive) => archive,
             Err(e) => {
@@ -1844,6 +2211,7 @@ impl AuditLog {
                 sync_dir(self.path.as_ref());
                 self.rotations_ok.fetch_add(1, Ordering::Relaxed);
                 tracing::info!("audit log rotated to {}", archive.display());
+                self.write_anchor();
                 self.prune_archives();
             }
             Err(e) => {
@@ -2607,8 +2975,21 @@ impl AuditLog {
         lifecycle_keys: &[String],
         verdict: Option<bool>,
     ) -> bool {
-        let line = match serde_json::to_string(record) {
-            Ok(l) => l,
+        if self.read_only {
+            self.writes_failed.fetch_add(1, Ordering::Relaxed);
+            tracing::error!(
+                "audit append refused: {} was opened read-only",
+                self.path.display()
+            );
+            return false;
+        }
+        let fields = match serde_json::to_value(record) {
+            Ok(serde_json::Value::Object(map)) => map,
+            Ok(_) => {
+                tracing::error!("audit serialization failed: a record is not a JSON object");
+                self.writes_failed.fetch_add(1, Ordering::Relaxed);
+                return false;
+            }
             Err(e) => {
                 tracing::error!("audit serialization failed: {}", e);
                 self.writes_failed
@@ -2620,6 +3001,9 @@ impl AuditLog {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
+        // Sealed under the append lock, so the head it extends is the one
+        // the previous acknowledged record left (Round 30, G-07).
+        let (line, next_head) = chain::seal(fields, &self.chain_head_now(), self.key.as_deref());
         // Never append through a handle that writes into an archive.
         if self.reattach(&mut file).is_err() {
             self.writes_failed.fetch_add(1, Ordering::Relaxed);
@@ -2714,6 +3098,10 @@ impl AuditLog {
         }
         let offset = (!index_keys.is_empty() || !lifecycle_keys.is_empty()).then_some(start);
         self.writes_ok.fetch_add(1, Ordering::Relaxed);
+        match self.chain_head.lock() {
+            Ok(mut g) => *g = next_head,
+            Err(poisoned) => *poisoned.into_inner() = next_head,
+        }
         {
             let mut counts = match self.active_counts.lock() {
                 Ok(g) => g,
@@ -2884,6 +3272,9 @@ pub fn now_utc_rfc3339() -> String {
 }
 
 #[cfg(test)]
+mod chain_trail_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -2899,6 +3290,8 @@ mod tests {
             protocol_name: "system-program".to_string(),
             manifest_version: None,
             approved: true,
+            decision: None,
+            executable: None,
             confidence: 0.9,
             risk_status: "Clear".to_string(),
             policy_verdict: "Approved".to_string(),
@@ -3170,6 +3563,8 @@ mod tests {
             protocol_name: "system-program".to_string(),
             manifest_version: None,
             approved: true,
+            decision: None,
+            executable: None,
             confidence: 0.9,
             risk_status: "Clear".to_string(),
             policy_verdict: "Approved".to_string(),
@@ -3223,6 +3618,8 @@ mod tests {
                     protocol_name: "system".into(),
                     manifest_version: None,
                     approved: i % 2 == 0,
+                    decision: None,
+                    executable: None,
                     confidence: 0.5,
                     risk_status: "Clear".into(),
                     policy_verdict: if i % 2 == 0 {
@@ -3485,7 +3882,10 @@ mod tests {
             "the rescan re-caches under the new length"
         );
 
-        // Pruning drops the entry.
+        // Pruning drops the entry. One writer at a time (Round 30): the
+        // first log, and every background job holding it, goes first.
+        log.wait_for_index_jobs();
+        drop(log);
         let pruning = AuditLog::open_with_rotation(audit_path(&dir), 512, 1).unwrap();
         let _ = pruning.read_tail_filtered(1, AuditSelector::All);
         for i in 0..60 {
@@ -3605,19 +4005,64 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    /// The Unix twin: a directory the process cannot rename inside.
+    /// The Unix twin. Round 30 (K-12): it used a read-only directory and
+    /// returned early when run as root — which is how this machine and CI's
+    /// containers run it, so it passed without exercising anything. The
+    /// rename now fails through the fault seam, which applies to every user;
+    /// the read-only directory is still tried first where it means
+    /// something (not root).
     #[cfg(unix)]
     #[test]
     fn rotation_failure_is_counted_and_never_drops_a_record() {
-        use std::os::unix::fs::PermissionsExt;
-        // Root ignores directory permissions; the test is meaningless there.
-        if unsafe { libc_geteuid() } == 0 {
-            eprintln!("skipping: running as root, directory permissions do not apply");
-            return;
+        let dir = temp_dir("rotation-rename-fails");
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 512, 0).unwrap();
+        log.faults.store(FAULT_ROTATE_RENAME, Ordering::SeqCst);
+        for i in 0..40 {
+            assert!(
+                log.append(&rec_with(&format!("held-{i}"), "h", "P", true)),
+                "the record must be appended even though rotation is blocked"
+            );
         }
+        let h = log.health();
+        assert!(h.rotations_failed > 0, "a blocked rotation must be counted");
+        assert_eq!(h.rotations_ok, 0);
+        assert!(archives_in(&dir).is_empty());
+        assert_eq!(active_only_count(&dir), 40, "nothing was dropped");
+        assert!(h.active_bytes > 512, "the active file kept growing");
+        log.faults.store(0, Ordering::SeqCst);
+        assert!(log.append(&rec_with("after", "h", "P", true)));
+        assert!(log.health().rotations_ok >= 1);
+        assert!(!archives_in(&dir).is_empty());
+        let (_, _, n, _) = log.read_tail_filtered(1, AuditSelector::All);
+        assert_eq!(n, 41);
+        // The chain runs unbroken through the failed rotations.
+        let report = log.verify(&[], None).unwrap();
+        assert!(report.intact(), "{report:?}");
+        assert_eq!(report.chained_records, 41);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The same through a real filesystem refusal, where one applies: a
+    /// directory the process cannot rename inside (not as root, which
+    /// ignores directory permissions).
+    #[cfg(unix)]
+    #[test]
+    fn rotation_in_a_read_only_directory_is_counted_and_never_drops_a_record() {
+        use std::os::unix::fs::PermissionsExt;
         let dir = temp_dir("readonly-dir");
         let log = AuditLog::open_with_rotation(audit_path(&dir), 512, 0).unwrap();
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+        // Whether this process is subject to directory permissions, probed
+        // rather than assumed.
+        let probe = dir.join("probe");
+        if std::fs::write(&probe, b"x").is_ok() {
+            std::fs::remove_file(&probe).ok();
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+            eprintln!(
+                "read-only directory not enforced for this user; the failure path is covered by rotation_failure_is_counted_and_never_drops_a_record"
+            );
+            return;
+        }
         for i in 0..40 {
             assert!(log.append(&rec_with(&format!("held-{i}"), "h", "P", true)));
         }
@@ -3631,12 +4076,6 @@ mod tests {
         let (_, _, n, _) = log.read_tail_filtered(1, AuditSelector::All);
         assert_eq!(n, 41);
         std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[cfg(unix)]
-    extern "C" {
-        #[link_name = "geteuid"]
-        fn libc_geteuid() -> u32;
     }
 
     /// Round 9: a lifecycle event's fields are bounded on the way to disk.
@@ -3918,6 +4357,9 @@ mod tests {
                 .unwrap_or_else(|| panic!("record {i} lost across rotation"));
             assert_eq!(r.audit_trail_id, format!("gr-{i}"));
         }
+        // Round 30: the writer holds the trail's lock until its last clone
+        // (a background index job's) is gone.
+        log.wait_for_index_jobs();
         drop(log);
         let reopened = AuditLog::open_with_rotation(&path, 2_000, 0).unwrap();
         for i in 0..20 {
@@ -4171,6 +4613,7 @@ mod tests {
         let mut rec = rec("after-torn");
         rec.transaction_sha256 = Some("ab".repeat(32));
         assert!(log.append(&rec));
+        log.wait_for_index_jobs();
         drop(log);
         let reopened = AuditLog::open(&path).unwrap();
         let found = reopened.find_verification(VerificationKey::AuditTrailId("after-torn"));
@@ -4256,6 +4699,7 @@ mod tests {
         assert!(log.lifecycle_history(LifecycleKey::default()).is_empty());
 
         // A fresh handle rebuilds the index from the file.
+        log.wait_for_index_jobs();
         drop(log);
         let reopened = AuditLog::open(&path).unwrap();
         let by_id = reopened.lifecycle_history(LifecycleKey {
@@ -4306,6 +4750,8 @@ mod tests {
         assert_eq!(history[1].transaction_signature.as_deref(), Some("sigr"));
 
         // Bounded: a key with more rows than the cap reports the cap.
+        log.wait_for_index_jobs();
+        drop(log);
         let log = AuditLog::open_with_rotation(&path, 0, 0).unwrap();
         for _ in 0..(MAX_LIFECYCLE_HISTORY + 20) {
             assert!(log.append_lifecycle(&lifecycle(
@@ -4716,6 +5162,7 @@ mod tests {
             })
             .collect();
         assert_eq!(archive_scans(&log), 0);
+        log.wait_for_index_jobs();
         drop(log);
 
         let log = AuditLog::open_with_rotation(audit_path(&dir), 0, 0).unwrap();
@@ -4776,6 +5223,7 @@ mod tests {
         assert_eq!(index_builds(&log), 0, "no archive may be parsed");
         assert_eq!(archive_scans(&log), 0);
         // The same indexes, checked by a fresh process.
+        log.wait_for_index_jobs();
         drop(log);
         let log = AuditLog::open_with_rotation(audit_path(&dir), 0, 0).unwrap();
         assert_eq!(log.count_verifications(tx), (2, 1));
@@ -4984,6 +5432,7 @@ mod tests {
             .find_verification(VerificationKey::AuditTrailId("gr-unacked"))
             .is_none());
         assert!(log.append(&counted("gr-1", true)));
+        log.wait_for_index_jobs();
         drop(log);
         let log = AuditLog::open_with_rotation(&path, 0, 0).unwrap();
         assert!(log
@@ -5034,6 +5483,7 @@ mod tests {
         assert!(!text.contains("gr-unacked"), "{text}");
         assert!(!text.contains("gr-blocked"), "{text}");
         assert_eq!(log.count_verifications(key), (2, 0));
+        log.wait_for_index_jobs();
         drop(log);
         let log = AuditLog::open_with_rotation(&path, 0, 0).unwrap();
         assert_eq!(log.count_verifications(key), (2, 0));
@@ -5215,6 +5665,8 @@ mod tests {
             },
         )
         .unwrap();
+        log.wait_for_index_jobs();
+        drop(log);
         let log = AuditLog::open_with_rotation(audit_path(&dir), 0, 0).unwrap();
         assert_eq!(log.count_verifications(tx), (3, 1));
         std::fs::remove_dir_all(&dir).ok();

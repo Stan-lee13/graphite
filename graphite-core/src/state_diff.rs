@@ -1569,7 +1569,33 @@ pub struct DeclaredEffects {
     /// whether an effect is declared ANYWHERE, for the transaction-level
     /// checks; the per-account checks ask `covers`.
     scopes: std::collections::BTreeMap<&'static str, EffectScope>,
+    /// The manifest's security class for the instruction, when the pipeline
+    /// stated it ([`security_class_line`]). `None` when no line stated it, or
+    /// lines stated two different classes.
+    pub security_class: Option<String>,
 }
+
+/// The prefix of the line the pipeline adds to an instruction's declaration
+/// for L4, stating the manifest's security class for it (R30). Reserved:
+/// `manifest::validate_manifest` refuses a declaration line that begins with
+/// `graphite:`, so a manifest cannot state a class for itself through prose.
+pub const SECURITY_CLASS_LINE_PREFIX: &str =
+    "graphite: the manifest's security class for this instruction is ";
+
+/// The line stating `class` as the instruction's security class.
+pub fn security_class_line(class: &str) -> String {
+    format!("{SECURITY_CLASS_LINE_PREFIX}{class:?}")
+}
+
+/// The security classes whose instructions move value as what they are for
+/// (R30). Under a declaration Graphite cannot read, a signer's loss is
+/// reported rather than blocked only for these — and for an instruction the
+/// manifest leaves unclassed, which is a documented residual. An `inert` or
+/// `authority` instruction states that it moves nothing, so a signer's loss
+/// under it is unexplained whatever its prose says.
+const VALUE_MOVING_CLASSES: &[&str] = &[
+    "transfer", "withdraw", "drain", "stake", "close", "create", "mint", "",
+];
 
 /// Where one declared effect applies. See `DeclaredEffects::covers`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -1590,6 +1616,16 @@ impl DeclaredEffects {
     /// diff outcomes. Only then can an undeclared debit be a hard failure.
     pub fn is_interpretable(&self) -> bool {
         !self.absent && !self.unrecognised
+    }
+
+    /// Whether a value movement the declaration does not explain may still
+    /// be the instruction's own (R30): the declaration is silent or cannot be
+    /// read, and the security class the pipeline stated is one whose
+    /// instructions move value. With no class stated, no.
+    pub fn class_moves_value(&self) -> bool {
+        self.security_class
+            .as_deref()
+            .is_some_and(|c| VALUE_MOVING_CLASSES.contains(&c))
     }
 
     /// Whether `effect` is declared for an account known to the manifest by
@@ -1635,10 +1671,29 @@ impl DeclaredEffects {
     ///   accounts.source delegated_amount" declared a delegation on source,
     ///   and so excused a delegate granted there.
     pub fn parse(expected_state_changes: &[String]) -> Self {
+        // The pipeline's class line is not prose: it states nothing about
+        // effects, so it neither makes a declaration non-silent nor counts as
+        // a line Graphite could not read.
+        let (class_lines, prose): (Vec<&String>, Vec<&String>) = expected_state_changes
+            .iter()
+            .partition(|l| l.starts_with(SECURITY_CLASS_LINE_PREFIX));
+        let mut classes = class_lines.iter().map(|l| {
+            l[SECURITY_CLASS_LINE_PREFIX.len()..]
+                .trim()
+                .trim_matches('"')
+                .to_string()
+        });
+        let first = classes.next();
+        let security_class = match first {
+            Some(c) if classes.all(|o| o == c) => Some(c),
+            _ => None,
+        };
         let mut e = Self {
-            absent: expected_state_changes.is_empty(),
+            absent: prose.is_empty(),
+            security_class,
             ..Self::default()
         };
+        let expected_state_changes = prose;
         // Whether some line was prose Graphite could not map to an effect.
         // A name list, a bare identifier and an explicit "no state changes"
         // are read — they declare nothing — so a declaration made only of
@@ -1647,7 +1702,7 @@ impl DeclaredEffects {
         // as unrecognised softened that debit to a warning on 27 seed
         // instructions, and on every memo).
         let mut uninterpreted_prose = false;
-        for raw in expected_state_changes {
+        for raw in expected_state_changes.iter().copied() {
             if raw == UNDESCRIBED_INSTRUCTION_EFFECTS {
                 continue;
             }
@@ -1739,7 +1794,7 @@ impl DeclaredEffects {
         // An undescribed instruction is interpretable: it promises nothing.
         let only_undescribed = expected_state_changes
             .iter()
-            .all(|s| s == UNDESCRIBED_INSTRUCTION_EFFECTS);
+            .all(|s| *s == UNDESCRIBED_INSTRUCTION_EFFECTS);
         e.unrecognised = !e.absent
             && !only_undescribed
             && uninterpreted_prose
@@ -3608,6 +3663,9 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
     // A token debit on a signer's account that a NAMED debit declaration does
     // not cover (F2, review of the 2026-09-29 audit's fix).
     let mut signer_debit_outside_scope: Option<String> = None;
+    // The first token account a signer holds that was debited, whatever the
+    // declaration (R30: judged when the declaration cannot be read).
+    let mut signer_token_debited: Option<String> = None;
     // Lamports that left a signer's own wallet beyond the fee, under a
     // declaration that debits only named accounts (W19).
     let mut signer_lamports_outside_scope: i128 = 0;
@@ -3689,8 +3747,15 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
             // indistinguishable from the diff alone, so the manifest breaks
             // the tie: excused only when it declares a creation. Absent that
             // declaration it is read as the takeover, which is fail-closed.
-            let allocation =
-                from == SYSTEM_PROGRAM && d.before.as_ref().is_some_and(|s| s.data_len == 0);
+            //
+            // Never for the fee payer (Round 30, found by the state-diff
+            // fuzzer): it existed and held lamports before the transaction —
+            // it paid the fee — so it is not an account being built, and
+            // handing the signer's own wallet to a program under any
+            // instruction that "initializes" something is the takeover.
+            let allocation = from == SYSTEM_PROGRAM
+                && d.before.as_ref().is_some_and(|s| s.data_len == 0)
+                && !is_fee_payer;
             // Two ways the manifest can account for an owner change: it
             // declares the creation this allocation is part of, or it declares
             // an authority change outright. Neither means the takeover reading
@@ -4013,6 +4078,9 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
                 .as_ref()
                 .and_then(|s| s.token.as_ref())
                 .map(|t| t.owner.as_str());
+            if owner.is_some_and(|o| signers.contains(o)) && signer_token_debited.is_none() {
+                signer_token_debited = Some(d.pubkey.clone());
+            }
             if declared.debit
                 && !declares("debit")
                 && owner.is_some_and(|o| signers.contains(o))
@@ -4041,23 +4109,55 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
         ));
     }
 
-    // A manifest that promises nothing cannot be contradicted, so value
-    // movement is only judged when there is prose to judge it against. Prose
-    // Graphite could not interpret warns instead of blocking — the manifest is
-    // describing something, and punishing it for wording Graphite does not
-    // know would block legitimate protocols (P12).
-    if !declared.is_silent() && !declared.debit {
+    // Value movement the declaration does not account for. An interpretable
+    // declaration with no debit is judged strictly.
+    //
+    // R30: a declaration that is silent, or whose prose Graphite cannot read,
+    // let any of it through with at most a warning — "a manifest that
+    // promises nothing cannot be contradicted", and wording Graphite does not
+    // know should not block a protocol (P12). That holds for value moving
+    // between other accounts (a pool paying out). It does not hold for the
+    // SIGNER's value, which is what the verdict is for: a declaration that
+    // says nothing Graphite can read cannot excuse a signer's loss, so that
+    // loss is Critical — unless the manifest's security class for the
+    // instruction is one that moves value (`class_moves_value`), when the
+    // unread prose may well describe it and it is reported as before.
+    // Measured on the shipped manifests: no declaration is silent; 382 cannot
+    // be read, 227 of them `inert` or `authority`, which now block a signer's
+    // loss, and 155 keep the warning (`tests/r30_declared_effects_census.rs`).
+    if !declared.debit {
+        let strict = declared.is_interpretable();
+        let signer_strict = strict || !declared.class_moves_value();
+        let unread = format!(
+            "{}, and its security class ({}) is not one that moves value — a declaration Graphite cannot read does not excuse a signer's loss",
+            if declared.is_silent() {
+                "the manifest declares no state change for this instruction"
+            } else {
+                "none of the manifest's declared changes could be interpreted"
+            },
+            declared.security_class.as_deref().unwrap_or("not stated")
+        );
         if token_debit {
             let detail = "token balances decreased but the manifest declares no debit";
-            findings.push(if declared.is_interpretable() {
-                StateDiffFinding::critical("UndeclaredTokenDebit", None, detail)
-            } else {
-                StateDiffFinding::warning(
+            if strict {
+                findings.push(StateDiffFinding::critical(
+                    "UndeclaredTokenDebit",
+                    None,
+                    detail,
+                ));
+            } else if let (true, Some(account)) = (signer_strict, signer_token_debited.as_deref()) {
+                findings.push(StateDiffFinding::critical(
+                    "UndeclaredTokenDebit",
+                    Some(account),
+                    format!("a token account a signer holds was debited; {unread}"),
+                ));
+            } else if !declared.is_silent() {
+                findings.push(StateDiffFinding::warning(
                     "UninterpretableDeclarationWithTokenDebit",
                     None,
                     format!("{detail} — and none of its declared changes could be interpreted, so this is reported rather than blocked"),
-                )
-            });
+                ));
+            }
         }
         // F7: the signers' own lamports are value too. A token debit under a
         // manifest that declares no debit is Critical, and so — by the same
@@ -4074,16 +4174,31 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
             let detail = format!(
                 "the transaction's signers lose {signer_net_loss} lamports beyond the fee and the rent of the accounts it creates, but the manifest declares no debit"
             );
-            findings.push(if declared.is_interpretable() {
-                StateDiffFinding::critical("UndeclaredSignerLamportDebit", None, detail)
-            } else {
-                StateDiffFinding::warning(
+            if strict {
+                findings.push(StateDiffFinding::critical(
+                    "UndeclaredSignerLamportDebit",
+                    None,
+                    detail,
+                ));
+            } else if signer_strict {
+                findings.push(StateDiffFinding::critical(
+                    "UndeclaredSignerLamportDebit",
+                    None,
+                    format!("{detail}; {unread}"),
+                ));
+            } else if !declared.is_silent() {
+                findings.push(StateDiffFinding::warning(
                     "UninterpretableDeclarationWithSignerLamportDebit",
                     None,
                     format!("{detail} — and none of its declared changes could be interpreted, so this is reported rather than blocked"),
-                )
-            });
-        } else if !token_debit && gross_lamport_out > 0 && !declared.create && !declared.close {
+                ));
+            }
+        } else if !declared.is_silent()
+            && !token_debit
+            && gross_lamport_out > 0
+            && !declared.create
+            && !declared.close
+        {
             // Account creation legitimately debits the payer for rent, and a
             // closure legitimately moves the whole balance out, so neither is
             // reported as an unexplained outflow.

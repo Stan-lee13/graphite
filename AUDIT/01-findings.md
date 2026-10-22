@@ -108,6 +108,7 @@ No P0 was found. The four P1 findings (A1-01, A3-01, A3-02, A3-03) were each con
 - **Test.** `tests/audit_a2_shadow_takes_refused_requests.rs`.
 
 ### A2-08 — COVERAGE GAP — L3 compares whole-transaction simulations keyed by program id
+- **Round 30 (R30-B-2):** closed — baselines are kept per transaction shape (program, instruction, the other top-level programs), judged once mature and anchored where they matured (`tests/round30_trust_learning.rs`).
 - The baseline measures the caller's composition, not the program's own behaviour, so it cannot see the per-instruction attack its module doc names. This is recorded as a design gap in [`02-roadmap-gap.md`](02-roadmap-gap.md). No approval path was shown, because L3 can flag but never certify.
 
 ### A2-09 — P3 — An RPC diff without balance arrays reported Passed with coverage silently skipped — FIXED
@@ -628,6 +629,29 @@ transfer and judges a destination at four trailing `1`s. Judging no source would
 documented address-poisoning sends in the holdout, so a source is still judged at five. A user's own
 wallet ending in five or more `1`s (about one random address in 656 million) is refused when it
 sends.
+
+## The forensic audit of `29e4356` (Round 30, 2026-10-22)
+
+A whole-repository forensic audit of the Round 29 merge, worked by eleven workstreams against a
+brief of twelve leads (G-01 … G-12) and every open item in these records. It found no P0, 6 P1,
+14 P2 and 36 P3; every one is fixed except R30-J-2 (branch protection, an owner action). Each
+finding, its test and the deliberate revert that showed the test fails without the fix are in
+[`../docs/audit-r30/findings-registry.md`](../docs/audit-r30/findings-registry.md); the ledger of
+every file, the architecture reconstructed from the code and the regression matrix of every
+historical finding are in [`../docs/audit-r30/`](../docs/audit-r30/README.md).
+
+| ID | Finding | Status | Test |
+|---|---|---|---|
+| R30-A-1 (G-01) | `approved: true` for bytes nothing had simulated, or for no bytes | **Fixed**: `decision` / `executable`; only `executable_approved` permits signing | `tests/round30_execution_decision.rs` |
+| R30-B-1 (G-02) | A verdict approved under a profile the request named trained evidence for every caller | **Fixed**: evidence only at the built-in floor; the Round 29 opt-in retired | `tests/round30_trust_learning.rs` |
+| R30-C-1 (G-07) | The audit trail could be rewritten coherently | **Fixed when keyed**: hash chain + HMAC; checkpoints for truncation | `tests/round30_audit_chain.rs` |
+| R30-F-1 | A signer's loss under an unreadable declaration was a warning | **Fixed** for every class that does not move value; 155 that do: owner decision | `tests/r30_declared_effects.rs` |
+| R30-H-1 (G-01) | The guard never checked the Core's decision against the verdict | **Fixed** | `integrations/agent-guard/guard-round30.test.ts` |
+| M16 / R30-J-2 (G-11) | No branch protection on `main` | **Owner action, STOP-SHIP**: rulesets prepared, not applied | — |
+
+The Round 29 risk-engine, registry, protocol-data and attack-suite fixes, which Round 29 did not
+break-test, were broken check by check in Round 30 (R30-F-3); the nine no test caught now have
+tests of their own.
 
 ## Break log
 

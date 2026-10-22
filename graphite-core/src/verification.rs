@@ -20,7 +20,7 @@ use crate::rpc_client::SolanaRpcClient;
 use crate::semantic_graph_store::{Behavior, BehaviorEvidence, SemanticGraphStore};
 #[cfg(feature = "rpc")]
 use crate::state_diff::{AccountDelta, AccountSnapshot, DiffProvenance, StateDiff};
-use crate::transaction_builder::{build_transaction, BuiltTransaction, TransactionPlan};
+use crate::transaction_builder::{summarize_instruction, InstructionPlan, InstructionSummary};
 use crate::unknown_protocol_mode::apply_unknown_protocol_ceiling;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -581,6 +581,15 @@ fn compare_instruction_accounts(
 /// are one endpoint, and a trimmed-string compare let an operator configure
 /// the primary as its own witness by adding a slash. Unparseable input falls
 /// back to the trimmed string.
+///
+/// Round 30 (G-08): one non-loopback HOST is one endpoint, whatever the
+/// port, path, query or credentials. A managed provider's URL differs by
+/// nothing but its API key — `https://p.example/?api-key=A` and
+/// `?api-key=B` — and the comparison above took the two for two sources, so
+/// the same provider under a second key was attached as its own witness.
+/// Loopback hosts are still told apart by port: two local processes (a test
+/// harness, two tunnels) are two endpoints, and L8 reports them as one
+/// machine's view (`rpc_client::witness_independence`).
 #[cfg(feature = "rpc")]
 fn same_endpoint(a: &str, b: &str) -> bool {
     /// Scheme, host, effective port, path without a trailing slash, query.
@@ -594,6 +603,26 @@ fn same_endpoint(a: &str, b: &str) -> bool {
             url.path().trim_end_matches('/'),
             url.query(),
         ))
+    }
+    /// The host, when it is not loopback.
+    fn remote_host(u: &str) -> Option<String> {
+        let facts = crate::rpc_client::validate_endpoint(u).ok()?;
+        if facts.loopback {
+            return None;
+        }
+        let url = reqwest::Url::parse(u.trim()).ok()?;
+        Some(
+            url.host_str()?
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .trim_end_matches('.')
+                .to_ascii_lowercase(),
+        )
+    }
+    if let (Some(x), Some(y)) = (remote_host(a), remote_host(b)) {
+        if x == y {
+            return true;
+        }
     }
     match (key(a), key(b)) {
         (Some(x), Some(y)) => x == y,
@@ -619,6 +648,10 @@ pub(crate) fn intent_vocabulary(canonical_intent: &str) -> &'static [&'static st
         "create" => &["create", "allocate", "assign", "initialize"],
         "approve" => &["approve", "delegate"],
         "revoke" => &["revoke"],
+        "withdraw" => &["withdraw", "redeem", "remove", "decrease"],
+        "claim" => &["claim", "collect", "harvest"],
+        "burn" => &["burn"],
+        "configure" => &["update", "set", "config", "edit", "modify"],
         _ => &[],
     }
 }
@@ -1761,6 +1794,11 @@ pub struct ExecutionAudit {
     /// witness is configured.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inclusion_witness: Option<InclusionWitness>,
+    /// What this reconciliation's account of inclusion rests on: one
+    /// provider, or a witness that agrees, disputes, or was not reached
+    /// (Round 30, G-08). Always present.
+    #[serde(default)]
+    pub inclusion_assurance: InclusionAssurance,
     /// Every verdict the trail holds for the key the execution resolved by,
     /// as `(approved, refused)` counts. The record above is the LAST one; an
     /// artifact refused and then re-verified under a looser profile shows
@@ -1800,6 +1838,55 @@ pub struct InclusionWitness {
     pub commitment: Option<crate::rpc_client::InclusionCommitment>,
     /// The comparison, in words.
     pub detail: String,
+}
+
+/// How much an L8 reconciliation's account of the chain rests on (Round 30,
+/// G-08). L8 asks RPC providers, not the chain: no light-client proof is
+/// checked, so the strongest account it can give is two independent
+/// providers agreeing. This says which account a reconciliation had, so a
+/// reader never takes one provider's word for more than it is.
+#[cfg(feature = "rpc")]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum InclusionAssurance {
+    /// No witness is configured: everything L8 knows about inclusion came
+    /// from the primary RPC. The default for records written before this
+    /// field existed — the weakest claim.
+    #[default]
+    SingleProvider,
+    /// An independent witness answered and agrees with the primary.
+    Witnessed,
+    /// A witness answered and agrees, but it is not an independent provider
+    /// (`rpc_client::WitnessIndependence`): one operator's view twice.
+    WitnessedNotIndependent,
+    /// The witness answered and disagrees with the primary.
+    WitnessDisputed,
+    /// A witness is configured and could not be consulted in time.
+    WitnessUnavailable,
+}
+
+#[cfg(feature = "rpc")]
+impl InclusionAssurance {
+    fn of(witness: Option<&InclusionWitness>, independent: bool) -> Self {
+        match witness {
+            None => Self::SingleProvider,
+            Some(w) if w.seen.is_none() && !w.agrees => Self::WitnessUnavailable,
+            Some(w) if !w.agrees => Self::WitnessDisputed,
+            Some(_) if independent => Self::Witnessed,
+            Some(_) => Self::WitnessedNotIndependent,
+        }
+    }
+
+    /// The wire name, for messages.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SingleProvider => "single_provider",
+            Self::Witnessed => "witnessed",
+            Self::WitnessedNotIndependent => "witnessed_not_independent",
+            Self::WitnessDisputed => "witness_disputed",
+            Self::WitnessUnavailable => "witness_unavailable",
+        }
+    }
 }
 
 /// The join key an L8 reconciliation actually used, most authoritative
@@ -2285,9 +2372,113 @@ fn verification_scope(
     }
 }
 
+/// What a verdict permits a caller to DO with the transaction (Round 30,
+/// G-01). `approved` answers "did the pipeline refuse it"; it never answered
+/// "may this be signed": without an RPC nothing is simulated and an approval
+/// rests on static analysis and earned evidence (`not_simulated`), and a
+/// descriptive verdict binds to no bytes at all. Every consumer that gated on
+/// `approved` alone had to re-derive the difference from `scope`, and one that
+/// did not signed a transaction nothing had executed. This is that
+/// derivation, done once, by the Core.
+///
+/// Only `ExecutableApproved` permits signing. The rule is
+/// [`execution_decision`]; the SDKs recompute it from the same fields and
+/// refuse when they disagree with the server.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionDecision {
+    /// Approved, bound to the exact bytes, simulated by Graphite, nothing
+    /// unobserved beyond the two inherent residuals, no layer failed.
+    ExecutableApproved,
+    /// Approved by the pipeline, but on less than the evidence execution
+    /// needs: descriptive scope, not simulated, no state diff, unresolved
+    /// lookup tables, caller-supplied privileges, or a failed layer report.
+    /// Useful as analysis; never a reason to sign.
+    AnalysisOnly,
+    /// Refused because required evidence could not be obtained (every risk
+    /// finding is `VerificationIncomplete`): the RPC was unavailable, timed
+    /// out or answered incompletely. A retry may succeed — or be refused.
+    Inconclusive,
+    /// Refused on what the pipeline found. The default, so a record with no
+    /// decision is never read as permission.
+    #[default]
+    Blocked,
+}
+
+impl ExecutionDecision {
+    /// The snake_case name on the wire.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ExecutionDecision::ExecutableApproved => "executable_approved",
+            ExecutionDecision::AnalysisOnly => "analysis_only",
+            ExecutionDecision::Inconclusive => "inconclusive",
+            ExecutionDecision::Blocked => "blocked",
+        }
+    }
+}
+
+/// The one rule that decides whether a verdict permits signing (Round 30,
+/// G-01). Read only from fields the verdict carries, so a consumer holding
+/// the JSON can recompute it — the TypeScript and Go SDKs do, and refuse when
+/// the server's `decision` disagrees.
+///
+/// Executable iff ALL of: `approved`; `risk_verdict.status == "Clear"`;
+/// `policy_verdict == "Approved"`; scope `artifact_bound` with
+/// `simulated == true`; every `unobserved_codes` entry inherent
+/// (`program_semantics`, `inner_instructions`) and the codes naming every
+/// `unobserved` entry; no layer `Failed`. Otherwise an approval is
+/// `AnalysisOnly`; a refusal whose risk findings are all
+/// `VerificationIncomplete` is `Inconclusive`; every other refusal is
+/// `Blocked`.
+pub fn execution_decision(result: &VerificationResult) -> ExecutionDecision {
+    if !result.approved {
+        let findings = &result.risk_verdict.findings;
+        return if !findings.is_empty()
+            && findings
+                .iter()
+                .all(|f| f.pattern == "VerificationIncomplete")
+        {
+            ExecutionDecision::Inconclusive
+        } else {
+            ExecutionDecision::Blocked
+        };
+    }
+    let simulated = matches!(
+        result.scope,
+        VerificationScope::ArtifactBound {
+            simulated: true,
+            ..
+        }
+    );
+    let codes = result.scope.unobserved_codes();
+    let executable = result.risk_verdict.status == "Clear"
+        && result.policy_verdict == "Approved"
+        && simulated
+        && codes.len() == result.scope.unobserved().len()
+        && codes.iter().all(UnobservedCode::inherent)
+        && !result
+            .layers
+            .iter()
+            .any(|l| l.status == LayerStatus::Failed);
+    if executable {
+        ExecutionDecision::ExecutableApproved
+    } else {
+        ExecutionDecision::AnalysisOnly
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct VerificationResult {
     pub approved: bool,
+    /// What the caller may do with this verdict (Round 30, G-01). Only
+    /// `executable_approved` permits signing; see [`execution_decision`].
+    /// Absent from a record written before Round 30, and then `blocked`.
+    #[serde(default)]
+    pub decision: ExecutionDecision,
+    /// `decision == executable_approved`, as a boolean for the gate a
+    /// consumer writes. The field to gate signing on — not `approved`.
+    #[serde(default)]
+    pub executable: bool,
     pub confidence: f64,
     pub breakdown: Vec<VerificationBreakdownItem>,
     pub trust_tier: String,
@@ -2301,8 +2492,18 @@ pub struct VerificationResult {
     /// `scope.transaction_sha256` is the full digest of the artifact. Unlike
     /// audit_trail_id (which includes a per-call sequence counter),
     /// content_hash is fully reproducible and satisfies Constitution P2.
+    ///
+    /// Deprecated name (Round 30, R-M10): the value identifies the described
+    /// INSTRUCTION, and a field called "content hash" was read as the
+    /// transaction's identity. `instruction_bind_key` carries the same
+    /// value; this field stays for one minor version.
     pub content_hash: String,
-    pub transaction: BuiltTransaction,
+    /// The same value as `content_hash`, under a name that says what it is:
+    /// the 64-bit key binding audit and lifecycle records to the described
+    /// instruction. The transaction's identity is `scope.transaction_sha256`.
+    #[serde(default)]
+    pub instruction_bind_key: String,
+    pub transaction: InstructionSummary,
     /// What this verdict is bound to, and what it did not observe. See
     /// `VerificationScope` — this is the field that makes Graphite's central
     /// promise checkable by a consumer instead of assumed.
@@ -2333,6 +2534,19 @@ pub struct VerificationResult {
     /// attached.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub program_upgrades: Vec<ProgramUpgrade>,
+}
+
+impl VerificationResult {
+    /// Whether this verdict permits signing: the recorded `decision` is
+    /// `executable_approved`, `executable` says so, and recomputing
+    /// [`execution_decision`] from the verdict's own fields agrees. A verdict
+    /// deserialized from elsewhere and edited — `executable: true` beside a
+    /// `not_simulated` residual — is not executable.
+    pub fn is_executable(&self) -> bool {
+        self.decision == ExecutionDecision::ExecutableApproved
+            && self.executable
+            && execution_decision(self) == ExecutionDecision::ExecutableApproved
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -2523,8 +2737,12 @@ where
 /// A unique temp name (`pid` + monotonic counter) means concurrent writers
 /// can't clobber each other's temp files; the temp file is synced before the
 /// rename so the committed snapshot is complete on the device, not only in
-/// the page cache; and the rename is atomic, so readers only ever see
-/// complete documents.
+/// the page cache; the rename is atomic, so readers only ever see complete
+/// documents; and the directory is synced after it, so the NEW name survives
+/// a power loss. Round 30: the directory sync was missing — the rename lived
+/// only in the directory's write-back cache, and a power loss after a
+/// reported commit (a quarantine, an earned baseline) could bring back the
+/// previous snapshot. The audit log's rotation already synced it.
 pub(crate) fn persist_json_atomic(path: &std::path::Path, json: &str) -> Result<(), String> {
     use std::io::Write as _;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -2547,6 +2765,7 @@ pub(crate) fn persist_json_atomic(path: &std::path::Path, json: &str) -> Result<
         let _ = std::fs::remove_file(&tmp);
         return Err(format!("commit {}: {e}", path.display()));
     }
+    crate::durable::sync_dir(path);
     Ok(())
 }
 
@@ -2678,6 +2897,17 @@ pub struct GraphiteCore {
     /// See `InclusionWitness`.
     #[cfg(feature = "rpc")]
     inclusion_witness: Option<SolanaRpcClient>,
+    /// The operator's assessment of whether the witness is a different
+    /// provider from the primary (Round 30). `None` judges the two URLs
+    /// (`rpc_client::witness_independence`); see `set_witness_independence`.
+    #[cfg(feature = "rpc")]
+    witness_independence: Option<crate::rpc_client::WitnessIndependence>,
+    /// High-assurance L8 (Round 30): no conclusion about the chain's state —
+    /// executed, failed, or not there — without an independent witness's
+    /// agreement. The alarm on a blocked transaction is never withheld. See
+    /// `set_require_independent_witness`.
+    #[cfg(feature = "rpc")]
+    require_independent_witness: bool,
     /// Optional durability directory (snapshots + audit trail).
     data_dir: Option<PathBuf>,
     /// Snapshot outcomes, shared across clones so /health sees every write.
@@ -2702,10 +2932,47 @@ pub struct GraphiteCore {
     quarantine_on_upgrade: bool,
     /// Roadmap R-M1: upgrades noticed since this core started.
     program_upgrades_detected: Arc<std::sync::atomic::AtomicU64>,
-    /// Whether a request refused ONLY by the policy threshold may train the
-    /// simulation baseline. Off by default; see
-    /// `set_learn_from_policy_refusals`.
-    learn_from_policy_refusals: bool,
+    /// What a verdict must be for its simulation to become evidence. See
+    /// `ObservationPolicy`; the server never changes it.
+    observation_policy: ObservationPolicy,
+}
+
+/// What a verdict must be for its simulation to become evidence (Round 30,
+/// G-02).
+///
+/// Evidence is shared: a program's baseline and the `SimulationMatch` signal
+/// it feeds raise the confidence of every later caller's verdict on that
+/// program. Whoever can make Graphite record an observation can therefore
+/// raise confidence for everyone, and the question is only whose verdicts
+/// may do it.
+///
+/// Round 29 (M1) stopped threshold refusals training unless the operator set
+/// `GRAPHITE_LEARN_FROM_POLICY_REFUSALS=1`, but kept "approved under the
+/// request's own profile" as the rule — and the request chooses its profile.
+/// A `Custom { min_confidence: 0.40 }` request is approved at a fresh
+/// program's 0.44 wherever caller-supplied profiles are not clamped (the
+/// library, the CLI, a server with `GRAPHITE_ALLOW_PERMISSIVE_PROFILES`), so
+/// three of them lifted the program to 0.64 for every Gaming caller — the M1
+/// attack with a different field. The default rule no longer reads the
+/// request's profile at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ObservationPolicy {
+    /// A sound simulation is evidence when its verdict clears the weakest
+    /// BUILT-IN bar (`WEAKEST_BUILTIN_MIN_CONFIDENCE`,
+    /// `WEAKEST_BUILTIN_MIN_TRUST_TIER`) with nothing else refusing it —
+    /// whatever profile the request named, stricter or weaker. A program no
+    /// built-in profile admits learns nothing from traffic; its evidence
+    /// comes from the operator (`graphite evidence seed` / `baseline`). The
+    /// only policy the server runs.
+    #[default]
+    BuiltinFloor,
+    /// An operator driving traffic they have reviewed through their own
+    /// process — the library or the CLI, never the HTTP surface — to stand a
+    /// program up: a verdict approved under the request's profile, or
+    /// refused by its threshold alone, is evidence too. Whoever can submit
+    /// requests to a core running this can raise confidence for every
+    /// caller of it.
+    OperatorBootstrap,
 }
 
 /// A program redeployed, or handed to a new upgrade authority, since Graphite
@@ -2732,6 +2999,12 @@ struct PendingObservation {
     key: String,
     /// Into the shadow accumulator rather than the trusted baseline.
     shadow: bool,
+    /// The transaction's shape (`semantic_graph_store::shape_key`), whose
+    /// baseline learns it too (Round 30, G-03).
+    shape: Option<String>,
+    /// The slot the simulation ran at, which binds the program's evidence to
+    /// the code that produced it (Round 30, G-04).
+    slot: Option<u64>,
 }
 
 /// The most observations held for their audit rows. A request whose append
@@ -2739,6 +3012,11 @@ struct PendingObservation {
 /// first, and never train anything.
 #[cfg(feature = "rpc")]
 const MAX_PENDING_OBSERVATIONS: usize = 1024;
+
+/// The loader-v4 program. Code it owns can be redeployed, and Graphite does
+/// not read its deployments (Round 30, G-04).
+#[cfg(feature = "rpc")]
+const LOADER_V4: &str = "LoaderV411111111111111111111111111111111111";
 
 /// Hold the witness's account of a signature against the primary's.
 #[cfg(feature = "rpc")]
@@ -2874,6 +3152,10 @@ impl GraphiteCore {
             rpc_client: None,
             #[cfg(feature = "rpc")]
             inclusion_witness: None,
+            #[cfg(feature = "rpc")]
+            witness_independence: None,
+            #[cfg(feature = "rpc")]
+            require_independent_witness: false,
             data_dir: None,
             persistence: Arc::new(PersistenceCounters::default()),
             data_dir_lock: None,
@@ -2882,7 +3164,7 @@ impl GraphiteCore {
             pending_observations: None,
             quarantine_on_upgrade: false,
             program_upgrades_detected: Arc::new(std::sync::atomic::AtomicU64::new(0)),
-            learn_from_policy_refusals: false,
+            observation_policy: ObservationPolicy::BuiltinFloor,
             plugins: crate::plugin_orchestrator::PluginOrchestrator::with_builtin_plugins(),
         }
     }
@@ -2899,6 +3181,10 @@ impl GraphiteCore {
             rpc_client: None,
             #[cfg(feature = "rpc")]
             inclusion_witness: None,
+            #[cfg(feature = "rpc")]
+            witness_independence: None,
+            #[cfg(feature = "rpc")]
+            require_independent_witness: false,
             data_dir: None,
             persistence: Arc::new(PersistenceCounters::default()),
             data_dir_lock: None,
@@ -2907,7 +3193,7 @@ impl GraphiteCore {
             pending_observations: None,
             quarantine_on_upgrade: false,
             program_upgrades_detected: Arc::new(std::sync::atomic::AtomicU64::new(0)),
-            learn_from_policy_refusals: false,
+            observation_policy: ObservationPolicy::BuiltinFloor,
             plugins: crate::plugin_orchestrator::PluginOrchestrator::new(),
         }
     }
@@ -2921,6 +3207,10 @@ impl GraphiteCore {
             rpc_client: None,
             #[cfg(feature = "rpc")]
             inclusion_witness: None,
+            #[cfg(feature = "rpc")]
+            witness_independence: None,
+            #[cfg(feature = "rpc")]
+            require_independent_witness: false,
             data_dir: None,
             persistence: Arc::new(PersistenceCounters::default()),
             data_dir_lock: None,
@@ -2929,7 +3219,7 @@ impl GraphiteCore {
             pending_observations: None,
             quarantine_on_upgrade: false,
             program_upgrades_detected: Arc::new(std::sync::atomic::AtomicU64::new(0)),
-            learn_from_policy_refusals: false,
+            observation_policy: ObservationPolicy::BuiltinFloor,
             plugins: crate::plugin_orchestrator::PluginOrchestrator::with_builtin_plugins(),
         }
     }
@@ -2948,6 +3238,14 @@ impl GraphiteCore {
     /// snapshot holds without a word and lets the next snapshot overwrite the
     /// evidence — the outcome `open_data_dir` has refused since Round 19
     /// (F-19-12), while this doc called starting fresh "fail-closed".
+    ///
+    /// Deprecated (Round 30): a panic is the wrong answer to a bad data
+    /// directory in anything but a test. No server or CLI path calls this;
+    /// they use `open_data_dir`, which also takes the directory lock.
+    #[deprecated(
+        since = "0.3.0-beta",
+        note = "panics on a corrupt or unreadable snapshot; use try_with_data_dir (or open_data_dir, which also locks the directory)"
+    )]
     pub fn with_data_dir(data_dir: PathBuf) -> Self {
         Self::try_with_data_dir(data_dir).unwrap_or_else(|e| panic!("{e}"))
     }
@@ -3277,6 +3575,61 @@ impl GraphiteCore {
         self.inclusion_witness.is_some()
     }
 
+    /// Record the operator's assessment of the witness's independence
+    /// (Round 30, G-08), replacing the URL-only judgement. The server passes
+    /// the stricter of the URL check and a DNS check
+    /// (`rpc_client::witness_independence_resolved`).
+    #[cfg(feature = "rpc")]
+    pub fn set_witness_independence(
+        &mut self,
+        independence: crate::rpc_client::WitnessIndependence,
+    ) {
+        self.witness_independence = Some(independence);
+    }
+
+    /// Whether the attached witness counts as an independent provider.
+    /// `None` when no witness (or no primary) is attached.
+    #[cfg(feature = "rpc")]
+    pub fn witness_independence(&self) -> Option<crate::rpc_client::WitnessIndependence> {
+        let (primary, witness) = (self.rpc_client.as_ref()?, self.inclusion_witness.as_ref()?);
+        Some(self.witness_independence.clone().unwrap_or_else(|| {
+            crate::rpc_client::witness_independence(primary.endpoint(), witness.endpoint())
+        }))
+    }
+
+    /// High-assurance L8 (Round 30, G-08; operator decision, P14). On, a
+    /// reconciliation that states what the chain holds — the approved
+    /// transaction executed, failed, is not there, or the blocked one did not
+    /// land — needs an independent witness that agrees; anything less is
+    /// `Unavailable`, with `inclusion_assurance` saying why. The alarm on a
+    /// blocked transaction either source saw is never withheld. Off by
+    /// default; the server's `GRAPHITE_L8_HIGH_ASSURANCE` sets it, and
+    /// refuses to start without an independent witness.
+    #[cfg(feature = "rpc")]
+    pub fn set_require_independent_witness(&mut self, on: bool) {
+        self.require_independent_witness = on;
+    }
+
+    /// See `set_require_independent_witness`.
+    #[cfg(feature = "rpc")]
+    pub fn requires_independent_witness(&self) -> bool {
+        self.require_independent_witness
+    }
+
+    /// Whether an RPC client is attached — whether any verdict can be
+    /// `executable_approved` (Round 30, G-01). Without one nothing is
+    /// simulated, so every approval is `analysis_only`.
+    #[cfg(feature = "rpc")]
+    pub fn has_rpc_client(&self) -> bool {
+        self.rpc_client.is_some()
+    }
+
+    /// Without the `rpc` feature there is never a client.
+    #[cfg(not(feature = "rpc"))]
+    pub fn has_rpc_client(&self) -> bool {
+        false
+    }
+
     /// Permit durable-nonce transactions (operator decision, P14).
     ///
     /// A durable-nonce transaction does not expire: once signed it stays
@@ -3320,55 +3673,122 @@ impl GraphiteCore {
     }
 
     /// Record the deployments read for `programs` and return the ones that
-    /// changed since they were last seen (roadmap R-M1). The first sighting
-    /// of a program is its baseline; a change is reported once, and, when the
-    /// operator asked for it, quarantines the program before this verdict's
+    /// changed since they were last seen (roadmap R-M1), with notes for the
+    /// verdict's warnings. A change is reported once and, when the operator
+    /// asked for it, quarantines the program before this verdict's
     /// quarantine gate runs.
+    ///
+    /// Round 30 (G-04): a change also WITHDRAWS the program's evidence
+    /// (`SemanticGraphStore::retire_program_evidence`) — the baselines were
+    /// measured on code that no longer runs, and the operator's assertions
+    /// were about it. The first sighting is no longer simply "the baseline":
+    /// when the program already has evidence bound to an earlier slot than
+    /// the deployment now on chain, the code was replaced after that
+    /// evidence was gathered and before Graphite first read the deployment —
+    /// the hostile upgrade a first-sighting baseline would have blessed — and
+    /// the evidence is withdrawn the same way. Evidence with no slot binding
+    /// (operator-seeded, or recorded before Round 30) cannot be dated against
+    /// the deployment; it is kept, held to the deployment from then on, and
+    /// the verdict says so.
     #[cfg(feature = "rpc")]
     async fn note_deployments(
         &self,
         programs: &[String],
         deployments: Vec<crate::rpc_client::ProgramDeployment>,
-    ) -> Vec<ProgramUpgrade> {
+    ) -> (Vec<ProgramUpgrade>, Vec<String>) {
         use crate::semantic_graph_store::{DeploymentChange, ObservedDeployment};
         let mut upgrades = Vec::new();
+        let mut notes = Vec::new();
         let mut store_changed = false;
         for (program, deployment) in programs.iter().zip(deployments) {
-            let crate::rpc_client::ProgramDeployment::Upgradeable {
-                deploy_slot,
-                upgrade_authority,
-                ..
-            } = deployment
-            else {
-                continue;
+            let (deploy_slot, upgrade_authority) = match deployment {
+                crate::rpc_client::ProgramDeployment::Upgradeable {
+                    deploy_slot,
+                    upgrade_authority,
+                    ..
+                } => (deploy_slot, upgrade_authority),
+                crate::rpc_client::ProgramDeployment::NotUpgradeable { owner }
+                    if owner == LOADER_V4 =>
+                {
+                    notes.push(format!(
+                        "ProgramUpgradeUntracked: {program} is owned by loader-v4, whose deployments Graphite does not read; a redeployment of it would not be noticed and its evidence would not be withdrawn"
+                    ));
+                    continue;
+                }
+                // Final code (BPF loader 2, a builtin) or no account: nothing
+                // to track.
+                _ => continue,
             };
             let now = ObservedDeployment {
                 deploy_slot,
                 upgrade_authority: upgrade_authority.clone(),
             };
-            let change = self.graph().observe_deployment(program, now);
+            let change = self.graph().observe_deployment(program, now.clone());
             match change {
                 DeploymentChange::Same => {}
-                DeploymentChange::First => store_changed = true,
+                DeploymentChange::First => {
+                    store_changed = true;
+                    let since = self.graph().evidence_since_slot(program);
+                    match since {
+                        Some(since) if since < deploy_slot => {
+                            let reason = format!(
+                                "deployed at slot {deploy_slot}, after the observations its evidence was built from began (slot {since}) and before Graphite first read its deployment"
+                            );
+                            self.graph().retire_program_evidence(
+                                program,
+                                reason.clone(),
+                                None,
+                                now,
+                            );
+                            tracing::warn!("program {program}: evidence withdrawn: {reason}");
+                            notes.push(format!(
+                                "ProgramEvidenceWithdrawn: {program} was {reason}; that evidence described code that no longer runs and was withdrawn"
+                            ));
+                        }
+                        Some(_) => {}
+                        None => {
+                            let has_evidence =
+                                self.graph().get_simulation_baseline(program).is_some()
+                                    || self.graph().get(program).is_some_and(|b| {
+                                        b.evidence.battle_tested_tx_count > 0
+                                            || b.evidence.community_verified_count > 0
+                                    });
+                            if has_evidence {
+                                notes.push(format!(
+                                    "ProgramDeploymentEnrolled: first read of {program}'s deployment (slot {deploy_slot}); its existing evidence is not bound to a slot and cannot be dated against this deployment — it is kept, and held to this deployment from now on"
+                                ));
+                            }
+                        }
+                    }
+                }
                 DeploymentChange::Changed { previous } => {
                     store_changed = true;
                     self.program_upgrades_detected
                         .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let reason = format!(
+                        "upgraded since Graphite last saw it (deploy slot {} -> {deploy_slot}, upgrade authority {} -> {})",
+                        previous.deploy_slot,
+                        previous.upgrade_authority.as_deref().unwrap_or("none"),
+                        upgrade_authority.as_deref().unwrap_or("none"),
+                    );
+                    self.graph().retire_program_evidence(
+                        program,
+                        reason.clone(),
+                        Some(previous.clone()),
+                        now,
+                    );
                     let quarantined = self.quarantine_on_upgrade
                         && self
                             .graph()
                             .quarantine(
                                 program,
                                 format!(
-                                    "upgraded since Graphite last saw it (deploy slot {} -> {deploy_slot}, upgrade authority {} -> {}); review the manifest against the new code, then lift the quarantine",
-                                    previous.deploy_slot,
-                                    previous.upgrade_authority.as_deref().unwrap_or("none"),
-                                    upgrade_authority.as_deref().unwrap_or("none"),
+                                    "{reason}; review the manifest against the new code, then lift the quarantine"
                                 ),
                             )
                             .is_ok();
                     tracing::warn!(
-                        "program {program} upgraded: deploy slot {} -> {deploy_slot}{}",
+                        "program {program} upgraded: deploy slot {} -> {deploy_slot}; evidence withdrawn{}",
                         previous.deploy_slot,
                         if quarantined { "; quarantined" } else { "" }
                     );
@@ -3386,7 +3806,7 @@ impl GraphiteCore {
         if store_changed {
             self.persist_state_async().await;
         }
-        upgrades
+        (upgrades, notes)
     }
 
     /// Set the total wall-clock budget one verification may spend on RPC.
@@ -3399,30 +3819,19 @@ impl GraphiteCore {
         self.rpc_budget = budget;
     }
 
-    /// Let a request refused ONLY by the policy threshold train the program's
-    /// simulation baseline (operator decision, P14). Off by default.
-    ///
-    /// Audit 2026-10-20 (M1): this was always on, as the "bootstrap" — a
-    /// program with a manifest and no history sits at 0.44, below every
-    /// built-in floor, and its own refused-but-sound traffic was how it
-    /// climbed. But `SimulationMatch` saturates at three observations, one
-    /// observation is one distinct artifact, and simulation needs no
-    /// signature: anyone holding a verify key could send three byte-distinct
-    /// transfers and lift an OfficialManifest program from 0.44 to 0.64 —
-    /// past Gaming's 0.55 — for every caller of the node. Off, only an
-    /// APPROVED verdict's observation is evidence, and a fresh program's
-    /// baseline comes from the operator (`seed_simulation_baseline`,
-    /// `graphite evidence`) or from traffic approved under a profile that
-    /// already admits it. On, the bootstrap returns with that exposure; the
-    /// server reads `GRAPHITE_LEARN_FROM_POLICY_REFUSALS`.
-    pub fn set_learn_from_policy_refusals(&mut self, enabled: bool) {
-        self.learn_from_policy_refusals = enabled;
+    /// Choose what a verdict must be for its simulation to become evidence
+    /// (`ObservationPolicy`). `BuiltinFloor` unless changed; the server has
+    /// no setting that changes it (Round 30, G-02: the
+    /// `GRAPHITE_LEARN_FROM_POLICY_REFUSALS` opt-in let any holder of the
+    /// verify key raise a program's confidence for every caller, and setting
+    /// it now stops the server starting).
+    pub fn set_observation_policy(&mut self, policy: ObservationPolicy) {
+        self.observation_policy = policy;
     }
 
-    /// Whether policy-threshold refusals train the baseline
-    /// (`set_learn_from_policy_refusals`).
-    pub fn learn_from_policy_refusals(&self) -> bool {
-        self.learn_from_policy_refusals
+    /// What a verdict must be for its simulation to become evidence.
+    pub fn observation_policy(&self) -> ObservationPolicy {
+        self.observation_policy
     }
 
     /// The configured RPC budget.
@@ -3978,6 +4387,34 @@ impl GraphiteCore {
             }
         };
 
+        // What the account of inclusion above rests on (Round 30, G-08), and
+        // in high-assurance mode what it may conclude: a statement of what
+        // the chain holds, in either direction, needs an independent witness
+        // that agrees. One provider — or one provider's view twice — can
+        // censor, lag or lie, and nothing inside its answers shows it. The
+        // alarm is never withheld; neither is an answer about Graphite's own
+        // trail (`NoVerificationOnRecord`) or one that is already
+        // `Unavailable`.
+        let independent = self.witness_independence().is_some_and(|i| i.is_distinct());
+        let inclusion_assurance = InclusionAssurance::of(inclusion_witness.as_ref(), independent);
+        let reconciliation = match reconciliation {
+            r @ (ExecutionReconciliation::ApprovedAndExecuted
+            | ExecutionReconciliation::ApprovedButFailedOnChain { .. }
+            | ExecutionReconciliation::BlockedAndNotExecuted
+            | ExecutionReconciliation::NotFound)
+                if self.require_independent_witness
+                    && inclusion_assurance != InclusionAssurance::Witnessed =>
+            {
+                ExecutionReconciliation::Unavailable {
+                    reason: format!(
+                        "high-assurance L8 states what the chain holds only when an independent witness agrees; this account is {} (without that requirement it would have read {r:?})",
+                        inclusion_assurance.as_str()
+                    ),
+                }
+            }
+            r => r,
+        };
+
         ExecutionAudit {
             signature: signature.to_string(),
             chain_status,
@@ -3995,6 +4432,7 @@ impl GraphiteCore {
             chain_bytes_unavailable,
             chain_inconsistent,
             inclusion_witness,
+            inclusion_assurance,
             recorded_verdicts,
         }
     }
@@ -4301,13 +4739,7 @@ impl GraphiteCore {
                 .and_then(|i| queue.remove(i))
         };
         if let Some(o) = taken {
-            if o.shadow {
-                self.graph()
-                    .record_shadow_simulation(&o.program_id, &o.usage, Some(&o.key));
-            } else {
-                self.graph()
-                    .record_simulation_keyed(&o.program_id, &o.usage, Some(&o.key));
-            }
+            self.record_pending(&o);
             self.persist_state_async().await;
         }
     }
@@ -4334,20 +4766,25 @@ impl GraphiteCore {
             queue.push_back(observation);
             return;
         }
-        if observation.shadow {
-            self.graph().record_shadow_simulation(
-                &observation.program_id,
-                &observation.usage,
-                Some(&observation.key),
-            );
+        self.record_pending(&observation);
+        self.persist_state_async().await;
+    }
+
+    /// Fold one observation into the accumulator it belongs to.
+    #[cfg(feature = "rpc")]
+    fn record_pending(&self, o: &PendingObservation) {
+        if o.shadow {
+            self.graph()
+                .record_shadow_simulation(&o.program_id, &o.usage, Some(&o.key));
         } else {
-            self.graph().record_simulation_keyed(
-                &observation.program_id,
-                &observation.usage,
-                Some(&observation.key),
+            self.graph().record_observation(
+                &o.program_id,
+                o.shape.as_deref(),
+                &o.usage,
+                Some(&o.key),
+                o.slot,
             );
         }
-        self.persist_state_async().await;
     }
 
     /// The trusted simulation baseline the graph holds for a program, if any.
@@ -4367,6 +4804,26 @@ impl GraphiteCore {
         program_id: &str,
     ) -> Option<crate::simulation_integrity::ComputeBaseline> {
         self.graph().shadow_baselines().get(program_id).cloned()
+    }
+
+    /// A program's per-shape baselines (Round 30, G-03), by shape key.
+    pub fn shape_baselines(
+        &self,
+        program_id: &str,
+    ) -> Vec<(String, crate::simulation_integrity::ComputeBaseline)> {
+        self.graph().shape_baselines_of(program_id)
+    }
+
+    /// The earliest simulation slot a program's current evidence was
+    /// observed at (Round 30, G-04).
+    pub fn evidence_since_slot(&self, program_id: &str) -> Option<u64> {
+        self.graph().evidence_since_slot(program_id)
+    }
+
+    /// Evidence withdrawn because a program's code changed (Round 30, G-04),
+    /// oldest first.
+    pub fn retired_evidence(&self) -> Vec<crate::semantic_graph_store::RetiredEvidence> {
+        self.graph().retired_evidence().to_vec()
     }
 
     /// Programs whose trusted baseline has refused at least `MIN_SAMPLES`
@@ -4781,7 +5238,7 @@ impl GraphiteCore {
             let canonical = proposed_intent.intent_type.trim().to_lowercase();
             let high_risk = matches!(
                 crate::risk_engine::canonical_intent(&canonical),
-                "swap" | "bridge" | "withdraw" | "stake" | "mint"
+                "swap" | "bridge" | "withdraw" | "stake" | "mint" | "claim" | "burn" | "configure"
             );
             if high_risk {
                 return PipelineLayerResult::new(
@@ -4903,6 +5360,8 @@ impl GraphiteCore {
             "revoke" => &["approve"],
             "create" => &["close"],
             "close" => &["create", "initialize"],
+            "withdraw" | "claim" => &["deposit", "increase"],
+            "burn" => &["mint"],
             _ => &[],
         };
         if let Some(word) = opposites.iter().find(|w| ix_name.contains(**w)) {
@@ -4940,7 +5399,11 @@ impl GraphiteCore {
         // enough: a `stake` intent declares the `transfer` class (a liquid
         // staking deposit is one), and without this a System Transfer would
         // pass L5 as a stake.
-        if !program_supports_intent(program_id, intent) {
+        // A grounded class (Round 30) carries its own answer: only a grant
+        // naming this program's instruction for this intent gives one.
+        if !crate::intent_grants::is_grounded_class(security_class)
+            && !program_supports_intent(program_id, intent)
+        {
             return Err(format!(
                     "a '{raw_intent}' intent does not describe {instruction_name}: program {program_id} does not serve that intent"
                 ),
@@ -6385,7 +6848,7 @@ impl GraphiteCore {
                 .fold_verifier(LayerId::L2InstructionVerification, l2_result, &ctx);
 
         // Step 2: Transaction Construction
-        let transaction = build_transaction(&TransactionPlan {
+        let transaction = summarize_instruction(&InstructionPlan {
             program_id: input.program_id.clone(),
             protocol_version: input.protocol_version.clone(),
             instruction_discriminator: input.instruction_discriminator.clone(),
@@ -6457,6 +6920,12 @@ impl GraphiteCore {
         // measured, the full label was Blocked and the empty label Clear on
         // the same bytes. Only Check 2's empty-label arm still reads the
         // label, and that arm refuses.
+        // Round 30 (R-M13/R-M14): an instruction a grant names for the declared
+        // intent is judged by the grant's grounded class when the
+        // transaction's own accounts make the operation the signer's own
+        // (`intent_grants`), and by its manifest class otherwise — with the
+        // failed fact kept, to name in the refusal.
+        let mut ungrounded_grant: Option<String> = None;
         let (expected_account_count, variable_accounts, manifest_risk_class) = match manifest {
             Some(m) => {
                 let ix = m.instruction_for(&effective_discriminator);
@@ -6465,7 +6934,25 @@ impl GraphiteCore {
                     Some(i) => (
                         Some(i.layout_for(input.account_addresses.len()).len()),
                         i.variable_accounts,
-                        i.security_class().to_string(),
+                        match crate::intent_grants::ground(
+                            &input.program_id,
+                            i,
+                            crate::risk_engine::canonical_intent(
+                                &input.proposed_intent.intent_type.trim().to_lowercase(),
+                            ),
+                            &input.account_addresses,
+                        ) {
+                            crate::intent_grants::GrantOutcome::Grounded(class) => {
+                                class.to_string()
+                            }
+                            crate::intent_grants::GrantOutcome::Ungrounded(why) => {
+                                ungrounded_grant = Some(why);
+                                i.security_class().to_string()
+                            }
+                            crate::intent_grants::GrantOutcome::NoGrant => {
+                                i.security_class().to_string()
+                            }
+                        },
                     ),
                     None => (None, false, String::new()),
                 }
@@ -6525,6 +7012,20 @@ impl GraphiteCore {
         // signal is never silently dropped (Constitution P3 explainability).
         let risk_verdict = risk_detail.verdict;
         let mut risk_warnings = risk_detail.warnings;
+        // A grant whose facts did not hold left the manifest's class in place,
+        // which the intent does not declare, so the Risk Engine refused it
+        // (Check 9/9b). The refusal says which fact failed.
+        let risk_verdict = match (risk_verdict, ungrounded_grant) {
+            (verdict, None) => verdict,
+            (RiskVerdict::Passed, Some(why)) => RiskVerdict::Blocked {
+                pattern: crate::risk_engine::RiskPattern::PermissionEscalation,
+                reason: why,
+            },
+            (RiskVerdict::Blocked { pattern, reason }, Some(why)) => RiskVerdict::Blocked {
+                pattern,
+                reason: format!("{reason} | {why}"),
+            },
+        };
 
         // GAP-2026-08-06-1: a NOVEL instruction on a KNOWN protocol is exactly
         // where new attacker behavior hides. The confidence ceiling (P6) already
@@ -7103,10 +7604,25 @@ impl GraphiteCore {
         // can NO LONGER supply a baseline; the `simulation_baseline` field was
         // removed from VerificationInput because it was caller-controlled JSON
         // that let an attacker normalize their own divergence.
-        let trusted_baseline = self
+        //
+        // Round 30 (G-03): by the transaction's SHAPE — the primary program,
+        // its instruction and the other programs the artifact invokes — once
+        // that shape has a mature baseline of its own, and by the program's
+        // until then. A request with no artifact has no shape.
+        let shape = artifact_message.as_ref().map(|m| {
+            crate::semantic_graph_store::shape_key(
+                &input.program_id,
+                &instruction_name,
+                m.instructions.iter().map(|ix| ix.program_id.as_str()),
+            )
+        });
+        let (trusted_baseline, judged_by_shape) = match self
             .graph()
-            .get_simulation_baseline(&input.program_id)
-            .cloned();
+            .baseline_for(&input.program_id, shape.as_deref())
+        {
+            Some((b, by_shape)) => (Some(b.clone()), by_shape),
+            None => (None, false),
+        };
         // Build the simulation usage, preferring live RPC simulation. This
         // runs REGARDLESS of whether a mature baseline exists, for two
         // reasons — and the second one is a bug fix.
@@ -7140,6 +7656,9 @@ impl GraphiteCore {
         // caller-controlled numbers, so we record NOTHING.
         #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
         let mut rpc_sim_ok = false;
+        // The slot that complete simulation ran at, when it said (G-04).
+        #[cfg_attr(not(feature = "rpc"), allow(unused_mut, unused_variables))]
+        let mut sim_slot: Option<u64> = None;
         // The simulator's own verdict on the transaction, when it ran. Round
         // 17: a simulation that errored describes a transaction that would not
         // land, so its compute numbers are not an observation of anything this
@@ -7464,6 +7983,7 @@ impl GraphiteCore {
                             usage.account_writes = sim_res.account_writes.unwrap_or(0);
                             usage.cpi_hops = sim_res.cpi_hops.unwrap_or(0);
                             rpc_sim_ok = true;
+                            sim_slot = sim_res.slot;
                         }
                         // ── ALT/v0, measured rather than declared ──────────
                         //
@@ -8306,8 +8826,10 @@ impl GraphiteCore {
         // the RPC budget). An answer that cannot be read records nothing and
         // changes nothing: it is neither a refusal nor an approval.
         #[cfg(feature = "rpc")]
-        let program_upgrades: Vec<ProgramUpgrade> = match &self.rpc_client {
-            None => Vec::new(),
+        let (program_upgrades, deployment_notes): (Vec<ProgramUpgrade>, Vec<String>) = match &self
+            .rpc_client
+        {
+            None => (Vec::new(), Vec::new()),
             Some(client) => {
                 let registry = self.registry();
                 let mut programs: Vec<String> = invoked_programs(
@@ -8322,21 +8844,22 @@ impl GraphiteCore {
                 programs.sort();
                 programs.dedup();
                 if programs.is_empty() {
-                    Vec::new()
+                    (Vec::new(), Vec::new())
                 } else {
                     match within_budget(&budget, client.get_program_deployments(&programs)).await {
                         Ok(Ok(deployments)) => self.note_deployments(&programs, deployments).await,
                         Ok(Err(e)) => {
                             tracing::warn!("R-M1: the program deployments could not be read: {e}");
-                            Vec::new()
+                            (Vec::new(), Vec::new())
                         }
-                        Err(()) => Vec::new(),
+                        Err(()) => (Vec::new(), Vec::new()),
                     }
                 }
             }
         };
         #[cfg(not(feature = "rpc"))]
-        let program_upgrades: Vec<ProgramUpgrade> = Vec::new();
+        let (program_upgrades, deployment_notes): (Vec<ProgramUpgrade>, Vec<String>) =
+            (Vec::new(), Vec::new());
 
         let quarantined_hits: Vec<(String, String)> = {
             #[cfg(feature = "rpc")]
@@ -8547,7 +9070,19 @@ impl GraphiteCore {
         // "reassigns accounts owner" excused UndeclaredOwnerReassignment,
         // UndeclaredAccountClosure and UndeclaredTokenDebit — a plugin
         // disarming L4, which P8 forbids (a plugin vetoes or annotates).
-        let diff_declared = &risk_expected_state_changes;
+        //
+        // R30: with the manifest's security class for the instruction stated
+        // beside its prose, so L4 can tell an unreadable declaration of an
+        // instruction that moves value from one of an instruction that states
+        // it moves none (`DeclaredEffects::class_moves_value`).
+        let mut diff_declared = risk_expected_state_changes.clone();
+        if manifest
+            .and_then(|m| m.instruction_for(&effective_discriminator))
+            .is_some()
+        {
+            diff_declared.push(crate::state_diff::security_class_line(&manifest_risk_class));
+        }
+        let diff_declared = &diff_declared;
         let l4_result = match (observed_diff.as_ref(), caller_diff.as_ref()) {
             (Some(diff), _) => Self::verify_state_from_diff(
                 diff,
@@ -8652,12 +9187,13 @@ impl GraphiteCore {
                 u.previous_deploy_slot,
                 u.deploy_slot,
                 if u.quarantined {
-                    "; withdrawn from trust until the operator reviews it"
+                    "; its evidence was withdrawn, and it is withdrawn from trust until the operator reviews it"
                 } else {
-                    "; its manifest describes the code that was deployed before"
+                    "; its evidence was withdrawn and must be re-earned or re-seeded for the new code, and its manifest describes the code that was deployed before"
                 }
             ));
         }
+        risk_warnings.extend(deployment_notes);
         let risk_summary = if deferred_write_escalations.is_empty() {
             risk_summary
         } else {
@@ -9019,17 +9555,29 @@ impl GraphiteCore {
                         // was reporting (observed live: "0 CU" beside a 2.24σ
                         // divergence computed from a real 300 CU simulation).
                         format!(
-                            "Simulation integrity FLAGGED: {} CU / {} writes / {} hops [{}] (divergence {} vs baseline)",
+                            "Simulation integrity FLAGGED: {} CU / {} writes / {} hops [{}] (divergence {} vs {})",
                             usage.compute_units,
                             usage.account_writes,
                             usage.cpi_hops,
                             if rpc_sim_ok { "RPC-measured" } else { "caller-supplied" },
-                            div
+                            div,
+                            if judged_by_shape {
+                                "this transaction shape's baseline"
+                            } else {
+                                "the program's baseline"
+                            }
                         )
                     }
                     (Some(false), _) => format!(
-                        "Simulation integrity clean (RPC-verified): {} CU / {} writes / {} hops",
-                        usage.compute_units, usage.account_writes, usage.cpi_hops
+                        "Simulation integrity clean (RPC-verified): {} CU / {} writes / {} hops, judged against {}",
+                        usage.compute_units,
+                        usage.account_writes,
+                        usage.cpi_hops,
+                        if judged_by_shape {
+                            "this transaction shape's baseline"
+                        } else {
+                            "the program's baseline (this shape's is not yet mature)"
+                        }
                     ),
                     (None, Some(_)) => format!(
                         "Simulation integrity NOT RPC-verified: caller-supplied usage ({} CU / {} writes / {} hops) — advisory only, cannot certify clean (P5)",
@@ -9154,20 +9702,18 @@ impl GraphiteCore {
         // is what an attacker's request looked like, and it used to train the
         // baseline exactly as well as honest traffic did.
         //
-        // Audit 2026-10-20 (M1): and only an APPROVED verdict, unless the
-        // operator opts in. A request refused ONLY by the policy threshold
-        // (confidence or tier) used to train unconditionally, as the
-        // bootstrap: a program with a manifest and no history sits at 0.44,
-        // below every built-in floor. But the signal saturates at three
+        // Audit 2026-10-20 (M1): a request refused ONLY by the policy
+        // threshold (confidence or tier) used to train unconditionally, as
+        // the bootstrap: a program with a manifest and no history sits at
+        // 0.44, below every built-in floor. But the signal saturates at three
         // observations, each distinct artifact is one, and simulation needs
         // no signature — so any verify-key holder could lift a program from
         // 0.44 to 0.64, past Gaming's 0.55, for every caller of the node.
-        // `set_learn_from_policy_refusals` (the server's
-        // GRAPHITE_LEARN_FROM_POLICY_REFUSALS) restores the bootstrap for an
-        // operator who accepts that; it admits a refusal that was the policy
-        // threshold's and NOTHING else's — no plugin veto, no structural or
-        // L3 failure, risk clear. The identity rule below still holds either
-        // way: the SAME bytes re-verified are one observation (F-15-01).
+        // Round 30 (G-02) closes the same attack through the request's
+        // profile; see `ObservationPolicy`. Only `OperatorBootstrap`, which
+        // the server cannot select, admits a verdict below the built-in
+        // floor. The identity rule below holds under either policy: the SAME
+        // bytes re-verified are one observation (F-15-01).
         //
         // A FLAGGED observation that the simulator nevertheless executed
         // cleanly is kept in the shadow accumulator. It never influences a
@@ -9187,8 +9733,30 @@ impl GraphiteCore {
         // path that let one request be counted on every repeat is gone from
         // the pipeline, and `record_simulation` without a key is left to the
         // operator API.
+        //
+        // Round 30 (G-04): and an observation measures the code that ran. The
+        // deployment is read after the simulation; a deployment newer than
+        // the slot the simulation ran at means the code changed in between,
+        // and these figures describe the code that was replaced — not
+        // evidence about what runs now, whatever else the verdict says.
         #[cfg(feature = "rpc")]
-        if rpc_sim_ok && artifact_instruction_located {
+        let simulated_superseded_code = match (
+            sim_slot,
+            self.graph()
+                .observed_deployment(&input.program_id)
+                .map(|d| d.deploy_slot),
+        ) {
+            (Some(simulated_at), Some(deployed_at)) if simulated_at < deployed_at => {
+                tracing::warn!(
+                    "program {}: simulated at slot {simulated_at}, deployed at slot {deployed_at}: the observation describes replaced code and is not recorded",
+                    input.program_id
+                );
+                true
+            }
+            _ => false,
+        };
+        #[cfg(feature = "rpc")]
+        if rpc_sim_ok && artifact_instruction_located && !simulated_superseded_code {
             let observation_key = input
                 .signed_transaction
                 .as_deref()
@@ -9211,16 +9779,29 @@ impl GraphiteCore {
                 // refused. `policy_verdict` is computed before the
                 // divergence flag, so a flagged request is judged here as it
                 // would have been unflagged.
-                let policy_admits = l6_block.is_none()
+                //
+                // Round 30 (G-02): and by default the bar is the weakest
+                // BUILT-IN one, not the request's. The request names its
+                // profile, so "approved under it" let a caller who could name
+                // a permissive one approve, and so train, a program no
+                // built-in profile admits. Under `BuiltinFloor` the verdict's
+                // own confidence and tier must clear Gaming's whatever the
+                // request asked for; a stricter profile's threshold refusal
+                // of a verdict that clears it is an observation all the same.
+                let nothing_else_refused = l6_block.is_none()
                     && !l3_plugin_blocked
                     && !structural_layer_failed
-                    && match policy_verdict {
-                        PolicyVerdict::Approved => true,
-                        PolicyVerdict::RejectedBelowThreshold { .. }
-                        | PolicyVerdict::RejectedBelowTrustTier { .. } => {
-                            self.learn_from_policy_refusals
+                    && !matches!(policy_verdict, PolicyVerdict::RejectedRiskEngineBlock);
+                let policy_admits = nothing_else_refused
+                    && match self.observation_policy {
+                        ObservationPolicy::BuiltinFloor => {
+                            confidence.is_finite()
+                                && confidence
+                                    >= crate::policy_engine::WEAKEST_BUILTIN_MIN_CONFIDENCE
+                                && confidence_result.trust_tier_applied
+                                    >= crate::policy_engine::WEAKEST_BUILTIN_MIN_TRUST_TIER
                         }
-                        PolicyVerdict::RejectedRiskEngineBlock => false,
+                        ObservationPolicy::OperatorBootstrap => true,
                     };
                 let observation = |shadow: bool| PendingObservation {
                     audit_trail_id: audit_id.clone(),
@@ -9228,13 +9809,14 @@ impl GraphiteCore {
                     usage: usage.clone(),
                     key: key.to_string(),
                     shadow,
+                    shape: shape.clone(),
+                    slot: sim_slot,
                 };
                 if sim_flagged == Some(true) {
                     if policy_admits && blocked_only_by_the_flag {
                         self.observe(observation(true)).await;
                     }
                 } else if policy_admits && risk_summary.status == "Clear" {
-                    // Without the opt-in this is exactly `approved`.
                     self.observe(observation(false)).await;
                 }
             }
@@ -9389,14 +9971,18 @@ impl GraphiteCore {
             self.plugins
                 .fold_verifier(LayerId::L8ExecutionVerification, l8_layer_result, &ctx);
 
-        let result = VerificationResult {
+        let mut result = VerificationResult {
             approved,
+            // Set below from the finished verdict, by the one rule.
+            decision: ExecutionDecision::Blocked,
+            executable: false,
             confidence,
             breakdown,
             trust_tier: format!("{:?}", trust_tier),
             risk_verdict: risk_summary.clone(),
             policy_verdict: policy_str.to_string(),
             audit_trail_id: audit_id,
+            instruction_bind_key: content_hash.clone(),
             content_hash,
             transaction,
             // What this verdict is bound to. `rpc_sim_ok` is the honest test for
@@ -9574,6 +10160,11 @@ impl GraphiteCore {
                 ),
             ],
         };
+
+        // Round 30 (G-01): what this verdict permits, decided once, here,
+        // from the finished verdict — never by the caller.
+        result.decision = execution_decision(&result);
+        result.executable = result.decision == ExecutionDecision::ExecutableApproved;
 
         // Analytics observers (read-only, P8): record the completed result to
         // every registered sink. Sink failures are logged, never fatal — the
@@ -9953,10 +10544,19 @@ mod tests {
             "https://rpc.example:443/"
         ));
         assert!(!same_endpoint("https://a.example", "https://b.example"));
-        assert!(!same_endpoint(
+        // Round 30 (G-08): one remote host under two API keys is one
+        // provider's endpoint, not two. This asserted the opposite until the
+        // R30 review found the same provider attachable as its own witness.
+        assert!(same_endpoint(
             "https://a.example/?k=1",
             "https://a.example/?k=2"
         ));
+        assert!(same_endpoint(
+            "https://a.example/v1/x",
+            "https://a.example:8443/v2/y"
+        ));
+        // Two local processes on two ports remain two endpoints.
+        assert!(!same_endpoint("http://127.0.0.1:1", "http://127.0.0.1:2"));
     }
 
     /// F4 (review of the 2026-09-29 audit's fix): a declared sibling carries

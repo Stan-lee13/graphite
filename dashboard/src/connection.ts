@@ -27,7 +27,9 @@ export interface Connection {
   /** Origin of the Core, e.g. `http://127.0.0.1:7331`. Empty means same
    *  origin (the dev proxy, or a Core serving the built console itself). */
   base: string;
-  /** The operator key (`GRAPHITE_API_KEY`). Empty for a dev-mode Core. */
+  /** The key the console sends: preferably the read-only key
+   *  (`GRAPHITE_READ_API_KEY`), else the verify key (`GRAPHITE_API_KEY`).
+   *  Empty for a dev-mode Core. */
   key: string;
   /** Keep the key across browser restarts (localStorage) rather than for
    *  this tab only (sessionStorage). Off unless the operator chooses it. */

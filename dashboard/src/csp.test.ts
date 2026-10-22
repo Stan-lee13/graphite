@@ -3,7 +3,8 @@
 // would send the key. Run: npm test.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { contentSecurityPolicy } from "./csp.ts";
+import { LOOPBACK_HTTP, contentSecurityPolicy, securityHeaders } from "./csp.ts";
+import { CSP_LOOPBACK_HOSTS } from "./transport.ts";
 
 const directives = (csp: string) =>
   new Map(
@@ -31,10 +32,14 @@ test("connect-src allows what the transport rule allows, and no more", () => {
   const connect = directives(contentSecurityPolicy()).get("connect-src") ?? [];
   assert.ok(connect.includes("'self'"));
   assert.ok(connect.includes("https:"), "a Core on any https:// origin");
-  for (const loopback of ["http://localhost:*", "http://127.0.0.1:*", "http://[::1]:*"]) {
-    assert.ok(connect.includes(loopback), loopback);
+  for (const host of CSP_LOOPBACK_HOSTS) {
+    assert.ok(connect.includes(`http://${host}:*`), host);
   }
   assert.ok(!connect.includes("http:"), "plain http:// to other machines stays closed");
+  // Round 30: an IPv6 literal is not a valid CSP host source (Chrome logs
+  // an error and ignores it); nothing in the policy may be one.
+  assert.ok(!connect.some((s) => s.includes("[")), "no IPv6 literal in connect-src");
+  assert.deepEqual(LOOPBACK_HTTP, CSP_LOOPBACK_HOSTS.map((h) => `http://${h}:*`), "csp.ts and transport.ts agree");
 });
 
 test("a build-time default Core on loopback http is allowed; junk is ignored", () => {
@@ -42,4 +47,13 @@ test("a build-time default Core on loopback http is allowed; junk is ignored", (
   assert.ok(withApi.includes("http://127.0.0.2:7331"));
   assert.equal(contentSecurityPolicy("not a url"), contentSecurityPolicy());
   assert.equal(contentSecurityPolicy("https://core.example/api"), contentSecurityPolicy(), "already covered by https:");
+});
+
+// Round 30: what a <meta> CSP cannot do, the served headers do.
+test("the served headers forbid framing and sniffing, and keep the meta policy", () => {
+  const h = securityHeaders();
+  assert.equal(h["Content-Security-Policy"], `${contentSecurityPolicy()}; frame-ancestors 'none'`);
+  assert.equal(h["X-Frame-Options"], "DENY");
+  assert.equal(h["X-Content-Type-Options"], "nosniff");
+  assert.equal(h["Referrer-Policy"], "no-referrer");
 });

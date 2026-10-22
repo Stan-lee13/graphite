@@ -6,26 +6,33 @@
  *   2. Gaming profile (the weakest built-in, 0.55) → should APPROVE → execute
  *      on devnet through the SAME path the bridge uses.
  *
- * This is the file most likely to be copied, so it executes the way the
- * bridge executes and in no other way (Round 17, F-16-12 / F-15-06):
+ * This is the file most likely to be copied, so it executes the way every
+ * integration executes and in no other way: through `GraphiteGuard`
+ * (Round 30, audit finding K-09; before that, Round 17's F-16-12 / F-15-06):
  *
- *   approved → artifact_bound → ResidualPolicy.assertExecutable →
- *   signApproved → `signing` on the trail (resolved by exact audit_trail_id,
- *   approved) → sendRawTransaction → `submission` on the trail → confirm → L8.
+ *   grounded request → spend cap → ONE transaction → unsigned simulation →
+ *   Graphite verifies the bytes → AuditBind → execution decision + residual
+ *   policy → confirmation of the resolved values → signApproved → `signing`
+ *   on the trail → sendRawTransaction → `submission` on the trail → confirm
+ *   → L8.
+ *
+ * Tests 1 and 2 ask the Core about a DESCRIPTION of the transfer through the
+ * SDK client: analysis only, and nothing in them can be signed.
+ *
+ * Needs the Core (GRAPHITE_CORE_URL), the AI layer (GRAPHITE_AI_LAYER_URL,
+ * `python3 python-ai-layer/intent_parser.py --serve`) and a funded devnet
+ * key. It refuses any cluster but devnet or a loopback validator.
  *
  * It no longer asks for a `Custom { min_confidence: 0.0 }` profile: the
  * server clamps that to 0.55 anyway and discloses the override, and a demo
  * that teaches switching the gate off is teaching the wrong thing.
  */
 
-import { Keypair, Connection, SystemProgram, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
+import { Keypair, Connection, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import bs58 from "bs58";
-// The same execution gate the bridge uses. A demo that reaches
-// `sendAndConfirmTransaction` on a Descriptive verdict is teaching the pattern
-// the bridge was changed to stop doing.
-import { BoundTransaction, declareSiblings, findPrimaryIndex } from "./artifact.js";
-import { executeBoundTransaction } from "./execution-lifecycle.js";
-import { ResidualPolicy } from "./residual-policy.js";
+// The one gated execution path. A demo that reaches `sendAndConfirmTransaction`,
+// or even `executeBoundTransaction` directly, skips controls the guard applies.
+import { GraphiteGuard, type ExecutionOutcome } from "./guard.js";
 import { GraphiteClient } from "../../sdk/typescript/src/client.js";
 import type { VerificationInput } from "../../sdk/typescript/src/types.js";
 import { assertDevnetCluster, assertNoLegacyEnvNames, rpcHostForLog } from "./env-names.js";
@@ -180,93 +187,54 @@ async function main() {
   console.log(`
 Transferring ${transferAmount} SOL to ${destination} on devnet...`);
 
-  // This script exists to DEMONSTRATE the gate, so it has to demonstrate the
-  // real one. It previously verified a description — no `signed_transaction`,
-  // so a Descriptive verdict that constrains nothing about what gets signed —
-  // gated on `approved` alone, and then built a SEPARATE transaction and
-  // submitted it. Every one of those is the pattern the bridge was changed to
-  // stop doing, in the file most likely to be copied.
-  const transferIx = SystemProgram.transfer({
-    fromPubkey: keyPair.publicKey,
-    toPubkey: new PublicKey(destination),
-    lamports: Math.floor(transferAmount * LAMPORTS_PER_SOL),
+  // Round 30 (audit finding K-09): the execution goes through the guard —
+  // the one gated helper every integration uses — and nothing else. Until
+  // then this script built a BoundTransaction and called
+  // `executeBoundTransaction` itself: the right signing primitive, but with
+  // no spend cap, no grounding of the request in its own words, no AuditBind
+  // and no confirmation, in the file most likely to be copied. The guard does
+  // all of it: the request below is grounded (the AI layer must be running,
+  // GRAPHITE_AI_LAYER_URL), capped (0.02 SOL per transfer, 0.05 SOL per hour),
+  // built ONCE, simulated unsigned, verified as bytes, held to the execution
+  // decision and the residual policy, confirmed by the hook below against the
+  // values this script meant, and only then signed, recorded, sent and
+  // reconciled.
+  const request = `Transfer ${transferAmount} SOL to ${destination}`;
+  const expectedLamports = BigInt(Math.round(transferAmount * LAMPORTS_PER_SOL));
+  const guard = await GraphiteGuard.create({
+    privateKey,
+    rpcUrl,
+    walletProfile: "Gaming",
+    reporter: "devnet-test",
+    spendPolicy: { maxTransferLamports: 20_000_000n, maxTotalLamports: 50_000_000n },
   });
-
-  const { blockhash, lastValidBlockHeight } =
-    await connection.getLatestBlockhash("confirmed");
-  const bound = BoundTransaction.build({
-    instructions: [transferIx],
-    feePayer: keyPair.publicKey,
-    recentBlockhash: blockhash,
-    lastValidBlockHeight,
-  });
-
-  // Verify the BYTES, not a description of them.
-  const primary = {
-    programId: "11111111111111111111111111111111",
-    instructionDiscriminator: "02000000",
-    accountAddresses: [keyPair.publicKey.toBase58(), destination],
-  };
-  const boundVerification = await verifyThroughGraphite(graphite, {
-    ...basePayload,
-    wallet_profile: "Gaming",
-    instruction_data: Array.from(transferIx.data),
-    signed_transaction: bound.artifact(),
-    transaction_instructions: declareSiblings(
-      [transferIx],
-      findPrimaryIndex([transferIx], primary),
-    ),
-  });
-  printVerification("Artifact-bound Verification", boundVerification);
-
-  if (!boundVerification.approved) {
-    console.log("\n❌ The artifact-bound verification did not approve. Not executing.");
+  let outcome: ExecutionOutcome;
+  try {
+    outcome = await guard.executeTransfer(request, {
+      // The last say, about the resolved transaction: exactly the destination
+      // and amount this script asked for, approved and bound to its digest.
+      confirm: async (summary) => {
+        console.log(`\nConfirm: ${summary.sol} SOL to ${summary.destination}, digest ${summary.transactionSha256.slice(0, 16)}…`);
+        console.log(`         Graphite ${summary.verdict.approved ? "APPROVED" : "did not approve"}, risk ${summary.verdict.risk}`);
+        console.log(`         not observed: ${summary.verdict.unobservedCodes.join(", ") || "none"}`);
+        return summary.destination === destination && summary.lamports === expectedLamports.toString();
+      },
+    });
+  } finally {
+    guard.close();
+  }
+  printVerification("Artifact-bound Verification (through the guard)", outcome.verification);
+  if (!outcome.verifiedExecution || !outcome.lifecycle) {
+    console.log("\n❌ The guard did not execute: Graphite did not approve these bytes. Nothing was signed.");
     process.exit(1);
   }
-  if (boundVerification.scope?.kind !== "artifact_bound") {
-    console.log(
-      `
-❌ scope.kind is ${boundVerification.scope?.kind ?? "absent"}, not artifact_bound. ` +
-        "A descriptive verdict describes what the request SAID and does not constrain what " +
-        "gets signed. Not executing.",
-    );
-    process.exit(1);
-  }
-  console.log(
-    `
-✅ artifact_bound, digest ${boundVerification.scope.transaction_sha256.slice(0, 16)}…`,
-  );
-  console.log("   Still unobserved by this verdict:");
-  for (const u of boundVerification.scope.unobserved ?? []) {
-    console.log(`     • ${u}`);
-  }
-
-  // The bridge's execution path, exactly. Every control the bridge applies
-  // is applied here, in the same order, by the same code:
-  //   ResidualPolicy — refuses any residual the operator has not accepted
-  //     by name (GRAPHITE_ACCEPT_UNOBSERVED); the two inherent ones pass.
-  //   signApproved   — the digest is re-checked against the live object and
-  //     the signer set against the message before anything is signed.
-  //   signing event  — on the trail before submission, resolved by the exact
-  //     audit_trail_id, and the verdict on record must be `approved`.
-  //   sendRawTransaction, submission event (retried), confirmation, L8.
-  console.log("\nExecuting through the bridge's own path (executeBoundTransaction)...");
-  const lifecycle = await executeBoundTransaction({
-    bound,
-    verification: boundVerification,
-    signers: [keyPair],
-    connection,
-    graphite,
-    policy: ResidualPolicy.fromEnv(),
-    reportedBy: "devnet-test",
-    label: "devnet transfer",
-    log: (line) => console.log(line),
-  });
+  const lifecycle = outcome.lifecycle;
   const signature = lifecycle.signature;
 
   console.log(`\n✅ TRANSACTION ${lifecycle.confirmed ? "CONFIRMED" : "SUBMITTED (confirmation pending)"} ON DEVNET!`);
   console.log(`Signature: ${signature}`);
   console.log(`Solscan:   https://solscan.io/tx/${signature}?cluster=devnet`);
+  console.log(`Decision:            ${lifecycle.decision} (reported by the Core: ${lifecycle.reportedDecision ?? "not reported"})`);
   console.log(`Signing on trail:    ${lifecycle.signingRecorded} (verdict on record: ${lifecycle.verdictOnRecordAtSigning})`);
   console.log(`Submission on trail: ${lifecycle.submissionRecorded}`);
   console.log(`Accepted residuals:  ${lifecycle.acceptedUnobserved.join(", ") || "none beyond the inherent two"}`);
@@ -292,8 +260,8 @@ Transferring ${transferAmount} SOL to ${destination} on devnet...`);
   console.log("  ✓ 8-layer verification pipeline executed");
   console.log("  ✓ TradingBot profile correctly BLOCKED (confidence 0.50 < 0.80)");
   console.log("  ✓ Gaming profile correctly APPROVED");
-  console.log("  ✓ Residual policy consulted, signing and submission on the audit trail");
-  console.log("  ✓ Real transaction signed and broadcast to Solana devnet via executeBoundTransaction");
+  console.log("  ✓ Grounded, capped, decided, confirmed; signing and submission on the audit trail");
+  console.log("  ✓ Real transaction signed and broadcast to Solana devnet through GraphiteGuard");
   console.log(`  ${lifecycle.confirmed ? "✓" : "○"} Transaction ${lifecycle.confirmed ? "confirmed on-chain" : "awaiting confirmation"}; L8 reconciled`);
   console.log(`  ✓ Tx: https://solscan.io/tx/${signature}?cluster=devnet`);
 }

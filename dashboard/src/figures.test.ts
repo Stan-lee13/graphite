@@ -36,13 +36,61 @@ const rejection = (): ErrorViolation => ({
 });
 
 test("a descriptive approval is not a green approval", () => {
-  assert.equal(verdictKind(point(0, true, true)), "bound");
   assert.equal(verdictKind(point(1, true, false)), "descriptive");
   assert.equal(verdictKind({ approved: true }), "descriptive", "an older server omits the digest");
   assert.equal(verdictKind(point(2, false, false)), "refused");
   assert.notEqual(verdictTone("descriptive"), "pass");
-  const series = [point(0, true, true), point(1, true, false), point(2, true, false), point(3, false, true)];
-  assert.deepEqual(countWindow(series), { n: 4, bound: 1, descriptive: 2, refused: 1 });
+});
+
+// Round 30 (shared execution contract): green means executable, and only
+// the Core's own "executable_approved" + `executable: true` earns it.
+const decided = (decision: string | undefined, executable: boolean | undefined, bound = true, approved = true): ConfidencePoint => ({
+  ...point(9, approved, bound),
+  decision,
+  executable,
+});
+
+test("only an executable decision is drawn as executable", () => {
+  assert.equal(verdictKind(decided("executable_approved", true)), "executable");
+  assert.equal(verdictTone(verdictKind(decided("executable_approved", true))), "pass");
+  // A bound approval the Core judged without a simulation (no RPC):
+  assert.equal(verdictKind(decided("analysis_only", false)), "analysis");
+  // A bound approval from a Core that predates the contract: not green.
+  assert.equal(verdictKind(point(0, true, true)), "unreported");
+  for (const k of ["analysis", "unreported", "descriptive", "inconclusive"] as const) {
+    assert.notEqual(verdictTone(k), "pass", k);
+  }
+});
+
+test("a disagreeing or unknown decision fails closed", () => {
+  assert.equal(verdictKind(decided("executable_approved", false)), "analysis", "decision and flag disagree");
+  assert.equal(verdictKind(decided("executable_approved", undefined)), "analysis", "flag missing");
+  assert.equal(verdictKind(decided("EXECUTABLE_APPROVED", true)), "analysis", "case variant");
+  assert.equal(verdictKind(decided("approved", true)), "analysis", "unknown value");
+  // executable with no bytes is still descriptive: nothing constrains the signature.
+  assert.equal(verdictKind(decided("executable_approved", true, false)), "descriptive");
+  assert.equal(verdictKind(decided("inconclusive", false, true, false)), "inconclusive");
+  assert.equal(verdictKind(decided("blocked", false, true, false)), "refused");
+});
+
+test("window counts keep executable apart from every other approval", () => {
+  const series = [
+    decided("executable_approved", true),
+    decided("analysis_only", false),
+    point(0, true, true),
+    point(1, true, false),
+    point(2, true, false),
+    point(3, false, true),
+    decided("inconclusive", false, true, false),
+  ];
+  assert.deepEqual(countWindow(series), {
+    n: 7,
+    executable: 1,
+    notExecutable: 4,
+    descriptive: 2,
+    refused: 1,
+    inconclusive: 1,
+  });
 });
 
 test("whole-trail totals use the server's counts, not the capped windows", () => {

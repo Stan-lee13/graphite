@@ -126,7 +126,9 @@ export function Skeleton({ rows = 6, cols = 5 }: { rows?: number; cols?: number 
   // Varied widths read as data rather than as a progress bar.
   const widths = ["38%", "22%", "16%", "12%", "18%", "14%", "20%"];
   return (
-    <div className="skeleton" aria-busy="true" aria-label="Loading…">
+    // role="status": an aria-label on a role-less <div> is prohibited ARIA
+    // and was not announced (axe, Round 30).
+    <div className="skeleton" role="status" aria-busy="true" aria-label="Loading…">
       {Array.from({ length: rows }).map((_, r) => (
         <div className="skeleton-row" key={r}>
           {Array.from({ length: cols }).map((_, c) => (
@@ -201,6 +203,23 @@ export function Fault({ error }: { error: ApiError }) {
           Either nothing is listening at the configured address, or the Core is up but refused this
           origin. A Core allows browsers only from the origins in{" "}
           <code translate="no">GRAPHITE_CORS_ORIGINS</code>.
+        </p>
+        <a className="btn primary" href={hrefFor("connect")}>
+          Check the connection
+        </a>
+      </div>
+    );
+  }
+  if (error.kind === "malformed") {
+    // Round 30: the Core (or something in front of it) answered, but not
+    // with what this console reads — a version mismatch, or a proxy's page.
+    return (
+      <div className="note fault" role="alert">
+        <ServerCrash className="note-icon" aria-hidden="true" />
+        <strong>The Core's answer could not be read</strong>
+        <p>
+          {error.message} This is usually a Core of a different version, or a proxy answering in its
+          place. Nothing on this page is drawn from that answer.
         </p>
         <a className="btn primary" href={hrefFor("connect")}>
           Check the connection
@@ -322,15 +341,45 @@ export function Section({
   flush?: boolean;
   id?: string;
 }) {
+  const body = useRef<HTMLDivElement>(null);
+  const scrolls = useOverflows(body, flush === true);
   return (
     <section className="section" id={id}>
       <div className="section-head">
         <h2>{title}</h2>
         {meta !== undefined && <div className="section-meta">{meta}</div>}
       </div>
-      <div className={flush ? "section-flush" : "section-body"}>{children}</div>
+      {/* Round 30 (axe scrollable-region-focusable): a table wider than the
+          screen scrolls sideways, and a keyboard user can only scroll what
+          can take focus. Focusable, and named, only while it overflows. */}
+      <div
+        ref={body}
+        className={flush ? "section-flush" : "section-body"}
+        tabIndex={scrolls ? 0 : undefined}
+        role={scrolls ? "region" : undefined}
+        aria-label={scrolls && typeof title === "string" ? `${title}, scrolls sideways` : undefined}
+      >
+        {children}
+      </div>
     </section>
   );
+}
+
+/** Whether `ref`'s content is wider than its box, kept current on resize. */
+function useOverflows(ref: { current: HTMLElement | null }, enabled: boolean): boolean {
+  const [over, setOver] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!enabled || !el) return;
+    const check = () => setOver(el.scrollWidth > el.clientWidth + 1);
+    check();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => ro.disconnect();
+  }, [ref, enabled]);
+  return over;
 }
 
 /** A plain in-app link, drawn as a link. Navigation is `<a>`, never a div. */
@@ -340,6 +389,68 @@ export function Jump({ href, children }: { href: string; children: ReactNode }) 
       {children}
     </a>
   );
+}
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * What every modal surface here (the detail pane, the phone's More sheet,
+ * the command palette) owes a keyboard user. Round 30: the pane moved focus
+ * in but let it out — Tab walked off its last control into the page behind
+ * the scrim — and on close focus fell to <body>, so a keyboard user was
+ * thrown back to the top of the document after every drawer. Now:
+ *   - focus moves in when it opens (to `ref`, or `initial` when given);
+ *   - Tab and Shift+Tab cycle inside it;
+ *   - Escape closes it;
+ *   - on close, focus returns to what had it before it opened, if that is
+ *     still in the document.
+ */
+export function useModal(
+  ref: { current: HTMLElement | null },
+  open: boolean,
+  onClose: () => void,
+  initial?: { current: HTMLElement | null },
+) {
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!open) return;
+    const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    (initial?.current ?? ref.current)?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== "Tab" || !ref.current) return;
+      const items = [...ref.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null);
+      if (items.length === 0) {
+        e.preventDefault();
+        ref.current.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      const inside = active instanceof Node && ref.current.contains(active);
+      if (e.shiftKey && (active === first || active === ref.current || !inside)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (active === last || !inside)) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      if (before && before.isConnected) before.focus();
+    };
+    // `ref` and `initial` are stable refs; re-run only when it opens or closes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 }
 
 /**
@@ -359,16 +470,7 @@ export function Detail({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    // Move focus into the pane so a keyboard user lands where the content is.
-    ref.current?.focus();
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  useModal(ref, open, onClose);
 
   if (!open) return null;
   return (
@@ -392,12 +494,15 @@ export function Detail({
 
 const num = new Intl.NumberFormat(undefined);
 const dec2 = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Round 30: with the time zone. An operator comparing a row here with a
+// server log in UTC could not tell which zone "14:05:12" was in.
 const clock = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
   hour: "2-digit",
   minute: "2-digit",
   second: "2-digit",
+  timeZoneName: "short",
 });
 const rel = new Intl.RelativeTimeFormat(undefined, { numeric: "always", style: "narrow" });
 

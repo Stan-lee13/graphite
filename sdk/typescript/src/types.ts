@@ -11,7 +11,23 @@ export type IntentType =
   | "close" | "close_account"
   | "create" | "create_account"
   | "approve" | "revoke"
+  // Round 30: these describe only the instructions a grounded grant names
+  // (graphite-core/src/intent_grants.rs), when the transaction's accounts
+  // show the operation is the signer's own; anything else is refused.
+  | "withdraw" | "redeem" | "remove_liquidity" | "decrease_liquidity"
+  | "claim" | "claim_fees" | "claim_rewards" | "collect_fees" | "harvest"
+  | "burn"
+  | "configure" | "update_config"
   | "unknown";
+
+/** Every `IntentType`, in the order of `schemas/proposed-intent-v1.json`. */
+export const INTENT_TYPES: readonly IntentType[] = [
+  "swap", "trade", "exchange", "transfer", "send", "stake", "delegate",
+  "close", "close_account", "create", "create_account", "approve", "revoke",
+  "withdraw", "redeem", "remove_liquidity", "decrease_liquidity",
+  "claim", "claim_fees", "claim_rewards", "collect_fees", "harvest",
+  "burn", "configure", "update_config", "unknown",
+];
 
 export interface ExtractedParameters {
   input_token?: string;
@@ -164,6 +180,13 @@ export interface BuiltAccountMeta {
   is_writable: boolean;
 }
 
+/**
+ * The verdict's `transaction` field: a SUMMARY of the one described
+ * instruction (Rust `InstructionSummary`), not a transaction and not wire
+ * bytes. `compute_budget_units` is a heuristic estimate, never a
+ * measurement. The bytes a verdict binds to are identified by
+ * `scope.transaction_sha256`.
+ */
 export interface BuiltTransaction {
   program_id: string;
   protocol_version: string;
@@ -222,15 +245,58 @@ export interface ResolvedAccount {
   privilege_mismatch?: boolean;
 }
 
+/** The same type under the name that says what it is (Round 30). */
+export type InstructionSummary = BuiltTransaction;
+
+/**
+ * What a verdict permits (Round 30, G-01). Only `executable_approved`
+ * permits signing; see `isExecutable`. Mirrors `ExecutionDecision` in
+ * `graphite-core/src/verification.rs` and the schema's enum.
+ */
+export type ExecutionDecision = "executable_approved" | "analysis_only" | "inconclusive" | "blocked";
+
+/** Every decision, in the Core's declaration order. */
+export const EXECUTION_DECISIONS: readonly ExecutionDecision[] = [
+  "executable_approved",
+  "analysis_only",
+  "inconclusive",
+  "blocked",
+] as const;
+
 export interface VerificationResult {
+  /**
+   * Whether the pipeline refused the transaction. NOT permission to sign:
+   * an approval from a node without an RPC was never simulated, and a
+   * descriptive approval binds to no bytes. Gate signing on `isExecutable`.
+   */
   approved: boolean;
+  /**
+   * What this verdict permits (Round 30). Only `executable_approved` permits
+   * signing. Absent from servers older than Round 30; `GraphiteClient.verify`
+   * requires a known value when present, and `isExecutable` recomputes it.
+   */
+  decision?: ExecutionDecision;
+  /** `decision === "executable_approved"` (Round 30). */
+  executable?: boolean;
   confidence: number;
   breakdown: VerificationBreakdownItem[];
   trust_tier: TrustTier;
   risk_verdict: RiskVerdictSummary;
   policy_verdict: string;
   audit_trail_id: string;
+  /**
+   * @deprecated Round 30 (R-M10): read `instruction_bind_key` (or
+   * `instructionBindKey(result)`), which carries the same value. A 64-bit
+   * key for the described INSTRUCTION, not the transaction's identity —
+   * that is `scope.transaction_sha256`.
+   */
   content_hash: string;
+  /**
+   * The same value as `content_hash`, named for what it is: the key binding
+   * audit and lifecycle records to the described instruction (Round 30).
+   * Absent from servers older than Round 30.
+   */
+  instruction_bind_key?: string;
   transaction: BuiltTransaction;
   resolved_accounts: ResolvedAccount[];
   protocol_name: string;
@@ -286,6 +352,9 @@ export interface HealthResponse {
   version: string;
   degraded?: boolean;
   degraded_reasons?: string[];
+  /** Round 30: `analysis_only` when the Core has no RPC (every verdict is then
+   *  not executable), `executable` otherwise. Absent from older servers. */
+  verification_mode?: "executable" | "analysis_only";
   [key: string]: unknown;
 }
 
@@ -463,6 +532,78 @@ export function unobservedCodes(
   return result.scope?.unobserved_codes;
 }
 
+/** The fields the execution decision is computed from. */
+export type DecisionInputs = Pick<
+  VerificationResult,
+  "approved" | "risk_verdict" | "policy_verdict" | "scope" | "layers"
+>;
+
+/**
+ * The Core's execution-decision rule, recomputed from a verdict's own
+ * fields (Round 30, G-01; `execution_decision` in
+ * `graphite-core/src/verification.rs`). Executable only when ALL hold:
+ * approved; risk Clear; policy "Approved"; scope `artifact_bound` with a
+ * digest and `simulated: true`; `unobserved_codes` present, naming every
+ * `unobserved` entry, and all inherent; layers reported and none `failed`.
+ * Otherwise an approval is `analysis_only`; a refusal whose risk findings
+ * are all `VerificationIncomplete` is `inconclusive`; every other refusal is
+ * `blocked`. Missing fields never make a verdict executable.
+ */
+export function computeExecutionDecision(result: DecisionInputs): ExecutionDecision {
+  if (result.approved !== true) {
+    const findings = result.risk_verdict?.findings ?? [];
+    return findings.length > 0 && findings.every((f) => f.pattern === "VerificationIncomplete")
+      ? "inconclusive"
+      : "blocked";
+  }
+  const scope = result.scope;
+  const codes = scope?.unobserved_codes;
+  const executable =
+    result.risk_verdict?.status === "Clear" &&
+    result.policy_verdict === "Approved" &&
+    isArtifactBound(result) &&
+    scope?.kind === "artifact_bound" &&
+    scope.simulated === true &&
+    Array.isArray(codes) &&
+    Array.isArray(scope.unobserved) &&
+    codes.length === scope.unobserved.length &&
+    codes.every((c) => INHERENT_UNOBSERVED.has(c)) &&
+    Array.isArray(result.layers) &&
+    !result.layers.some((l) => l.status === "failed");
+  return executable ? "executable_approved" : "analysis_only";
+}
+
+/**
+ * Whether this verdict permits signing — the ONE gate an execution path
+ * should use (Round 30, G-01). Not `approved`: without an RPC nothing is
+ * simulated and an approval carries `not_simulated`.
+ *
+ * Recomputes the Core's rule locally and requires the server to agree:
+ * - a server that sent `decision` must say `executable_approved` with
+ *   `executable: true`, AND the local recomputation must agree;
+ * - a decision this SDK does not know is not executable;
+ * - a response without `decision` (a server older than Round 30) is judged
+ *   by the local recomputation alone, which is never looser than the
+ *   server's rule.
+ */
+export function isExecutable(result: DecisionInputs & Pick<VerificationResult, "decision" | "executable">): boolean {
+  const local = computeExecutionDecision(result);
+  if (result.decision === undefined && result.executable === undefined) {
+    return local === "executable_approved";
+  }
+  if (!(EXECUTION_DECISIONS as readonly unknown[]).includes(result.decision)) return false;
+  return result.decision === "executable_approved" && result.executable === true && local === "executable_approved";
+}
+
+/**
+ * The key binding audit and lifecycle records to the described instruction
+ * (Round 30, R-M10): `instruction_bind_key`, or the deprecated
+ * `content_hash` from an older server.
+ */
+export function instructionBindKey(result: Pick<VerificationResult, "content_hash" | "instruction_bind_key">): string {
+  return result.instruction_bind_key ?? result.content_hash;
+}
+
 /**
  * A caller-reported lifecycle stage. Graphite performs construction,
  * simulation and verification itself and records those; signing,
@@ -530,6 +671,23 @@ export interface LifecycleEventReceipt {
  * discarded; L8 draws no positive conclusion from it.
  */
 export type InclusionCommitment = "processed" | "confirmed" | "finalized";
+
+/** See `ExecutionCheckResult.inclusion_assurance` (Round 30). */
+export type InclusionAssurance =
+  | "single_provider"
+  | "witnessed"
+  | "witnessed_not_independent"
+  | "witness_disputed"
+  | "witness_unavailable";
+
+/** Every `InclusionAssurance`, for runtime checks. */
+export const INCLUSION_ASSURANCES: readonly InclusionAssurance[] = [
+  "single_provider",
+  "witnessed",
+  "witnessed_not_independent",
+  "witness_disputed",
+  "witness_unavailable",
+];
 
 /**
  * A second RPC's account of the signature, held against the primary's
@@ -626,6 +784,14 @@ export interface ExecutionCheckResult {
   chain_inconsistent?: string | null;
   /** The inclusion witness's account, when one is attached; `null` otherwise. */
   inclusion_witness?: InclusionWitness | null;
+  /**
+   * What this reconciliation's account of inclusion rests on (Round 30): one
+   * provider's word, an independent witness that agrees, a witness that is
+   * not an independent provider, one that disagrees, or one that could not
+   * be reached. L8 asks RPC providers; it checks no light-client proof.
+   * Absent from servers older than Round 30.
+   */
+  inclusion_assurance?: InclusionAssurance;
   /**
    * Every verdict the trail holds for the key the execution resolved by, as
    * counts (Round 17, F-16-11): `refused > 0` beside an approval means the

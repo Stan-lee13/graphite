@@ -234,6 +234,16 @@ pub fn simulation_result_from_value_for_test(
     parse_simulation_value(value)
 }
 
+/// Test seam for the account-object parser, for the same reason as the
+/// simulation seam above: the coverage-guided fuzzer (`fuzz/`, Round 30)
+/// drives it with hostile shapes no live RPC can be made to send.
+pub fn account_from_value_for_test(
+    pubkey: &str,
+    value: &serde_json::Value,
+) -> Result<Option<AccountState>, RpcError> {
+    parse_account_value(pubkey, value)
+}
+
 /// Decode a `simulateTransaction` `result.value` object.
 ///
 /// Shared by the plain simulate call and the state-diff one so the two can
@@ -1223,6 +1233,11 @@ pub enum EndpointError {
     NoHost,
     #[error("the RPC endpoint carries a fragment; a JSON-RPC URL has none")]
     Fragment,
+    /// The host is an address no Solana RPC is served from: link-local
+    /// (which holds the cloud instance-metadata service), unspecified,
+    /// multicast or broadcast (Round 30). Named by range, never by value.
+    #[error("the RPC endpoint's host is a {0} address; no Solana RPC is served from one")]
+    ForbiddenAddress(&'static str),
 }
 
 /// What an endpoint string is, once validated. Nothing here identifies the
@@ -1238,6 +1253,12 @@ pub struct EndpointFacts {
     /// The URL carries a query string — where most managed providers put the
     /// API key.
     pub has_query: bool,
+    /// The host is a private-network address literal (RFC 1918, CGNAT,
+    /// IPv6 unique-local). Allowed — operators run nodes on private
+    /// networks — but said at startup, so a URL that points inside the
+    /// network by mistake is visible (Round 30). A host NAME is judged when
+    /// it resolves, by `GuardedResolver`.
+    pub private_network: bool,
 }
 
 /// Validate an RPC endpoint before a client is built on it.
@@ -1272,16 +1293,250 @@ pub fn validate_endpoint(endpoint: &str) -> Result<EndpointFacts, EndpointError>
     // The URL parser has already normalised the host: an IPv6 literal comes
     // back bracketed and compressed (`[::ffff:7f00:1]`), an IPv4 one dotted.
     let bare = host.trim_start_matches('[').trim_end_matches(']');
-    let loopback = match bare.parse::<std::net::IpAddr>() {
-        Ok(ip) => ip.to_canonical().is_loopback(),
-        Err(_) => bare.eq_ignore_ascii_case("localhost") || bare.eq_ignore_ascii_case("localhost."),
+    let literal = bare
+        .parse::<std::net::IpAddr>()
+        .ok()
+        .map(|ip| ip.to_canonical());
+    if let Some(range) = literal.and_then(forbidden_range) {
+        return Err(EndpointError::ForbiddenAddress(range));
+    }
+    let loopback = match literal {
+        Some(ip) => ip.is_loopback(),
+        None => bare.eq_ignore_ascii_case("localhost") || bare.eq_ignore_ascii_case("localhost."),
     };
     Ok(EndpointFacts {
         scheme,
         loopback,
         has_userinfo: !url.username().is_empty() || url.password().is_some(),
         has_query: url.query().is_some(),
+        private_network: literal.is_some_and(is_private_network),
     })
+}
+
+/// The range an address belongs to when no Solana RPC can be served from it
+/// (Round 30, URL policy). Link-local covers `169.254.169.254` and
+/// `fe80::/10`, where cloud instance-metadata services answer; the two
+/// metadata addresses outside link-local (AWS's IPv6 `fd00:ec2::254`,
+/// Alibaba's `100.100.100.200`) are named explicitly. An IPv4-mapped IPv6
+/// address is judged as the IPv4 address it carries.
+pub fn forbidden_range(ip: std::net::IpAddr) -> Option<&'static str> {
+    use std::net::IpAddr;
+    match ip.to_canonical() {
+        IpAddr::V4(v4) => {
+            if v4.is_unspecified() {
+                Some("unspecified")
+            } else if v4.is_link_local() {
+                Some("link-local (instance-metadata)")
+            } else if v4.is_multicast() {
+                Some("multicast")
+            } else if v4.is_broadcast() {
+                Some("broadcast")
+            } else if v4.octets() == [100, 100, 100, 200] {
+                Some("instance-metadata")
+            } else {
+                None
+            }
+        }
+        IpAddr::V6(v6) => {
+            let seg = v6.segments();
+            if v6.is_unspecified() {
+                Some("unspecified")
+            } else if seg[0] & 0xffc0 == 0xfe80 {
+                Some("link-local (instance-metadata)")
+            } else if v6.is_multicast() {
+                Some("multicast")
+            } else if seg == [0xfd00, 0x0ec2, 0, 0, 0, 0, 0, 0x0254] {
+                Some("instance-metadata")
+            } else {
+                None
+            }
+        }
+    }
+}
+
+/// A private-network address: RFC 1918, CGNAT `100.64.0.0/10`, or IPv6
+/// unique-local `fc00::/7`.
+pub fn is_private_network(ip: std::net::IpAddr) -> bool {
+    use std::net::IpAddr;
+    match ip.to_canonical() {
+        IpAddr::V4(v4) => {
+            let o = v4.octets();
+            v4.is_private() || (o[0] == 100 && (o[1] & 0xc0) == 64)
+        }
+        IpAddr::V6(v6) => v6.segments()[0] & 0xfe00 == 0xfc00,
+    }
+}
+
+/// The DNS resolver every RPC client uses (Round 30, URL policy).
+///
+/// `validate_endpoint` judges an address literal once, at startup; a host
+/// NAME is judged here, at every connection, so a record that resolves —
+/// or is later re-pointed — to the instance-metadata service or another
+/// forbidden range is refused at connect time instead of being posted to.
+/// Addresses in a forbidden range are dropped; a name that resolves only to
+/// such addresses is an error that names the range, never the name.
+///
+/// With an HTTP(S) proxy configured, the client connects to the proxy
+/// through this resolver and the proxy resolves the RPC host: the check then
+/// covers the proxy's address only.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct GuardedResolver;
+
+impl reqwest::dns::Resolve for GuardedResolver {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        let host = name.as_str().to_string();
+        Box::pin(async move {
+            let resolved: Vec<std::net::SocketAddr> =
+                tokio::net::lookup_host((host.as_str(), 0)).await?.collect();
+            let (allowed, refused): (Vec<_>, Vec<_>) = resolved
+                .into_iter()
+                .partition(|a| forbidden_range(a.ip()).is_none());
+            if allowed.is_empty() {
+                let range = refused
+                    .first()
+                    .and_then(|a| forbidden_range(a.ip()))
+                    .unwrap_or("no");
+                return Err(format!(
+                    "the RPC host resolves only to {range} addresses; refused, no Solana RPC is served from one"
+                )
+                .into());
+            }
+            let addrs: reqwest::dns::Addrs = Box::new(allowed.into_iter());
+            Ok(addrs)
+        })
+    }
+}
+
+/// Whether an inclusion witness is a different provider from the primary
+/// RPC it witnesses (Round 30, G-08).
+///
+/// Two URLs are not two witnesses because they are two strings. A witness on
+/// the same host, under the same registrable domain, or resolving to an
+/// address the primary also resolves to is the same operator's view twice,
+/// and its agreement is not independent evidence. Ownership itself is beyond
+/// what a URL can show — two domains can belong to one provider — so
+/// `Distinct` is necessary, not sufficient; the server's high-assurance mode
+/// adds the operator's attestation of the two providers' names on top.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "independence", content = "reason")]
+pub enum WitnessIndependence {
+    /// Different hosts, different registrable domains, and (when resolved)
+    /// no shared address.
+    Distinct,
+    /// The same operator's view twice; the reason names the check that
+    /// matched.
+    NotIndependent(String),
+}
+
+impl WitnessIndependence {
+    pub fn is_distinct(&self) -> bool {
+        matches!(self, Self::Distinct)
+    }
+}
+
+/// The registrable part of a host — near enough, the provider it names: the
+/// last two labels, or three under a two-level public suffix (`co.uk`,
+/// `com.au`, …). An address literal is its own provider. A deliberately
+/// small approximation of the public-suffix list: a miss makes two hosts of
+/// one provider look DISTINCT, which is why high-assurance mode also asks
+/// the operator to name both providers.
+fn provider_domain(host: &str) -> String {
+    let host = host
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        return ip.to_canonical().to_string();
+    }
+    const TWO_LEVEL: &[&str] = &[
+        "co.uk", "org.uk", "ac.uk", "gov.uk", "com.au", "net.au", "org.au", "co.jp", "ne.jp",
+        "co.kr", "com.br", "com.cn", "com.sg", "com.hk", "co.in", "co.nz", "co.za", "com.mx",
+        "com.tr", "com.tw",
+    ];
+    let labels: Vec<&str> = host.split('.').filter(|l| !l.is_empty()).collect();
+    let take = match labels.len() {
+        0..=2 => labels.len(),
+        n if TWO_LEVEL.contains(&labels[n - 2..].join(".").as_str()) => 3,
+        _ => 2,
+    };
+    labels[labels.len() - take..].join(".")
+}
+
+/// Judge a witness against its primary from the URLs alone: the same host,
+/// the same registrable domain, or both on loopback (one machine) is not
+/// independent. An endpoint that does not parse is not independent either:
+/// nothing can be said about its provider.
+pub fn witness_independence(primary: &str, witness: &str) -> WitnessIndependence {
+    let host = |u: &str| {
+        reqwest::Url::parse(normalize_endpoint(u))
+            .ok()
+            .and_then(|url| url.host_str().map(str::to_string))
+    };
+    let (Some(p), Some(w)) = (host(primary), host(witness)) else {
+        return WitnessIndependence::NotIndependent(
+            "an endpoint could not be parsed, so its provider is unknown".to_string(),
+        );
+    };
+    let loopback = |u: &str| validate_endpoint(u).is_ok_and(|f| f.loopback);
+    if loopback(primary) && loopback(witness) {
+        return WitnessIndependence::NotIndependent(
+            "both endpoints are loopback: one machine's view".to_string(),
+        );
+    }
+    let canon = |h: &str| {
+        h.trim_start_matches('[')
+            .trim_end_matches(']')
+            .trim_end_matches('.')
+            .to_ascii_lowercase()
+    };
+    if canon(&p) == canon(&w) {
+        return WitnessIndependence::NotIndependent(
+            "both endpoints are on the same host".to_string(),
+        );
+    }
+    if provider_domain(&p) == provider_domain(&w) {
+        return WitnessIndependence::NotIndependent(
+            "both endpoints are under the same registrable domain".to_string(),
+        );
+    }
+    WitnessIndependence::Distinct
+}
+
+/// `witness_independence`, then the addresses: two hosts that resolve to a
+/// shared address are one server. A host that does not resolve is an error:
+/// independence that cannot be checked is not assumed.
+pub async fn witness_independence_resolved(
+    primary: &str,
+    witness: &str,
+) -> Result<WitnessIndependence, String> {
+    let by_url = witness_independence(primary, witness);
+    if !by_url.is_distinct() {
+        return Ok(by_url);
+    }
+    async fn addrs(endpoint: &str, name: &str) -> Result<Vec<std::net::IpAddr>, String> {
+        let url = reqwest::Url::parse(normalize_endpoint(endpoint))
+            .map_err(|_| format!("{name} is not a URL"))?;
+        let host = url
+            .host_str()
+            .ok_or_else(|| format!("{name} has no host"))?
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .to_string();
+        let port = url.port_or_known_default().unwrap_or(443);
+        tokio::net::lookup_host((host.as_str(), port))
+            .await
+            .map(|it| it.map(|a| a.ip().to_canonical()).collect())
+            .map_err(|_| format!("{name}'s host did not resolve"))
+    }
+    let p = addrs(primary, "the primary RPC").await?;
+    let w = addrs(witness, "the inclusion witness").await?;
+    if p.iter().any(|a| w.contains(a)) {
+        return Ok(WitnessIndependence::NotIndependent(
+            "both endpoints resolve to a shared address".to_string(),
+        ));
+    }
+    Ok(WitnessIndependence::Distinct)
 }
 
 /// The form of an endpoint string that is both validated and posted to
@@ -1378,6 +1633,7 @@ impl SolanaRpcClient {
         let http_client = HttpClient::builder()
             .timeout(config.timeout)
             .redirect(reqwest::redirect::Policy::none())
+            .dns_resolver(std::sync::Arc::new(GuardedResolver))
             .build()
             .ok();
         Self {

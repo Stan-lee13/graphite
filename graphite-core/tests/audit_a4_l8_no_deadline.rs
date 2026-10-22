@@ -100,6 +100,8 @@ async fn l8_reconciliation_finishes_inside_the_request_timeout() {
         protocol_name: "System Program".to_string(),
         manifest_version: Some("1.0.0".to_string()),
         approved: false,
+        decision: None,
+        executable: None,
         confidence: 0.3,
         risk_status: "Blocked".to_string(),
         policy_verdict: "Rejected".to_string(),

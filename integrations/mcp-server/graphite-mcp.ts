@@ -58,7 +58,8 @@ export function describeForPerson(s: ConfirmationSummary): string {
     const w = s.swap;
     lines.push(
       `Swap ${w.input.amountIn} base units of ${w.input.token} (${w.input.mint})`,
-      `for at least ${w.output.minimumOut} base units of ${w.output.token} (${w.output.mint})`,
+      `for at least ${w.output.minimumOut} base units of ${w.output.token} (${w.output.mint})` +
+        (w.output.deliveredAs === "wrapped_sol" ? ", delivered as WRAPPED SOL (not unwrapped)" : ""),
       `  simulated: ${w.output.simulatedOut}; allowed slippage ${w.maxSlippageBps} bps; price floor ${w.priceFloor}`,
       `  route: ${w.route}`,
     );
@@ -75,6 +76,9 @@ export function describeForPerson(s: ConfirmationSummary): string {
       (v.acceptedUnobserved.length > 0 ? `; accepted by this deployment: ${v.acceptedUnobserved.join(", ")}` : ""),
     "",
     `Request (as written by the agent): ${s.request}`,
+    "",
+    // Round 30: what this answer is about, exactly.
+    `Approving signs exactly the transaction with SHA-256 ${s.transactionSha256}.`,
   );
   return lines.join("\n");
 }
@@ -147,7 +151,8 @@ export function createGraphiteMcpServer(guard: GraphiteGuard, options: { confirm
     "graphite_wallet",
     {
       title: "Agent wallet",
-      description: "The agent wallet's address and the operator's spending limits. Moves nothing.",
+      description:
+        "The agent wallet's address, the operator's spending limits, and what the guard can and cannot build. Moves nothing.",
       inputSchema: {},
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -157,6 +162,8 @@ export function createGraphiteMcpServer(guard: GraphiteGuard, options: { confirm
         address: guard.publicKey,
         maxTransferLamports: limits.maxTransferLamports?.toString(),
         allowedDestinations: limits.allowedDestinations,
+        // Round 30: so a model can tell "unsupported" from "refused".
+        capabilities: guard.capabilities,
       };
       return { content: [{ type: "text", text: JSON.stringify(out) }], structuredContent: out };
     },

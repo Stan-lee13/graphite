@@ -16,8 +16,8 @@
     "solana-agent-kit": "^2.0.10"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "tsx": "^4.0.0",
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
     "typescript": "^5.5.0"
   },
   "overrides": {

@@ -6,7 +6,8 @@
 //!   one that could not be obtained — an RPC error, a malformed or incomplete
 //!   response, no post-state — is `VerificationIncomplete`. Both refuse.
 //! - M1: a request refused ONLY by the policy threshold trains the baseline
-//!   only when the operator opts in (`set_learn_from_policy_refusals`).
+//!   only under the operator's bootstrap policy
+//!   (`ObservationPolicy::OperatorBootstrap`; Round 30, G-02).
 //! - F5: a caller citing a refused `audit_trail_id` beside a signature whose
 //!   chain bytes are something else is not a discrepancy.
 //! - F10: the inclusion witness is never the primary, whichever is attached
@@ -20,8 +21,8 @@ use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
 use graphite_core::semantic_graph_store::BehaviorEvidence;
 use graphite_core::tx_artifact::message_bytes;
 use graphite_core::verification::{
-    ExecutionKeys, ExecutionReconciliation, GraphiteCore, LayerStatus, ProposedIntent,
-    VerificationInput, VerificationResult, VerificationScope,
+    ExecutionDecision, ExecutionKeys, ExecutionReconciliation, GraphiteCore, LayerStatus,
+    ProposedIntent, VerificationInput, VerificationResult, VerificationScope,
 };
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -337,6 +338,14 @@ async fn a_clean_simulation_approves() {
         "{}",
         layer(&r, "L4").reason
     );
+    // Round 30 (G-01): the one shape that permits signing.
+    assert_eq!(
+        r.decision,
+        ExecutionDecision::ExecutableApproved,
+        "{}",
+        r.summary
+    );
+    assert!(r.executable && r.is_executable());
 }
 
 /// The simulator executed the bytes and said they would not land. That was
@@ -355,6 +364,10 @@ async fn an_errored_simulation_is_refused() {
     let l3 = layer(&r, "L3");
     assert_eq!(l3.status, LayerStatus::Failed, "{}", l3.reason);
     assert!(l3.reason.contains("FAILED"), "{}", l3.reason);
+    // Round 30 (G-01): a simulation that failed is a finding, not missing
+    // evidence: blocked, not inconclusive.
+    assert_eq!(r.decision, ExecutionDecision::Blocked);
+    assert!(!r.executable);
 }
 
 /// An RPC that answers with an error — an outage, a node behind, a rate
@@ -369,6 +382,14 @@ async fn an_unobtainable_simulation_is_refused_as_incomplete() {
     let l3 = layer(&r, "L3");
     assert_eq!(l3.status, LayerStatus::Inconclusive, "{}", l3.reason);
     assert!(l3.reason.contains("INCOMPLETE"), "{}", l3.reason);
+    // Round 30 (G-01): evidence that could not be obtained.
+    assert_eq!(
+        r.decision,
+        ExecutionDecision::Inconclusive,
+        "{:?}",
+        r.risk_verdict.findings
+    );
+    assert!(!r.executable);
 }
 
 /// A response with no compute units, balance arrays or inner instructions
@@ -382,6 +403,8 @@ async fn an_incomplete_simulation_response_is_refused() {
         "{:?}",
         r.risk_verdict.findings
     );
+    assert_eq!(r.decision, ExecutionDecision::Inconclusive);
+    assert!(!r.executable);
 }
 
 /// A simulation that ran clean but brought back no post-state leaves L4
@@ -393,17 +416,27 @@ async fn a_simulation_without_a_diff_is_refused() {
     assert!(!r.approved, "{}", r.summary);
     let why = finding(&r, "VerificationIncomplete").expect("a VerificationIncomplete finding");
     assert!(why.contains("no pre/post state diff was built"), "{why}");
+    assert_eq!(r.decision, ExecutionDecision::Inconclusive);
+    assert!(!r.executable);
 }
 
 // ─── M1 ─────────────────────────────────────────────────────────────────────
 
 /// Three distinct transfers refused by the threshold took a fresh program
-/// from 0.44 to 0.64 — past Gaming — for everyone. Off by default now.
+/// from 0.44 to 0.64 — past Gaming — for everyone. Off by default now, and
+/// since Round 30 (G-02) not by naming a permissive profile either: a
+/// verdict approved under the request's own `Custom { 0.40 }` profile is no
+/// more evidence than one refused under Gaming.
 #[tokio::test]
 async fn policy_refusals_teach_nothing_unless_the_operator_opts_in() {
+    use graphite_core::verification::ObservationPolicy;
     let endpoint = cluster(Arc::default());
     let core = core_at(&endpoint);
-    assert!(!core.learn_from_policy_refusals(), "off by default");
+    assert_eq!(
+        core.observation_policy(),
+        ObservationPolicy::BuiltinFloor,
+        "the built-in floor by default"
+    );
     for i in 1..=3u64 {
         let r = core
             .verify_async(&describe(2_000_000 + i, WalletProfile::Gaming))
@@ -427,17 +460,33 @@ async fn policy_refusals_teach_nothing_unless_the_operator_opts_in() {
         fourth.confidence
     );
 
-    // An APPROVED verdict still trains, as before.
-    let approved = core
-        .verify_async(&describe(2_000_020, official_floor()))
+    // Round 30 (G-02): APPROVED under the request's own permissive profile,
+    // and still no evidence — the request chose the bar it cleared.
+    for i in 1..=3u64 {
+        let approved = core
+            .verify_async(&describe(2_000_020 + i, official_floor()))
+            .await
+            .unwrap();
+        assert!(approved.approved, "{}", approved.summary);
+    }
+    assert_eq!(
+        samples(&core),
+        0,
+        "a verdict approved below the built-in floor trained the baseline"
+    );
+    let after_self_approval = core
+        .verify_async(&describe(2_000_030, WalletProfile::Gaming))
         .await
         .unwrap();
-    assert!(approved.approved, "{}", approved.summary);
-    assert_eq!(samples(&core), 1);
+    assert!(
+        !after_self_approval.approved,
+        "{}",
+        after_self_approval.summary
+    );
 
-    // The operator's opt-in restores the bootstrap.
+    // The operator's bootstrap policy — library and CLI only — restores it.
     let mut opted = core_at(&endpoint);
-    opted.set_learn_from_policy_refusals(true);
+    opted.set_observation_policy(ObservationPolicy::OperatorBootstrap);
     for i in 1..=3u64 {
         let _ = opted
             .verify_async(&describe(3_000_000 + i, WalletProfile::Gaming))
@@ -493,6 +542,8 @@ fn record(log: &AuditLog, r: &VerificationResult) {
         protocol_name: r.protocol_name.clone(),
         manifest_version: r.manifest_version.clone(),
         approved: r.approved,
+        decision: None,
+        executable: None,
         confidence: r.confidence,
         risk_status: r.risk_verdict.status.clone(),
         policy_verdict: r.policy_verdict.clone(),

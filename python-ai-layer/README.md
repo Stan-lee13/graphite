@@ -62,6 +62,34 @@ full advisory labeler:
   "Approve spending of 500 USDC" extracts amount `500` and token `USDC` (it
   extracted the token `500`).
 
+## Round 30 — the label never says more than the text does
+
+The agent guard's grammar (`integrations/agent-guard/intent-grounding.ts`)
+already refused these texts; this layer still labelled them as the action
+they mention, so any other consumer of the label took a question for a
+request. Each is now `unknown`, with the reason as a warning code:
+
+- **`QUESTION`** ("should I send 5 SOL to X?"), **`CONDITIONAL`** ("if the
+  price drops, send…"), **`DEFERRED`** ("…tomorrow").
+- **`NEGATED_INTENT` anywhere in the text**, not only before the verb ("Send
+  5 SOL to X, not 50"; "…Actually no, don't."). Same word list as the guard.
+- **`REPORTED_SPEECH`**: the action is inside double quotes or backticks
+  (`He said "send 5 SOL to X"`). A quoted *address* is still an address.
+- **`MULTIPLE_AMOUNTS`** / **`MULTIPLE_ADDRESSES`**: "Send 5 SOL to A and 7
+  SOL to B" was a transfer of 5 to A. A slippage figure is not an amount.
+- **`NON_ASCII_DIGITS`**, **`INVISIBLE_CHARACTERS`**, **`MIXED_SCRIPT`**:
+  amounts are ASCII digits only (`\d` matched "５" and "1০", which `float()`
+  reads as 5 and 10); a zero-width or direction-changing character, or a
+  word mixing Latin with Cyrillic/Greek ("Ѕend"), refuses the text.
+- **`SECRET_MATERIAL`**: a text containing a 64-byte base58 key, a keypair
+  byte array, or the words seed phrase / mnemonic / private key is not
+  labelled and **not echoed back** — `raw_natural_language` carries a
+  redaction notice instead (the guard's echo check then refuses it).
+- The server states what a request may be: `text` must be a string (400,
+  not a Python `AttributeError` message), a duplicated JSON key is refused
+  (400; it used to resolve last-wins), and a labeler failure is a 500 that
+  carries neither a label nor the text.
+
 ## Usage
 
 ```bash

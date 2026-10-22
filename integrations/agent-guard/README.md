@@ -192,7 +192,10 @@ submitted — and nothing is signed under a residual the operator has not accept
   `GRAPHITE_ALLOW_UNCAPPED=1`, logs the policy in force at startup, and can bound a
   rolling window: `GRAPHITE_MAX_TOTAL_LAMPORTS` per `GRAPHITE_SPEND_WINDOW_SECONDS`
   (default 3600) across executed transactions — reserved before signing, kept once the
-  bytes may have left, in memory and per process.
+  bytes may have left, per guard process. Since Round 30 the reservations are written to
+  `GRAPHITE_GUARD_STATE_FILE` (or `stateFile`) before signing when it is set, so a restart
+  inside the window still counts them; without it they are in memory, and the startup log
+  says a restart forgets them.
 - **A last say before signing (Round 29, M7).** `executeTransfer(request, { confirm })`
   and `executeSwap(request, payload, { confirm })` call `confirm(summary)` after
   grounding, the spend policy, the build, the simulation, Graphite's verdict and the
@@ -200,18 +203,49 @@ submitted — and nothing is signed under a residual the operator has not accept
   destination and lamports (or the route's decoded amount in, minimum out, simulated out,
   slippage and floor), the program, the simulated wallet effect and the verdict. Anything
   but `true` throws `ConfirmationDeclined`; nothing is signed or sent. The MCP server
-  elicits here.
-- **An ambiguous submission is not retried blind (Round 29, L2).** The transaction id is
-  computed from the signed bytes before sending; if `sendRawTransaction` fails, the attempt
-  is recorded on the trail with that signature and `SubmissionOutcomeUnknown` carries it.
-  A repeat of the same request is refused while that signature can still land, and
-  refused once, naming it, if it did. Callers must check the signature before retrying
-  anything else.
-- **Same-process integrity (Round 29, M8).** Every collaborator that takes part in a
-  decision (Core client, RPC connection and simulator, residual, spend and swap policies,
-  AI layer URL, wallet profile) is an ES private field; the instance and its prototype are
-  frozen; `SOLANA_PRIVATE_KEY` is deleted from `process.env` once read; and
+  elicits here, and since Round 30 the Vercel AI tools require a hook here too. Round 30:
+  the summary also names `transactionSha256`, the digest of exactly the bytes that will be
+  signed; it is frozen (a hook that edits it fails); only the value `true` confirms; and
+  a hook that has not answered within `confirmTimeoutMs` (default 120 s) is a decline.
+- **Only an executable decision is signed (Round 30, G-01).** `approved` alone never was
+  the gate. The residual policy recomputes the execution decision from the verdict's scope
+  — `executable_approved` when nothing beyond the two inherent residuals is unobserved,
+  `analysis_only` when the operator accepted the rest by name — and when the Core reports
+  `decision` / `executable`, requires them to agree. A decision this guard does not know,
+  `blocked` or `inconclusive` on an approval, or an `executable` that contradicts the
+  decision is refused; a server that predates the field is judged by the recomputation.
+- **An ambiguous submission is not retried blind (Round 29, L2; Round 30).** The
+  transaction id is computed from the signed bytes before sending, and since Round 30 the
+  submission is recorded as unresolved BEFORE the bytes are handed to the RPC and resolved
+  only once it is seen confirmed. If `sendRawTransaction` fails, the attempt is recorded on
+  the trail with that signature and `SubmissionOutcomeUnknown` carries it; a send whose
+  confirmation did not complete stays unresolved too. A repeat of the same request — the
+  same destination and lamports, or the same route program, mints and amount, however it
+  is worded — is refused (`PriorSubmissionUnresolved`, naming the signature) while that
+  signature can still land, and refused once, naming it, if it did. With
+  `GRAPHITE_GUARD_STATE_FILE` this survives a restart. A second call for a request already
+  running (a model's double call, a missing `await`, a confirmation hook calling back in)
+  is refused with `RequestInFlight` before anything is built.
+- **Same-process integrity (Round 29, M8; Round 30).** Every collaborator that takes part
+  in a decision (Core client, RPC connection and simulator, residual, spend and swap
+  policies, AI layer URL, wallet profile) is an ES private field; the instance and its
+  prototype are frozen; `SOLANA_PRIVATE_KEY` is deleted from `process.env` once read; and
   `getGraphiteClient()` returns the Core's read-only endpoints, not the client and its key.
+  Round 30: the key is imported into a NON-EXTRACTABLE WebCrypto key pair and its decoded
+  bytes zeroed, so the guard holds no secret-key bytes; `BoundTransaction`,
+  `ResidualPolicy`, `SpendLedger`, `RpcSimulator` and `GuardState` are frozen, so no method
+  on the signing path can be replaced; the guard's RPC and AI-layer requests use the
+  `fetch` captured when the module loaded; `getConnection()` returns a separate
+  connection, not the one the guard decides on; and an unknown `GuardConfig` key refuses to
+  start. Code loaded into the process BEFORE the guard, or that owns the process, is
+  outside what any of this can stop: isolating the key from it takes a separate signing
+  process.
+- **What it does not build is data (Round 30).** `GUARD_CAPABILITIES` (also
+  `guard.capabilities`, and the `graphite_wallet` tool of both adapters) lists the
+  operations and message versions; unsupported ones are refused by name
+  (`UnsupportedCapability`: `wrap_sol`, …). A SOL-input swap spends wrapped SOL the
+  wallet already holds — the guard does not wrap — and a SOL-output swap delivers wrapped
+  SOL and leaves it wrapped (`deliveredAs: "wrapped_sol"` in the confirmation summary).
 - **Transport (Round 29, M3).** `SOLANA_RPC_URL` is held to the Core's rule (https://, or
   http:// to loopback), and no RPC request follows a redirect. The AI layer's answer is
   read through a 64 KiB bound.
@@ -240,7 +274,8 @@ submitted — and nothing is signed under a residual the operator has not accept
 - **The transaction id is read from the signed bytes.** The submission, the audit trail
   and L8 use the fee payer's signature as this process signed it; an RPC answering
   `sendTransaction` with another id is logged and kept as `lifecycle.rpcReportedSignature`,
-  never used.
+  never used. Since Round 30 the disagreement is also written on the trail (the
+  `submission` event's detail) and reported as an anomaly in the tool result.
 - `scope.unobserved` is printed for every verdict; which residuals a deployment
   accepts is the deployment's decision, made in configuration and enforced by the
   residual policy above.

@@ -282,9 +282,9 @@ fn core_at(endpoint: &str) -> GraphiteCore {
         ..Default::default()
     }));
     // `earning` earns the Gaming floor through policy-threshold refusals,
-    // which teach the baseline only with the operator's opt-in since the
+    // which teach the baseline only with the operator's bootstrap policy (`ObservationPolicy::OperatorBootstrap`, which the server cannot select since Round 30) since the
     // 2026-10-20 audit (M1). These tests are about attribution, not that.
-    core.set_learn_from_policy_refusals(true);
+    core.set_observation_policy(graphite_core::verification::ObservationPolicy::OperatorBootstrap);
     core
 }
 
@@ -368,6 +368,8 @@ async fn verify_and_record(
         protocol_name: r.protocol_name.clone(),
         manifest_version: r.manifest_version.clone(),
         approved: r.approved,
+        decision: None,
+        executable: None,
         confidence: r.confidence,
         risk_status: r.risk_verdict.status.clone(),
         policy_verdict: r.policy_verdict.clone(),
@@ -743,6 +745,8 @@ async fn every_key_is_exact_across_rotation_and_concurrency() {
             protocol_name: r.protocol_name.clone(),
             manifest_version: r.manifest_version.clone(),
             approved: r.approved,
+            decision: None,
+            executable: None,
             confidence: r.confidence,
             risk_status: r.risk_verdict.status.clone(),
             policy_verdict: r.policy_verdict.clone(),

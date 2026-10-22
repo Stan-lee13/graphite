@@ -14,7 +14,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { generateText } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
-import { GraphiteGuard } from "../agent-guard/guard.js";
+import { GraphiteGuard, type ConfirmationSummary } from "../agent-guard/guard.js";
 import { BLOCKED_VERDICT, mockApprovingCore, mockRpc, mockService, throwawayWallet } from "../agent-guard/loopback-mocks.js";
 import { GRAPHITE_TOOL_APPROVAL, graphiteTools, type GraphiteToolResult } from "./graphite-tools.js";
 
@@ -90,13 +90,20 @@ test("graphiteTools refuses a guard without a per-transfer cap", async () => {
  */
 const APPROVED = { graphite_transfer_sol: "approved", graphite_swap: "approved" } as const;
 
+/**
+ * Round 30 (K-01): these tests are about the SDK's approval and what follows
+ * it, so they state that approving the request is all the operator asks for.
+ * The resolved confirmation has its own tests below.
+ */
+const REQUEST_ONLY = { confirmation: "request-only" } as const;
+
 test("a model's transfer call runs through the guard: Graphite is shown the bytes; its block is the result", async () => {
   const s = await services();
   try {
     const guard = await s.guard(2_000_000_000n);
     const result = await generateText({
       model: modelCalling("graphite_transfer_sol", { request: REQUEST }),
-      tools: graphiteTools(guard),
+      tools: graphiteTools(guard, REQUEST_ONLY),
       toolApproval: APPROVED,
       prompt: REQUEST,
     });
@@ -122,7 +129,7 @@ test("with GRAPHITE_TOOL_APPROVAL the tool waits for a person: nothing is built,
     const guard = await s.guard(2_000_000_000n);
     const result = await generateText({
       model: modelCalling("graphite_transfer_sol", { request: REQUEST }),
-      tools: graphiteTools(guard),
+      tools: graphiteTools(guard, REQUEST_ONLY),
       toolApproval: GRAPHITE_TOOL_APPROVAL,
       prompt: REQUEST,
     });
@@ -142,7 +149,7 @@ test("a model-written transfer over the operator's cap is refused before the RPC
     const guard = await s.guard(1_000_000_000n); // 1 SOL cap; the request moves 1.5
     const result = await generateText({
       model: modelCalling("graphite_transfer_sol", { request: REQUEST }),
-      tools: graphiteTools(guard),
+      tools: graphiteTools(guard, REQUEST_ONLY),
       toolApproval: APPROVED,
       prompt: REQUEST,
     });
@@ -164,7 +171,7 @@ test("a destination the request does not contain is refused by the guard's groun
     const guard = await s.guard(2_000_000_000n);
     const result = await generateText({
       model: modelCalling("graphite_transfer_sol", { request: REQUEST }),
-      tools: graphiteTools(guard),
+      tools: graphiteTools(guard, REQUEST_ONLY),
       toolApproval: APPROVED,
       prompt: REQUEST,
     });
@@ -183,7 +190,7 @@ test("a malformed tool input never reaches the guard: the SDK's schema refuses i
     const guard = await s.guard(2_000_000_000n);
     const result = await generateText({
       model: modelCalling("graphite_transfer_sol", { request: "" }),
-      tools: graphiteTools(guard),
+      tools: graphiteTools(guard, REQUEST_ONLY),
       toolApproval: APPROVED,
       prompt: REQUEST,
     });
@@ -200,7 +207,7 @@ test("graphite_wallet reports the address and limits and moves nothing", async (
     const guard = await s.guard(2_000_000_000n);
     const result = await generateText({
       model: modelCalling("graphite_wallet", {}),
-      tools: graphiteTools(guard),
+      tools: graphiteTools(guard, REQUEST_ONLY),
       prompt: "what is my wallet?",
     });
     const out = result.toolResults[0].output as { address: string; maxTransferLamports: string };
@@ -218,7 +225,7 @@ test("M7: with no approval configuration at all, a fund-moving tool waits for a 
   const s = await services();
   try {
     const guard = await s.guard(2_000_000_000n);
-    const tools = graphiteTools(guard);
+    const tools = graphiteTools(guard, REQUEST_ONLY);
     assert.equal(tools.graphite_transfer_sol.needsApproval, true);
     assert.equal(tools.graphite_swap.needsApproval, true);
     assert.equal((tools.graphite_wallet as { needsApproval?: unknown }).needsApproval, undefined, "reading moves nothing");
@@ -258,7 +265,7 @@ test("coverage: approved by the application and by Graphite, the transfer execut
     });
     const result = await generateText({
       model: modelCalling("graphite_transfer_sol", { request: REQUEST }),
-      tools: graphiteTools(guard),
+      tools: graphiteTools(guard, REQUEST_ONLY),
       toolApproval: APPROVED,
       prompt: REQUEST,
     });
@@ -266,6 +273,73 @@ test("coverage: approved by the application and by Graphite, the transfer execut
     assert.equal(out.executed, true, JSON.stringify(out));
     assert.match(out.signature ?? "", /^[1-9A-HJ-NP-Za-km-z]{64,88}$/);
     assert.equal(out.verdict?.scope, "artifact_bound");
+    assert.equal(s.rpc.calls.filter((c) => c.method === "sendTransaction").length, 1);
+  } finally {
+    await core.close();
+    await s.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Round 30 (audit finding K-01): the SDK's approval is about the model's
+// request; the person must also see the resolved transaction before signing.
+
+test("K-01: graphiteTools requires a confirm hook unless request-only approval is stated by name", async () => {
+  const s = await services();
+  try {
+    const guard = await s.guard(2_000_000_000n);
+    assert.throws(() => graphiteTools(guard), /needs a `confirm` hook/);
+    assert.throws(() => graphiteTools(guard, { confirmation: "resolved" }), /needs a `confirm` hook/);
+    assert.throws(
+      () => graphiteTools(guard, { confirmation: "request-only", confirm: async () => true }),
+      /would never be called/,
+    );
+    assert.throws(() => graphiteTools(guard, { confirmation: "sometimes" as never, confirm: async () => true }), /is not "resolved"/);
+    assert.ok(graphiteTools(guard, { confirm: async () => true }));
+    assert.ok(graphiteTools(guard, REQUEST_ONLY));
+  } finally {
+    await s.close();
+  }
+});
+
+test("K-01: the confirm hook sees the resolved transfer and its digest after the verdict; a decline signs nothing", async () => {
+  const s = await services();
+  const core = await mockApprovingCore();
+  try {
+    const guard = await GraphiteGuard.create({
+      privateKey: throwawayWallet().secretKeyBase58,
+      rpcUrl: s.rpc.url,
+      graphiteCoreUrl: core.url,
+      aiLayerUrl: s.ai.url,
+      reporter: "vercel-ai",
+      spendPolicy: { maxTransferLamports: 2_000_000_000n },
+    });
+    const seen: ConfirmationSummary[] = [];
+    const declined = await generateText({
+      model: modelCalling("graphite_transfer_sol", { request: REQUEST }),
+      tools: graphiteTools(guard, { confirm: async (summary) => (seen.push(summary), false) }),
+      toolApproval: APPROVED,
+      prompt: REQUEST,
+    });
+    const out = toolResult(declined);
+    assert.equal(out.executed, false);
+    assert.equal(out.refusedBy, "person");
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].destination, DEST);
+    assert.equal(seen[0].lamports, "1500000000");
+    assert.match(seen[0].transactionSha256, /^[0-9a-f]{64}$/);
+    assert.equal(seen[0].verdict.approved, true);
+    assert.equal(core.calls.filter((c) => c.method === "POST /verify").length, 1, "asked after the verdict");
+    assert.equal(s.rpc.calls.filter((c) => c.method === "sendTransaction").length, 0, "nothing sent");
+    for (const call of s.rpc.calls) assert.notEqual(call.signed, true, `${call.method} carried a signature`);
+
+    const accepted = await generateText({
+      model: modelCalling("graphite_transfer_sol", { request: REQUEST }),
+      tools: graphiteTools(guard, { confirm: async () => true }),
+      toolApproval: APPROVED,
+      prompt: REQUEST,
+    });
+    assert.equal(toolResult(accepted).executed, true);
     assert.equal(s.rpc.calls.filter((c) => c.method === "sendTransaction").length, 1);
   } finally {
     await core.close();

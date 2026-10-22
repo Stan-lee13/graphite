@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/Stan-lee13/graphite/main/schemas/verification-result-v1.json",
   "title": "Graphite VerificationResult",
-  "description": "Output of the Graphite verification pipeline. Field parity with graphite-core/src/verification.rs VerificationResult and the TypeScript/Go SDKs. SECURITY CONTRACT: `approved` is the only field carrying a DECISION \u2014 confidence, policy_verdict, risk_verdict and trust_tier are evidence for audit and explanation, never a gate. But `approved` alone is not sufficient to execute on, because it does not say WHAT was verified: read `scope` as well. scope.kind == 'artifact_bound' means the verdict covers the exact transaction bytes supplied, subject to scope.unobserved; 'descriptive' means it covers only caller-supplied metadata and nothing constrains what is actually signed; `scope` is required: a payload without it (a pre-2026-09-08 server) does not satisfy this schema and must be treated as unknown rather than as either answer. An execution-capable integration MUST enforce the scope it requires. A transport error, timeout or non-200 means verification did not happen: a hard stop, never an implicit pass.",
+  "description": "Output of the Graphite verification pipeline. Field parity with graphite-core/src/verification.rs VerificationResult and the TypeScript/Go SDKs. SECURITY CONTRACT (Round 30): sign only when `executable` is true (decision == 'executable_approved'). `approved` says whether the pipeline refused the transaction; it never said whether the transaction may be signed \u2014 an approval from a node without an RPC rests on static analysis and carries `not_simulated`, and a descriptive approval binds to no bytes. `decision` is computed by the Core from `approved`, `risk_verdict`, `policy_verdict`, `scope` and `layers` (see its description) and SDKs recompute and cross-check it. confidence, policy_verdict, risk_verdict and trust_tier are evidence for audit and explanation, never a gate. `scope` says WHAT was verified: scope.kind == 'artifact_bound' means the verdict covers the exact transaction bytes supplied, subject to scope.unobserved; 'descriptive' means it covers only caller-supplied metadata and nothing constrains what is actually signed; `scope` is required: a payload without it (a pre-2026-09-08 server) does not satisfy this schema and must be treated as unknown rather than as either answer. A transport error, timeout or non-200 means verification did not happen: a hard stop, never an implicit pass.",
   "type": "object",
   "required": [
     "approved",
@@ -24,11 +24,29 @@
     "simulation_flagged",
     "simulation_divergence",
     "layers",
-    "scope"
+    "scope",
+    "decision",
+    "executable",
+    "instruction_bind_key"
   ],
   "properties": {
     "approved": {
-      "type": "boolean"
+      "type": "boolean",
+      "description": "Whether the pipeline refused the transaction (false) or not (true). NOT permission to sign: gate on `executable`. Kept with its old meaning for compatibility."
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "executable_approved",
+        "analysis_only",
+        "inconclusive",
+        "blocked"
+      ],
+      "description": "Round 30 (G-01). What this verdict permits. ONLY `executable_approved` permits signing: approved, bound to the exact bytes (scope.kind == 'artifact_bound'), simulated by Graphite (scope.simulated), no unobserved code beyond the inherent `program_semantics` and `inner_instructions`, risk Clear, policy Approved, and no layer `failed`. `analysis_only` is an approval on less evidence than execution needs (descriptive scope, not simulated, no state diff, unresolved lookup tables, caller-supplied privileges, a failed layer report) \u2014 every approval from a node without an RPC is analysis_only. `inconclusive` is a refusal whose only risk findings are `VerificationIncomplete` (evidence could not be obtained). `blocked` is every other refusal. SDKs recompute this rule from the verdict's own fields and treat a disagreement, or a value not listed here, as not executable."
+    },
+    "executable": {
+      "type": "boolean",
+      "description": "Round 30 (G-01). True iff decision == 'executable_approved'. THE field to gate signing on \u2014 `approved` alone never meant 'safe to sign': without an RPC nothing is simulated and an approval carries `not_simulated`."
     },
     "confidence": {
       "type": "number",
@@ -124,7 +142,13 @@
     },
     "content_hash": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "DEPRECATED name (Round 30, R-M10); read `instruction_bind_key`, which carries the same value. A 64-bit identifier of the described INSTRUCTION (framed SHA-256 over program, discriminator, accounts, data and CPI targets, truncated): the key audit and lifecycle records bind to. NOT the transaction's identity \u2014 that is scope.transaction_sha256 \u2014 and not collision-resistant. Kept for one minor version."
+    },
+    "instruction_bind_key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Round 30 (R-M10). The same value as `content_hash`, under a name that says what it is: the 64-bit key binding audit and lifecycle records to the described instruction. The transaction's identity is scope.transaction_sha256."
     },
     "transaction": {
       "type": "object",
@@ -157,7 +181,8 @@
         },
         "instruction_count": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "description": "Always 1: the summary covers the described instruction only."
         },
         "account_count": {
           "type": "integer",
@@ -173,7 +198,8 @@
         },
         "compute_budget_units": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "description": "A heuristic ESTIMATE (base + per account + per declared CPI), never a measurement. What the bytes request is scope.compute_budget; what a simulation consumed is reported by L3."
         },
         "accounts": {
           "type": "array",
@@ -206,7 +232,8 @@
           "minimum": 0
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "A SUMMARY of the one described instruction (Rust: InstructionSummary) \u2014 not a transaction and not wire bytes: no fee payer, no blockhash, no signatures, no sibling instructions. The bytes a verdict binds to are the caller's artifact, identified by scope.transaction_sha256."
     },
     "resolved_accounts": {
       "type": "array",
@@ -635,5 +662,129 @@
         "const": "Rejected"
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "executable"
+        ],
+        "properties": {
+          "executable": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "decision"
+        ],
+        "properties": {
+          "decision": {
+            "const": "executable_approved"
+          },
+          "approved": {
+            "const": true
+          },
+          "risk_verdict": {
+            "properties": {
+              "status": {
+                "const": "Clear"
+              }
+            }
+          },
+          "scope": {
+            "required": [
+              "simulated"
+            ],
+            "properties": {
+              "kind": {
+                "const": "artifact_bound"
+              },
+              "simulated": {
+                "const": true
+              },
+              "unobserved_codes": {
+                "items": {
+                  "enum": [
+                    "program_semantics",
+                    "inner_instructions"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "decision"
+        ],
+        "properties": {
+          "decision": {
+            "const": "executable_approved"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "executable"
+        ],
+        "properties": {
+          "executable": {
+            "const": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "approved"
+        ],
+        "properties": {
+          "approved": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "decision": {
+            "enum": [
+              "inconclusive",
+              "blocked"
+            ]
+          },
+          "executable": {
+            "const": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "approved"
+        ],
+        "properties": {
+          "approved": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "decision": {
+            "enum": [
+              "executable_approved",
+              "analysis_only"
+            ]
+          }
+        }
+      }
+    }
+  ]
 }

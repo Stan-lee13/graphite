@@ -376,6 +376,12 @@ struct AppState {
     /// from the verify key. `None` disables the operator surface entirely
     /// (Round 19, F-19-13).
     admin_key: Option<Arc<String>>,
+    /// The READ key (`GRAPHITE_READ_API_KEY`, Round 30): opens the read-only
+    /// routes — `/metrics`, `/manifests`, `/api/*` — and nothing that
+    /// verifies, records or acts. The dashboard holds this one, so a leaked
+    /// dashboard key cannot submit verifications or lifecycle reports.
+    /// `None` leaves those routes on the verify key alone, as before.
+    read_key: Option<Arc<String>>,
     audit: Option<AuditLog>,
     /// Community Manifest Registry engine (read-only dashboard view — P4).
     registry_engine: Arc<crate::manifest_registry::ManifestRegistryEngine>,
@@ -864,6 +870,100 @@ pub fn operator_key_posture(
     Ok(Some(Arc::new(admin.to_string())))
 }
 
+/// `GRAPHITE_READ_API_KEY` (Round 30, K-11): the read-only scope. Unset or
+/// empty is none. Held to the verify key's length rule, and refused when it
+/// equals either other key — a read key that is also the verify key is no
+/// narrower than it. With no verify key (dev mode) every route is already
+/// open on loopback, and a read key would suggest a boundary that does not
+/// exist, so it refuses to start.
+pub fn read_key_posture(
+    read_key: Option<&str>,
+    api_key: Option<&str>,
+    admin_key: Option<&str>,
+) -> Result<Option<Arc<String>>, String> {
+    let Some(read) = read_key.map(str::trim).filter(|k| !k.is_empty()) else {
+        return Ok(None);
+    };
+    if api_key.is_none() {
+        return Err(
+            "refusing to start: GRAPHITE_READ_API_KEY is set without GRAPHITE_API_KEY; an \
+             unauthenticated (dev-mode) server has no scopes to narrow"
+                .to_string(),
+        );
+    }
+    let chars = read.chars().count();
+    if chars < MIN_API_KEY_CHARS {
+        return Err(format!(
+            "refusing to start: GRAPHITE_READ_API_KEY is {chars} characters; at least \
+             {MIN_API_KEY_CHARS} are required. Generate one with `openssl rand -hex 32`."
+        ));
+    }
+    if api_key.map(str::trim) == Some(read) || admin_key.map(str::trim) == Some(read) {
+        return Err(
+            "refusing to start: GRAPHITE_READ_API_KEY equals GRAPHITE_API_KEY or \
+             GRAPHITE_ADMIN_API_KEY. The read key must be its own secret, or it opens more \
+             than reads."
+                .to_string(),
+        );
+    }
+    Ok(Some(Arc::new(read.to_string())))
+}
+
+/// The routes the read key opens (Round 30, K-11): every `GET` that only
+/// reports. `/health` needs no key; `/admin/*` needs the operator key; every
+/// `POST` verifies or records and needs the verify key.
+fn is_read_route(method: &Method, route: &str) -> bool {
+    method == Method::GET
+        && (route == "/metrics" || route == "/manifests" || route.starts_with("/api/"))
+}
+
+/// Why `GRAPHITE_L8_HIGH_ASSURANCE=1` cannot be honoured with this
+/// configuration, or `None` when it can (Round 30, G-08).
+///
+/// High assurance means no L8 conclusion about the chain rests on one
+/// provider. That needs: a primary and a witness (`independence` is `None`
+/// without both); the witness judged a distinct host, domain and address;
+/// both reached over https, since plaintext answers can be rewritten in
+/// transit; and the operator's attestation of the two providers' names
+/// (`GRAPHITE_RPC_PROVIDER`, `GRAPHITE_RPC_WITNESS_PROVIDER`), different from
+/// each other — two hostnames can belong to one company, and only the
+/// operator knows whose they are.
+fn high_assurance_refusal(
+    independence: Option<&crate::rpc_client::WitnessIndependence>,
+    providers: (Option<&str>, Option<&str>),
+    schemes: (Option<&str>, Option<&str>),
+) -> Option<String> {
+    let Some(independence) = independence else {
+        return Some(
+            "it needs GRAPHITE_RPC_URL and an inclusion witness, GRAPHITE_RPC_WITNESS_URL".into(),
+        );
+    };
+    if let crate::rpc_client::WitnessIndependence::NotIndependent(why) = independence {
+        return Some(format!(
+            "the inclusion witness is not an independent provider ({why})"
+        ));
+    }
+    if schemes.0 != Some("https") || schemes.1 != Some("https") {
+        return Some(
+            "the primary RPC and the witness must both be https; a plaintext answer can be rewritten in transit".into(),
+        );
+    }
+    let name = |v: Option<&str>| {
+        v.map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_ascii_lowercase)
+    };
+    match (name(providers.0), name(providers.1)) {
+        (Some(p), Some(w)) if p != w => None,
+        (Some(_), Some(_)) => Some(
+            "GRAPHITE_RPC_PROVIDER and GRAPHITE_RPC_WITNESS_PROVIDER name the same provider".into(),
+        ),
+        _ => Some(
+            "it needs the operator to name both providers: GRAPHITE_RPC_PROVIDER and GRAPHITE_RPC_WITNESS_PROVIDER".into(),
+        ),
+    }
+}
+
 /// Whether `GRAPHITE_DEV_MODE` is set to an affirmative value.
 pub fn dev_mode_from_env() -> bool {
     std::env::var(DEV_MODE_ENV)
@@ -1076,11 +1176,6 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
             "a program redeployed since Graphite last saw it is QUARANTINED until the operator lifts it (GRAPHITE_QUARANTINE_ON_UPGRADE=1)",
         );
     }
-    if policy.learn_from_policy_refusals {
-        tracing_log(
-            "requests refused ONLY by the confidence/tier threshold TRAIN the simulation baseline (GRAPHITE_LEARN_FROM_POLICY_REFUSALS=1): anyone holding the verify key can raise a program's confidence for every caller",
-        );
-    }
     if policy.allow_durable_nonce {
         tracing_log(
             "durable-nonce transactions PERMITTED (GRAPHITE_ALLOW_DURABLE_NONCE=1): they do not expire; each one is verified against its nonce account on-chain before L2 passes",
@@ -1154,8 +1249,20 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
                 "{name} carries credentials in the URL; they are never logged"
             ));
         }
+        if facts.private_network {
+            tracing_log(&format!(
+                "{name} is a private-network address (RFC 1918 / CGNAT / unique-local); allowed, and said so in case it points inside the network by mistake"
+            ));
+        }
         Ok(facts)
     };
+    // High-assurance L8 (Round 30, G-08): read before any client is built so
+    // a typo refuses to start rather than running at single-provider
+    // assurance the operator did not choose.
+    let l8_high_assurance = crate::operator_boundary::env_flag(
+        "GRAPHITE_L8_HIGH_ASSURANCE",
+        std::env::var("GRAPHITE_L8_HIGH_ASSURANCE").ok().as_deref(),
+    )?;
     if let Ok(endpoint) = std::env::var("GRAPHITE_RPC_URL") {
         if !endpoint.is_empty() {
             let facts = rpc_facts("GRAPHITE_RPC_URL", &endpoint)?;
@@ -1205,6 +1312,32 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
             if let Ok(witness) = std::env::var("GRAPHITE_RPC_WITNESS_URL") {
                 if !witness.is_empty() {
                     let wfacts = rpc_facts("GRAPHITE_RPC_WITNESS_URL", &witness)?;
+                    // Is the witness another provider (Round 30, G-08)? The
+                    // URLs first, then the addresses they resolve to. A
+                    // check that cannot run is not a pass: without
+                    // high-assurance it falls back to the URL judgement and
+                    // says so; with it, the server does not start.
+                    let primary_endpoint = std::env::var("GRAPHITE_RPC_URL").unwrap_or_default();
+                    let independence = match crate::rpc_client::witness_independence_resolved(
+                        &primary_endpoint,
+                        &witness,
+                    )
+                    .await
+                    {
+                        Ok(i) => i,
+                        Err(why) if l8_high_assurance => {
+                            return Err(format!(
+                                "GRAPHITE_L8_HIGH_ASSURANCE=1 needs the witness's independence checked, and it could not be: {why}. REFUSING TO START."
+                            )
+                            .into())
+                        }
+                        Err(why) => {
+                            tracing_log(&format!(
+                                "inclusion witness: the address check could not run ({why}); independence judged from the URLs alone"
+                            ));
+                            crate::rpc_client::witness_independence(&primary_endpoint, &witness)
+                        }
+                    };
                     let client =
                         crate::rpc_client::SolanaRpcClient::new(crate::rpc_client::RpcConfig {
                             endpoint: witness,
@@ -1214,10 +1347,18 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
                         });
                     core.attach_inclusion_witness(client)
                         .map_err(|e| format!("GRAPHITE_RPC_WITNESS_URL: {e}"))?;
+                    core.set_witness_independence(independence.clone());
                     tracing_log(&format!(
-                        "inclusion witness attached — L8 asks a second RPC about every signature (GRAPHITE_RPC_WITNESS_URL, {}{})",
+                        "inclusion witness attached — L8 asks a second RPC about every signature (GRAPHITE_RPC_WITNESS_URL, {}{}); {}",
                         wfacts.scheme,
-                        if wfacts.loopback { ", loopback" } else { "" }
+                        if wfacts.loopback { ", loopback" } else { "" },
+                        match &independence {
+                            crate::rpc_client::WitnessIndependence::Distinct =>
+                                "a distinct host, domain and address from the primary".to_string(),
+                            crate::rpc_client::WitnessIndependence::NotIndependent(why) => format!(
+                                "NOT an independent provider ({why}): its agreement is reported as witnessed_not_independent"
+                            ),
+                        }
                     ));
                 }
             }
@@ -1234,6 +1375,56 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         );
     }
 
+    if l8_high_assurance {
+        let names = (
+            std::env::var("GRAPHITE_RPC_PROVIDER").ok(),
+            std::env::var("GRAPHITE_RPC_WITNESS_PROVIDER").ok(),
+        );
+        let schemes = (
+            std::env::var("GRAPHITE_RPC_URL")
+                .ok()
+                .and_then(|u| crate::rpc_client::validate_endpoint(&u).ok())
+                .map(|f| f.scheme),
+            std::env::var("GRAPHITE_RPC_WITNESS_URL")
+                .ok()
+                .and_then(|u| crate::rpc_client::validate_endpoint(&u).ok())
+                .map(|f| f.scheme),
+        );
+        if let Some(refusal) = high_assurance_refusal(
+            core.witness_independence().as_ref(),
+            (names.0.as_deref(), names.1.as_deref()),
+            (schemes.0.as_deref(), schemes.1.as_deref()),
+        ) {
+            return Err(
+                format!("GRAPHITE_L8_HIGH_ASSURANCE=1: {refusal}. REFUSING TO START.").into(),
+            );
+        }
+        core.set_require_independent_witness(true);
+        tracing_log(&format!(
+            "high-assurance L8 (GRAPHITE_L8_HIGH_ASSURANCE=1): a statement of what the chain holds needs the independent witness to agree; providers attested by the operator as {:?} (primary) and {:?} (witness)",
+            names.0.as_deref().map(str::trim).unwrap_or_default(),
+            names.1.as_deref().map(str::trim).unwrap_or_default(),
+        ));
+    } else if core.has_inclusion_witness() {
+        tracing_log(
+            "L8 assurance: with the witness answering and agreeing, reconciliations read `witnessed`; one that is unreachable or disagrees withholds a positive conclusion (set GRAPHITE_L8_HIGH_ASSURANCE=1 to require it for every conclusion)",
+        );
+    } else if std::env::var("GRAPHITE_RPC_URL").is_ok_and(|u| !u.is_empty()) {
+        tracing_log(
+            "L8 assurance: single provider — without GRAPHITE_RPC_WITNESS_URL every L8 account of inclusion is the primary RPC's word, reported as `single_provider`",
+        );
+    }
+
+    // Round 30 (G-01): without an RPC nothing is simulated, so no verdict
+    // this node returns can permit signing. Said once, loudly, at start —
+    // and on /health as `verification_mode` — so an operator who forgot
+    // GRAPHITE_RPC_URL learns it from the log rather than from a caller.
+    if !core.has_rpc_client() {
+        tracing_server_error(
+            "ANALYSIS-ONLY MODE: GRAPHITE_RPC_URL is not set, so no transaction is simulated and EVERY verdict is `decision: analysis_only` (`executable: false`) — approvals here are analysis, never permission to sign. Set GRAPHITE_RPC_URL for executable verdicts.",
+        );
+    }
+
     let api_key = match &posture {
         AuthPosture::ApiKey(key) => Some(key.clone()),
         AuthPosture::DevModeLoopback => None,
@@ -1242,6 +1433,16 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         std::env::var("GRAPHITE_ADMIN_API_KEY").ok().as_deref(),
         api_key.as_deref().map(String::as_str),
     )?;
+    let read_key = read_key_posture(
+        std::env::var("GRAPHITE_READ_API_KEY").ok().as_deref(),
+        api_key.as_deref().map(String::as_str),
+        admin_key.as_deref().map(String::as_str),
+    )?;
+    if read_key.is_some() {
+        tracing_log(
+            "read key configured (GRAPHITE_READ_API_KEY): it opens /metrics, /manifests and /api/* and nothing else; give it to the dashboard instead of the verify key",
+        );
+    }
 
     // Round 17 (F-16-15): `inf` disabled the limiter and `NaN` collapsed it
     // to the 0.1 req/s floor. A non-finite or non-positive value is a
@@ -1284,46 +1485,69 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
             "GRAPHITE_AUDIT_ROTATE_BYTES=0: the active audit file and its in-memory indexes grow without bound for the life of the process"
         );
     }
-    let audit =
-        match AuditLog::open_with_rotation(audit_path(&data_dir), rotate_bytes, max_archives) {
-            Ok(log) => {
-                tracing_log(&format!(
-                    "audit log: {} (rotate at {} bytes, archives kept: {})",
-                    audit_path(&data_dir).display(),
-                    rotate_bytes,
-                    if max_archives == 0 {
-                        "all".to_string()
-                    } else {
-                        max_archives.to_string()
-                    }
-                ));
-                // Check or build every archive's index before the first L8
-                // lookup needs it (R-M11, Round 28).
-                log.warm_archive_indexes_in_background();
-                Some(log)
-            }
-            Err(e) => {
-                // Hard failure, matching what `probe_data_dir_writable` above
-                // already promises: "Graphite refuses to start without a
-                // durable audit trail (Constitution P9)."
-                //
-                // This used to log a WARNING and continue with `audit = None`,
-                // after which the server accepted verifications and recorded
-                // none of them — the probe's stated guarantee contradicted a
-                // few hundred lines below it. The probe checks that the
-                // DIRECTORY is writable; opening the log can still fail for
-                // reasons it cannot see (the file exists and is not writable,
-                // a stale lock, a full disk).
-                return Err(format!(
-                    "audit log at {} could not be opened: {e}. Graphite refuses to start \
+    // Round 30 (G-07): a MAC key makes the trail tamper-evident; without
+    // one it is corruption-evident only, and the log says so. A key file or
+    // anchor directory that is set and cannot be used refuses the start.
+    let audit_options = crate::durable::AuditOptions {
+        rotate_bytes,
+        max_archives,
+        ..Default::default()
+    }
+    .with_env_values(
+        std::env::var(crate::durable::AUDIT_KEY_ENV).ok().as_deref(),
+        std::env::var(crate::durable::AUDIT_ANCHOR_ENV)
+            .ok()
+            .as_deref(),
+        &data_dir,
+    )?;
+    let audit = match AuditLog::open_with_options(audit_path(&data_dir), audit_options) {
+        Ok(log) => {
+            tracing_log(&format!(
+                "audit log: {} (rotate at {} bytes, archives kept: {})",
+                audit_path(&data_dir).display(),
+                rotate_bytes,
+                if max_archives == 0 {
+                    "all".to_string()
+                } else {
+                    max_archives.to_string()
+                }
+            ));
+            match log.key_id() {
+                    Some(id) => tracing_log(&format!(
+                        "audit trail: hash-chained and MAC'd under key {id} — tamper-evident against anyone without the key; truncation and stale restores are caught only against an anchored checkpoint (`graphite audit checkpoint`)"
+                    )),
+                    None => tracing::warn!(
+                        "audit trail: hash-chained but NOT keyed — corruption-evident only: a writer to the data directory can rewrite it coherently. Set {} to a key file outside the data directory to make it tamper-evident",
+                        crate::durable::AUDIT_KEY_ENV
+                    ),
+                }
+            // Check or build every archive's index before the first L8
+            // lookup needs it (R-M11, Round 28).
+            log.warm_archive_indexes_in_background();
+            Some(log)
+        }
+        Err(e) => {
+            // Hard failure, matching what `probe_data_dir_writable` above
+            // already promises: "Graphite refuses to start without a
+            // durable audit trail (Constitution P9)."
+            //
+            // This used to log a WARNING and continue with `audit = None`,
+            // after which the server accepted verifications and recorded
+            // none of them — the probe's stated guarantee contradicted a
+            // few hundred lines below it. The probe checks that the
+            // DIRECTORY is writable; opening the log can still fail for
+            // reasons it cannot see (the file exists and is not writable,
+            // a stale lock, a full disk).
+            return Err(format!(
+                "audit log at {} could not be opened: {e}. Graphite refuses to start \
                      without a durable audit trail (Constitution P9) — an approval nobody \
                      recorded is an approval nobody can reconcile, quarantine against, or \
                      investigate.",
-                    audit_path(&data_dir).display()
-                )
-                .into());
-            }
-        };
+                audit_path(&data_dir).display()
+            )
+            .into());
+        }
+    };
 
     // Wallet policy profile enforcement at the network trust boundary — see
     // `enforce_wallet_profile`. A misconfigured pin was refused above, by
@@ -1402,6 +1626,7 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         core: Arc::new(core),
         api_key: api_key.clone(),
         admin_key: admin_key.clone(),
+        read_key: read_key.clone(),
         audit,
         registry_engine: Arc::new(registry_engine),
         rate: RateLimiter::new(rate_per_sec),
@@ -1792,10 +2017,16 @@ async fn dev_mode_host_middleware(
     next: Next,
 ) -> Response {
     if state.api_key.is_none() {
-        let host = req
-            .headers()
-            .get(header::HOST)
-            .map(|v| v.to_str().map(is_loopback_host).unwrap_or(false));
+        // Two Host headers name two hosts; the first is not the answer
+        // (Round 30). Refused as a non-loopback name would be.
+        let host = match req.headers().get_all(header::HOST).iter().count() {
+            0 => None,
+            1 => req
+                .headers()
+                .get(header::HOST)
+                .map(|v| v.to_str().map(is_loopback_host).unwrap_or(false)),
+            _ => Some(false),
+        };
         if host == Some(false) {
             let refusal = (
                 StatusCode::MISDIRECTED_REQUEST,
@@ -1817,22 +2048,52 @@ async fn auth_middleware(
     req: axum::http::Request<axum::body::Body>,
     next: Next,
 ) -> Response {
-    if req.uri().path() == HEALTH_PATH {
+    // Judged by the ROUTE the request matched, not the raw path (Round 30):
+    // the two agree for every request the router accepts today, but the
+    // privilege a request is held to must follow the handler it reaches,
+    // whatever spelling of the path reached it.
+    let route = req
+        .extensions()
+        .get::<axum::extract::MatchedPath>()
+        .map(|m| m.as_str().to_string())
+        .unwrap_or_else(|| req.uri().path().to_string());
+    if route == HEALTH_PATH {
         return next.run(req).await;
     }
+    // Exactly one Authorization header (Round 30). Two are two claims, and
+    // which one a proxy in front checked is not knowable here; refusing is
+    // the only answer that does not guess.
+    let authorization = req.headers().get_all(header::AUTHORIZATION);
+    let provided = match authorization.iter().count() {
+        0 => "",
+        1 => req
+            .headers()
+            .get(header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "))
+            .unwrap_or(""),
+        _ => {
+            Metrics::inc(&state.metrics.auth_failures);
+            let refusal = (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({
+                    "error": "unauthorized",
+                    "hint": "send exactly one Authorization header",
+                })),
+            )
+                .into_response();
+            return refuse_after_draining(req, refusal).await;
+        }
+    }
+    .to_string();
     // The operator surface answers only to the operator key (Round 19,
     // F-19-13). The verify key is held by the agent — the component the
     // threat model already assumes can be prompt-injected — and it used to
     // open `/admin/quarantine` too, so the party a quarantine protects against
     // could lift it. Without an operator key configured the surface does not
     // exist, in dev mode as well.
-    if req.uri().path().starts_with("/admin/") {
-        let provided = req
-            .headers()
-            .get(header::AUTHORIZATION)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.strip_prefix("Bearer "))
-            .unwrap_or("");
+    if route.starts_with("/admin/") || req.uri().path().starts_with("/admin/") {
+        let provided = provided.as_str();
         let refusal = match &state.admin_key {
             None => Some((
                 StatusCode::FORBIDDEN,
@@ -1857,13 +2118,15 @@ async fn auth_middleware(
         return next.run(req).await;
     }
     if let Some(key) = &state.api_key {
-        let provided = req
-            .headers()
-            .get(header::AUTHORIZATION)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.strip_prefix("Bearer "))
-            .unwrap_or("");
-        if !ct_eq(provided, key.as_str()) {
+        // The read key opens the read-only routes and nothing else (Round
+        // 30, K-11); the verify key opens those and the routes that verify
+        // and record.
+        let read_ok = is_read_route(req.method(), &route)
+            && state
+                .read_key
+                .as_ref()
+                .is_some_and(|r| ct_eq(&provided, r.as_str()));
+        if !read_ok && !ct_eq(&provided, key.as_str()) {
             Metrics::inc(&state.metrics.auth_failures);
             let refusal = (
                 StatusCode::UNAUTHORIZED,
@@ -1930,11 +2193,16 @@ async fn concurrency_limit_middleware(
     req: axum::http::Request<axum::body::Body>,
     next: Next,
 ) -> Response {
-    let path = req.uri().path();
+    // The matched route decides the pool, as it decides auth (Round 30).
+    let path = req
+        .extensions()
+        .get::<axum::extract::MatchedPath>()
+        .map(|m| m.as_str().to_string())
+        .unwrap_or_else(|| req.uri().path().to_string());
     if path == HEALTH_PATH {
         return next.run(req).await;
     }
-    let verification = matches!(path, "/verify" | "/verify/execution");
+    let verification = matches!(path.as_str(), "/verify" | "/verify/execution");
     // Receive the body BEFORE taking a permit (Round 19, F-19-14): a permit
     // is a unit of verification capacity, and a client that is still sending
     // is not using any. A body that does not arrive within
@@ -2125,8 +2393,8 @@ fn classify_error(e: &VerificationError) -> VerificationHttpError {
                 program, disc
             ))
         }
-        // Every way `build_transaction` can fail is caused by the caller's own
-        // input — `TransactionBuilderError` is exactly {EmptyProgramId,
+        // Every way `summarize_instruction` can fail is caused by the caller's own
+        // input — `InstructionPlanError` is exactly {EmptyProgramId,
         // MissingAccounts, InvalidDiscriminator, InvalidPubkey,
         // InvalidProgramId}, and the builder is a pure function of the plan it
         // is handed. There is no server-side failure mode to report, so the
@@ -2308,13 +2576,14 @@ async fn verify_handler(
     match state.core.verify_async(&input).await {
         Ok(result) => {
             tracing_log(&format!(
-                "verify: {} | {} | confidence={:.2} | {}",
+                "verify: {} | {} ({}) | confidence={:.2} | {}",
                 input.program_id,
                 if result.approved {
                     "APPROVED"
                 } else {
                     "BLOCKED"
                 },
+                result.decision.as_str(),
                 result.confidence,
                 result.audit_trail_id
             ));
@@ -2369,6 +2638,8 @@ async fn verify_handler(
                         protocol_name: result.protocol_name.clone(),
                         manifest_version: result.manifest_version.clone(),
                         approved: result.approved,
+                        decision: Some(result.decision.as_str().to_string()),
+                        executable: Some(result.executable),
                         confidence: result.confidence,
                         risk_status: result.risk_verdict.status.clone(),
                         policy_verdict: result.policy_verdict.clone(),
@@ -2541,6 +2812,11 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
                 // it grows without bound and every dashboard poll scans it.
                 reasons.push("audit_rotation_failed");
             }
+            if h.anchors_failed > 0 {
+                // A rotation checkpoint did not reach the anchor directory:
+                // the trail since the last one is not anchored.
+                reasons.push("audit_anchor_failed");
+            }
         }
         // No audit log at all is degraded, not healthy: verification still
         // works, but the P9 trail does not exist.
@@ -2569,6 +2845,16 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
         "degraded_reasons": reasons,
         "service": "graphite-core",
         "version": env!("CARGO_PKG_VERSION"),
+        // Round 30 (G-01): `analysis_only` when no RPC is attached — every
+        // verdict from this node is then `executable: false`. Not a
+        // degradation (it is how the node was configured), but the first
+        // thing an integrator needs to know.
+        "verification_mode": if state.core.has_rpc_client() {
+            "executable"
+        } else {
+            "analysis_only"
+        },
+        "rpc_attached": state.core.has_rpc_client(),
         "audit": match audit {
             Some(h) => serde_json::json!({
                 "enabled": true,
@@ -2578,6 +2864,10 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
                 "rotations_ok": h.rotations_ok,
                 "rotations_failed": h.rotations_failed,
                 "archive_count": h.archive_count,
+                // Round 30 (G-07): what the trail's integrity rests on.
+                "integrity": if h.tamper_evident { "tamper_evident" } else { "corruption_evident" },
+                "chain_head_seq": h.chain_head_seq,
+                "anchors_failed": h.anchors_failed,
             }),
             None => serde_json::json!({ "enabled": false }),
         },
@@ -2589,6 +2879,12 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
         // Whether L8 has a second, independent source for inclusion
         // (Round 12). `false` means every reconciliation rests on one RPC.
         "inclusion_witness": state.core.has_inclusion_witness(),
+        // Round 30 (G-08): whether that witness is a different provider
+        // (null without one), and whether every L8 conclusion requires it.
+        "l8_assurance": {
+            "witness_independent": state.core.witness_independence().map(|i| i.is_distinct()),
+            "high_assurance": state.core.requires_independent_witness(),
+        },
         // Roadmap R-M1: programs found redeployed since last seen, and whether
         // an upgrade quarantines the program.
         "program_upgrades": {
@@ -2794,6 +3090,18 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
         "Rotated audit archives on disk.",
         "gauge",
         audit.map(|h| h.archive_count).unwrap_or(0),
+    );
+    push(
+        "graphite_audit_tamper_evident",
+        "1 when new audit records are MAC'd under an operator key (tamper-evident), 0 when the hash chain is unkeyed (corruption-evident only).",
+        "gauge",
+        u64::from(audit.is_some_and(|h| h.tamper_evident)),
+    );
+    push(
+        "graphite_audit_anchor_writes_failed_total",
+        "Rotation checkpoints that could not be written to GRAPHITE_AUDIT_ANCHOR_DIR (degraded).",
+        "counter",
+        audit.map(|h| h.anchors_failed).unwrap_or(0),
     );
     let persistence = state.core.persistence_health();
     push(
@@ -3181,9 +3489,10 @@ async fn execution(
                     transaction_signature: Some(signature.clone()),
                     reported_by: body.reported_by.clone(),
                     detail: Some(format!(
-                        "L8 reconciliation: {:?}; attribution: {:?}{}{}{}",
+                        "L8 reconciliation: {:?}; attribution: {:?}; assurance: {}{}{}{}",
                         result.reconciliation,
                         result.attribution,
+                        result.inclusion_assurance.as_str(),
                         if caller_claims.is_empty() || chain_attributed {
                             String::new()
                         } else {
@@ -3285,6 +3594,7 @@ async fn execution(
         "chain_bytes_unavailable": result.chain_bytes_unavailable,
         "chain_inconsistent": result.chain_inconsistent,
         "inclusion_witness": result.inclusion_witness,
+        "inclusion_assurance": result.inclusion_assurance,
         "recorded_verdicts": result.recorded_verdicts,
         "audit_recorded": recorded,
     });
@@ -4227,6 +4537,10 @@ async fn confidence_history_handler(State(state): State<AppState>) -> Json<serde
                 "timestamp": r.timestamp,
                 "confidence": r.confidence,
                 "approved": r.approved,
+                // Round 30: null on rows written before the decision existed
+                // ("not reported", never read as either answer).
+                "decision": r.decision,
+                "executable": r.executable,
                 "program_id": r.program_id,
                 "audit_trail_id": r.audit_trail_id,
                 "transaction_sha256": r.transaction_sha256,
@@ -4261,6 +4575,8 @@ async fn policy_violations_handler(State(state): State<AppState>) -> Json<serde_
                 "confidence": r.confidence,
                 "policy_verdict": r.policy_verdict,
                 "risk_status": r.risk_status,
+                "decision": r.decision,
+                "executable": r.executable,
                 "audit_trail_id": r.audit_trail_id,
                 "transaction_sha256": r.transaction_sha256,
                 "manifest_version": r.manifest_version,
@@ -4914,7 +5230,8 @@ mod tests {
         ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let mut core = crate::verification::GraphiteCore::with_data_dir(dir.clone());
+        let mut core =
+            crate::verification::GraphiteCore::try_with_data_dir(dir.clone()).expect("data dir");
         // Earned evidence for the System Program (battle-tested tier + baseline).
         use crate::semantic_graph_store::{Behavior, BehaviorEvidence};
         use crate::simulation_integrity::ComputeBaseline;
@@ -4953,6 +5270,7 @@ mod tests {
             core: Arc::new(core),
             api_key: None,
             admin_key: None,
+            read_key: None,
             audit: Some(audit),
             registry_engine: Arc::new(crate::manifest_registry::ManifestRegistryEngine::new()),
             rate: RateLimiter::new(1000.0),
@@ -5194,6 +5512,78 @@ mod tests {
         );
     }
 
+    /// Round 30 (G-01): a node without an RPC says on /health that every
+    /// verdict it gives is analysis only, each /verify answer carries its
+    /// decision, and the decision is on the trail and the dashboard series
+    /// — null for a row written before it existed ("not reported").
+    #[tokio::test]
+    async fn the_decision_reaches_health_the_response_and_the_trail() {
+        let (state, dir) = test_state();
+        assert!(!state.core.has_rpc_client(), "test_state attaches no RPC");
+        let log = state.audit.clone().unwrap();
+        assert!(log.append(&AuditRecord {
+            event_type: LifecycleEvent::Verification,
+            timestamp: crate::durable::now_utc_rfc3339(),
+            audit_trail_id: "gr-old".to_string(),
+            content_hash: "h-old".to_string(),
+            transaction_sha256: None,
+            program_id: "11111111111111111111111111111111".to_string(),
+            instruction_name: "transfer".to_string(),
+            protocol_name: "System Program".to_string(),
+            manifest_version: None,
+            approved: true,
+            decision: None,
+            executable: None,
+            confidence: 0.9,
+            risk_status: "Clear".to_string(),
+            policy_verdict: "Approved".to_string(),
+            l3_status: "inconclusive".to_string(),
+            l8_status: "inconclusive".to_string(),
+            wallet_profile: None,
+        }));
+        let app = build_app(state, vec![]);
+        let (_, health) = get_json(&app, "/health").await;
+        assert_eq!(health["verification_mode"], "analysis_only");
+        assert_eq!(health["rpc_attached"], false);
+
+        let input: serde_json::Value =
+            serde_json::from_str(include_str!("../../examples/verify-input.json"))
+                .expect("the committed example parses");
+        let (status, body) = post_json(&app, "/verify", None, input).await;
+        assert_eq!(status, axum::http::StatusCode::OK, "{body}");
+        assert_eq!(body["executable"], false, "no RPC: nothing is executable");
+        let decision = body["decision"].as_str().expect("a decision").to_string();
+        assert_ne!(decision, "executable_approved");
+        assert_eq!(body["instruction_bind_key"], body["content_hash"]);
+
+        let rows = log.read_tail_filtered(10, AuditSelector::All).0;
+        let row = rows
+            .iter()
+            .find(|r| r.audit_trail_id == body["audit_trail_id"].as_str().unwrap())
+            .expect("the verdict is on the trail");
+        assert_eq!(row.decision.as_deref(), Some(decision.as_str()));
+        assert_eq!(row.executable, Some(false));
+
+        let (_, history) = get_json(&app, "/api/confidence-history").await;
+        let series = history["series"].as_array().unwrap();
+        assert_eq!(
+            series[0]["decision"],
+            decision.as_str(),
+            "most recent first"
+        );
+        assert_eq!(series[0]["executable"], false);
+        assert!(
+            series[1]["decision"].is_null() && series[1]["executable"].is_null(),
+            "a row from before Round 30 is not reported, never read as an answer: {}",
+            series[1]
+        );
+        if decision == "blocked" {
+            let (_, violations) = get_json(&app, "/api/policy-violations").await;
+            assert_eq!(violations["violations"][0]["decision"], "blocked");
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     async fn get_text(app: &Router, path: &str) -> (axum::http::StatusCode, String) {
         use axum::body::Body;
         use tower::ServiceExt;
@@ -5324,7 +5714,8 @@ mod tests {
             vec![(SYSTEM.to_string(), "GHSA-2026-0001".to_string())]
         );
         // ...and on disk, so a restart does not silently restore the program.
-        let reloaded = crate::verification::GraphiteCore::with_data_dir(dir.clone());
+        let reloaded =
+            crate::verification::GraphiteCore::try_with_data_dir(dir.clone()).expect("data dir");
         assert_eq!(reloaded.quarantined_programs().len(), 1);
 
         // Visible through the listing.
@@ -5408,7 +5799,8 @@ mod tests {
             vec![(SYSTEM.to_string(), "GHSA-2026-0002".to_string())],
             "the lift was not applied"
         );
-        let reloaded = crate::verification::GraphiteCore::with_data_dir(dir.clone());
+        let reloaded =
+            crate::verification::GraphiteCore::try_with_data_dir(dir.clone()).expect("data dir");
         assert_eq!(
             reloaded.quarantined_programs().len(),
             1,
@@ -5827,6 +6219,8 @@ mod tests {
             protocol_name: "System Program".to_string(),
             manifest_version: Some("1.0.0".to_string()),
             approved: true,
+            decision: None,
+            executable: None,
             confidence: 0.9,
             risk_status: "Clear".to_string(),
             policy_verdict: "Approved".to_string(),
@@ -5845,6 +6239,8 @@ mod tests {
             protocol_name: "System Program".to_string(),
             manifest_version: Some("1.0.0".to_string()),
             approved: false,
+            decision: None,
+            executable: None,
             confidence: 0.3,
             risk_status: "Blocked".to_string(),
             policy_verdict: "RejectedBelowThreshold".to_string(),
@@ -5882,6 +6278,8 @@ mod tests {
             protocol_name: "Jupiter DCA".to_string(),
             manifest_version: None,
             approved: false,
+            decision: None,
+            executable: None,
             confidence: 0.4,
             risk_status: "Blocked".to_string(),
             policy_verdict: "RejectedRiskEngineBlock".to_string(),
@@ -5934,6 +6332,8 @@ mod tests {
                 protocol_name: "System Program".to_string(),
                 manifest_version: None,
                 approved: true,
+                decision: None,
+                executable: None,
                 confidence: 0.9,
                 risk_status: "Clear".to_string(),
                 policy_verdict: "Approved".to_string(),
@@ -6068,8 +6468,8 @@ mod tests {
     // "invalid discriminator" while `transaction_builder` emitted "instruction
     // discriminator is invalid hex".
 
-    /// Every `TransactionBuilderError` variant, driven through the real
-    /// `build_transaction` and the real classifier.
+    /// Every `InstructionPlanError` variant, driven through the real
+    /// `summarize_instruction` and the real classifier.
     ///
     /// This is the guard against the same drift returning. The builder consumes
     /// only the caller's plan, so each of these is a client error; if a future
@@ -6077,7 +6477,7 @@ mod tests {
     /// forces that to be a decision rather than an accident.
     #[test]
     fn every_transaction_builder_failure_is_a_client_error() {
-        use crate::transaction_builder::{build_transaction, TransactionPlan};
+        use crate::transaction_builder::{summarize_instruction, InstructionPlan};
         use crate::verification::VerificationError;
 
         let account = |a: &str| crate::account_resolution::ResolvedAccount {
@@ -6096,10 +6496,10 @@ mod tests {
         let ok_account = account("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU");
         let system = "11111111111111111111111111111111";
 
-        let cases: Vec<(&str, TransactionPlan)> = vec![
+        let cases: Vec<(&str, InstructionPlan)> = vec![
             (
                 "EmptyProgramId",
-                TransactionPlan {
+                InstructionPlan {
                     program_id: String::new(),
                     instruction_discriminator: "02000000".to_string(),
                     resolved_accounts: vec![ok_account.clone()],
@@ -6112,7 +6512,7 @@ mod tests {
             ),
             (
                 "MissingAccounts",
-                TransactionPlan {
+                InstructionPlan {
                     program_id: system.to_string(),
                     instruction_discriminator: "02000000".to_string(),
                     resolved_accounts: vec![],
@@ -6125,7 +6525,7 @@ mod tests {
             ),
             (
                 "InvalidDiscriminator (non-hex)",
-                TransactionPlan {
+                InstructionPlan {
                     program_id: system.to_string(),
                     instruction_discriminator: "zzzz".to_string(),
                     resolved_accounts: vec![ok_account.clone()],
@@ -6138,7 +6538,7 @@ mod tests {
             ),
             (
                 "InvalidDiscriminator (odd length)",
-                TransactionPlan {
+                InstructionPlan {
                     program_id: system.to_string(),
                     instruction_discriminator: "abc".to_string(),
                     resolved_accounts: vec![ok_account.clone()],
@@ -6151,7 +6551,7 @@ mod tests {
             ),
             (
                 "InvalidPubkey",
-                TransactionPlan {
+                InstructionPlan {
                     program_id: system.to_string(),
                     instruction_discriminator: "02000000".to_string(),
                     resolved_accounts: vec![account("not-a-valid-base58-pubkey!!")],
@@ -6164,7 +6564,7 @@ mod tests {
             ),
             (
                 "InvalidProgramId",
-                TransactionPlan {
+                InstructionPlan {
                     program_id: "OOO-not-base58".to_string(),
                     instruction_discriminator: "02000000".to_string(),
                     resolved_accounts: vec![ok_account.clone()],
@@ -6178,8 +6578,8 @@ mod tests {
         ];
 
         for (label, plan) in cases {
-            let err =
-                build_transaction(&plan).expect_err(&format!("{label}: the plan must not build"));
+            let err = summarize_instruction(&plan)
+                .expect_err(&format!("{label}: the plan must not build"));
             let classified = classify_error(&VerificationError::TransactionBuild(err.to_string()));
             assert_eq!(
                 classified.status_code(),
@@ -6530,6 +6930,8 @@ mod tests {
             protocol_name: "System Program".to_string(),
             manifest_version: Some("1.0.0".to_string()),
             approved,
+            decision: None,
+            executable: None,
             confidence: if approved { 0.9 } else { 0.3 },
             risk_status: "Clear".to_string(),
             policy_verdict: if approved { "Approved" } else { "Rejected" }.to_string(),
@@ -7243,8 +7645,13 @@ mod tests {
         // because the server task is fully joined above (abort → router drop
         // → audit File handle drop → flush), so every append is visible to a
         // fresh open.
-        let log = AuditLog::open(audit_path(&dir)).unwrap();
+        // Read only (Round 30): the server still holds the writer lock.
+        let log = AuditLog::open_read_only(audit_path(&dir)).unwrap();
         let (records, errors, total, _) = log.read_tail_filtered(10_000, AuditSelector::All);
+        // The eight concurrent writers left one unbroken hash chain.
+        let chain = log.verify(&[], None).unwrap();
+        assert!(chain.intact(), "{chain:?}");
+        assert_eq!(chain.chained_records as usize, WORKERS * PER_WORKER);
         assert_eq!(
             total,
             WORKERS * PER_WORKER,
@@ -8112,10 +8519,19 @@ Connection: close
             "GRAPHITE_ALLOW_PERMISSIVE_PROFILES",
             "GRAPHITE_ALLOW_DURABLE_NONCE",
             "GRAPHITE_QUARANTINE_ON_UPGRADE",
-            "GRAPHITE_LEARN_FROM_POLICY_REFUSALS",
         ] {
             assert!(policy(name, "yes").is_err(), "{name}=yes");
         }
+        // Round 30 (G-02): retired, and refused whatever its value, so an
+        // operator who relied on it learns that it no longer exists.
+        for value in ["1", "0", "true", "yes"] {
+            let e = policy("GRAPHITE_LEARN_FROM_POLICY_REFUSALS", value).unwrap_err();
+            assert!(e.contains("removed in Round 30"), "{value}: {e}");
+        }
+        assert!(
+            policy("GRAPHITE_LEARN_FROM_POLICY_REFUSALS", "  ").is_ok(),
+            "an empty value is an unset one, as for every other switch"
+        );
         assert!(policy("GRAPHITE_WALLET_PROFILE", "treasry").is_err());
     }
 
@@ -8673,5 +9089,531 @@ Connection: close
         }
         assert!(saw_429, "the bucket must have run out within six requests");
         std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
+/// Round 30 (§4.6): every route the router serves, held to its privilege,
+/// method, body bound and rate limit by one table. A route added to
+/// `build_app` and not to `ROUTES` fails `the_table_names_every_route`, so a
+/// new endpoint cannot ship without a decision about who may call it.
+#[cfg(test)]
+mod route_surface {
+    use super::*;
+    use axum::body::Body;
+    use tower::ServiceExt;
+
+    #[derive(Clone, Copy, PartialEq, Debug)]
+    enum Needs {
+        /// Open: load balancers probe it.
+        Nothing,
+        /// Reports only: the read key (`GRAPHITE_READ_API_KEY`) or the
+        /// verify key.
+        ReadKey,
+        /// Verifies or records: the verify key (`GRAPHITE_API_KEY`) only.
+        VerifyKey,
+        /// The operator key (`GRAPHITE_ADMIN_API_KEY`) and only it.
+        OperatorKey,
+    }
+
+    /// (method, path, privilege). Kept in step with `build_app`.
+    const ROUTES: &[(&str, &str, Needs)] = &[
+        ("POST", "/verify", Needs::VerifyKey),
+        ("GET", "/health", Needs::Nothing),
+        ("GET", "/metrics", Needs::ReadKey),
+        ("GET", "/manifests", Needs::ReadKey),
+        ("POST", "/audit/event", Needs::VerifyKey),
+        ("POST", "/verify/execution", Needs::VerifyKey),
+        ("POST", "/admin/quarantine", Needs::OperatorKey),
+        ("GET", "/admin/quarantine", Needs::OperatorKey),
+        ("GET", "/api/graph", Needs::ReadKey),
+        ("GET", "/api/confidence-history", Needs::ReadKey),
+        ("GET", "/api/policy-violations", Needs::ReadKey),
+        ("GET", "/api/protocols/top", Needs::ReadKey),
+        ("GET", "/api/registry", Needs::ReadKey),
+        ("GET", "/api/frozen-baselines", Needs::ReadKey),
+    ];
+
+    const VERIFY: &str = "route-surface-verify-key";
+    const OPERATOR: &str = "route-surface-operator-key";
+    const READ: &str = "route-surface-read-key";
+
+    fn keyed(rate: f64) -> (AppState, std::path::PathBuf) {
+        let (mut state, dir) = super::tests::test_state();
+        state.api_key = Some(Arc::new(VERIFY.to_string()));
+        state.admin_key = Some(Arc::new(OPERATOR.to_string()));
+        state.read_key = Some(Arc::new(READ.to_string()));
+        state.rate = RateLimiter::new(rate);
+        (state, dir)
+    }
+
+    async fn call(
+        app: &Router,
+        method: &str,
+        path: &str,
+        keys: &[&str],
+        body: Vec<u8>,
+    ) -> (StatusCode, String) {
+        let mut b = axum::http::Request::builder()
+            .method(method)
+            .uri(path)
+            .header("content-type", "application/json")
+            .header("host", "127.0.0.1");
+        for k in keys {
+            b = b.header("authorization", format!("Bearer {k}"));
+        }
+        let mut req = b.body(Body::from(body)).unwrap();
+        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+        req.extensions_mut().insert(ConnectInfo(addr));
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), 4 << 20)
+            .await
+            .unwrap_or_default();
+        (status, String::from_utf8_lossy(&bytes).to_string())
+    }
+
+    fn denied(s: StatusCode) -> bool {
+        s == StatusCode::UNAUTHORIZED || s == StatusCode::FORBIDDEN
+    }
+
+    /// Every `.route("…")` in `build_app` is in `ROUTES`, and every path in
+    /// `ROUTES` is routed: the table cannot drift from the router.
+    #[test]
+    fn the_table_names_every_route() {
+        let src = include_str!("server.rs");
+        let start = src.find("fn build_app(").expect("build_app");
+        let end = start + src[start..].find("\n}\n").expect("end of build_app");
+        let mut routed: Vec<&str> = src[start..end]
+            .split(".route(")
+            .skip(1)
+            .filter_map(|s| s.trim_start().strip_prefix('"'))
+            .filter_map(|s| s.split('"').next())
+            .collect();
+        routed.sort();
+        routed.dedup();
+        let mut tabled: Vec<&str> = ROUTES.iter().map(|(_, p, _)| *p).collect();
+        tabled.sort();
+        tabled.dedup();
+        assert_eq!(routed, tabled, "build_app's routes and ROUTES differ");
+    }
+
+    #[tokio::test]
+    async fn each_route_answers_only_to_its_privilege() {
+        let (state, dir) = keyed(1000.0);
+        let app = build_app(state, vec![]);
+        for &(method, path, needs) in ROUTES {
+            let body = if method == "POST" {
+                b"{}".to_vec()
+            } else {
+                vec![]
+            };
+            let (none, _) = call(&app, method, path, &[], body.clone()).await;
+            let (verify, _) = call(&app, method, path, &[VERIFY], body.clone()).await;
+            let (operator, _) = call(&app, method, path, &[OPERATOR], body.clone()).await;
+            let (read, _) = call(&app, method, path, &[READ], body.clone()).await;
+            match needs {
+                Needs::Nothing => {
+                    assert_eq!(none, StatusCode::OK, "{method} {path} without a key");
+                }
+                Needs::ReadKey | Needs::VerifyKey => {
+                    assert_eq!(
+                        none,
+                        StatusCode::UNAUTHORIZED,
+                        "{method} {path} without a key"
+                    );
+                    assert!(
+                        !denied(verify),
+                        "{method} {path} with the verify key: {verify}"
+                    );
+                    assert_eq!(
+                        operator,
+                        StatusCode::UNAUTHORIZED,
+                        "{method} {path}: the operator key is not a verify key"
+                    );
+                    if needs == Needs::ReadKey {
+                        assert!(!denied(read), "{method} {path} with the read key: {read}");
+                    } else {
+                        assert_eq!(
+                            read,
+                            StatusCode::UNAUTHORIZED,
+                            "{method} {path}: the read key must not verify or record"
+                        );
+                    }
+                }
+                Needs::OperatorKey => {
+                    assert!(denied(none), "{method} {path} without a key: {none}");
+                    assert_eq!(
+                        verify,
+                        StatusCode::UNAUTHORIZED,
+                        "{method} {path}: the verify key must not open the operator surface"
+                    );
+                    assert_eq!(
+                        read,
+                        StatusCode::UNAUTHORIZED,
+                        "{method} {path}: the read key must not open the operator surface"
+                    );
+                    assert!(
+                        !denied(operator),
+                        "{method} {path} with the operator key: {operator}"
+                    );
+                }
+            }
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Two Authorization headers are refused even when both carry the right
+    /// key, on every authenticated route.
+    #[tokio::test]
+    async fn two_authorization_headers_are_refused() {
+        let (state, dir) = keyed(1000.0);
+        let app = build_app(state, vec![]);
+        for &(method, path, needs) in ROUTES {
+            if needs == Needs::Nothing {
+                continue;
+            }
+            let key = if needs == Needs::OperatorKey {
+                OPERATOR
+            } else {
+                VERIFY
+            };
+            let body = if method == "POST" {
+                b"{}".to_vec()
+            } else {
+                vec![]
+            };
+            for keys in [[key, key], [key, "wrong"], ["wrong", key]] {
+                let (status, _) = call(&app, method, path, &keys, body.clone()).await;
+                assert_eq!(status, StatusCode::UNAUTHORIZED, "{method} {path} {keys:?}");
+            }
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Spellings of the operator path that are not the route never reach an
+    /// operator handler with the verify key.
+    #[tokio::test]
+    async fn no_spelling_of_an_operator_path_opens_it_to_the_verify_key() {
+        let (state, dir) = keyed(1000.0);
+        let core = Arc::clone(&state.core);
+        let app = build_app(state, vec![]);
+        for path in [
+            "//admin/quarantine",
+            "/admin//quarantine",
+            "/admin/quarantine/",
+            "/ADMIN/quarantine",
+            "/Admin/Quarantine",
+            "/%61dmin/quarantine",
+            "/admin/%71uarantine",
+            "/./admin/quarantine",
+            "/api/../admin/quarantine",
+            "/admin/quarantine?x=1",
+        ] {
+            for method in ["GET", "POST"] {
+                let (status, body) = call(
+                    &app,
+                    method,
+                    path,
+                    &[VERIFY],
+                    br#"{"program_id":"11111111111111111111111111111111","reason":"x"}"#.to_vec(),
+                )
+                .await;
+                assert!(
+                    !status.is_success(),
+                    "{method} {path} answered {status} to the verify key: {body}"
+                );
+            }
+        }
+        assert!(
+            core.quarantined_programs().is_empty(),
+            "nothing was quarantined through the verify key"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The wrong method is refused, never served.
+    #[tokio::test]
+    async fn the_wrong_method_is_refused() {
+        let (state, dir) = keyed(1000.0);
+        let app = build_app(state, vec![]);
+        for &(method, path, needs) in ROUTES {
+            // With the route's own key, so what answers is the method check
+            // and not authentication (which also refuses, earlier).
+            let key = if needs == Needs::OperatorKey {
+                OPERATOR
+            } else {
+                VERIFY
+            };
+            let other_read = if method == "GET" { "POST" } else { "GET" };
+            for other in ["PUT", "DELETE", "PATCH", other_read] {
+                if ROUTES.iter().any(|(m, p, _)| *p == path && *m == other) {
+                    continue;
+                }
+                let (status, _) = call(&app, other, path, &[key], vec![]).await;
+                assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED, "{other} {path}");
+            }
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A body past `MAX_BODY_SIZE` is refused on every route that takes one,
+    /// before a handler sees it.
+    #[tokio::test]
+    async fn every_body_is_bounded() {
+        let (state, dir) = keyed(1000.0);
+        let app = build_app(state, vec![]);
+        let big = vec![b' '; MAX_BODY_SIZE + 1];
+        for &(method, path, needs) in ROUTES {
+            if method != "POST" {
+                continue;
+            }
+            let key = if needs == Needs::OperatorKey {
+                OPERATOR
+            } else {
+                VERIFY
+            };
+            let (status, _) = call(&app, method, path, &[key], big.clone()).await;
+            assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE, "{method} {path}");
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Every route but `/health` is rate limited, and the limit is charged
+    /// before authentication: an unauthenticated flood still runs out.
+    #[tokio::test]
+    async fn every_route_but_health_is_rate_limited() {
+        for &(method, path, needs) in ROUTES {
+            let (state, dir) = keyed(0.1);
+            let app = build_app(state, vec![]);
+            let body = if method == "POST" {
+                b"{}".to_vec()
+            } else {
+                vec![]
+            };
+            let mut statuses = Vec::new();
+            for _ in 0..3 {
+                statuses.push(call(&app, method, path, &[], body.clone()).await.0);
+            }
+            if needs == Needs::Nothing {
+                assert!(
+                    statuses.iter().all(|s| *s == StatusCode::OK),
+                    "{path} must never be rate limited: {statuses:?}"
+                );
+            } else {
+                assert!(
+                    statuses.contains(&StatusCode::TOO_MANY_REQUESTS),
+                    "{method} {path}: {statuses:?}"
+                );
+            }
+            std::fs::remove_dir_all(&dir).ok();
+        }
+    }
+
+    /// `/health` answers without a key, so it carries nothing an anonymous
+    /// caller should learn: no key, no data path, no RPC URL, no program id.
+    #[tokio::test]
+    async fn health_says_nothing_sensitive() {
+        let (state, dir) = keyed(1000.0);
+        let app = build_app(state, vec![]);
+        let (status, body) = call(&app, "GET", "/health", &[], vec![]).await;
+        assert_eq!(status, StatusCode::OK);
+        let dir_text = dir.to_string_lossy().to_string();
+        for secret in [VERIFY, OPERATOR, dir_text.as_str(), "http://", "https://"] {
+            assert!(!body.contains(secret), "/health carries {secret:?}: {body}");
+        }
+        assert!(
+            !body.contains("11111111111111111111111111111111"),
+            "/health names a program: {body}"
+        );
+        let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(v["l8_assurance"]["high_assurance"], false);
+        assert!(v["l8_assurance"]["witness_independent"].is_null());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// `/metrics` is behind the verify key and prints neither key.
+    #[tokio::test]
+    async fn metrics_print_no_key() {
+        let (state, dir) = keyed(1000.0);
+        let app = build_app(state, vec![]);
+        let (status, body) = call(&app, "GET", "/metrics", &[VERIFY], vec![]).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(!body.contains(VERIFY) && !body.contains(OPERATOR));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A JSON body that nests past serde's recursion limit, repeats a field,
+    /// or spells a field in another case is refused, not half-read.
+    #[tokio::test]
+    async fn ambiguous_or_hostile_json_is_refused() {
+        let (state, dir) = keyed(1000.0);
+        let app = build_app(state, vec![]);
+        let nested = format!(
+            r#"{{"proposed_intent":{}1{}}}"#,
+            "[".repeat(4096),
+            "]".repeat(4096)
+        );
+        let sig = "5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW";
+        let duplicate = format!(r#"{{"signature":"{sig}","signature":"{sig}"}}"#);
+        let cased = format!(r#"{{"Signature":"{sig}"}}"#);
+        for (path, body) in [
+            ("/verify", nested.clone()),
+            ("/verify/execution", nested),
+            ("/verify/execution", duplicate),
+            ("/verify/execution", cased),
+        ] {
+            let (status, text) = call(&app, "POST", path, &[VERIFY], body.into_bytes()).await;
+            assert!(
+                status.is_client_error() && status != StatusCode::UNAUTHORIZED,
+                "{path}: {status} {text}"
+            );
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Dev mode (no key) answers only to a single loopback Host; two Host
+    /// headers are not a loopback request.
+    #[tokio::test]
+    async fn dev_mode_refuses_two_host_headers() {
+        let (state, dir) = super::tests::test_state();
+        let app = build_app(state, vec![]);
+        let mut req = axum::http::Request::builder()
+            .uri("/api/graph")
+            .header("host", "127.0.0.1")
+            .header("host", "evil.example")
+            .body(Body::empty())
+            .unwrap();
+        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+        req.extensions_mut().insert(ConnectInfo(addr));
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::MISDIRECTED_REQUEST);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Behind one trusted proxy the client is the entry the proxy appended,
+    /// however the client shapes its own part: extra lines, empty entries,
+    /// bytes that are not ASCII, a zone id, a port.
+    #[test]
+    fn the_forwarded_client_is_the_proxy_appended_entry() {
+        let peer: SocketAddr = "10.0.0.1:443".parse().unwrap();
+        let ip = |lines: &[&[u8]]| {
+            let mut b = axum::http::Request::builder().uri("/verify");
+            for l in lines {
+                b = b.header(
+                    "x-forwarded-for",
+                    axum::http::HeaderValue::from_bytes(l).unwrap(),
+                );
+            }
+            client_ip(&b.body(Body::empty()).unwrap(), peer, 1)
+        };
+        let real: IpAddr = "198.51.100.9".parse().unwrap();
+        for lines in [
+            vec![b"198.51.100.9".as_slice()],
+            vec![b"1.2.3.4", b"198.51.100.9"],
+            vec![b"1.2.3.4, 5.6.7.8", b"198.51.100.9"],
+            vec![b"1.2.3.4,,, ,198.51.100.9"],
+            vec![b"\xff\xfe junk, 198.51.100.9"],
+            vec![b"fe80::1%eth0, 198.51.100.9"],
+            vec![b"1.2.3.4, 198.51.100.9:4711"],
+        ] {
+            assert_eq!(ip(&lines), real, "{lines:?}");
+        }
+        // The proxy-appended position unparseable: the shared unattributed
+        // bucket, never the proxy's peer bucket and never a caller-chosen one.
+        for lines in [
+            vec![b"198.51.100.9, not-an-ip".as_slice()],
+            vec![b"198.51.100.9, fe80::1%eth0"],
+        ] {
+            assert_eq!(ip(&lines), UNATTRIBUTED_CLIENT, "{lines:?}");
+        }
+    }
+
+    /// The read key opens no method but GET, on no route but the read ones,
+    /// however the request is spelled.
+    #[tokio::test]
+    async fn the_read_key_cannot_verify_record_or_act() {
+        let (state, dir) = keyed(1000.0);
+        let core = Arc::clone(&state.core);
+        let app = build_app(state, vec![]);
+        for (method, path) in [
+            ("POST", "/verify"),
+            ("POST", "/verify/execution"),
+            ("POST", "/audit/event"),
+            ("POST", "/admin/quarantine"),
+            ("GET", "/admin/quarantine"),
+            ("POST", "/api/graph"),
+            ("PUT", "/metrics"),
+        ] {
+            let (status, body) = call(
+                &app,
+                method,
+                path,
+                &[READ],
+                br#"{"program_id":"11111111111111111111111111111111","reason":"x"}"#.to_vec(),
+            )
+            .await;
+            assert_eq!(status, StatusCode::UNAUTHORIZED, "{method} {path}: {body}");
+        }
+        assert!(core.quarantined_programs().is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn the_read_key_is_its_own_long_secret() {
+        let verify = "v".repeat(MIN_API_KEY_CHARS);
+        let admin = "a".repeat(MIN_API_KEY_CHARS);
+        let read = "r".repeat(MIN_API_KEY_CHARS);
+        assert!(read_key_posture(None, Some(&verify), None)
+            .unwrap()
+            .is_none());
+        assert!(read_key_posture(Some("  "), Some(&verify), None)
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            read_key_posture(Some(&read), Some(&verify), Some(&admin))
+                .unwrap()
+                .as_deref()
+                .map(String::as_str),
+            Some(read.as_str())
+        );
+        // Short, equal to another key, or without a verify key at all.
+        assert!(read_key_posture(Some("short"), Some(&verify), None).is_err());
+        assert!(read_key_posture(Some(&verify), Some(&verify), None).is_err());
+        assert!(
+            read_key_posture(Some(&format!(" {admin} ")), Some(&verify), Some(&admin)).is_err()
+        );
+        assert!(read_key_posture(Some(&read), None, None).is_err());
+    }
+
+    #[test]
+    fn high_assurance_needs_an_independent_attested_https_witness() {
+        use crate::rpc_client::WitnessIndependence as W;
+        let ok = Some(W::Distinct);
+        let https = (Some("https"), Some("https"));
+        let named = (Some("Helius"), Some("Triton"));
+        assert_eq!(high_assurance_refusal(ok.as_ref(), named, https), None);
+        // No witness.
+        assert!(high_assurance_refusal(None, named, https).is_some());
+        // Not independent.
+        let same = Some(W::NotIndependent("same host".into()));
+        assert!(high_assurance_refusal(same.as_ref(), named, https)
+            .unwrap()
+            .contains("same host"));
+        // Plaintext on either side.
+        for schemes in [(Some("http"), Some("https")), (Some("https"), Some("http"))] {
+            assert!(high_assurance_refusal(ok.as_ref(), named, schemes).is_some());
+        }
+        // Providers unnamed, blank, or the same name in another case.
+        for providers in [
+            (None, Some("Triton")),
+            (Some("Helius"), None),
+            (Some("  "), Some("Triton")),
+            (Some("Helius"), Some(" helius ")),
+        ] {
+            assert!(
+                high_assurance_refusal(ok.as_ref(), providers, https).is_some(),
+                "{providers:?}"
+            );
+        }
     }
 }

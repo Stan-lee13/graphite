@@ -178,7 +178,13 @@ export async function mockRpc(
   /** Signatures the stand-in reports as landed (confirmed). */
   const landed = new Set<string>();
   /** Mutable after start, so a test can change the RPC's behaviour mid-way. */
-  const behaviour = { sendFails: opts.sendFails ?? false, blockHeight: opts.blockHeight };
+  const behaviour: MockRpc["behaviour"] = {
+    sendFails: opts.sendFails ?? false,
+    blockHeight: opts.blockHeight,
+    statusesFail: false,
+    acceptWithoutLanding: false,
+    reportedSignature: undefined,
+  };
   const { server, url } = await listen(
     (_m, _p, body) => {
       const req = body as { id?: unknown; method?: string };
@@ -257,10 +263,11 @@ export async function mockRpc(
             if (behaviour.sendFails === "landed" && id) landed.add(id);
             return { status: 502, body: { error: "bad gateway" } };
           }
-          if (id) landed.add(id);
-          return ok(id);
+          if (id && !behaviour.acceptWithoutLanding) landed.add(id);
+          return ok(behaviour.reportedSignature ?? id);
         }
         case "getSignatureStatuses": {
+          if (behaviour.statusesFail) return { status: 503, body: { error: "unavailable" } };
           const sigs = ((req as { params?: unknown[] }).params?.[0] ?? []) as string[];
           return ok({
             context: { slot: 2 },
@@ -295,8 +302,17 @@ export async function mockRpc(
 export interface MockRpc extends Loopback {
   /** Signatures reported as landed. */
   landed: Set<string>;
-  /** Change what sendTransaction and getBlockHeight do from here on. */
-  behaviour: { sendFails: false | "lost" | "landed"; blockHeight?: number };
+  /** Change what sendTransaction, getSignatureStatuses and getBlockHeight do from here on. */
+  behaviour: {
+    sendFails: false | "lost" | "landed";
+    blockHeight?: number;
+    /** getSignatureStatuses answers HTTP 503 (Round 30). */
+    statusesFail: boolean;
+    /** sendTransaction answers with the id, but the transaction never lands (Round 30). */
+    acceptWithoutLanding: boolean;
+    /** sendTransaction answers with this id instead of the bytes' own (Round 30). */
+    reportedSignature?: string;
+  };
 }
 
 export interface MockService extends Loopback {
@@ -337,7 +353,18 @@ export async function mockService(initial: Record<string, unknown> = {}): Promis
  */
 export function approvedVerdictFor(
   request: unknown,
-  opts: { auditTrailId?: string; unobservedCodes?: string[] } = {},
+  opts: {
+    auditTrailId?: string;
+    unobservedCodes?: string[];
+    /**
+     * Round 30 (G-01): the Core's execution decision. Default: computed as
+     * the Core computes it — `executable_approved` when every residual is
+     * inherent, `analysis_only` otherwise. `null` leaves `decision` and
+     * `executable` out, as a server that predates them does.
+     */
+    decision?: string | null;
+    executable?: unknown;
+  } = {},
 ): Record<string, unknown> {
   const r = request as {
     program_id: string;
@@ -349,20 +376,39 @@ export function approvedVerdictFor(
   };
   const bytes = Uint8Array.from(r.signed_transaction);
   const codes = opts.unobservedCodes ?? ["program_semantics", "inner_instructions"];
+  const computed = codes.every((c) => c === "program_semantics" || c === "inner_instructions")
+    ? "executable_approved"
+    : "analysis_only";
+  const decision = opts.decision === undefined ? computed : opts.decision;
+  const contentHash = AuditBind.computeHash({
+    programId: r.program_id,
+    instructionDiscriminator: r.instruction_discriminator,
+    accountAddresses: r.account_addresses,
+    instructionData: r.instruction_data,
+    cpiTargets: r.cpi_targets ?? [],
+  });
+  // The sample is a Round 30 verdict: drop its own decision fields and bind
+  // key so a `decision: null` stand-in really is a server that predates them.
+  const { decision: _d, executable: _e, instruction_bind_key: _k, ...base } = BLOCKED_VERDICT;
   return {
-    ...BLOCKED_VERDICT,
+    ...base,
+    ...(decision === null
+      ? {}
+      : {
+          decision,
+          executable: "executable" in opts ? opts.executable : decision === "executable_approved",
+          instruction_bind_key: contentHash,
+        }),
     approved: true,
     confidence: 0.64,
     risk_verdict: { status: "Clear", findings: [] },
     policy_verdict: "Approved",
     audit_trail_id: opts.auditTrailId ?? "gr-loopback-00000001",
-    content_hash: AuditBind.computeHash({
-      programId: r.program_id,
-      instructionDiscriminator: r.instruction_discriminator,
-      accountAddresses: r.account_addresses,
-      instructionData: r.instruction_data,
-      cpiTargets: r.cpi_targets ?? [],
-    }),
+    content_hash: contentHash,
+    // An approval has no failed layer: the sample's L6 policy refusal passes.
+    layers: (base.layers as Array<Record<string, unknown>>).map((l) =>
+      l.status === "failed" ? { ...l, passed: true, status: "passed", reason: "Policy: Approved (loopback)" } : l,
+    ),
     summary: "APPROVED (loopback stand-in)",
     scope: {
       kind: "artifact_bound",
@@ -380,12 +426,14 @@ export function approvedVerdictFor(
  * real digests), records the lifecycle (`/audit/event` answers "approved" by
  * the exact audit_trail_id) and reconciles L8 as `ApprovedAndExecuted`.
  */
-export async function mockApprovingCore(): Promise<MockService> {
+export async function mockApprovingCore(
+  verdict: Omit<NonNullable<Parameters<typeof approvedVerdictFor>[1]>, "auditTrailId"> = {},
+): Promise<MockService> {
   const core = await mockService({ "GET /health": { status: "ok", service: "graphite", version: "test" } });
   let n = 0;
   core.respond.set("POST /verify", (body) => ({
     status: 200,
-    body: approvedVerdictFor(body, { auditTrailId: `gr-loopback-${String(++n).padStart(8, "0")}` }),
+    body: approvedVerdictFor(body, { ...verdict, auditTrailId: `gr-loopback-${String(++n).padStart(8, "0")}` }),
   }));
   core.respond.set("POST /audit/event", (body) => {
     const e = body as { event_type: string; content_hash: string };

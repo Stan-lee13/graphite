@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { ApiError, onConnectionChange, toApiError } from "./api";
+import { initialPoll, pollReducer, type PollEvent, type PollState } from "./poll-state";
 
 export interface Polled<T> {
   data: T | null;
@@ -18,10 +19,11 @@ export interface Polled<T> {
  * setting without waiting out the interval.
  */
 export function usePolling<T>(loader: () => Promise<T>, intervalMs = 5000): Polled<T> {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<ApiError | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const [state, dispatch] = useReducer(
+    pollReducer as (s: PollState<T, ApiError>, ev: PollEvent<T, ApiError>) => PollState<T, ApiError>,
+    undefined,
+    () => initialPoll<T, ApiError>(),
+  );
   const [epoch, setEpoch] = useState(0);
   const loaderRef = useRef(loader);
   loaderRef.current = loader;
@@ -31,20 +33,18 @@ export function usePolling<T>(loader: () => Promise<T>, intervalMs = 5000): Poll
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    // Round 30 (poll-state.ts): another Core's data is cleared, not shown
+    // under this Core's name while the new one loads.
+    dispatch({ type: "connection-changed", epoch });
 
     async function tick() {
       try {
         const value = await loaderRef.current();
-        if (!cancelled) {
-          setData(value);
-          setError(null);
-          setUpdatedAt(Date.now());
-        }
+        if (!cancelled) dispatch({ type: "ok", epoch, value, at: Date.now() });
       } catch (e) {
-        if (!cancelled) setError(toApiError(e, "poll"));
+        if (!cancelled) dispatch({ type: "fail", epoch, error: toApiError(e, "poll") });
       } finally {
         if (!cancelled) {
-          setLoading(false);
           // Back off while the page is hidden: nobody is looking, and a
           // background tab hammering a Core is a poor neighbour.
           const wait = document.visibilityState === "hidden" ? intervalMs * 6 : intervalMs;
@@ -53,7 +53,6 @@ export function usePolling<T>(loader: () => Promise<T>, intervalMs = 5000): Poll
       }
     }
 
-    setLoading(true);
     void tick();
     return () => {
       cancelled = true;
@@ -61,7 +60,7 @@ export function usePolling<T>(loader: () => Promise<T>, intervalMs = 5000): Poll
     };
   }, [intervalMs, epoch]);
 
-  return { data, error, loading, updatedAt };
+  return { data: state.data, error: state.error, loading: state.loading, updatedAt: state.updatedAt };
 }
 
 /** Which anatomy the shell renders. Mobile and desktop are different layouts,

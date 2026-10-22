@@ -39,7 +39,21 @@ services:
       RUST_LOG: ${RUST_LOG:-info}
     volumes:
       - graphite-data:/data
+      # Round 30, tamper-evident audit trail: mount the MAC key read-only from
+      # OUTSIDE the data volume and point GRAPHITE_AUDIT_KEY_FILE at it in
+      # .env. The server refuses a key file group/other can read, so on the
+      # host: `chown 10001:10001 audit.key && chmod 600 audit.key`.
+      # - ./secrets/audit.key:/run/secrets/audit.key:ro
+      # And for rotation checkpoints (GRAPHITE_AUDIT_ANCHOR_DIR=/anchors),
+      # ideally storage the container can write but not rewrite:
+      # - ./anchors:/anchors
     restart: unless-stopped
+    # Round 30: on SIGTERM the server stops accepting, drains open requests
+    # for up to its 10 s request timeout, then writes its final snapshot.
+    # Docker's default grace is also 10 s, so the SIGKILL could land during
+    # that last write; 30 s leaves the shutdown room to finish.
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
 
     # ---- runtime hardening ----
     # Matches the fixed UID/GID baked into the image so the named volume's
@@ -71,14 +85,17 @@ services:
         max-size: "10m"
         max-file: "5"
 
-    # The Dockerfile already declares a HEALTHCHECK; this mirrors it at the
-    # compose level for orchestration visibility. It passes on any 2xx from
-    # /health, including a node reporting `degraded: true` (such a node
-    # already refuses, with 503, any verdict it cannot record). Use
-    # ["CMD", "graphite", "healthcheck", "--strict"] to mark a degraded
-    # audit trail unhealthy instead.
+    # Strict here (Round 30). The image's own HEALTHCHECK passes on any 2xx
+    # from /health, so a load balancer in front of several nodes keeps one
+    # whose audit trail is degraded (it refuses, with 503, any verdict it
+    # cannot record). This file deploys ONE node with no balancer, so the
+    # container's health is the operator's signal: `--strict` marks it
+    # unhealthy when /health reports `degraded: true` (audit writes or
+    # rotation failing, audit disabled, a graph snapshot failing, a frozen
+    # simulation baseline). Docker does not restart an unhealthy container;
+    # it makes the state visible to `docker ps` and to whatever monitors it.
     healthcheck:
-      test: ["CMD", "graphite", "healthcheck"]
+      test: ["CMD", "graphite", "healthcheck", "--strict"]
       interval: 30s
       timeout: 5s
       retries: 3

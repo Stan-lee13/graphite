@@ -25,8 +25,9 @@ anatomies rather than one layout at two widths.
 - **One accent, and it is the logo's.** The violet at the mark's core, lifted
   to `#9b7bff` for contrast. It marks selection, focus and the brand, never
   decoration.
-- **Colour otherwise means a verdict.** Green approved and bound to
-  transaction bytes, amber approved only as described (no bytes, W22),
+- **Colour otherwise means a verdict.** Green executable (the Core's
+  `executable_approved`, bound to bytes — Round 30); amber approved but not
+  executable (analysis only, not reported, or descriptive), inconclusive,
   refused on policy, or degraded; red refused on risk. The one thing on the page that moves
   is the verdict tape on Overview, and it moves only when the gate decides.
 - **Type:** Instrument Sans (all interface text) and Commit Mono
@@ -44,8 +45,8 @@ label service.
 
 | View | Routes read | Content |
 | --- | --- | --- |
-| Overview | `/api/graph`, `/api/protocols/top`, `/api/confidence-history`, `/api/policy-violations`, `/metrics` | The verdict tape, whole-trail approval and refusal totals, bound-vs-descriptive approvals over the returned window (labelled "last N"), the six most recent refusals (risk vs policy drawn differently), the most exercised programs, a red band the moment any bypass counter is non-zero, and an "unknown — /metrics unavailable" band whenever those counters cannot be read |
-| Programs | `/api/graph`, `/api/protocols/top`, `/manifests` | Every program with a manifest, the five `/api/protocols/top` reports verification counts for first (it reports no others), then by mainnet census; a detail pane with the manifest's instructions, discriminators, account roles, expected state changes, risk rules and declared CPI targets. The trust tier shown is the one the Core **applied**, which since Round 18 is lowered from a declared `BattleTested` when the mainnet measurement in `battle_tested_evidence.json` does not support it |
+| Overview | `/api/graph`, `/api/protocols/top`, `/api/confidence-history`, `/api/policy-violations`, `/metrics` | The verdict tape, whole-trail approval and refusal totals, executable vs not-executable approvals over the returned window (labelled "last N"), the six most recent refusals (risk vs policy drawn differently), the most exercised programs, a red band the moment any bypass counter is non-zero, and an "unknown — /metrics unavailable" band whenever those counters cannot be read |
+| Programs | `/api/graph`, `/api/protocols/top`, `/manifests` | Every program with a manifest, the most verified here first (every program's count, from `/api/protocols/top?limit=500`), then by mainnet census; a detail pane with the manifest's instructions, discriminators, account roles, expected state changes, risk rules and declared CPI targets. The trust tier shown is the one the Core **applied**, which since Round 18 is lowered from a declared `BattleTested` when the mainnet measurement in `battle_tested_evidence.json` does not support it |
 | Call graph | `/api/graph` | Declared CPI edges in call order; on a phone, the same roles as lists |
 | Verifications | `/api/confidence-history` | The trail's total, and its newest 500 verdicts in trail order — bound, descriptive and refused counted apart — with confidence drawn against the Gaming, Trading and Treasury floors |
 | Blocked | `/api/policy-violations` | Whole-trail refusal total, and the newest 200 refused transactions and 200 requests the Core could not parse |
@@ -78,11 +79,67 @@ npm test           # tsx --test (Node 22+): transport, router, connection storag
 - The built `index.html` carries a Content-Security-Policy (`src/csp.ts`,
   Round 29): scripts, styles, fonts and images from the console's own origin
   only, no inline script and no `eval`; `connect-src` allows any `https://`
-  origin and plain `http://` on `localhost`, `127.0.0.1` and `[::1]` — the
-  same rule `src/transport.ts` applies (a CSP cannot express all of
-  127.0.0.0/8). It is added at build time only; the dev server needs inline
-  scripts. Production builds ship no source maps
-  (`GRAPHITE_DASHBOARD_SOURCEMAP=1` for a local debugging build).
+  origin and plain `http://` on `localhost` and `127.0.0.1` — the same rule
+  `src/transport.ts` applies. A CSP host source cannot be an IPv6 literal or
+  a range, so a plain-http Core at `[::1]` or `127.0.0.2+` is refused before
+  sending, with that reason (Round 30; it used to fail as "No response").
+  It is added at build time only; the dev server needs inline scripts.
+  Production builds ship no source maps (`GRAPHITE_DASHBOARD_SOURCEMAP=1`
+  for a local debugging build).
+- **Serving it (Round 30).** A `<meta>` CSP cannot carry `frame-ancestors`,
+  so the host serving `dist/` must send headers: `src/csp.ts`
+  `securityHeaders()` is the set — the CSP plus `frame-ancestors 'none'`,
+  `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy: same-origin`
+  and a `Permissions-Policy` that denies camera, microphone, geolocation,
+  payment and USB. `npm run preview` serves exactly these; configure your
+  static host (nginx `add_header`, a CDN's header rules) with the same.
+
+## Browser smoke test (Round 30)
+
+`e2e/smoke.mjs` walks every view of the built console in Chromium, at
+desktop and phone width, against a running Core, and fails on a CSP
+violation, a page error or a view's error boundary, a page wider than the
+viewport, any axe-core violation (when `AXE_CORE_PATH` names `axe.min.js`),
+or a verdict drawn "executable" that the Core's `/api/confidence-history`
+did not report as `executable_approved`:
+
+```bash
+npm run build && npm run preview -- --port 4173 &   # serves dist/ with the security headers
+# a Core on loopback with GRAPHITE_CORS_ORIGINS=http://127.0.0.1:4173
+node e2e/smoke.mjs http://127.0.0.1:4173/ http://127.0.0.1:7331 "$GRAPHITE_API_KEY"
+```
+
+Playwright is not a dependency of the console; the script finds it in this
+package or under `PLAYWRIGHT_NODE_PATH`. Breaking the colour rule (drawing an
+unreported bound approval green) makes it fail on every such row.
+
+## What a verdict's colour means (Round 30)
+
+Green is spent on one thing: an approval the Core reports as
+`decision: "executable_approved"` with `executable: true`, bound to
+transaction bytes — the only verdict a signer may act on. Every other
+approval is amber and says which kind it is: **analysis only** (the Core
+judged it without a simulation, or with an unobserved residual),
+**executability not reported** (a Core older than the decision contract),
+or **descriptive** (no bytes at all). An unknown `decision`, or a `decision`
+and `executable` that disagree, is drawn as not executable. Refusals are
+red; **inconclusive** (evidence could not be obtained) is amber. The
+Overview tape writes its counts beside it, so the colours are never the
+only signal. Before Round 30 every bound approval was green, including the
+ones a Core with no RPC made.
+
+System shows **Simulation RPC** from `/health`'s `rpc_attached` — "None"
+means no approval from that Core is executable — and "Not reported" when
+the Core does not say. It also surfaces frozen baselines and detected
+program upgrades from `/health`.
+
+Every response is checked for the fields the views read (`src/shape.ts`).
+A Core of another version or a proxy's page is reported as "the Core's
+answer could not be read", naming the field, instead of crashing the view
+or showing "NaN" — and is no longer misreported as "No response". Changing
+the Core or key clears the previous Core's numbers at once rather than
+showing them under the new Core's name while it loads.
 
 ## The API key
 
@@ -97,6 +154,12 @@ is no sign-up and no key service:
    `GRAPHITE_DEV_MODE=1` is set, and then only on a loopback address.
 3. Every caller — this console, the agent kit, the CLI — sends the same key
    as `Authorization: Bearer`. Every route except `/health` requires it.
+
+Since Round 30 a Core can also take a read-only key, `GRAPHITE_READ_API_KEY`:
+it opens only the `GET` routes this console reads (`/metrics`, `/manifests`,
+`/api/*`) and cannot submit a verification or record a lifecycle event. Give
+the console that key rather than the verify key; the Connection screen tests
+it the same way.
 
 The console receives its copy on the Connection screen, which tests it in
 two steps: `/health` proves the address is a Core that this origin may talk
@@ -120,7 +183,9 @@ that is down — in the sidebar, in a banner, and on every panel.
   the view's subject and 30 s where it only supplies names (Verifications,
   Registry, search); `/api/protocols/top` 5 s (Overview, Programs) and 10 s
   (Call graph); `/api/confidence-history`, `/api/policy-violations` and
-  `/api/registry` 5 s; `/manifests` 30 s. Every interval is six times longer
+  `/api/registry` 5 s; `/manifests` 5 min (Round 30: it is every manifest in
+  full, about 4.6 MB, and was fetched every 30 s). `/api/protocols/top` is
+  asked for every row (`?limit=500`), so every program has its count. Every interval is six times longer
   while the tab is hidden. Real-time push is deferred to Phase 3 by design
   (see `docs/phase2-plan.md` Feature 7).
 - Every request has a 15 s deadline (headers and body), so a Core that

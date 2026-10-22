@@ -5,15 +5,16 @@
 //! Constitution P3 (confidence always scored + explained) and P6 (unknown
 //! protocols never receive maximum confidence via tier-based ceilings).
 //!
-//! This is a reference implementation demonstrating the SHAPE of the confidence
-//! computation, not a production-final algorithm. The actual signal weights and
-//! threshold values are design decisions for the real Phase 1+ implementation.
-//!
-//! Known simplifications (tracked in memory/known-gaps-log.md):
-//! - Signal weights are hardcoded constants here; production should make these
-//!   configurable per protocol class.
-//! - The ceiling enforcement is simple linear capping; production may use
-//!   more sophisticated decay curves.
+//! This is the scoring every verdict runs. `GraphiteCore::verify_async` builds
+//! the signals (`build_signals` in `verification.rs`) and this module validates
+//! them, sums them and applies the tier's ceiling. What it is, stated plainly
+//! (Round 30, K-16):
+//! - The signal weights are fixed constants in `build_signals`, the same for
+//!   every protocol class; they are not configurable.
+//! - The ceiling is a linear cap at the tier's maximum
+//!   (`TrustTier::confidence_ceiling`), not a decay curve.
+//! - The score is a weighted sum of the evidence Graphite holds, not a
+//!   calibrated probability that a transaction is safe.
 
 use thiserror::Error;
 
@@ -50,13 +51,24 @@ pub enum TrustTier {
     Unknown,
     /// Tier 1: Heuristically inferred from bytecode similarity or IDL analysis
     HeuristicInferred,
-    /// Tier 2: Official manifest from protocol team, signature-verified
+    /// Tier 2: a manifest Graphite ships, or a registry record with signed-
+    /// manifest evidence. NOT a statement that a signature was checked: the
+    /// seed manifests ship unsigned and name this tier in their own
+    /// `trust_tier` field, which is capped here (P7). `has_signed_manifest`
+    /// evidence comes from the registry accepting a submission whose signer
+    /// it counts, or from an operator's seed.
     OfficialManifest,
-    /// Tier 3: Simulation-validated against historical behavior
+    /// Tier 3: `simulation_match_count` evidence of at least 3. Seeded by an
+    /// operator; nothing in the pipeline increments it — Graphite's own
+    /// simulation observations feed the `SimulationMatch` signal through the
+    /// baseline's sample count, not this tier.
     SimulationValidated,
-    /// Tier 4: Community-verified through independent review
+    /// Tier 4: at least two counted reviewer attestations (the registry), or
+    /// an operator's seed.
     CommunityVerified,
-    /// Tier 5: Battle-tested through 1000+ verified transactions
+    /// Tier 5: an operator-ASSERTED volume of 1,000+ transactions with a
+    /// signed manifest or two attestations. Graphite does not count the
+    /// volume (`BehaviorEvidence::battle_tested_tx_count`).
     BattleTested,
 }
 
