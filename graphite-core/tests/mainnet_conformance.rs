@@ -271,6 +271,18 @@ fn measure(doc: &serde_json::Value, honest: bool) -> (Tally, Vec<Row>) {
     let registry = graphite_core::manifest::load_seed_manifests();
     let mut t = Tally::default();
     let mut verdicts: Vec<Row> = Vec::new();
+    // `GRAPHITE_MAINNET_REQUESTS=<path>` (Round 32): also write, one JSON line
+    // per transaction that reaches a verdict, the exact `/verify` request this
+    // harness builds for it — the same primary instruction, discriminator,
+    // resolved accounts, siblings and (with `GRAPHITE_MAINNET_HONEST_INTENT`)
+    // honest intent — so `tools/live-measure` can replay it against a server
+    // that simulates. Writing them changes nothing measured here.
+    let mut requests = std::env::var("GRAPHITE_MAINNET_REQUESTS").ok().map(|path| {
+        std::io::BufWriter::new(
+            std::fs::File::create(&path)
+                .unwrap_or_else(|e| panic!("GRAPHITE_MAINNET_REQUESTS={path}: {e}")),
+        )
+    });
 
     for row in rows {
         t.rows += 1;
@@ -456,6 +468,20 @@ fn measure(doc: &serde_json::Value, honest: bool) -> (Tally, Vec<Row>) {
             real_account_metas: vec![],
             state_diff: None,
         };
+
+        if let Some(out) = requests.as_mut() {
+            use std::io::Write;
+            let line = serde_json::json!({
+                "row": t.rows - 1,
+                "slot": slot,
+                "failed_on_chain": row["err"].as_bool().unwrap_or(false),
+                "program_id": ix.program_id,
+                "instruction_name": ix_name,
+                "manifest_found": found.is_some(),
+                "input": input,
+            });
+            writeln!(out, "{line}").expect("GRAPHITE_MAINNET_REQUESTS: write failed");
+        }
 
         let result: VerificationResult = match core.verify(&input) {
             Ok(r) => r,
