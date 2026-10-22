@@ -8573,7 +8573,9 @@ impl GraphiteCore {
                             // that would not land, so its post-state is not
                             // evidence about anything.
                             diff_unavailable = Some(format!("simulation did not execute: {err}"));
-                        } else if !diff_addresses.is_empty() {
+                        } else if !diff_addresses.is_empty() && diff_unavailable.is_none() {
+                            // (A response set aside above — implausible units,
+                            // contradicted lookups — keeps its own reason.)
                             diff_unavailable = Some(
                                 "the RPC returned no post-state for the writable accounts"
                                     .to_string(),

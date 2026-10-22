@@ -89502,14 +89502,14 @@
     "note": "Orca Whirlpools::increaseLiquidity empty intent — Check 10 gate"
   },
   {
-    "hash": "6dd3d3ac8e17c95a225fadac359f37617a7a06140dcf3d3d20bab7cb1d152357",
+    "hash": "3a02e39ee73fc90da6236810aeda663dc1fe464fb9d6f1587b357c5bcd1b7fd1",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::increaseLiquidityByTokenAmountsV2 intent=transfer"
   },
   {
-    "hash": "90870ff8aad531dc7438c0c75c55037458511484fe3361c53449b1d57832050d",
+    "hash": "d8f640b81a3ab2aa6eb52d8e5ae3b722d78757d6e4d619cce5038b460b4b566c",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -90783,11 +90783,11 @@
     "note": "Stake Withdraw no intent — Check 10"
   },
   {
-    "hash": "55c52f79b91e15e1be42129166484b55f7679e852906615390ba1d444e4c8b28",
+    "hash": "dade3cea17ec201977c11c65a32b7a7d03086cf308d10f07bc5fda117589fa28",
     "split": "regression",
     "class": "risk-class",
-    "provenance": "synthetic-benign",
-    "note": "Stake Withdraw declared as a stake operation — proceeds"
+    "provenance": "synthetic-attack",
+    "note": "Stake Withdraw declared as a stake operation — refused: a stake intent declares no withdrawal (R33-1)"
   },
   {
     "hash": "706af50f439866ab75823f28c2e6a55915e091a2ad83a8fb986d98dc0e169179",

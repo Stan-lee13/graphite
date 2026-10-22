@@ -1413,7 +1413,7 @@
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
     "content_hash": "94b985a3d2310f3c213fcf1de3d0bbe8c8340aff7fc2ee1053b6f4e968d510c1",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {
@@ -1475,7 +1475,7 @@
       "lookup_table_count": 0,
       "state_diff": null
     },
-    "integrity_hash": "bf2977022413b0f9113ce9036a8668ea5aef7ed5b271caef89c41187f8c8528b"
+    "integrity_hash": "60c93e99bad606d533d8468f06a2913b406b72b58071d28dd4e16e989d67402a"
   },
   {
     "program_id": "Stake11111111111111111111111111111111111111",
@@ -1693,7 +1693,7 @@
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
     "content_hash": "1624bd653e342682b8a2f7d5d0b2d653ee9948196abf18710aab65879c2240bc",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {
@@ -1755,7 +1755,7 @@
       "lookup_table_count": 0,
       "state_diff": null
     },
-    "integrity_hash": "96354f962079ed51b188e76cf3c2ea57918ca2704850ec3d0908bae4841123db"
+    "integrity_hash": "01098eddf0cd53b38a86e148520e725eaade97575bb7a216444b10cae66c23d4"
   },
   {
     "program_id": "Stake11111111111111111111111111111111111111",
@@ -5544,9 +5544,9 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "55c52f79b91e15e1be42129166484b55f7679e852906615390ba1d444e4c8b28",
-    "expected_approved": true,
-    "source": "synthetic-benign",
+    "content_hash": "dade3cea17ec201977c11c65a32b7a7d03086cf308d10f07bc5fda117589fa28",
+    "expected_approved": false,
+    "source": "synthetic-attack",
     "deprecated": false,
     "input": {
       "proposed_intent": {
@@ -5590,7 +5590,7 @@
       "lookup_table_count": 0,
       "state_diff": null
     },
-    "integrity_hash": "f078af35179466f4a61c6fcf84f4be8dc5da65f17546be282ef7d66426f92b0a"
+    "integrity_hash": "579d7f9d231adce45a9210a8deb0a0bb335d4aeed1a95cc5fc478456283e06ef"
   },
   {
     "program_id": "Stake11111111111111111111111111111111111111",

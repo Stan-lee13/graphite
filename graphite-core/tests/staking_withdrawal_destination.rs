@@ -573,6 +573,102 @@ async fn a_stake_intent_does_not_declare_even_the_owners_own_withdrawal() {
     assert_refused(&r, "a Stake Withdraw labelled stake");
 }
 
+/// Every instruction a `stake` intent declares, by program and class, on the
+/// three programs Check 9 admits for it — pinned, so a manifest or table
+/// change that widens it is reviewed here. The withdrawals it declared before
+/// Round 34 are pinned beside it as declared by no stake intent now.
+#[test]
+fn the_stake_intent_declares_exactly_these_instructions() {
+    let registry = graphite_core::manifest::load_seed_manifests();
+    let (mut admitted, mut withdrawals) = (Vec::new(), Vec::new());
+    for program in [STAKE, MARINADE, STAKE_POOL] {
+        assert!(graphite_core::risk_engine::program_supports_intent_in(
+            &registry, program, "stake"
+        ));
+        for i in &registry.get(program).unwrap().instructions {
+            let class = i.security_class();
+            match graphite_core::manifest::intent_declares_class("stake", class) {
+                Some(true) => admitted.push(format!("{program} {class} {}", i.name)),
+                _ if class == "withdraw" => withdrawals.push(format!("{program} {}", i.name)),
+                _ => {}
+            }
+        }
+    }
+    println!("admitted:\n{}\nwithdrawals:\n{}", admitted.join("\n"), withdrawals.join("\n"));
+    let expected: &[&str] = &[
+        // Stake: the delegation lifecycle. Split, Merge, MoveStake and
+        // MoveLamports keep (or require matching) authorities, so none hands
+        // the stake to another key. `Initialize` takes the new account's
+        // authorities from its data, unsigned — a residual this list pins.
+        "Stake11111111111111111111111111111111111111 create Initialize",
+        "Stake11111111111111111111111111111111111111 stake DelegateStake",
+        "Stake11111111111111111111111111111111111111 stake Split",
+        "Stake11111111111111111111111111111111111111 stake Deactivate",
+        "Stake11111111111111111111111111111111111111 stake Merge",
+        "Stake11111111111111111111111111111111111111 create InitializeChecked",
+        "Stake11111111111111111111111111111111111111 stake DeactivateDelinquent",
+        "Stake11111111111111111111111111111111111111 stake MoveStake",
+        "Stake11111111111111111111111111111111111111 stake MoveLamports",
+        // Marinade: deposits (`transfer`), the permissionless cranks and the
+        // operator's validator management.
+        "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD create initialize",
+        "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD create addValidator",
+        "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD transfer deposit",
+        "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD transfer depositStakeAccount",
+        "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD transfer addLiquidity",
+        "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD transfer stakeReserve",
+        "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD transfer updateActive",
+        "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD transfer updateDeactivated",
+        "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD transfer mergeStakes",
+        "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD create createCanonicalStake",
+        // SPL Stake Pool: deposits, the balance updates and the staker's
+        // moves between the pool's own stake accounts.
+        "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy create Initialize",
+        "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy create AddValidatorToPool",
+        "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy transfer IncreaseValidatorStake",
+        "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy transfer UpdateValidatorListBalance",
+        "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy transfer UpdateStakePoolBalance",
+        "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy transfer DepositStake",
+        "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy transfer DepositSol",
+        "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy create CreateTokenMetadata",
+        "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy transfer IncreaseAdditionalValidatorStake",
+        "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy transfer Redelegate",
+        "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy transfer DepositStakeWithSlippage",
+        "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy transfer DepositSolWithSlippage",
+    ];
+    assert_eq!(admitted, expected);
+    // Declared by a stake intent until Round 34; by none now, except as a
+    // grounded `withdraw` (Stake Withdraw, Marinade liquidUnstake, Stake Pool
+    // WithdrawSol/WithdrawStake and their slippage variants).
+    let expected_withdrawals: &[&str] = &[
+        "Stake11111111111111111111111111111111111111 Withdraw",
+        "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD liquidUnstake",
+        "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD removeLiquidity",
+        "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD orderUnstake",
+        "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD claim",
+        "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD deactivateStake",
+        "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD emergencyUnstake",
+        "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD partialUnstake",
+        "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD withdrawStakeAccount",
+        "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy DecreaseValidatorStake",
+        "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy WithdrawStake",
+        "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy WithdrawSol",
+        "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy DecreaseAdditionalValidatorStake",
+        "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy DecreaseValidatorStakeWithReserve",
+        "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy WithdrawStakeWithSlippage",
+        "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy WithdrawSolWithSlippage",
+    ];
+    assert_eq!(withdrawals, expected_withdrawals);
+    for w in &withdrawals {
+        let (_, name) = w.split_once(' ').unwrap();
+        assert!(
+            !admitted.iter().any(|a| a.ends_with(&format!(" {name}"))
+                && a.starts_with(w.split(' ').next().unwrap())),
+            "{w} is declared by a stake intent"
+        );
+    }
+}
+
 /// Round 34 (C-4): a declared intent is one word to every layer, however it
 /// is spelled. It was normalised per layer — Check 9 read the raw string,
 /// Check 9b trimmed it, L5 and the grants trimmed and lowercased it — so

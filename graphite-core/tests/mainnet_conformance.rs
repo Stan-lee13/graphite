@@ -898,6 +898,11 @@ fn the_committed_mainnet_blocks_give_the_recorded_verdicts_every_run() {
         "two runs over the same blocks disagree"
     );
 
+    // Round 34: `GRAPHITE_MAINNET_VERDICTS_OUT=<path>` writes the verdict
+    // table, so a changed pin can be diffed row by row against the base's.
+    if let Ok(path) = std::env::var("GRAPHITE_MAINNET_VERDICTS_OUT") {
+        std::fs::write(&path, &tsv).expect("write the verdict table");
+    }
     use sha2::Digest;
     let digest = hex::encode(sha2::Sha256::digest(tsv.as_bytes()));
     println!(
