@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import live_devnet  # noqa: E402
 import live_mainnet as lm  # noqa: E402
 import solrpc  # noqa: E402
+import wire  # noqa: E402
 
 FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "examples", "decisions")
 
@@ -270,3 +271,386 @@ def test_l8_outcomes():
     ) == "defect"
     assert live_devnet.l8_outcome('"BlockedButExecuted"') == "defect"
     assert live_devnet.l8_outcome(None) == "defect"
+
+
+# ── the blockhash rewrite, on real committed mainnet bytes (Round 32, P3b) ───
+
+SAMPLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "graphite-core", "fixtures", "mainnet",
+                      "sample-2026-09-23-last-2-blocks.json")
+
+
+@pytest.fixture(scope="module")
+def sample():
+    with open(SAMPLE, encoding="utf-8") as f:
+        rows = json.load(f)["rows"]
+    return [base64.b64decode(r["b64"]) for r in rows], rows
+
+
+def unsigned(frame):
+    """What the conformance harness sends: every signature slot zeroed."""
+    lay = wire.layout(frame)
+    out = bytearray(frame)
+    out[lay.signatures_at : lay.signatures_at + 64 * lay.signature_count] = bytes(64 * lay.signature_count)
+    return bytes(out)
+
+
+# Row → recentBlockhash as Agave 4.2.2 reads it (`solana decode-transaction
+# <b64> base64 --output json`, the pinned release the devnet workflow uses):
+# an oracle independent of wire.py. Rows 13 and 26 are durable-nonce
+# transactions (Agave: instruction 0 is System AdvanceNonceAccount).
+AGAVE_BLOCKHASHES = {
+    0: ("legacy", "FRGFASXt3moXYQKSsETL4ztaeebXYjsAHWUUers76eP9"),
+    5: ("legacy", "CSr7kwvD6G2Za1xV3WaFFHLfPHeozmh72QX7c8xF9FoH"),
+    13: ("legacy", "2cXd494m2wPpRdbRxGq3JyRyTJaR2AtchXb4ZcGvV22w"),
+    15: ("legacy", "HLeLSWw42zBP5goNkuHqDve2eKLAkVNhuk41aXz9MhdU"),
+    4: ("0", "FRGFASXt3moXYQKSsETL4ztaeebXYjsAHWUUers76eP9"),
+    6: ("0", "CSr7kwvD6G2Za1xV3WaFFHLfPHeozmh72QX7c8xF9FoH"),
+    26: ("0", "FAwbae348zkdxfn5y2SKQQJJhm4A3cbQT5b6ZuqLB3uC"),
+    41: ("0", "2eZ3YfBY3GamMVztuXNxAUEG3guFDTNQZsnb4G8iN7bw"),
+    8: ("1", "Bh2G4bTbnDQA29mDAfFw8Ct3o7cLkQQBSzEskAbQYEx2"),
+    21: ("1", "J5Zf6P24NJBdjohuA2G4Px9LVxaZxSSn4RuSJvkDAo7g"),
+    38: ("1", "5nFGBEpmKaqBDay7Ufc3zC3gUgUn4rAcYuZcJQxkMUP6"),
+}
+
+
+def test_blockhash_offsets_match_agave_on_committed_legacy_v0_and_v1(sample):
+    frames, _ = sample
+    for row, (version, expected) in AGAVE_BLOCKHASHES.items():
+        lay = wire.layout(frames[row])
+        assert lay.version == version, row
+        assert solrpc.b58encode(wire.blockhash(frames[row])) == expected, (row, lay)
+        # the unsigned frame the harness sends keeps the blockhash where it was
+        assert wire.blockhash(unsigned(frames[row])) == wire.blockhash(frames[row])
+    assert wire.layout(frames[8]).blockhash_at == 8  # v1: prefix, header, config mask
+
+
+def test_every_committed_frame_parses_to_its_last_byte(sample):
+    frames, rows = sample
+    versions, nonces = {}, 0
+    for frame, r in zip(frames, rows):
+        lay = wire.layout(frame)
+        assert lay.version == str(r["version"])
+        versions[lay.version] = versions.get(lay.version, 0) + 1
+        nonces += lay.durable_nonce
+    assert versions == {"legacy": 1499, "0": 472, "1": 313}
+    assert nonces == 97
+    assert wire.layout(frames[13]).durable_nonce and wire.layout(frames[26]).durable_nonce
+    assert not wire.layout(frames[0]).durable_nonce
+
+
+def test_the_patch_rewrites_exactly_the_32_blockhash_bytes(sample):
+    frames, _ = sample
+    new = bytes(range(1, 33))
+    for row in (0, 5, 4, 41, 8, 38):
+        before = unsigned(frames[row])
+        after = wire.patch_blockhash(before, new)
+        at = wire.layout(before).blockhash_at
+        assert len(after) == len(before)
+        assert [i for i in range(len(before)) if before[i] != after[i]] == [i for i in range(at, at + 32) if before[i] != new[i - at]]
+        assert wire.blockhash(after) == new
+        assert wire.layout(after) == wire.layout(before)
+
+
+def test_the_patch_refuses_signed_bytes_and_durable_nonces(sample):
+    frames, _ = sample
+    with pytest.raises(ValueError, match="signature"):
+        wire.patch_blockhash(frames[0], bytes(32))  # the chain's bytes are signed
+    with pytest.raises(ValueError, match="durable nonce"):
+        wire.patch_blockhash(unsigned(frames[13]), bytes(32))
+    with pytest.raises(ValueError, match="32 bytes"):
+        wire.patch_blockhash(unsigned(frames[0]), bytes(31))
+
+
+def test_truncated_or_padded_frames_are_refused(sample):
+    frames, _ = sample
+    for row in (0, 4, 8):
+        with pytest.raises(ValueError):
+            wire.layout(frames[row][:-1])
+        with pytest.raises(ValueError):
+            wire.layout(frames[row] + b"\0")
+    with pytest.raises(ValueError):
+        wire.layout(b"")
+
+
+# ── why: reasons behind L3/L4 failures and inconclusives ────────────────────
+
+
+@pytest.mark.parametrize(
+    "err,cls",
+    [
+        ("BlockhashNotFound", "BlockhashNotFound"),
+        ("AccountNotFound — the transaction would not land", "AccountNotFound"),
+        ("AlreadyProcessed", "AlreadyProcessed"),
+        ("InsufficientFundsForFee", "InsufficientFundsForFee"),
+        ('{"InstructionError":[2,{"Custom":6001}]} — the transaction', "InstructionError{2, Custom(6001)}"),
+        ('{"InstructionError":[0,"InvalidAccountData"]}: the', "InstructionError{0, InvalidAccountData}"),
+        ('{"InstructionError":[0,"Custom(1)"]}', "InstructionError{0, Custom(1)}"),
+        ('{"InstructionError":[3,{"BorshIoError":"Unknown"}]}', "InstructionError{3, BorshIoError}"),
+        ('{"InsufficientFundsForRent":{"account_index":0}}', "InsufficientFundsForRent"),
+        ('{"DuplicateInstruction":3}', "DuplicateInstruction"),
+    ],
+)
+def test_simulator_errors_are_named(err, cls):
+    assert lm.sim_error_class(err) == cls
+
+
+def l3l4(l3_status, l3_reason, l4_status="passed", l4_reason="ok"):
+    v = fixture("executable_approved")
+    for l in v["layers"]:
+        if l["layer"].startswith("L3"):
+            l["status"], l["reason"] = l3_status, l3_reason
+        if l["layer"].startswith("L4"):
+            l["status"], l["reason"] = l4_status, l4_reason
+    return v
+
+
+def test_l3_and_l4_reasons_read_the_cores_own_wording():
+    # the committed fixture: an InstructionError from the simulator
+    assert lm.failure_reasons(fixture("blocked")) == ["L3 failed: InstructionError{0, Custom(1)}", "L4 inconclusive: State not observed: no pre/post diff"]
+    v = l3l4("inconclusive", "Simulation ran, but no trusted baseline exists for this program yet (2 of 10 samples needed). The baseline grows")
+    assert lm.failure_reasons(v) == ["L3 inconclusive: no mature baseline"]
+    v = l3l4("inconclusive", "Simulation INCOMPLETE — no complete simulation was obtained (simulation failed: RPC error: HTTP 429 Too Many Requests)",
+             "inconclusive", "State not observed | NOTE: the pre/post state diff was attempted and could not be built (simulation failed: RPC error: HTTP 429 Too Many Requests) — this")
+    assert lm.failure_reasons(v) == ["L3 inconclusive: incomplete: RPC rate-limited", "L4 inconclusive: simulation call failed: RPC rate-limited"]
+    v = l3l4("inconclusive", "Simulation INCOMPLETE — no complete simulation was obtained (simulation failed: Invalid response: no unitsConsumed)")
+    assert lm.failure_reasons(v) == ["L3 inconclusive: incomplete: simulation call failed: Invalid response: no unitsConsumed"]
+    v = l3l4("failed", "Simulation integrity FLAGGED: 90000 CU / 3 writes / 1 hops [RPC-measured] (divergence 6.10σ vs this transaction shape's baseline)")
+    assert lm.failure_reasons(v) == ["L3 failed: flagged: divergence from the shape baseline"]
+    # addresses and numbers do not split one cause into many
+    a = l3l4("passed", "x", "failed", "account 9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU changed by 5000 lamports, undeclared")
+    b = l3l4("passed", "x", "failed", "account DuFgLf6zzf2N9v3iT4NrkdTPDSD2xK52CCnx6Ag2ckTP changed by 17 lamports, undeclared")
+    assert lm.failure_reasons(a) == lm.failure_reasons(b) == ["L4 failed: account <addr> changed by N lamports, undeclared"]
+    # an executable verdict whose L3 had no baseline to judge against (the fixture)
+    assert lm.failure_reasons(fixture("executable_approved")) == ["L3 inconclusive: no mature baseline"]
+    assert lm.failure_reasons(l3l4("passed", "Simulation integrity clean (RPC-verified): 150 CU")) == []
+
+
+def test_the_report_breaks_reasons_down_per_program_and_prints_them():
+    post_fn, get_fn, _ = fake_core([fixture("blocked"), fixture("analysis_only"), fixture("blocked"), fixture("executable_approved")])
+    rep = lm.replay(selected(4), sample_rows(4), "http://core", "k", pace=0, l8=0, sleep=lambda s: None, post_fn=post_fn, get_fn=get_fn)
+    assert rep["reasons"]["L3 failed: InstructionError{0, Custom(1)}"] == 2
+    assert rep["reasons_by_program"]["P0"]["L3 failed: InstructionError{0, Custom(1)}"] == 2
+    assert "P1" in rep["reasons_by_program"]  # analysis_only: L3 inconclusive, no RPC
+    assert rep["finding_patterns"]["SimulationFailed"] == 2
+    md = lm.markdown(rep)
+    assert "| `P0` | L3 failed: InstructionError{0, Custom(1)} | 2 |" in md
+    assert "A fresh Core has earned no evidence for any program" in md
+
+
+# ── the fresh-blockhash pass ─────────────────────────────────────────────────
+
+
+def frame_entries(sample, rows):
+    frames, _ = sample
+    return [
+        {"row": r, "slot": 1, "program_id": f"P{r}", "instruction_name": "x", "manifest_found": True, "failed_on_chain": False,
+         "input": {"signed_transaction": list(unsigned(frames[r])), "intent": {"intent_type": "Transfer"}}}
+        for r in rows
+    ]
+
+
+def test_the_fresh_pass_rewrites_only_the_blockhash_and_compares_side_by_side(sample):
+    entries = frame_entries(sample, [0, 4, 8, 13, 5])  # legacy, v0, v1, durable nonce, (outside the fresh subset)
+    new = bytes(range(100, 132))
+    stale_only = l3l4("inconclusive", "Simulation INCOMPLETE — no complete simulation was obtained (simulation failed: BlockhashNotFound)")
+    # stale, fresh per request in call order; row 8's outcome differs between its two passes
+    post_fn, get_fn, calls = fake_core([fixture("blocked"), fixture("blocked"), fixture("analysis_only"), fixture("analysis_only"),
+                                        stale_only, fixture("blocked"), fixture("blocked"), fixture("blocked")])
+    rep = lm.replay(entries, [], "http://core", "k", pace=0, l8=0, fresh=4, blockhash_fn=lambda: new,
+                    sleep=lambda s: None, post_fn=post_fn, get_fn=get_fn)
+    f = rep["fresh"]
+    assert f["requested"] == 4 and f["compared"] == 3 and f["changed"] == 1
+    assert f["patched_by_version"] == {"legacy": 1, "0": 1, "1": 1}
+    assert f["skipped"] == {"durable nonce (legacy)": 1}
+    verify_bodies = [b for u, b in calls if u.endswith("/verify")]
+    assert len(verify_bodies) == 8 and all(u.startswith("http://core/") for u, _ in calls)  # nothing goes to a cluster
+    for stale, fresh in ((verify_bodies[0], verify_bodies[1]), (verify_bodies[2], verify_bodies[3]), (verify_bodies[4], verify_bodies[5])):
+        s, n = bytes(stale["signed_transaction"]), bytes(fresh["signed_transaction"])
+        lay = wire.layout(s)
+        at = lay.blockhash_at
+        assert n[:at] == s[:at] and n[at + 32 :] == s[at + 32 :] and n[at : at + 32] == new
+        assert {k: v for k, v in fresh.items() if k != "signed_transaction"} == {k: v for k, v in stale.items() if k != "signed_transaction"}
+        assert not any(n[lay.signatures_at : lay.signatures_at + 64 * lay.signature_count])  # still unsigned
+    changed = [p for p in f["pairs"] if p["changed"]]
+    assert changed[0]["row"] == 8
+    assert changed[0]["stale"]["reasons"] == ["L3 inconclusive: incomplete: simulation call failed: BlockhashNotFound"]
+    assert f["stale_decisions"] == {"blocked": 1, "analysis_only": 1, "executable_approved": 1}
+    md = lm.markdown(rep)
+    assert "## Fresh-blockhash pass" in md and "outcome changed: **1**" in md and "| 8 | `P8` | 1 |" in md
+
+
+def test_the_fresh_pass_counts_what_it_could_not_patch(sample):
+    entries = frame_entries(sample, [0, 4])
+
+    def no_hash():
+        raise solrpc.RateLimited("getLatestBlockhash: 429")
+
+    post_fn, get_fn, calls = fake_core([fixture("blocked")] * 2)
+    rep = lm.replay(entries, [], "http://core", "k", pace=0, l8=0, fresh=2, blockhash_fn=no_hash, sleep=lambda s: None, post_fn=post_fn, get_fn=get_fn)
+    assert rep["fresh"]["skipped"] == {"no fresh blockhash (RateLimited)": 2} and len(calls) == 2
+    post_fn, get_fn, _ = fake_core([fixture("blocked")] * 2)
+    rep = lm.replay(entries, [], "http://core", "k", pace=0, l8=0, fresh=2, blockhash_fn=None, sleep=lambda s: None, post_fn=post_fn, get_fn=get_fn)
+    assert rep["fresh"]["skipped"] == {"no RPC for a fresh blockhash": 2}
+
+
+def test_a_fresh_blockhash_is_reused_for_its_ttl():
+    calls, now = [], [0.0]
+    hashes = iter(["4sGjMW1sUnHzSxGspuhpqLDx6wiyjNtZAMdL4VZHirAn", "FRGFASXt3moXYQKSsETL4ztaeebXYjsAHWUUers76eP9"])
+
+    def call(url, method, params, **kw):
+        calls.append(method)
+        return {"result": {"value": {"blockhash": next(hashes)}}}
+
+    fb = lm.FreshBlockhash("http://rpc", ttl=20, call=call, clock=lambda: now[0])
+    a = fb()
+    now[0] = 19
+    assert fb() == a and calls == ["getLatestBlockhash"]
+    now[0] = 41
+    assert fb() != a and len(calls) == 2 and len(a) == 32
+    bad = lm.FreshBlockhash("http://rpc", call=lambda *a, **k: {"error": {"code": -32000, "message": "x"}})
+    with pytest.raises(solrpc.RpcError):
+        bad()
+
+
+# ── operator evidence for System and SPL Token ───────────────────────────────
+
+
+class Done:
+    def __init__(self, code=0, out="tier: SimulationValidated"):
+        self.returncode, self.stdout, self.stderr = code, out, "boom" if code else ""
+
+
+def test_seeding_covers_system_and_spl_token():
+    ran = []
+    doc = lm.seed("graphite", "/d", run=lambda c, **k: ran.append(c) or Done())
+    assert doc["ok"] and set(doc["programs"]) == {lm.SYSTEM_PROGRAM, lm.SPL_TOKEN_PROGRAM}
+    seeded = [(c[2], c[c.index("--program") + 1]) for c in ran]
+    for p in (lm.SYSTEM_PROGRAM, lm.SPL_TOKEN_PROGRAM):
+        assert ("seed", p) in seeded and ("baseline", p) in seeded and ("show", p) in seeded
+    token_baseline = next(c for c in ran if c[2] == "baseline" and lm.SPL_TOKEN_PROGRAM in c)
+    assert token_baseline[token_baseline.index("--mean-compute-units") + 1] == "5000"
+    assert all(c[c.index("--data-dir") + 1] == "/d" for c in ran)
+    failed = lm.seed("graphite", "/d", run=lambda c, **k: Done(1 if c[2] == "baseline" else 0))
+    assert not failed["ok"] and "baseline" in failed["error"]
+
+
+def test_a_seeded_run_reports_the_seeded_programs_and_the_caveat():
+    post_fn, get_fn, _ = fake_core([fixture("executable_approved"), fixture("blocked")])
+    entries = selected(2)
+    entries[0]["program_id"] = lm.SYSTEM_PROGRAM
+    seeded = {"ok": True, "programs": {lm.SYSTEM_PROGRAM: {}, lm.SPL_TOKEN_PROGRAM: {}}}
+    rep = lm.replay(entries, sample_rows(2), "http://core", "k", pace=0, l8=0, seeded=seeded, sleep=lambda s: None, post_fn=post_fn, get_fn=get_fn)
+    assert rep["seeded_outcomes"][lm.SYSTEM_PROGRAM]["decisions"] == {"executable_approved": 1}
+    assert rep["seeded_outcomes"][lm.SPL_TOKEN_PROGRAM]["verdicts"] == 0
+    md = lm.markdown(rep)
+    assert "operator evidence was seeded for" in md and "## Seeded programs" in md
+    assert "A fresh Core has earned no evidence for any other program" in md
+
+
+# ── devnet: faucet retries, then a local real runtime ───────────────────────
+
+
+def test_the_faucet_is_retried_with_backoff_then_the_refusal_carries_every_attempt():
+    sleeps, tries = [], []
+
+    def refuse(rpc, pubkey, lamports):
+        tries.append(rpc)
+        raise solrpc.RateLimited("requestAirdrop: HTTP 429")
+
+    with pytest.raises(solrpc.RateLimited) as e:
+        live_devnet.airdrop_with_retry("https://faucet", "pk", 1, rounds=3, pause=30, airdrop_fn=refuse, sleep=sleeps.append)
+    assert len(tries) == 3 and sleeps == [30, 60] and len(e.value.attempts) == 3
+    outcomes = iter([solrpc.RpcError("airdrop not visible"), 500])
+
+    def second_round(rpc, pubkey, lamports):
+        o = next(outcomes)
+        if isinstance(o, Exception):
+            raise o
+        return o
+
+    assert live_devnet.airdrop_with_retry("x", "pk", 1, airdrop_fn=second_round, sleep=lambda s: None)[0] == 500
+
+
+class FakeProc:
+    def __init__(self, code=None):
+        self.returncode, self.terminated = code, False
+
+    def poll(self):
+        return self.returncode
+
+    def terminate(self):
+        self.terminated = True
+
+
+def test_the_local_validator_is_started_on_loopback_and_waited_for():
+    launched, answers = [], iter([solrpc.RpcError("refused"), {"result": "behind"}, {"result": "ok"}])
+
+    def call(rpc, method, params, **kw):
+        assert rpc == "http://127.0.0.1:8899" and method == "getHealth"
+        a = next(answers)
+        if isinstance(a, Exception):
+            raise a
+        return a
+
+    proc, rpc = live_devnet.start_validator("/bin/stv", "/w", popen=lambda cmd, **k: launched.append(cmd) or FakeProc(), call=call, sleep=lambda s: None)
+    assert rpc == "http://127.0.0.1:8899"
+    cmd = launched[0]
+    assert cmd[0] == "/bin/stv" and cmd[cmd.index("--bind-address") + 1] == "127.0.0.1" and "--reset" in cmd
+    assert cmd[cmd.index("--ledger") + 1] == "/w/ledger"
+    with pytest.raises(RuntimeError, match="exited 1"):
+        live_devnet.start_validator("/bin/stv", "/w", popen=lambda cmd, **k: FakeProc(1), call=call, sleep=lambda s: None)
+
+
+def devnet_args(tmp_path, **kw):
+    a = dict(graphite="/bin/false", rpc="https://api.devnet.solana.com", airdrop_lamports=1, core_port=7331, seed_evidence=True,
+             guard_cmd=None, out_dir=str(tmp_path), cluster="devnet", validator="/bin/stv", faucet_rounds=2)
+    a.update(kw)
+    return type("Args", (), a)()
+
+
+@pytest.fixture
+def devnet_fakes(monkeypatch):
+    seen = {"airdrops": [], "validators": 0}
+    monkeypatch.setattr(live_devnet, "gen_keys", lambda work: {"payer_secret": "S", "payer": "PAYER", "destination": "D"})
+    monkeypatch.setattr(live_devnet, "validator_version", lambda b: "solana-test-validator 4.2.2")
+
+    def fake_airdrop(rpc, pubkey, lamports, rounds=3, **kw):
+        seen["airdrops"].append(rpc)
+        if rpc.startswith("https://api.devnet"):
+            e = solrpc.RateLimited("requestAirdrop: HTTP 429")
+            e.attempts = [{"round": n + 1, "result": "RateLimited"} for n in range(rounds)]
+            raise e
+        return lamports, [{"round": 1, "result": "paid"}]
+
+    def fake_validator(binary, work, **kw):
+        seen["validators"] += 1
+        return FakeProc(0), "http://127.0.0.1:8899"
+
+    monkeypatch.setattr(live_devnet, "airdrop_with_retry", fake_airdrop)
+    monkeypatch.setattr(live_devnet, "start_validator", fake_validator)
+    return seen
+
+
+def test_a_refusing_faucet_falls_back_to_the_local_validator(tmp_path, devnet_fakes):
+    # /bin/false as the Core binary stops the run at the evidence step: what
+    # is tested is that it got there on the local cluster, and says so.
+    rep = live_devnet.run(devnet_args(tmp_path))
+    assert rep["cluster"] == "local-validator" and "faucet refused" in rep["cluster_reason"]
+    assert rep["rpc_host"] == "127.0.0.1"
+    assert [(s["step"], s["status"]) for s in rep["steps"]][:5] == [
+        ("keys", "ok"), ("airdrop", "REFUSED"), ("validator", "ok"), ("airdrop", "ok"), ("evidence", "FAILED")]
+    assert devnet_fakes["airdrops"] == ["https://api.devnet.solana.com", "http://127.0.0.1:8899"]
+    md = live_devnet.markdown(rep)
+    assert "Cluster: **local-validator**" in md and "local real Solana runtime" in md
+
+
+def test_without_a_validator_a_refusing_faucet_is_still_skipped(tmp_path, devnet_fakes):
+    rep = live_devnet.run(devnet_args(tmp_path, validator=None))
+    assert rep["status"] == "SKIPPED" and devnet_fakes["validators"] == 0 and rep["cluster"] == "devnet"
+
+
+def test_local_validator_mode_never_asks_the_public_faucet(tmp_path, devnet_fakes):
+    rep = live_devnet.run(devnet_args(tmp_path, cluster="local-validator"))
+    assert devnet_fakes["airdrops"] == ["http://127.0.0.1:8899"] and rep["cluster"] == "local-validator"
+    assert "forced" in rep["cluster_reason"]
+    assert live_devnet.run(devnet_args(tmp_path, cluster="local-validator", validator=None))["status"] == "DEFECTS"
