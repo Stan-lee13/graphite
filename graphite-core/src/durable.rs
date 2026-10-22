@@ -1838,7 +1838,12 @@ impl AuditLog {
         let spawned = std::thread::Builder::new()
             .name("graphite-audit-index".to_string())
             .spawn(move || {
+                // Locals drop in reverse order: the job's clone of the log —
+                // and with it any share of the writer lock — is released
+                // before the count says the job is done, so a caller that
+                // waits for the count to reach zero can reopen the trail.
                 let _done = done;
+                let log = log;
                 job(&log);
             });
         if let Err(e) = spawned {
@@ -4352,6 +4357,9 @@ mod tests {
                 .unwrap_or_else(|| panic!("record {i} lost across rotation"));
             assert_eq!(r.audit_trail_id, format!("gr-{i}"));
         }
+        // Round 30: the writer holds the trail's lock until its last clone
+        // (a background index job's) is gone.
+        log.wait_for_index_jobs();
         drop(log);
         let reopened = AuditLog::open_with_rotation(&path, 2_000, 0).unwrap();
         for i in 0..20 {
@@ -4605,6 +4613,7 @@ mod tests {
         let mut rec = rec("after-torn");
         rec.transaction_sha256 = Some("ab".repeat(32));
         assert!(log.append(&rec));
+        log.wait_for_index_jobs();
         drop(log);
         let reopened = AuditLog::open(&path).unwrap();
         let found = reopened.find_verification(VerificationKey::AuditTrailId("after-torn"));
@@ -4690,6 +4699,7 @@ mod tests {
         assert!(log.lifecycle_history(LifecycleKey::default()).is_empty());
 
         // A fresh handle rebuilds the index from the file.
+        log.wait_for_index_jobs();
         drop(log);
         let reopened = AuditLog::open(&path).unwrap();
         let by_id = reopened.lifecycle_history(LifecycleKey {
@@ -5152,6 +5162,7 @@ mod tests {
             })
             .collect();
         assert_eq!(archive_scans(&log), 0);
+        log.wait_for_index_jobs();
         drop(log);
 
         let log = AuditLog::open_with_rotation(audit_path(&dir), 0, 0).unwrap();
@@ -5212,6 +5223,7 @@ mod tests {
         assert_eq!(index_builds(&log), 0, "no archive may be parsed");
         assert_eq!(archive_scans(&log), 0);
         // The same indexes, checked by a fresh process.
+        log.wait_for_index_jobs();
         drop(log);
         let log = AuditLog::open_with_rotation(audit_path(&dir), 0, 0).unwrap();
         assert_eq!(log.count_verifications(tx), (2, 1));
@@ -5420,6 +5432,7 @@ mod tests {
             .find_verification(VerificationKey::AuditTrailId("gr-unacked"))
             .is_none());
         assert!(log.append(&counted("gr-1", true)));
+        log.wait_for_index_jobs();
         drop(log);
         let log = AuditLog::open_with_rotation(&path, 0, 0).unwrap();
         assert!(log
@@ -5470,6 +5483,7 @@ mod tests {
         assert!(!text.contains("gr-unacked"), "{text}");
         assert!(!text.contains("gr-blocked"), "{text}");
         assert_eq!(log.count_verifications(key), (2, 0));
+        log.wait_for_index_jobs();
         drop(log);
         let log = AuditLog::open_with_rotation(&path, 0, 0).unwrap();
         assert_eq!(log.count_verifications(key), (2, 0));
