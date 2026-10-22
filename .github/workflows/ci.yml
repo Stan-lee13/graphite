@@ -690,7 +690,7 @@ jobs:
           # The live-server tests skip without a server (the container job
           # runs them against one); nothing else may skip.
           npm test 2>&1 | tee "$RUNNER_TEMP/sdk-ts.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sdk-ts.log" 55 \
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sdk-ts.log" 62 \
             "$(grep -cE '^live\("' src/live-server.test.ts)"
           # The published package must actually build, and must not ship the
           # test file — dist/ is gitignored, so a broken build config would
@@ -709,7 +709,7 @@ jobs:
           # Every *.test.ts in the directory, so a test file cannot sit in
           # the repository looking like a gate without ever running.
           npm test 2>&1 | tee "$RUNNER_TEMP/agent-guard.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/agent-guard.log" 277
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/agent-guard.log" 301
           # The guard and the Rust Core are two implementations of one
           # agreement: the guard serializes a transaction and describes its
           # instructions, the Core reads both and decides whether they agree.
