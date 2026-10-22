@@ -1555,7 +1555,9 @@ impl AuditLog {
             self.path.display(),
             key.id(),
             self.chain_head_now().next_seq.saturating_sub(1),
-            plan.previous_key_id.as_deref().unwrap_or("none, the records before were unkeyed"),
+            plan.previous_key_id
+                .as_deref()
+                .unwrap_or("none, the records before were unkeyed"),
             if plan.previous_key_checked {
                 "the newest record was checked under it"
             } else {

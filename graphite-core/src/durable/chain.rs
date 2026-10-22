@@ -469,27 +469,33 @@ pub(crate) fn classify_line(line: &[u8]) -> LineClass {
     if line.iter().all(u8::is_ascii_whitespace) {
         return LineClass::Blank;
     }
-    let invalid = |seq: Option<u64>, reason: String, json: bool, chained: bool| {
-        LineClass::Invalid {
+    let invalid =
+        |seq: Option<u64>, reason: String, json: bool, chained: bool| LineClass::Invalid {
             seq,
             reason,
             json,
             chained,
-        }
-    };
+        };
     let value: serde_json::Value = match serde_json::from_slice(line) {
         Ok(v) => v,
         Err(e) => {
             return invalid(
                 None,
-                format!("not a JSON record ({e}): a torn write, or bytes no writer of this trail wrote"),
+                format!(
+                    "not a JSON record ({e}): a torn write, or bytes no writer of this trail wrote"
+                ),
                 false,
                 false,
             )
         }
     };
     let Some(map) = value.as_object() else {
-        return invalid(None, "a JSON value that is not an object".into(), true, false);
+        return invalid(
+            None,
+            "a JSON value that is not an object".into(),
+            true,
+            false,
+        );
     };
     let Some(raw_link) = map.get(CHAIN_FIELD) else {
         return LineClass::Legacy;
@@ -638,7 +644,10 @@ fn decode32(s: &str) -> Option<[u8; 32]> {
 pub(crate) enum Newest {
     Valid(Box<ChainedLine>),
     /// It carries a link and is not a valid chained record.
-    Altered { seq: Option<u64>, reason: String },
+    Altered {
+        seq: Option<u64>,
+        reason: String,
+    },
 }
 
 /// The newest line of `path` that carries a chain link, read backwards from
@@ -674,8 +683,12 @@ pub(crate) fn newest_chained(path: &Path) -> std::io::Result<Option<Newest>> {
         if start > 0 && !lines.is_empty() {
             lines.remove(0);
         }
-        let tail_is_json = !tail.is_empty() && serde_json::from_slice::<serde_json::Value>(tail).is_ok();
-        let candidates = tail_is_json.then_some(tail).into_iter().chain(lines.into_iter().rev());
+        let tail_is_json =
+            !tail.is_empty() && serde_json::from_slice::<serde_json::Value>(tail).is_ok();
+        let candidates = tail_is_json
+            .then_some(tail)
+            .into_iter()
+            .chain(lines.into_iter().rev());
         for line in candidates {
             match classify_line(line) {
                 LineClass::Chained(c) => return Ok(Some(Newest::Valid(c))),
@@ -1240,7 +1253,8 @@ pub(crate) fn verify_trail_with(
                     if link_prev != Some(p) {
                         stop!(
                             seq,
-                            "`prev` is not the previous record's hash: the chain was spliced".into()
+                            "`prev` is not the previous record's hash: the chain was spliced"
+                                .into()
                         );
                     }
                 }

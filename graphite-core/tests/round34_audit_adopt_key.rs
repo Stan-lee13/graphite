@@ -179,7 +179,11 @@ fn adopt_key_refuses_a_broken_trail_and_a_running_writer() {
 
     let path = audit_path(&dir);
     let text = std::fs::read_to_string(&path).unwrap();
-    std::fs::write(&path, text.replacen("\"approved\":true", "\"approved\":false", 1)).unwrap();
+    std::fs::write(
+        &path,
+        text.replacen("\"approved\":true", "\"approved\":false", 1),
+    )
+    .unwrap();
     let out = graphite()
         .args(["audit", "adopt-key", "--data-dir"])
         .arg(&dir)
@@ -190,8 +194,5 @@ fn adopt_key_refuses_a_broken_trail_and_a_running_writer() {
     assert_eq!(out.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&out.stderr).contains("broken"));
     // Nothing was written.
-    assert_eq!(
-        std::fs::read_to_string(&path).unwrap().lines().count(),
-        3
-    );
+    assert_eq!(std::fs::read_to_string(&path).unwrap().lines().count(), 3);
 }

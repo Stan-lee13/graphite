@@ -889,7 +889,11 @@ fn a_line_the_chain_cannot_parse_breaks_the_chain_and_is_never_read() {
     let report = verify(&path, std::slice::from_ref(&key));
     assert_ne!(report.exit_code(), 0, "{report:?}");
     let b = report.first_break.as_ref().expect("a break");
-    assert_eq!((b.file.clone(), b.line), (name_of(&archives[0]), 2), "{b:?}");
+    assert_eq!(
+        (b.file.clone(), b.line),
+        (name_of(&archives[0]), 2),
+        "{b:?}"
+    );
     assert!(
         victim_seen_by_a_reader(&path).is_none(),
         "a reader resolved the victim to the forged approval"
@@ -991,7 +995,9 @@ fn a_keyed_writer_refuses_to_resume_onto_an_unkeyed_head() {
             ..AuditOptions::default()
         },
     );
-    let err = opened.err().expect("a keyed writer resumed onto an unkeyed head");
+    let err = opened
+        .err()
+        .expect("a keyed writer resumed onto an unkeyed head");
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
     assert!(err.to_string().contains("adopt-key"), "{err}");
 }
@@ -1250,7 +1256,11 @@ fn legitimate_key_adoption_via_the_marker_verifies() {
     assert_eq!(after.exit_code(), 0, "{after:?}");
     assert_eq!(after.integrity, Integrity::TamperEvident);
     assert_eq!(
-        (after.unkeyed_records, after.unkeyed_adopted, after.key_adoptions),
+        (
+            after.unkeyed_records,
+            after.unkeyed_adopted,
+            after.key_adoptions
+        ),
         (3, 3, 1)
     );
     // Readers never return the adoption record as a verdict, and see every
@@ -1414,7 +1424,9 @@ fn verify_and_every_reader_agree_on_every_mutated_line() {
         }),
         ("big number", |l| l.replacen('{', "{\"x\":1e400,", 1)),
         ("extra field", |l| l.replacen('{', "{\"aa\":1,", 1)),
-        ("unicode escape", |l| l.replacen("transfer", "\\u0074ransfer", 1)),
+        ("unicode escape", |l| {
+            l.replacen("transfer", "\\u0074ransfer", 1)
+        }),
         ("trailing garbage", |l| format!("{l} x")),
         ("trailing space", |l| format!("{l} ")),
         ("carriage return", |l| format!("{l}\r")),
@@ -1460,12 +1472,17 @@ fn verify_and_every_reader_agree_on_every_mutated_line() {
         let report = verify(&path, keys);
         let reader = AuditLog::open_read_only(&path).unwrap();
         let (tail, _, total, _) = reader.read_tail_filtered(1000, AuditSelector::All);
-        let (approved, refused) = reader.count_verifications(VerificationKey::TransactionSha256(&tx));
+        let (approved, refused) =
+            reader.count_verifications(VerificationKey::TransactionSha256(&tx));
         let mut found = 0u64;
         for i in 0..26 {
             let id = format!("gr-{i:05}");
             if let Some(r) = reader.find_verification(VerificationKey::AuditTrailId(&id)) {
-                assert_eq!(r.approved, originally_approved(&id), "{label}: {id} altered");
+                assert_eq!(
+                    r.approved,
+                    originally_approved(&id),
+                    "{label}: {id} altered"
+                );
                 found += 1;
             }
         }
