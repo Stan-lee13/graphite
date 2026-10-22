@@ -846,6 +846,13 @@ jobs:
         run: |
           pytest -q -p no:cacheprovider test_mainnet_sample.py 2>&1 | tee "$RUNNER_TEMP/pytest-sample.log"
           bash ../../.github/scripts/test-count.sh pytest "$RUNNER_TEMP/pytest-sample.log" 7
+      # Round 32: the live-measurement runners' own logic (report shapes,
+      # rate-limit detection, L8 outcome classes), against stand-ins.
+      - name: live-measure tool tests
+        working-directory: tools/live-measure
+        run: |
+          pytest -q -p no:cacheprovider test_live_measure.py 2>&1 | tee "$RUNNER_TEMP/pytest-live.log"
+          bash ../../.github/scripts/test-count.sh pytest "$RUNNER_TEMP/pytest-live.log" 26
       # W23 (external review): the other lockfiles were audited and this one
       # was not. Every pin is exact and hashed, so no resolution is needed.
       - name: Advisory audit of the lockfile
