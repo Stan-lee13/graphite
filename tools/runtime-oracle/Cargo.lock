@@ -243,7 +243,7 @@ dependencies = [
  "ed25519-dalek",
  "graphite-core",
  "serde_json",
- "solana-message",
+ "solana-message 6.0.0",
  "solana-sanitize",
  "solana-sdk-ids",
  "solana-transaction",
@@ -503,6 +503,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "solana-message"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e850dc12128011de32eaee7628faf59d94d6366ffa25a986714d8449eed65ac5"
+dependencies = [
+ "serde",
+ "serde_derive",
+ "solana-address",
+ "solana-hash",
+ "solana-instruction",
+ "solana-sanitize",
+ "solana-sdk-ids",
+ "solana-short-vec",
+ "solana-transaction-error",
+ "wincode",
+]
+
+[[package]]
 name = "solana-program-error"
 version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -579,7 +597,7 @@ dependencies = [
  "solana-hash",
  "solana-instruction",
  "solana-instruction-error",
- "solana-message",
+ "solana-message 5.1.0",
  "solana-sanitize",
  "solana-sdk-ids",
  "solana-short-vec",
