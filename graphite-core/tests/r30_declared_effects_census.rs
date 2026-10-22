@@ -327,7 +327,7 @@ fn debit_lines_that_name_no_account_are_counted() {
             lines += n;
             if n > 0 {
                 with_unscoped += 1;
-                if !ix.expected_state_changes.iter().any(|l| named_line(l)) {
+                if !ix.expected_state_changes.iter().any(named_line) {
                     only_unscoped += 1;
                 }
             }
@@ -339,7 +339,7 @@ fn debit_lines_that_name_no_account_are_counted() {
             .get(g.program_id)
             .and_then(|m| m.instructions.iter().find(|i| i.name == g.instruction))
             .unwrap_or_else(|| panic!("{} {}", g.program_id, g.instruction));
-        if ix.expected_state_changes.iter().any(|l| unscoped_line(l)) {
+        if ix.expected_state_changes.iter().any(unscoped_line) {
             grants_with_unscoped.push(format!("{}::{}", g.program_id, g.instruction));
         }
     }
