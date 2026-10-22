@@ -34,9 +34,13 @@ and `gh` authenticated as a repository admin.
   Hand the auditors [`docs/audit-handoff/`](../audit-handoff/README.md): scope, threat model, build and test
   steps, the invariants and the tests that hold each, the known residuals, the questions, and the commit.
   Publish their report and the fixes before item 10.
-- [ ] **4. Decide R30-F-1's residual** (155 unreadable value-moving declarations warn instead of refusing)
-  and W19 likewise. Artifact: `docs/audit-r30/findings-registry.md`. Record the decision in a PR that
-  changes the default or documents why not.
+- [ ] **4. Keep or relax the Round 32 refusal defaults.** Since Round 32 a signer's loss under an
+  unreadable declaration (`GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS`), W19
+  (`GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT`) and an unbounded granted withdrawal
+  (`GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS`) are refused by default; each variable set to `1` restores
+  the old behaviour and is logged at startup. Measured cost: W19 refused 1 of 200 replayed live mainnet
+  transactions (0.5%). Run `.github/workflows/live-mainnet.yml` against your traffic profile; leave all
+  three at `0` unless the measured false refusals are a cost you choose over the protection.
 - [ ] **5. Decide R-M9** (Constitution P12 vs. the drainer heuristic), the default of
   `GRAPHITE_QUARANTINE_ON_UPGRADE` (`.env.example`), and the self-heal threshold (R-P10).
 - [ ] **6. Dependabot majors.** Round 31 took every update except, with reasons: the oracle's

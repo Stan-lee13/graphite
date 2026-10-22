@@ -653,6 +653,27 @@ The Round 29 risk-engine, registry, protocol-data and attack-suite fixes, which 
 break-test, were broken check by check in Round 30 (R30-F-3); the nine no test caught now have
 tests of their own.
 
+## Rounds 31–32: dependencies, then production readiness (2026-10-22)
+
+Round 31 updated every dependency (no finding; the holds are recorded with reasons in the core
+CHANGELOG). Round 32 worked the production-readiness gaps in four workstreams; report:
+[`../docs/round32-production-readiness-2026-10-22.md`](../docs/round32-production-readiness-2026-10-22.md).
+Each fix was reverted against its own test in its workstream (recorded in that report, not in the
+numbered break log below).
+
+| ID | Finding | Status | Test |
+|---|---|---|---|
+| R32-P1-1 | A signer's loss under an unreadable value-moving declaration only warned (R30-F-1's residual) | **Fixed**: refused by default; opt-out `GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS`; 16 declarations rewritten from IDLs | `tests/r30_declared_effects.rs`, `tests/r30_declared_effects_census.rs` |
+| R32-P1-2 | Pump.fun `buy_v2`/`sell_v2` named a slot the v2 layout calls `associated_base_user` | **Fixed**; every declaration must name a real account | `tests/r30_declared_effects_census.rs` |
+| R32-P1-3 | W19 only warned | **Fixed**: Critical by default, net of created accounts' rent and wrapped SOL; opt-out `GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT` (Round 33 found the netting too generous: R33-6, R33-7, R33-10) | `tests/r30_declared_effects.rs` |
+| R32-P1-4 | A granted withdrawal with all minimums zero kept its grant | **Fixed**: `UnboundedWithdrawal`; opt-out `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS` (Round 33: a dust minimum still passed, R33-11) | `tests/round30_grounded_intents.rs` |
+| R32-P2-1 | Two agent guards for one key each spent the whole aggregate allowance | **Fixed** on one host: a per-wallet lock (Round 33: R33-16, R33-17) | `integrations/agent-guard` tests |
+| R32-P2-2 | The guard's cap left out the network fee | **Fixed** | `integrations/agent-guard` tests |
+| R32-P2-3 | Lifecycle requests knew only `content_hash` | **Fixed**: `instruction_bind_key` accepted (R-M10) | `tests/round30_server_wire.rs` |
+| R32-P2-4 | The dashboard was never driven in a browser in CI | **Fixed**: the `dashboard-e2e` job (axe) | `.github/scripts/dashboard-e2e.sh` |
+| R32-P4-1…5 | No release pipeline, deployment kit or hand-off pack; a ci.yml shellcheck finding | **Fixed**: `release.yml`, `deploy/` (tested in CI), `docs/ops/production-checklist.md`, `docs/audit-handoff/` | `deploy/tests/run.sh` |
+| R32-L-1 | An executed transfer refused for a static key no instruction references | **Fixed** | `tests/round32_unreferenced_static_keys.rs` |
+
 ## Break log
 
 Every fix was reverted once, alone, with the tree otherwise unchanged, and its named test re-run; the fix was then restored and the tree checked clean. The harness is `graphite-audit-work/audit_breaks.py` (outside the repository): each break is an exact text edit validated against the current sources before it runs, and a break whose test still passes is reported MISSED.

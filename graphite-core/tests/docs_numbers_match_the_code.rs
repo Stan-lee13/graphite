@@ -36,6 +36,14 @@ const SAK_README: &str = include_str!("../../integrations/solana-agent-kit/READM
 const GUARD_README: &str = include_str!("../../integrations/agent-guard/README.md");
 const CONTRIBUTING: &str = include_str!("../../CONTRIBUTING.md");
 const ROADMAP: &str = include_str!("../../ROADMAP.md");
+// Round 34 (R33 DOC-19): the operator runbooks, the auditors' hand-off pack
+// and the grant proposal state counts a reader relies on, and drifted.
+const OPS_CHECKLIST: &str = include_str!("../../docs/ops/production-checklist.md");
+const OPS_README: &str = include_str!("../../docs/ops/README.md");
+const OPS_KEYS: &str = include_str!("../../docs/ops/keys.md");
+const OPS_INSTALL: &str = include_str!("../../docs/ops/install.md");
+const HANDOFF: &str = include_str!("../../docs/audit-handoff/README.md");
+const GRANT: &str = include_str!("../../docs/solana-foundation-grant-proposal.md");
 
 const LIVE_DOCS: &[(&str, &str)] = &[
     ("README.md", README),
@@ -46,6 +54,12 @@ const LIVE_DOCS: &[(&str, &str)] = &[
     ("integrations/agent-guard/README.md", GUARD_README),
     ("CONTRIBUTING.md", CONTRIBUTING),
     ("ROADMAP.md", ROADMAP),
+    ("docs/ops/production-checklist.md", OPS_CHECKLIST),
+    ("docs/ops/README.md", OPS_README),
+    ("docs/ops/keys.md", OPS_KEYS),
+    ("docs/ops/install.md", OPS_INSTALL),
+    ("docs/audit-handoff/README.md", HANDOFF),
+    ("docs/solana-foundation-grant-proposal.md", GRANT),
 ];
 
 /// The number written at the end of `head` (after trailing spaces and

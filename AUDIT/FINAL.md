@@ -121,8 +121,10 @@ Recorded, not hidden. Each is in `01-findings.md` or `02-roadmap-gap.md` with it
 - **A2-08.** L3 baselines are per program, not per instruction.
 - **W17-c.** A lookup table's freshness is not checked against the current slot.
 - **W11-c.** Registry records keep no signatures.
-- **W18/19-f.** Signer lamports under a declared debit are disclosed, not refused; Graphite does
-  not bind amounts, so the agent guard's cap does.
+- **W18/19-f.** Since Round 32, signer lamports leaving under a debit declared only for other
+  accounts are refused by default (W19; opt-out `GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT`;
+  1 of 200 live mainnet transactions, 0.5%). Graphite still binds no amounts in general, so the
+  agent guard's cap does.
 - **W25-d, revised in Round 29.** The holdout's benign label is now by provenance, but there is
   one benign row, and it is refused offline; the exploits run descriptively.
 - **Round 29.** Without an RPC client nothing is simulated and the Core does not refuse for that

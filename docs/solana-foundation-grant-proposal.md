@@ -1,8 +1,8 @@
 # Graphite — Solana Foundation grant proposal
 
-> **Revised 2026-10-03, after Round 24.** Every figure about Graphite below is measured in this
+> **Revised 2026-10-22, after Round 34.** Every figure about Graphite below is measured in this
 > repository and named with where it comes from. [`CURRENT.md`](CURRENT.md) is authoritative
-> for anything that has moved since.
+> for anything that has moved since. Refresh this page again before any submission.
 
 **Project:** Graphite — deterministic verification of a Solana transaction's bytes against what
 the agent says it is doing, before the agent's key signs it.
@@ -37,10 +37,18 @@ What exists today, all in the repository:
   outflow measured by simulating the exact transaction.
 - **SDKs** for TypeScript and Go, a Python advisory layer that cannot override the core, and
   a React dashboard.
-- **Tests:** 1,934 Rust tests in the all-features suite, plus 195 in the agent guard, 34 in the
-  TypeScript SDK, 15 across the Vercel AI and MCP adapters, 6 in the SolanaAgentKit adapter,
-  Go and Python suites, and 7 in the dashboard. A runtime oracle compares Graphite's parser
-  with the validator's own decoder on about 628,500 generated frames per CI seed.
+- **Tests:** Rust, TypeScript, Go and Python suites, each held by CI to a floor of passing
+  tests (the counts are kept in one place, [`CURRENT.md`](CURRENT.md#numbers-as-of-this-pages-commit)).
+  A runtime oracle compares Graphite's parser with the validator's own decoder on about
+  628,500 generated frames per CI seed; six parsers are fuzzed for 30 minutes each on a
+  schedule.
+- **Since this proposal was first written (Rounds 25–34):** every verdict states whether it
+  permits signing (`executable_approved` only); the audit trail is hash-chained and, keyed,
+  tamper-evident; L8 states what its inclusion answer rests on; a release workflow with
+  reproducible builds and signed provenance, a deployment kit tested in CI, and workflows that
+  replay live mainnet traffic and run the whole signing path on a validator. A deep internal
+  audit (Round 33) found one critical issue and nine high ones; Round 34 fixed them
+  ([`round34-…`](CURRENT.md#report-index-newest-first)).
 
 ## 2. The problem
 

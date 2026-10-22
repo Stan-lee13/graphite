@@ -33,6 +33,20 @@ const LIVE: &[&str] = &[
     "AUDIT/01-findings.md",
     "AUDIT/02-roadmap-gap.md",
     "AUDIT/FINAL.md",
+    // Round 34 (R33 DOC-19): the operator runbooks, the auditors' hand-off
+    // pack, the deployment kit's README and the grant proposal describe the
+    // repository as it is too, and drifted unchecked until they were listed.
+    "docs/ops/README.md",
+    "docs/ops/backup-restore.md",
+    "docs/ops/branch-protection.md",
+    "docs/ops/incidents.md",
+    "docs/ops/install.md",
+    "docs/ops/keys.md",
+    "docs/ops/production-checklist.md",
+    "docs/ops/upgrade-rollback.md",
+    "docs/audit-handoff/README.md",
+    "docs/solana-foundation-grant-proposal.md",
+    "deploy/README.md",
 ];
 
 /// Paths that are outside this repository by design.

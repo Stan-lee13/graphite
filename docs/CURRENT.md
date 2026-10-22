@@ -458,14 +458,21 @@ transaction under the stated threat model, and no external party has yet tried.
   Every other withdrawal, claim, protocol close, mint and admin setter is still
   refused whatever label it carries (Round 24 measured 219 of 48,855 executed
   transactions; not re-measured, the sample is not in the repository); MMM
-  `updatePool` stays refused (no IDL to ground it). **The Core does not judge a
-  withdrawal's minimum outputs**: a granted withdrawal with zero minimums, paid
-  to the owner, clears the Core, so a direct `/verify` caller carries the
-  sandwich risk; the agent guard builds no withdrawals.
+  `updatePool` stays refused (no IDL to ground it). **The Core judges a
+  withdrawal's minimum outputs only where the IDL carries them** (Raydium CLMM
+  `decrease_liquidity_v2`, Raydium CPMM `withdraw`, Pump AMM `withdraw`): a
+  granted one with an unbounded minimum is `UnboundedWithdrawal` by default
+  (Round 32; `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS=1` keeps the grant). The
+  Meteora DLMM remove and claim grants carry no minimum-output argument, so the
+  Core cannot judge them; a direct `/verify` caller carries that sandwich risk,
+  and the agent guard builds no withdrawals.
 - **The Core does not bind amounts; the agent guard does.** `ExtractedParameters.amount`
-  is carried, not compared, by the Core; lamports leaving the signer's wallet under a
-  declared debit are disclosed (`SignerLamportsOutsideDeclaredDebit`), not refused (a
-  signer's loss under a manifest that declares NO debit is Critical since Round 29). The
+  is carried, not compared, by the Core. Lamports leaving the signer's wallet under a
+  debit declared only for other accounts are refused by default
+  (`SignerLamportsOutsideDeclaredDebit`, W19, Round 32; measured on live mainnet at 1 of
+  200 replayed transactions, 0.5%; `GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT=1`
+  restores the warning), and a signer's loss under a manifest that declares NO debit is
+  Critical since Round 29. The
   agent guard binds a transfer to the amount and destination in the user's text, and a
   swap to the amount and both tokens in it, checked against a simulation of the exact
   bytes (Round 25); since Round 29 it also decodes the route's own minimum output and
@@ -685,10 +692,10 @@ transaction under the stated threat model, and no external party has yet tried.
 | Version-1 transaction format | **Done (Round 19)**: parsed, never looser than agave, 3,302 of 3,302 real mainnet v1 transactions read and bound; config values surfaced in `scope.compute_budget` (Round 21) | — |
 | Token-2022 `TransferFee` modelling | **Done (Rounds 20–22)**: replayed exactly against the executed instructions (Round 21), a pending schedule always judged (Round 22) | — |
 | Transfer hooks that run a program | **Done where the bytes bound them (Round 22)**; a hook handed a signer or another program's writable account blocks | — |
-| `content_hash` → a name that says it is an instruction-level identifier | **Done in the result (Round 30, R-M10)**: `instruction_bind_key` carries the value, `content_hash` is deprecated for one minor version; lifecycle request bodies keep the `content_hash` wire name | Engineering (request bodies) |
+| `content_hash` → a name that says it is an instruction-level identifier | **Done in the result (Round 30, R-M10)**: `instruction_bind_key` carries the value, `content_hash` is deprecated for one minor version; lifecycle requests accept `instruction_bind_key` as an alias of `content_hash` since Round 32 (server, CLI `--instruction-bind-key`, TypeScript and Go) | — |
 | Runtime-decoder oracle over the mutation corpus | Done (Round 12: `tools/runtime-oracle`, in CI) | — |
 | Coverage-guided fuzzing of `parse_transaction` | **Done (Round 30)**: `graphite-core/fuzz/` (cargo-fuzz, its own lockfile) fuzzes `parse_transaction`, lookup tables, manifest JSON, Token-2022 extensions, the state-diff check and RPC JSON, each with invariants beyond "no panic"; a deterministic smoke on every PR, 30 minutes per target daily (`.github/workflows/assurance.yml`). Its first minute found R30-WSE-1. No differential fuzzing against agave yet | Engineering (differential) |
-| Scheduled mutation testing and a coverage floor (R-P12, R-P15) | **Wired (Round 30)**: weekly `cargo mutants` per module, judged by `graphite-core/scripts/mutation_floor.py` (risk engine 0.90, measured on a quarter of its mutants; state diff, artifact and simulation-integrity floors 0.60 are provisional, unmeasured); a line-coverage floor of 78 % (the library's unit tests measured 78.42 %). First hosted run (Round 32, run 39798389463 at `bdc9dab`): all six fuzz targets 30 minutes each, 0 crashes; the coverage floor held (the job now prints the measured total and per-file figures); the mutation jobs' scores are recorded in the Round 32 report when they finish | Engineering (raise each provisional floor to its measured score) |
+| Scheduled mutation testing and a coverage floor (R-P12, R-P15) | **Wired (Round 30)**: weekly `cargo mutants` per module, judged by `graphite-core/scripts/mutation_floor.py` (risk engine 0.90, measured on a quarter of its mutants; state diff, artifact and simulation-integrity floors 0.60 are provisional, unmeasured); a line-coverage floor of 78 % (the library's unit tests measured 78.42 %). First hosted run (Round 32, run 39798389463 at `bdc9dab`): all six fuzz targets 30 minutes each, 0 crashes; the coverage floor held (the job now prints the measured total and per-file figures); the mutation jobs' scores are recorded HERE, on this page, when a run finishes (this page owns them; the round reports point here) | Engineering (raise each provisional floor to its measured score) |
 | A generated, test-pinned release evaluation (R-P1) | **Done (Round 30)**: `graphite benchmark --json` (`src/release_eval.rs`) scores every split from committed inputs with Wilson intervals, counts verification errors apart from refusals, and is pinned by `tests/release_evaluation.rs`; the sealed holdout is pinned by hash and only the guarded builder may write it. It scores the core's `approved` offline (every offline approval is `analysis_only`). The holdout is still 38 rows | Engineering (a larger, independent holdout) |
 | Persisted archive index for the L8 / lifecycle join | **Done (Round 28)**: a count over three 64 MiB archives went from 822 ms to 2.2 ms | — |
 | Shared rate limiter for a horizontally deployed Graphite (single-instance today; 452 ns/check at one million buckets) | Open | Engineering |

@@ -252,7 +252,8 @@ Internal engineering work, not an independent audit. Report:
   cap (R32-P2-2).
 - **Release and deployment (R32-P4).** A release workflow with a reproducible double build, SBOMs,
   digest-pinned images and provenance attestations; a deployment kit tested in CI; live mainnet and
-  devnet workflows (0 defects on their first runs).
+  devnet workflows. Their first runs reported no defect by count; reading the mainnet run row by
+  row then found one false refusal, R32-L-1, fixed in the same round.
 
 ## The Forensic Audit of `29e4356`, Remediated (2026-10-22; Round 30)
 
