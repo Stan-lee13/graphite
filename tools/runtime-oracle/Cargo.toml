@@ -22,7 +22,7 @@ graphite-core = { path = "../../graphite-core", default-features = false }
 # `MAX_INSTRUCTIONS` 64; 6.0 allows 255). Moving to 6 is a change of the
 # reference the parser is judged against, to be made when the runtime the
 # network runs adopts it, with Graphite's own v1 limits decided alongside.
-solana-transaction = { version = "5.1.0", features = ["serde", "wincode"] }
+solana-transaction = { version = "6.0.0", features = ["serde", "wincode"] }
 solana-message = { version = "5.1.0", features = ["serde", "wincode"] }
 # The v1 (SIMD-0385) wire format has no serde/bincode encoding at all: the
 # crates' serde impl for `VersionedMessage::V1` is documented as "does not
