@@ -14,13 +14,13 @@
     "emit:corpus": "tsx emit-corpus.ts"
   },
   "dependencies": {
-    "@solana/kit": "^8.4.0",
+    "@solana/kit": "^8.5.0",
     "@solana/web3.js": "^1.99.0",
     "bs58": "^6.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "tsx": "^4.0.0",
-    "typescript": "^5.5.0"
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
   }
 }

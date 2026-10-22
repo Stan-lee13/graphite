@@ -4,8 +4,20 @@
   "license": "MIT",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
-  "scripts": { "typecheck": "tsc --noEmit", "test": "tsx --test *.test.ts" },
-  "dependencies": { "ai": "^7.0.138", "zod": "^4.6.7" },
-  "devDependencies": { "@types/node": "^22.0.0", "tsx": "^4.0.0", "typescript": "^5.5.0" }
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test *.test.ts"
+  },
+  "dependencies": {
+    "ai": "^7.0.148",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
 }
