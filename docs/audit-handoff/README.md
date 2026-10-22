@@ -13,7 +13,9 @@ Audit the commit the release tag `v0.3.0-beta` names, once it exists:
 
 ```sh
 git rev-parse 'v0.3.0-beta^{commit}'
-gh attestation verify graphite-0.3.0-beta-x86_64-unknown-linux-gnu.tar.gz --repo Stan-lee13/graphite
+gh attestation verify graphite-0.3.0-beta-x86_64-unknown-linux-gnu.tar.gz --repo Stan-lee13/graphite \
+  --signer-workflow Stan-lee13/graphite/.github/workflows/release.yml \
+  --source-ref refs/tags/v0.3.0-beta --deny-self-hosted-runners
 ```
 
 The tag is built by `.github/workflows/release.yml` (two independent builds,

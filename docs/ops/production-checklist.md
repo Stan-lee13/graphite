@@ -50,18 +50,63 @@ and `gh` authenticated as a repository admin.
   (in `graphite-core/`): the holdout is 38 rows and every offline approval is `analysis_only`; say so
   next to any number quoted.
 
+## Release integrity (owner only — Round 34, R33-9)
+
+A `v*` tag runs the tagged commit's own copy of `.github/workflows/release.yml`. The workflow's gate
+(`.github/scripts/release-gate.sh`) now requires the commit to be on `main`, its `CI gate` to have
+passed in a **push** run of `ci.yml` on `main` (GitHub Actions app 15368), and the tag to be SSH-signed
+by a key in `.github/allowed_signers` — but a tag on an unmerged branch runs that branch's copy of the
+workflow, which can drop the gate. Only repository settings close that, and only an admin can apply
+them. **Until R1–R4 are done, anyone with write access can still publish a release.**
+
+- [ ] **R1. Rulesets.** Item 1's two rulesets, plus the tag-creation ruleset (only a repository admin
+  may create a `v*` tag; `release-tags.json` keeps every tag immutable for everyone, admins included):
+  ```sh
+  gh api -X POST repos/Stan-lee13/graphite/rulesets --input .github/rulesets/main.json
+  gh api -X POST repos/Stan-lee13/graphite/rulesets --input .github/rulesets/release-tags.json
+  gh api -X POST repos/Stan-lee13/graphite/rulesets --input .github/rulesets/release-tags-create.json
+  gh api repos/Stan-lee13/graphite/rulesets --jq '.[] | [.name, .enforcement] | @tsv'   # three, all "active"
+  ```
+  Check: a collaborator with write (not admin) access runs `git push origin <commit>:refs/tags/v9.9.9-test`
+  and is rejected.
+- [ ] **R2. A protected `release` environment** with a `v*` tag policy and you as required reviewer:
+  ```sh
+  me=$(gh api user --jq .id)
+  gh api -X PUT repos/Stan-lee13/graphite/environments/release --input - <<EOF
+  {"reviewers":[{"type":"User","id":$me}],
+   "deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}
+  EOF
+  gh api -X POST repos/Stan-lee13/graphite/environments/release/deployment-branch-policies \
+    -f name='v*' -f type=tag
+  gh api repos/Stan-lee13/graphite/environments/release \
+    --jq '[.protection_rules[].type, .deployment_branch_policy]'   # required_reviewers, branch_policy; custom policies
+  ```
+  (Or Settings → Environments → New environment → `release` → Required reviewers: you; Deployment
+  branches and tags → Selected branches and tags → Add rule → Tag → `v*`.)
+- [ ] **R3. Your release signing key in `.github/allowed_signers`.** The file is committed EMPTY on
+  purpose: while it names no key, every release fails at the gate ("names no signer"). Sign tags with
+  an SSH key (the same key can sign commits):
+  ```sh
+  git config --global gpg.format ssh
+  git config --global user.signingkey ~/.ssh/id_ed25519.pub
+  printf '%s namespaces="git" %s\n' "$(git config user.email)" "$(cut -d' ' -f1,2 ~/.ssh/id_ed25519.pub)" \
+    >> .github/allowed_signers      # then commit it through a pull request to main
+  ```
+- [ ] **R4. Check the gate refuses.** After R1–R3: an unsigned annotated tag, or a signed tag on a
+  commit that is not on `main`, must stop at the `Release gate` job (and R1 already rejects the push
+  of such a tag from a non-admin).
+
 ## Release (owner)
 
-- [ ] **10a. A `release` environment.** Settings → Environments → New environment → `release` →
-  Deployment branches and tags → Selected → add the tag rule `v*`; add yourself as a required
-  reviewer if releases should wait for a click. `.github/workflows/release.yml`'s publish job runs in it.
+- [ ] **10a. A `release` environment** — R2 above. `.github/workflows/release.yml`'s publish job runs in it.
 - [ ] **10b. Rehearse.** Actions → Release → Run workflow (on `main`). Every build, the two-build
   reproducibility comparison, both SBOMs, the image smoke test and SHA256SUMS run; nothing is pushed,
   attested or released. Read the `reproducible` job: it fails if the two builds differ.
 - [ ] **10c. Decide whether the crate goes to crates.io.** `graphite-core/Cargo.toml` has no `publish`
   key today, so `cargo publish` would be allowed; add `publish = false` if it should not be. The
   release workflow never publishes to crates.io either way.
-- [ ] **10d. Tag.** The tag must be `v` + the crate's version, on a commit whose `CI gate` passed:
+- [ ] **10d. Tag.** The tag must be `v` + the crate's version, SSH-signed by a key in
+  `.github/allowed_signers` (R3), on a commit of `main` whose `CI gate` passed in its push run:
   ```sh
   git tag -s v0.3.0-beta -m "graphite 0.3.0-beta" <commit> && git push origin v0.3.0-beta
   ```
@@ -72,10 +117,16 @@ and `gh` authenticated as a repository admin.
   ```sh
   gh release download v0.3.0-beta --repo Stan-lee13/graphite
   sha256sum -c SHA256SUMS
-  gh attestation verify graphite-0.3.0-beta-x86_64-unknown-linux-gnu.tar.gz --repo Stan-lee13/graphite
-  gh attestation verify oci://ghcr.io/stan-lee13/graphite-core@sha256:<digest> --repo Stan-lee13/graphite
+  gh attestation verify graphite-0.3.0-beta-x86_64-unknown-linux-gnu.tar.gz --repo Stan-lee13/graphite \
+    --signer-workflow Stan-lee13/graphite/.github/workflows/release.yml \
+    --source-ref refs/tags/v0.3.0-beta --deny-self-hosted-runners
+  gh attestation verify oci://ghcr.io/stan-lee13/graphite-core@sha256:<digest> --repo Stan-lee13/graphite \
+    --signer-workflow Stan-lee13/graphite/.github/workflows/release.yml \
+    --source-ref refs/tags/v0.3.0-beta --deny-self-hosted-runners
   ```
-  The digest is in the release notes. Deploy by that digest, never by the tag.
+  The digest is in the release notes. Deploy by that digest, never by the tag. `--repo` alone would
+  accept an attestation made by any workflow of the repository, on any ref; the three other flags
+  require the release workflow, run for this tag, on a GitHub-hosted runner.
 
 ## Deployment (operator) — item 9
 

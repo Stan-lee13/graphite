@@ -15,14 +15,21 @@ name: Release
 #     actions/attest) for the binary tarball and the image;
 #   - a GitHub Release carrying the tarball, the SBOMs and the checksums.
 #
-# A tag is published only when the commit it names passed the `CI gate` check
-# (ci.yml) and its version is the crate's version.
+# A tag is published only when its version is the crate's version, the commit
+# it names is on main and passed the `CI gate` of a push to main (ci.yml), and
+# the tag is signed by a key in .github/allowed_signers (the `gate` job).
 #
-# Verify a published release:
+# Verify a published release. `--repo` alone accepts an attestation made by
+# ANY workflow of the repository (Round 34, R33-18); the other three flags
+# require this workflow, run for that tag, on a GitHub-hosted runner:
 #   gh attestation verify graphite-<version>-x86_64-unknown-linux-gnu.tar.gz \
-#     --repo <owner>/graphite
+#     --repo <owner>/graphite \
+#     --signer-workflow <owner>/graphite/.github/workflows/release.yml \
+#     --source-ref refs/tags/v<version> --deny-self-hosted-runners
 #   gh attestation verify oci://ghcr.io/<owner>/graphite-core@sha256:<digest> \
-#     --repo <owner>/graphite
+#     --repo <owner>/graphite \
+#     --signer-workflow <owner>/graphite/.github/workflows/release.yml \
+#     --source-ref refs/tags/v<version> --deny-self-hosted-runners
 #   sha256sum -c SHA256SUMS
 #
 # Artifact attestations need a public repository, or GitHub Enterprise Cloud
@@ -55,13 +62,30 @@ env:
   TARGET: x86_64-unknown-linux-gnu
 
 jobs:
+  # Round 34 (R33-9): what a tag must be to publish. The tag's commit is on
+  # main; the tag is an annotated tag SSH-signed by a key in
+  # .github/allowed_signers (empty = nothing is released); and that commit's
+  # `CI gate` passed in a PUSH run of ci.yml on main, by the GitHub Actions app.
+  # Until Round 33 any completed `CI gate` check on the SHA counted, so a
+  # branch's own pull-request run of its own ci.yml satisfied it, and anyone
+  # who could push a tag could publish a GHCR image with real provenance.
+  # The decisions are .github/scripts/release-gate.sh, tested by
+  # release-gate.test.sh in CI.
+  #
+  # What this file cannot do on its own: a tag runs the TAGGED commit's copy
+  # of this workflow, so a tag on an unmerged branch runs that branch's copy,
+  # gate and all. What stops that is a repository setting, not code: the
+  # tag-creation ruleset (.github/rulesets/release-tags-create.json) and the
+  # `release` environment's tag policy and reviewer — owner steps in
+  # docs/ops/production-checklist.md, "Release integrity".
   gate:
-    name: Release gate — version and CI
+    name: Release gate — version, main, signature and CI
     runs-on: ubuntu-24.04
     timeout-minutes: 130
     permissions:
       contents: read
       checks: read
+      actions: read # which event and branch started a check suite's workflow run
     outputs:
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
@@ -69,6 +93,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # Every branch and tag: the ancestry check needs origin/main.
+          fetch-depth: 0
       - name: The tag is the crate's version
         id: version
         env:
@@ -88,44 +114,53 @@ jobs:
           echo "version=$crate" >> "$GITHUB_OUTPUT"
           echo "prerelease=$pre" >> "$GITHUB_OUTPUT"
           echo "version $crate (prerelease: $pre)"
-      - name: The commit passed the CI gate
+      - name: The tagged commit is on main
+        if: github.event_name == 'push'
+        env:
+          SHA: ${{ github.sha }}
+        run: bash .github/scripts/release-gate.sh ancestor "$SHA" refs/remotes/origin/main
+      - name: The tag is signed by a release signer
+        if: github.event_name == 'push'
+        env:
+          SHA: ${{ github.sha }}
+          REF_NAME: ${{ github.ref_name }}
+        # Fetched again by name: a checkout can hold a tag as a plain ref to
+        # the commit, without the annotated tag object that carries the
+        # signature. A lightweight tag has no tag object, so `cat-file` fails
+        # and so does the release.
+        run: |
+          git fetch --no-tags --force origin "+refs/tags/${REF_NAME}:refs/tags/${REF_NAME}"
+          git cat-file tag "refs/tags/${REF_NAME}" > "$RUNNER_TEMP/tag.raw"
+          bash .github/scripts/release-gate.sh tag-signature "$RUNNER_TEMP/tag.raw" "$REF_NAME" "$SHA" .github/allowed_signers
+      - name: The commit passed the CI gate of a push to main
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
-        # The tag push starts ci.yml for the same commit; a commit merged to
-        # main has usually passed it already. Wait (up to two hours) for a
-        # completed `CI gate` run and require that the latest one succeeded.
+        # A commit merged to main has usually passed its push run already;
+        # wait (up to two hours) while one is still running. Exit 3 from the
+        # script is "nothing qualifying has completed yet". An API error
+        # stops the release (fail closed); re-run the job.
         run: |
-          python3 - <<'PY'
-          import json, os, subprocess, sys, time
-          repo, sha = os.environ["REPO"], os.environ["SHA"]
-          deadline = time.time() + 120 * 60
-          while True:
-              out = subprocess.run(
-                  ["gh", "api", f"repos/{repo}/commits/{sha}/check-runs?check_name=CI%20gate&per_page=100"],
-                  capture_output=True, text=True, check=True,
-              ).stdout
-              runs = json.loads(out).get("check_runs", [])
-              done = sorted(
-                  (r for r in runs if r["status"] == "completed"),
-                  key=lambda r: r["completed_at"],
-              )
-              if done:
-                  latest = done[-1]
-                  print(f"latest CI gate on {sha}: {latest['conclusion']} ({latest['html_url']})")
-                  if latest["conclusion"] == "success":
-                      sys.exit(0)
-                  if not any(r["status"] != "completed" for r in runs):
-                      print("::error::the CI gate did not pass on this commit; not releasing")
-                      sys.exit(1)
-              if time.time() > deadline:
-                  print("::error::no completed CI gate on this commit within two hours")
-                  sys.exit(1)
-              print("waiting for the CI gate …")
-              time.sleep(60)
-          PY
+          deadline=$(( $(date +%s) + 120 * 60 ))
+          while :; do
+            gh api "repos/${REPO}/commits/${SHA}/check-runs?check_name=CI%20gate&filter=all&per_page=100" > "$RUNNER_TEMP/check-runs.json"
+            gh api "repos/${REPO}/actions/runs?head_sha=${SHA}&event=push&branch=main&per_page=100" > "$RUNNER_TEMP/workflow-runs.json"
+            rc=0
+            bash .github/scripts/release-gate.sh ci-gate "$RUNNER_TEMP/check-runs.json" "$RUNNER_TEMP/workflow-runs.json" "$SHA" "$REPO" || rc=$?
+            case "$rc" in
+              0) exit 0 ;;
+              3) ;;
+              *) exit 1 ;;
+            esac
+            if [ "$(date +%s)" -gt "$deadline" ]; then
+              echo "::error::no completed CI gate from a push to main on this commit within two hours"
+              exit 1
+            fi
+            echo "waiting for the CI gate of the push to main …"
+            sleep 60
+          done
 
   binary:
     name: Binary, crate SBOM (build ${{ matrix.build }})
@@ -140,26 +175,36 @@ jobs:
       # same bytes, so it is checked rather than assumed.
       matrix:
         build: [a, b]
+    # Round 34 (D-8): built inside the Dockerfile's own builder image, by the
+    # same digest (pinned-tools.json checks the two stay equal). The image
+    # job ships build a's binary instead of compiling a third one, so this
+    # binary must run on the image's Debian bookworm: built here it links
+    # against bookworm's glibc, with the certified compiler (1.99.1), and a
+    # third party can redo the build from one public image digest.
+    container:
+      image: rust:1.99.1-bookworm@sha256:48b7f435b8fc6378ce43b44f15e3a47fd8919b2825f835c39bd4bd3da50af5b8
     env:
       VERSION: ${{ needs.gate.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The compiler that CI certifies with and the Dockerfile builds with
-      # (ci.yml, `rust:1.99.1-bookworm`). No cache: a release is built from a
-      # clean slate.
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, 2026-09-12
-        with:
-          toolchain: 1.99.1
+      # The compiler that CI certifies with and the Dockerfile builds with is
+      # the image's. No cache: a release is built from a clean slate.
+      - name: Toolchain
+        run: |
+          rustc --version
+          rustc --version | grep -q '^rustc 1\.99\.1 ' || { echo "::error::expected rustc 1.99.1"; exit 1; }
+          # The checkout belongs to the runner's user, the container runs as root.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build
-        # Reproducibility: the workspace path, the home directory (registry
+        # Reproducibility: the workspace path, the cargo home (registry
         # sources) and the timestamp are taken out of the binary; `--locked`
         # builds exactly Cargo.lock.
         run: |
           SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
           export SOURCE_DATE_EPOCH
-          export RUSTFLAGS="--remap-path-prefix=$GITHUB_WORKSPACE=/build --remap-path-prefix=$HOME=/home"
+          export RUSTFLAGS="--remap-path-prefix=$GITHUB_WORKSPACE=/build --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo --remap-path-prefix=$HOME=/home"
           cargo build --manifest-path graphite-core/Cargo.toml --locked --release \
             --features server,cli --target "$TARGET"
           ./graphite-core/target/"$TARGET"/release/graphite --version
@@ -187,8 +232,11 @@ jobs:
             --features server,cli --target "$TARGET" --spec-version 1.5 \
             --override-filename "graphite-core-${VERSION}.cdx"
           mv "graphite-core/graphite-core-${VERSION}.cdx.json" dist/
-          python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['bomFormat'], d['specVersion'], len(d.get('components', [])), 'components')" \
-            "dist/graphite-core-${VERSION}.cdx.json"
+          # No python3 in the builder image: the shape is checked with grep.
+          sbom="dist/graphite-core-${VERSION}.cdx.json"
+          grep -Eq '"bomFormat" *: *"CycloneDX"' "$sbom" || { echo "::error::$sbom is not a CycloneDX document"; exit 1; }
+          grep -Eq '"specVersion" *: *"1\.5"' "$sbom" || { echo "::error::$sbom is not CycloneDX 1.5"; exit 1; }
+          echo "CycloneDX 1.5, $(grep -o '"bom-ref"' "$sbom" | wc -l) bom-refs"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: binary-${{ matrix.build }}
@@ -223,7 +271,11 @@ jobs:
 
   image:
     name: Container image, image SBOM, smoke test
-    needs: gate
+    # Round 34 (D-8): the image ships the binary of reproducible build a,
+    # not a third compilation. Until now `docker build` compiled its own
+    # binary, so the two compared builds proved nothing about the one in the
+    # image users pull.
+    needs: [gate, binary]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
@@ -234,14 +286,40 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: binary-a
+          path: ${{ runner.temp }}/binary-a
+      - name: Build a's binary, from its release tarball
+        # From the tarball (an artifact download drops the executable bit;
+        # tar keeps it), checked against the hash build a recorded.
+        id: prebuilt
+        run: |
+          a="$RUNNER_TEMP/binary-a"
+          name="graphite-${VERSION}-${TARGET}"
+          mkdir -p "$RUNNER_TEMP/unpack" "$RUNNER_TEMP/prebuilt"
+          tar -xzf "$a/dist/$name.tar.gz" -C "$RUNNER_TEMP/unpack"
+          cp -p "$RUNNER_TEMP/unpack/$name/graphite" "$RUNNER_TEMP/prebuilt/graphite"
+          want="$(cut -d' ' -f1 "$a/binary.sha256")"
+          got="$(sha256sum "$RUNNER_TEMP/prebuilt/graphite" | cut -d' ' -f1)"
+          echo "build a: $want; unpacked: $got"
+          if [ -z "$want" ] || [ "$want" != "$got" ]; then
+            echo "::error::the tarball's binary is not build a's"
+            exit 1
+          fi
+          echo "sha256=$want" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       # Built once, into an OCI archive. The same archive is smoke-tested and
       # scanned here and pushed, unchanged, by `publish`: the digest users pull
-      # is the digest of what was checked.
+      # is the digest of what was checked. `GRAPHITE_BINARY=prebuilt` takes
+      # the binary from the `prebuilt` build context instead of the
+      # Dockerfile's builder stage (which is then not built at all).
       - name: Build (OCI archive)
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
+          build-args: GRAPHITE_BINARY=prebuilt
+          build-contexts: prebuilt=${{ runner.temp }}/prebuilt
           push: false
           provenance: false
           sbom: false
@@ -275,6 +353,16 @@ jobs:
           docker stop -t 30 release-smoke
           docker logs release-smoke 2>&1 | tail -n 20
           docker rm release-smoke
+      - name: The archived image ships build a's binary, byte for byte
+        env:
+          WANT: ${{ steps.prebuilt.outputs.sha256 }}
+        run: |
+          docker create --name release-binary graphite-core:release-smoke >/dev/null
+          docker cp release-binary:/usr/local/bin/graphite "$RUNNER_TEMP/image-graphite"
+          docker rm release-binary >/dev/null
+          got="$(sha256sum "$RUNNER_TEMP/image-graphite" | cut -d' ' -f1)"
+          echo "image: $got; build a: $WANT"
+          [ "$got" = "$WANT" ] || { echo "::error::the image's binary is not the reproducible build's"; exit 1; }
       - name: Image SBOM (SPDX)
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
@@ -385,8 +473,12 @@ jobs:
           Verify before you run it:
 
               sha256sum -c SHA256SUMS
-              gh attestation verify graphite-${VERSION}-${TARGET}.tar.gz --repo ${REPO}
-              gh attestation verify oci://${IMAGE}@${DIGEST} --repo ${REPO}
+              gh attestation verify graphite-${VERSION}-${TARGET}.tar.gz --repo ${REPO} \\
+                --signer-workflow ${REPO}/.github/workflows/release.yml \\
+                --source-ref refs/tags/${REF_NAME} --deny-self-hosted-runners
+              gh attestation verify oci://${IMAGE}@${DIGEST} --repo ${REPO} \\
+                --signer-workflow ${REPO}/.github/workflows/release.yml \\
+                --source-ref refs/tags/${REF_NAME} --deny-self-hosted-runners
 
           The changes are in graphite-core/CHANGELOG.md; deployment is in docs/ops/.
           EOF
