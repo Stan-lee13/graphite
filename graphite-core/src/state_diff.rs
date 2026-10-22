@@ -3267,7 +3267,31 @@ fn permanent_delegate_exercises(diff: &StateDiff) -> Vec<StateDiffFinding> {
 /// This never returns a layer status — the caller maps findings and provenance
 /// onto `LayerStatus`, because the provenance rule is a pipeline policy, not a
 /// property of the diff (P7: a verdict is computed at the layer that owns it).
+/// The operator's relaxations of L4's production defaults (Round 32,
+/// P14). Off by default: each restores a warning a previous round gave,
+/// where the default now refuses. The server and CLI read them from
+/// strict-parsed environment variables and log each one that is on.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct L4Relaxations {
+    /// `GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS`: a signer's loss under
+    /// a declaration Graphite cannot read is a warning when the manifest's
+    /// class for the instruction moves value (the Round 30 rule). Off, the
+    /// loss is Critical whatever the class.
+    pub unreadable_value_declarations: bool,
+    /// `GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT`: lamports
+    /// leaving a signer's own wallet beyond the fee and the rent of accounts
+    /// the transaction creates, under a declaration that debits only other
+    /// named accounts, are a warning (W19's rule). Off, they are Critical.
+    pub signer_lamports_outside_declared_debit: bool,
+}
+
+/// L4 under its production defaults: no relaxation.
 pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
+    check_state_diff_with(input, L4Relaxations::default())
+}
+
+/// L4 under the operator's relaxations (see [`L4Relaxations`]).
+pub fn check_state_diff_with(input: &StateDiffCheck<'_>, relax: L4Relaxations) -> StateDiffReport {
     let declared = DeclaredEffects::parse(input.expected_state_changes);
     let mut findings: Vec<StateDiffFinding> = Vec::new();
 
@@ -3669,6 +3693,11 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
     // Lamports that left a signer's own wallet beyond the fee, under a
     // declaration that debits only named accounts (W19).
     let mut signer_lamports_outside_scope: i128 = 0;
+    // Of the signers' lamports that left, what stayed theirs or paid for an
+    // account the transaction created: lamports wrapped into a token account
+    // a signer holds, and the rent-exempt minimum of a created account
+    // (Round 32, W19: these are not a loss).
+    let mut signer_value_kept: i128 = 0;
     // Who signed: the transaction's own privileges where Graphite has them,
     // else the resolved accounts' signer flags.
     let signers: std::collections::HashSet<&str> = match input.diff.transaction_privileges.as_ref()
@@ -4032,9 +4061,11 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
                 .is_some_and(|t| signers.contains(t.owner.as_str()));
             if held_by_signer {
                 signer_net_loss -= lam;
+                signer_value_kept += lam;
             } else if d.was_created() && (gained_data || left_system) {
                 let rent = rent_exempt_minimum(d.after.as_ref().map_or(0, |s| s.data_len));
                 signer_net_loss -= lam.min(rent);
+                signer_value_kept += lam.min(rent);
             }
         }
         if lam < 0 {
@@ -4043,11 +4074,11 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
                 gross_lamport_out += magnitude - if is_fee_payer { fee } else { 0 };
             }
             // W19 (external review): a debit declared about named accounts
-            // says nothing about the signer's own wallet. Disclosed, not
-            // refused: the same outflow is every tip and every rent payment
-            // for an account a sibling creates, and Graphite does not bind
-            // amounts; an agent guard bounds it by the operator's cap on the
-            // measured outflow.
+            // says nothing about the signer's own wallet. Round 32: the rent
+            // of accounts the transaction creates and lamports wrapped into
+            // the signer's own token accounts are netted out below, and what
+            // remains — a tip, a transfer a sibling makes — is Critical unless
+            // the operator relaxes it.
             let own_wallet = d
                 .before
                 .as_ref()
@@ -4091,14 +4122,24 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
         }
     }
 
-    if signer_lamports_outside_scope > 0 {
-        findings.push(StateDiffFinding::warning(
-            "SignerLamportsOutsideDeclaredDebit",
-            None,
-            format!(
-                "{signer_lamports_outside_scope} lamports left a signer's own wallet beyond the fee; the manifest declares a debit only of other accounts"
-            ),
-        ));
+    // W19 (Round 32): the signers' lamports that left beyond the fee, less
+    // what stayed theirs or paid rent for an account the transaction created.
+    // Until Round 32 this was a warning ("disclosed, not refused"): the
+    // declaration names the accounts it debits, a signer's wallet is not one
+    // of them, and nothing else in L4 judged the loss — a primary declaring a
+    // debit of `accounts.user_token` let a sibling empty the signer's SOL with
+    // a warning. The operator can restore the warning
+    // (`L4Relaxations::signer_lamports_outside_declared_debit`).
+    let signer_lamports_unexplained = (signer_lamports_outside_scope - signer_value_kept).max(0);
+    if signer_lamports_unexplained > 0 {
+        let detail = format!(
+            "{signer_lamports_unexplained} lamports left a signer's own wallet beyond the fee and the rent of the accounts this transaction creates; the manifest declares a debit only of other accounts"
+        );
+        findings.push(if relax.signer_lamports_outside_declared_debit {
+            StateDiffFinding::warning("SignerLamportsOutsideDeclaredDebit", None, detail)
+        } else {
+            StateDiffFinding::critical("SignerLamportsOutsideDeclaredDebit", None, detail)
+        });
     }
 
     if let Some(account) = signer_debit_outside_scope {
@@ -4122,20 +4163,35 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
     // loss is Critical — unless the manifest's security class for the
     // instruction is one that moves value (`class_moves_value`), when the
     // unread prose may well describe it and it is reported as before.
-    // Measured on the shipped manifests: no declaration is silent; 382 cannot
-    // be read, 227 of them `inert` or `authority`, which now block a signer's
-    // loss, and 155 keep the warning (`tests/r30_declared_effects_census.rs`).
+    // Measured on the shipped manifests at R30: no declaration is silent; 382
+    // cannot be read, 227 of them `inert` or `authority`, which then blocked
+    // a signer's loss, and 155 kept the warning.
+    //
+    // Round 32: the production default. A declaration Graphite cannot read
+    // cannot excuse a signer's loss whatever its class: "Orca Whirlpools
+    // instruction" says nothing about whose tokens leave. Sixteen of the 155
+    // were rewritten from their programs' IDLs so they can be read; for the
+    // other 139 the operator may restore the Round 30 warning
+    // (`L4Relaxations::unreadable_value_declarations`). Counts pinned in
+    // `tests/r30_declared_effects_census.rs`.
     if !declared.debit {
         let strict = declared.is_interpretable();
-        let signer_strict = strict || !declared.class_moves_value();
+        let signer_strict =
+            strict || !(relax.unreadable_value_declarations && declared.class_moves_value());
         let unread = format!(
-            "{}, and its security class ({}) is not one that moves value — a declaration Graphite cannot read does not excuse a signer's loss",
+            "{}, and its security class is {} — a declaration Graphite cannot read does not excuse a signer's loss",
             if declared.is_silent() {
                 "the manifest declares no state change for this instruction"
             } else {
                 "none of the manifest's declared changes could be interpreted"
             },
-            declared.security_class.as_deref().unwrap_or("not stated")
+            match declared.security_class.as_deref() {
+                Some(c) if declared.class_moves_value() => format!(
+                    "{c:?} (GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS is off)"
+                ),
+                Some(c) => format!("{c:?}, not one that moves value"),
+                None => "not stated".to_string(),
+            }
         );
         if token_debit {
             let detail = "token balances decreased but the manifest declares no debit";
@@ -5699,19 +5755,31 @@ mod w19_scope_tests {
         accounts: &[ResolvedAccount],
         declared: &[&str],
     ) -> StateDiffReport {
+        report_with(deltas, accounts, declared, L4Relaxations::default())
+    }
+
+    fn report_with(
+        deltas: Vec<AccountDelta>,
+        accounts: &[ResolvedAccount],
+        declared: &[&str],
+        relax: L4Relaxations,
+    ) -> StateDiffReport {
         let diff = StateDiff {
             deltas,
             provenance: DiffProvenance::RpcSimulated,
             ..Default::default()
         };
         let declared: Vec<String> = declared.iter().map(|s| s.to_string()).collect();
-        check_state_diff(&StateDiffCheck {
-            diff: &diff,
-            resolved_accounts: accounts,
-            privileges_grounded: true,
-            expected_state_changes: &declared,
-            fee_payer: None,
-        })
+        check_state_diff_with(
+            &StateDiffCheck {
+                diff: &diff,
+                resolved_accounts: accounts,
+                privileges_grounded: true,
+                expected_state_changes: &declared,
+                fee_payer: None,
+            },
+            relax,
+        )
     }
 
     fn codes(r: &StateDiffReport) -> Vec<&str> {
@@ -5781,11 +5849,11 @@ mod w19_scope_tests {
         );
     }
 
-    /// A debit declared about a token account says nothing about the signer's
-    /// wallet. Disclosed (not refused; see the finding's comment).
-    #[test]
-    fn lamports_leaving_the_signers_wallet_outside_the_declared_debit_are_disclosed() {
-        let delta = AccountDelta {
+    const SCOPED_DEBIT: &[&str] =
+        &["transfers data.amount tokens from accounts.source to accounts.destination"];
+
+    fn wallet_spends(lamports: u64) -> AccountDelta {
+        AccountDelta {
             pubkey: WALLET.to_string(),
             before: Some(AccountSnapshot::from_raw(
                 WALLET,
@@ -5795,19 +5863,51 @@ mod w19_scope_tests {
             )),
             after: Some(AccountSnapshot::from_raw(
                 WALLET,
-                5_000_000_000,
+                10_000_000_000 - lamports,
                 SYSTEM_PROGRAM,
                 &[],
             )),
-        };
-        let accounts = [
+        }
+    }
+
+    fn w19_accounts() -> [ResolvedAccount; 2] {
+        [
             named(SOURCE, "source", false),
             named(WALLET, "authority", true),
-        ];
+        ]
+    }
+
+    /// A debit declared about a token account says nothing about the signer's
+    /// wallet. Round 32: refused by default (it was a warning since W19).
+    #[test]
+    fn lamports_leaving_the_signers_wallet_outside_the_declared_debit_are_critical() {
         let r = report(
-            vec![delta],
-            &accounts,
-            &["transfers data.amount tokens from accounts.source to accounts.destination"],
+            vec![wallet_spends(5_000_000_000)],
+            &w19_accounts(),
+            SCOPED_DEBIT,
+        );
+        let f = r
+            .findings
+            .iter()
+            .find(|f| f.code == "SignerLamportsOutsideDeclaredDebit")
+            .unwrap_or_else(|| panic!("{:?}", r.findings));
+        assert_eq!(f.severity, DiffSeverity::Critical);
+        assert!(f.detail.contains("5000000000"), "{}", f.detail);
+        assert!(r.blocked, "{:?}", r.findings);
+    }
+
+    /// The operator's opt-out restores the W19 warning, and only that.
+    #[test]
+    fn the_operator_may_restore_the_w19_warning() {
+        let relax = L4Relaxations {
+            signer_lamports_outside_declared_debit: true,
+            ..Default::default()
+        };
+        let r = report_with(
+            vec![wallet_spends(5_000_000_000)],
+            &w19_accounts(),
+            SCOPED_DEBIT,
+            relax,
         );
         let f = r
             .findings
@@ -5815,7 +5915,94 @@ mod w19_scope_tests {
             .find(|f| f.code == "SignerLamportsOutsideDeclaredDebit")
             .unwrap_or_else(|| panic!("{:?}", r.findings));
         assert_eq!(f.severity, DiffSeverity::Warning);
-        assert!(f.detail.contains("5000000000"), "{}", f.detail);
+        assert!(!r.blocked, "{:?}", r.findings);
+    }
+
+    /// Control: what the signer's lamports bought that stays the signer's —
+    /// the rent of an account the transaction creates, SOL wrapped into the
+    /// signer's own token account — is not a loss, under the new default.
+    #[test]
+    fn rent_for_a_created_account_and_wrapped_sol_are_not_a_w19_loss() {
+        let created = "Crea7ed111111111111111111111111111111111111";
+        let rent = u64::try_from(rent_exempt_minimum(TOKEN_ACCOUNT_LEN)).unwrap();
+        let pays_rent = AccountDelta {
+            pubkey: created.to_string(),
+            before: None,
+            after: Some(AccountSnapshot::from_raw(
+                created,
+                rent,
+                SPL_TOKEN_PROGRAM,
+                &token_account(None),
+            )),
+        };
+        let r = report(
+            vec![wallet_spends(rent), pays_rent],
+            &w19_accounts(),
+            SCOPED_DEBIT,
+        );
+        assert!(
+            !codes(&r).contains(&"SignerLamportsOutsideDeclaredDebit"),
+            "{:?}",
+            r.findings
+        );
+
+        // Wrapping: lamports arrive in a token account the signer owns.
+        let wsol = "WSo1111111111111111111111111111111111111111";
+        let mut owned_by_wallet = token_account(None);
+        owned_by_wallet[32..64].copy_from_slice(
+            crate::solana_types::Pubkey::from_base58(WALLET)
+                .unwrap()
+                .as_bytes(),
+        );
+        let wraps = AccountDelta {
+            pubkey: wsol.to_string(),
+            before: Some(AccountSnapshot::from_raw(
+                wsol,
+                2_039_280,
+                SPL_TOKEN_PROGRAM,
+                &owned_by_wallet,
+            )),
+            after: Some(AccountSnapshot::from_raw(
+                wsol,
+                2_039_280 + 1_000_000,
+                SPL_TOKEN_PROGRAM,
+                &owned_by_wallet,
+            )),
+        };
+        let r = report(
+            vec![wallet_spends(1_000_000), wraps],
+            &w19_accounts(),
+            SCOPED_DEBIT,
+        );
+        assert!(
+            !codes(&r).contains(&"SignerLamportsOutsideDeclaredDebit"),
+            "{:?}",
+            r.findings
+        );
+
+        // What is left over beyond the rent is still the signer's loss.
+        let pays_rent_and_more = AccountDelta {
+            pubkey: created.to_string(),
+            before: None,
+            after: Some(AccountSnapshot::from_raw(
+                created,
+                rent,
+                SPL_TOKEN_PROGRAM,
+                &token_account(None),
+            )),
+        };
+        let r = report(
+            vec![wallet_spends(rent + 7_000_000), pays_rent_and_more],
+            &w19_accounts(),
+            SCOPED_DEBIT,
+        );
+        let f = r
+            .findings
+            .iter()
+            .find(|f| f.code == "SignerLamportsOutsideDeclaredDebit")
+            .unwrap_or_else(|| panic!("{:?}", r.findings));
+        assert!(f.detail.starts_with("7000000 "), "{}", f.detail);
+        assert_eq!(f.severity, DiffSeverity::Critical);
     }
 }
 

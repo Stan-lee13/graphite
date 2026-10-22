@@ -16,8 +16,8 @@
 
 use graphite_core::account_resolution::{AccountIdentity, ResolvedAccount};
 use graphite_core::state_diff::{
-    check_state_diff, AccountDelta, AccountSnapshot, DeclaredEffects, DiffProvenance, DiffSeverity,
-    StateDiff, StateDiffCheck, StateDiffReport,
+    check_state_diff_with, AccountDelta, AccountSnapshot, DeclaredEffects, DiffProvenance,
+    DiffSeverity, L4Relaxations, StateDiff, StateDiffCheck, StateDiffReport,
 };
 
 const TOKEN: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
@@ -82,6 +82,15 @@ fn report(
     accounts: &[ResolvedAccount],
     declared: &[&str],
 ) -> StateDiffReport {
+    report_with(deltas, accounts, declared, L4Relaxations::default())
+}
+
+fn report_with(
+    deltas: Vec<AccountDelta>,
+    accounts: &[ResolvedAccount],
+    declared: &[&str],
+    relax: L4Relaxations,
+) -> StateDiffReport {
     let diff = StateDiff {
         deltas,
         provenance: DiffProvenance::RpcSimulated,
@@ -90,13 +99,16 @@ fn report(
     };
     let declared: Vec<String> = declared.iter().map(|s| s.to_string()).collect();
     let wallet = signer();
-    check_state_diff(&StateDiffCheck {
-        diff: &diff,
-        resolved_accounts: accounts,
-        privileges_grounded: true,
-        expected_state_changes: &declared,
-        fee_payer: Some(&wallet),
-    })
+    check_state_diff_with(
+        &StateDiffCheck {
+            diff: &diff,
+            resolved_accounts: accounts,
+            privileges_grounded: true,
+            expected_state_changes: &declared,
+            fee_payer: Some(&wallet),
+        },
+        relax,
+    )
 }
 
 fn severity_of(r: &StateDiffReport, code: &str) -> Option<DiffSeverity> {
@@ -306,14 +318,21 @@ fn a_signers_lamport_loss_under_uninterpretable_prose_is_critical() {
     assert!(r.blocked);
 }
 
-/// The pipeline states the manifest's security class beside the prose. A
-/// class whose instructions move value keeps the old warning for unreadable
-/// prose (a swap described as "Orca Whirlpools instruction"); one that states
-/// the instruction moves nothing (`inert`, `authority`) does not.
+/// The pipeline states the manifest's security class beside the prose.
+/// Round 32 (R30-F-1 residual): by default no class excuses a signer's loss
+/// under prose Graphite cannot read (a swap described as "Orca Whirlpools
+/// instruction" says nothing about whose tokens leave). The operator's
+/// `GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS` restores the R30 rule: a
+/// class whose instructions move value keeps the old warning; one that states
+/// the instruction moves nothing (`inert`, `authority`) still blocks.
 #[test]
 fn the_security_class_decides_an_unreadable_declarations_signer_loss() {
     use graphite_core::state_diff::security_class_line;
-    for (class, blocks) in [
+    let relaxed = L4Relaxations {
+        unreadable_value_declarations: true,
+        ..Default::default()
+    };
+    for (class, blocks_when_relaxed) in [
         ("transfer", false),
         ("withdraw", false),
         ("close", false),
@@ -324,16 +343,41 @@ fn the_security_class_decides_an_unreadable_declarations_signer_loss() {
         let line = security_class_line(class);
         let declared = ["Orca Whirlpools instruction", line.as_str()];
         for (what, deltas, code) in [
-            ("token", signer_token_drain(), "UndeclaredTokenDebit"),
+            (
+                "token",
+                signer_token_drain as fn() -> Vec<AccountDelta>,
+                "UndeclaredTokenDebit",
+            ),
             (
                 "lamports",
-                signer_lamport_drain(),
+                signer_lamport_drain,
                 "UndeclaredSignerLamportDebit",
             ),
         ] {
-            let r = report(deltas, &accounts(), &declared);
-            assert_eq!(r.blocked, blocks, "{class:?} {what}: {:?}", r.findings);
-            if blocks {
+            let r = report(deltas(), &accounts(), &declared);
+            assert!(r.blocked, "default, {class:?} {what}: {:?}", r.findings);
+            assert_eq!(
+                severity_of(&r, code),
+                Some(DiffSeverity::Critical),
+                "{class:?}"
+            );
+            if !class.is_empty() && blocks_when_relaxed {
+                let detail = &r.findings.iter().find(|f| f.code == code).unwrap().detail;
+                assert!(detail.contains("not one that moves value"), "{detail}");
+            } else if !class.is_empty() {
+                let detail = &r.findings.iter().find(|f| f.code == code).unwrap().detail;
+                assert!(
+                    detail.contains("GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS is off"),
+                    "{detail}"
+                );
+            }
+            let r = report_with(deltas(), &accounts(), &declared, relaxed);
+            assert_eq!(
+                r.blocked, blocks_when_relaxed,
+                "relaxed, {class:?} {what}: {:?}",
+                r.findings
+            );
+            if blocks_when_relaxed {
                 assert_eq!(
                     severity_of(&r, code),
                     Some(DiffSeverity::Critical),
@@ -342,6 +386,20 @@ fn the_security_class_decides_an_unreadable_declarations_signer_loss() {
             }
         }
     }
+}
+
+/// The W19 relaxation does not relax the unreadable-declaration rule, nor the
+/// reverse: each opt-out restores its own warning only.
+#[test]
+fn each_l4_relaxation_restores_only_its_own_warning() {
+    let line = graphite_core::state_diff::security_class_line("transfer");
+    let declared = ["Orca Whirlpools instruction", line.as_str()];
+    let w19_only = L4Relaxations {
+        signer_lamports_outside_declared_debit: true,
+        ..Default::default()
+    };
+    let r = report_with(signer_lamport_drain(), &accounts(), &declared, w19_only);
+    assert!(r.blocked, "{:?}", r.findings);
 }
 
 /// The class line is the pipeline's: it states nothing about effects, so a

@@ -183,10 +183,20 @@ type Pin = (
     usize,
 );
 
+// Re-pinned in Round 32: dev TP 11,808 → 11,802, TN 1,097 → 1,103. The six
+// rows are the synthetic-manifest fixtures (honest `transfer` intent) of the
+// six deposits whose declarations were rewritten from their IDLs (R30-F-1
+// residual): Orca increaseLiquidityV2 / increaseLiquidityByTokenAmountsV2,
+// Meteora DLMM add_liquidity_by_strategy / _one_side, Kamino
+// depositObligationCollateral / V2. Their prose ("Orca Whirlpools
+// instruction", "protocol state transition") held none of L5's `transfer`
+// words, so L5 refused them; the IDL-backed lines name the token movement,
+// L5 passes, and the regenerated corpus labels them approved. Nothing else
+// in any split moved.
 const PINNED: &[Pin] = &[
     ("holdout", 38, 0, 0, 37, 0, 1, 0),
     ("regression", 32, 6, 0, 21, 5, 0, 0),
-    ("dev", 12_943, 38, 0, 11_808, 1_097, 0, 0),
+    ("dev", 12_943, 38, 0, 11_802, 1_103, 0, 0),
     ("hand-built", 24, 0, 2, 15, 7, 0, 0),
 ];
 

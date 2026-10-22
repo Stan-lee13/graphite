@@ -668,7 +668,10 @@
     }
    ],
    "expected_state_changes": [
-    "Meteora DLMM instruction"
+    "transfers tokens out of accounts.reserve_x",
+    "transfers tokens out of accounts.reserve_y",
+    "credits accounts.user_token_x token balance",
+    "credits accounts.user_token_y token balance"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -804,7 +807,10 @@
     }
    ],
    "expected_state_changes": [
-    "Meteora DLMM instruction"
+    "transfers tokens out of accounts.user_token_x",
+    "transfers tokens out of accounts.user_token_y",
+    "credits accounts.reserve_x token balance",
+    "credits accounts.reserve_y token balance"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -908,7 +914,8 @@
     }
    ],
    "expected_state_changes": [
-    "Meteora DLMM instruction"
+    "transfers tokens out of accounts.user_token",
+    "credits accounts.reserve token balance"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -1073,7 +1080,10 @@
     }
    ],
    "expected_state_changes": [
-    "Meteora DLMM instruction"
+    "transfers tokens out of accounts.reserve_x",
+    "transfers tokens out of accounts.reserve_y",
+    "credits accounts.user_token_x token balance",
+    "credits accounts.user_token_y token balance"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -1190,7 +1200,10 @@
     }
    ],
    "expected_state_changes": [
-    "Meteora DLMM instruction"
+    "transfers tokens out of accounts.reserve_x",
+    "transfers tokens out of accounts.reserve_y",
+    "credits accounts.user_token_x token balance",
+    "credits accounts.user_token_y token balance"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

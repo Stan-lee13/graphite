@@ -4,16 +4,26 @@
 //! below is what the R30 rule for unreadable declarations was measured on:
 //! how many declarations are silent, unreadable, mixed (a readable line beside
 //! an unreadable one — judged strictly), and how many unreadable ones state a
-//! class that moves no value, so that a signer's loss under them now blocks.
-//! A change to the manifests that moves these numbers fails here, so the rule
-//! is re-measured rather than silently re-scoped.
+//! class that moves no value, so that a signer's loss under them blocks even
+//! when the operator relaxes the rule. A change to the manifests that moves
+//! these numbers fails here, so the rule is re-measured rather than silently
+//! re-scoped.
+//!
+//! Round 32 (R30-F-1 residual): by default a signer's loss under ANY
+//! unreadable declaration blocks; the last column counts the unreadable
+//! declarations whose class moves value, where the operator's
+//! `GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS` restores the R30 warning.
+//! Measured at `bdc9dab`: 382 unreadable, 227 strict, 155 relaxable. The 16
+//! declarations [`REWRITTEN`] names were rewritten from the program's IDL, so
+//! 366 remain unreadable (227 strict, 139 relaxable).
 use graphite_core::manifest::load_seed_manifests;
 use graphite_core::state_diff::{security_class_line, DeclaredEffects};
 
 #[test]
 fn every_shipped_declaration_is_classified_as_measured() {
     let reg = load_seed_manifests();
-    let (mut total, mut silent, mut unreadable, mut mixed, mut signer_strict) = (0, 0, 0, 0, 0);
+    let (mut total, mut silent, mut unreadable, mut mixed, mut strict, mut relaxable) =
+        (0, 0, 0, 0, 0, 0);
     for m in reg.list() {
         for ix in &m.instructions {
             total += 1;
@@ -25,8 +35,10 @@ fn every_shipped_declaration_is_classified_as_measured() {
             }
             if e.unrecognised {
                 unreadable += 1;
-                if !e.class_moves_value() {
-                    signer_strict += 1;
+                if e.class_moves_value() {
+                    relaxable += 1;
+                } else {
+                    strict += 1;
                 }
             }
             let some_line_unread = ix
@@ -40,8 +52,245 @@ fn every_shipped_declaration_is_classified_as_measured() {
         }
     }
     assert_eq!(
-        (total, silent, unreadable, mixed, signer_strict),
-        (3541, 0, 382, 38, 227),
-        "(instructions, silent, unreadable, mixed, unreadable-and-signer-strict)"
+        (total, silent, unreadable, mixed, strict, relaxable),
+        (3541, 0, 366, 38, 227, 139),
+        "(instructions, silent, unreadable, mixed, unreadable-and-strict-even-when-relaxed, unreadable-and-relaxable)"
     );
+}
+
+/// Round 32: the declarations rewritten from the program's IDL (program,
+/// instruction, the IDL file the accounts were checked against).
+const REWRITTEN: &[(&str, &str, &str)] = &[
+    (
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+        "increaseLiquidityV2",
+        ORCA_IDL,
+    ),
+    (
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+        "increaseLiquidityByTokenAmountsV2",
+        ORCA_IDL,
+    ),
+    (
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+        "decreaseLiquidity",
+        ORCA_IDL,
+    ),
+    (
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+        "decreaseLiquidityV2",
+        ORCA_IDL,
+    ),
+    (
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+        "collectFees",
+        ORCA_IDL,
+    ),
+    (
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+        "collectFeesV2",
+        ORCA_IDL,
+    ),
+    (
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+        "collectRewardV2",
+        ORCA_IDL,
+    ),
+    (
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+        "add_liquidity_by_strategy",
+        DLMM_IDL,
+    ),
+    (
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+        "add_liquidity_by_strategy_one_side",
+        DLMM_IDL,
+    ),
+    (
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+        "remove_liquidity",
+        DLMM_IDL,
+    ),
+    (
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+        "remove_liquidity_by_range",
+        DLMM_IDL,
+    ),
+    (
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+        "claim_fee",
+        DLMM_IDL,
+    ),
+    (
+        "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
+        "depositObligationCollateral",
+        KLEND_IDL,
+    ),
+    (
+        "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
+        "depositObligationCollateralV2",
+        KLEND_IDL,
+    ),
+    (
+        "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
+        "withdrawObligationCollateralV2",
+        KLEND_IDL,
+    ),
+    (
+        "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
+        "lending_account_borrow",
+        MARGINFI_IDL,
+    ),
+];
+const ORCA_IDL: &str = "scripts/out/onchain_idls/whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc.json";
+const DLMM_IDL: &str = "scripts/idls/meteora-dlmm.json";
+const KLEND_IDL: &str = "scripts/out/onchain_idls/KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD.json";
+const MARGINFI_IDL: &str =
+    "scripts/out/onchain_idls/MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA.json";
+
+/// The IDL's accounts for `name` (nested account groups flattened), each with
+/// whether it is writable and whether it signs.
+fn idl_accounts(file: &str, name: &str) -> Vec<(String, bool, bool)> {
+    let norm = |s: &str| {
+        s.chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .collect::<String>()
+            .to_lowercase()
+    };
+    let path = format!("{}/{file}", env!("CARGO_MANIFEST_DIR"));
+    let idl: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let ix = idl["instructions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| norm(i["name"].as_str().unwrap()) == norm(name))
+        .unwrap_or_else(|| panic!("{file} has no {name}"));
+    fn walk(accs: &serde_json::Value, out: &mut Vec<(String, bool, bool)>) {
+        for a in accs.as_array().unwrap() {
+            if a.get("accounts").is_some() {
+                walk(&a["accounts"], out);
+            } else {
+                let flag = |k: &str, legacy: &str| {
+                    a.get(k)
+                        .or_else(|| a.get(legacy))
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false)
+                };
+                out.push((
+                    a["name"].as_str().unwrap().to_string(),
+                    flag("writable", "isMut"),
+                    flag("signer", "isSigner"),
+                ));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(&ix["accounts"], &mut out);
+    out.into_iter().map(|(n, w, s)| (norm(&n), w, s)).collect()
+}
+
+/// Every rewritten declaration is read in full (no unread line), names only
+/// accounts of its own layout, and every account it moves tokens out of or
+/// into is one the IDL marks writable and not a signer — the declaration says
+/// what the IDL's accounts say and nothing it invented.
+#[test]
+fn the_idl_rewritten_declarations_are_read_and_name_only_the_idls_accounts() {
+    let reg = load_seed_manifests();
+    for (program, name, idl) in REWRITTEN {
+        let m = reg.get(program).unwrap();
+        let ix = m
+            .instructions
+            .iter()
+            .find(|i| i.name == *name)
+            .unwrap_or_else(|| panic!("{name}"));
+        let mut with_class = ix.expected_state_changes.clone();
+        with_class.push(security_class_line(ix.security_class()));
+        let e = DeclaredEffects::parse(&with_class);
+        assert!(
+            e.is_interpretable(),
+            "{name}: {:?}",
+            ix.expected_state_changes
+        );
+        assert!(e.debit && e.credit, "{name}");
+        for line in &ix.expected_state_changes {
+            assert!(
+                !DeclaredEffects::parse(std::slice::from_ref(line)).unrecognised,
+                "{name}: {line}"
+            );
+        }
+        let accounts = idl_accounts(idl, name);
+        let layout: Vec<String> = ix
+            .accounts
+            .iter()
+            .map(|a| {
+                a.name
+                    .chars()
+                    .filter(|c| c.is_ascii_alphanumeric())
+                    .collect::<String>()
+                    .to_lowercase()
+            })
+            .collect();
+        for (k, slot) in layout.iter().enumerate() {
+            assert_eq!(&accounts[k].0, slot, "{name}: slot {k}");
+        }
+        let mut named = 0;
+        for line in &ix.expected_state_changes {
+            for (i, _) in line.match_indices("accounts.") {
+                let reference: String = line[i + 9..]
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+                let slot = ix
+                    .accounts
+                    .iter()
+                    .position(|a| a.name == reference)
+                    .unwrap_or_else(|| panic!("{name}: `{reference}` is not in the layout"));
+                let (_, writable, signer) = &accounts[slot];
+                assert!(*writable && !*signer, "{name}: `{reference}`");
+                named += 1;
+            }
+        }
+        assert!(named >= 2, "{name}: names its source and its destination");
+    }
+}
+
+/// Every `accounts.<name>` a shipped declaration references names an account
+/// of one of the instruction's layouts. A reference to no slot scopes its
+/// effect to nothing: Pump.fun's `buy_v2`/`sell_v2` named `associated_user`,
+/// the v1 slot the v2 layout calls `associated_base_user`, so the user's base
+/// token debit on a sell was outside every declared scope (Round 32).
+#[test]
+fn every_declared_account_reference_names_a_layout_account() {
+    let reg = load_seed_manifests();
+    let mut refs = 0;
+    for m in reg.list() {
+        for ix in &m.instructions {
+            for line in &ix.expected_state_changes {
+                for (i, _) in line.match_indices("accounts.") {
+                    // `accounts.` inside a longer word is not a reference.
+                    if line[..i]
+                        .chars()
+                        .last()
+                        .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+                    {
+                        continue;
+                    }
+                    let reference: String = line[i + 9..]
+                        .chars()
+                        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                        .collect();
+                    refs += 1;
+                    assert!(
+                        ix.all_layouts()
+                            .any(|l| l.iter().any(|a| a.name == reference)),
+                        "{}::{}: `accounts.{reference}` names no account of its layouts",
+                        m.protocol.name,
+                        ix.name
+                    );
+                }
+            }
+        }
+    }
+    assert!(refs > 200, "{refs}");
 }

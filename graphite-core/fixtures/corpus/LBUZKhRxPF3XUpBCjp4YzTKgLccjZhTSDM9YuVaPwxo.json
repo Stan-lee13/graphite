@@ -1247,7 +1247,7 @@
     "program_id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
     "version": "1.0.0",
     "content_hash": "1f080ae0e8a23443a094e904d8ddab1fe22a5d237a114783bb6816dbb6761a50",
-    "expected_approved": false,
+    "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {
@@ -1323,7 +1323,7 @@
       "lookup_table_count": 0,
       "state_diff": null
     },
-    "integrity_hash": "055d6bed742503db14e627912e570705d97e7d58cf38a427bc8de5cb8e67cbc2"
+    "integrity_hash": "397d05783851429617dcb22a338b5098902ce7843dbf7e446c1ed443712f1d7e"
   },
   {
     "program_id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
@@ -1411,7 +1411,7 @@
     "program_id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
     "version": "1.0.0",
     "content_hash": "804b1fa9bb5f63cb7cf2f3943c7480ea19dd9d17d3cb23bfd7dd9e6969893867",
-    "expected_approved": false,
+    "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {
@@ -1483,7 +1483,7 @@
       "lookup_table_count": 0,
       "state_diff": null
     },
-    "integrity_hash": "bdc2576adfdb440160782bce79be45594622cccfd4ca471ce60ab0c99ae3936c"
+    "integrity_hash": "7d3c9122b8a69331c3fe4116461ba718a0398e06963667b8600975f8a3dade10"
   },
   {
     "program_id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",

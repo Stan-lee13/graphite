@@ -238,6 +238,17 @@ pub struct OperatorPolicy {
     pub quarantine_on_upgrade: bool,
     /// `GRAPHITE_PLUGINS_DIR`, when set and non-empty.
     pub plugins_dir: Option<PathBuf>,
+    /// `GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS` (Round 32): a signer's
+    /// loss under a declaration Graphite cannot read warns, instead of being
+    /// refused, when the instruction's class moves value.
+    pub allow_unreadable_value_declarations: bool,
+    /// `GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT` (Round 32,
+    /// W19): a signer's lamports leaving under a debit declared for other
+    /// accounts only warn.
+    pub allow_signer_lamports_outside_declared_debit: bool,
+    /// `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS` (Round 32, R30-G-1): a granted
+    /// withdrawal whose every minimum output is zero keeps its grant.
+    pub allow_unbounded_withdrawals: bool,
 }
 
 impl OperatorPolicy {
@@ -275,11 +286,19 @@ impl OperatorPolicy {
             plugins_dir: get("GRAPHITE_PLUGINS_DIR")
                 .filter(|d| !d.trim().is_empty())
                 .map(PathBuf::from),
+            allow_unreadable_value_declarations: flag(
+                "GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS",
+            )?,
+            allow_signer_lamports_outside_declared_debit: flag(
+                "GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT",
+            )?,
+            allow_unbounded_withdrawals: flag("GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS")?,
         })
     }
 
     /// Apply the settings that live in the core: durable nonces, the
-    /// upgrade quarantine and the plugins directory. Returns the plugin
+    /// upgrade quarantine, L4's and the grants' relaxations (Round 32) and
+    /// the plugins directory. Returns the plugin
     /// registration summary when a directory is configured. A directory
     /// that does not load is an error: an operator who configured
     /// plugins expects them to be running (Round 17, F-16-07).
@@ -289,6 +308,12 @@ impl OperatorPolicy {
     ) -> Result<Option<crate::plugin_orchestrator::RegistrationSummary>, String> {
         core.set_allow_durable_nonce(self.allow_durable_nonce);
         core.set_quarantine_on_upgrade(self.quarantine_on_upgrade);
+        core.set_l4_relaxations(crate::state_diff::L4Relaxations {
+            unreadable_value_declarations: self.allow_unreadable_value_declarations,
+            signer_lamports_outside_declared_debit: self
+                .allow_signer_lamports_outside_declared_debit,
+        });
+        core.set_allow_unbounded_withdrawals(self.allow_unbounded_withdrawals);
         match &self.plugins_dir {
             Some(dir) => core.attach_plugins_dir(dir).map(Some).map_err(|e| {
                 format!(
