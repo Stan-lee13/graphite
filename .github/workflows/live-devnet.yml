@@ -11,6 +11,10 @@ name: Live devnet end to end
 # a gated path that does not complete after funding is a failure. No funds of
 # value are involved: devnet SOL, throwaway keys, nothing persisted.
 on:
+  # workflow_dispatch works only once this file is on the default branch; on a
+  # pull request, adding the `live-measure` label runs it with the defaults.
+  pull_request:
+    types: [labeled]
   workflow_dispatch:
     inputs:
       rpc_url:
@@ -40,6 +44,7 @@ defaults:
 jobs:
   e2e:
     name: Gated transfer on devnet
+    if: github.event_name != 'pull_request' || github.event.label.name == 'live-measure'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -54,7 +59,7 @@ jobs:
       - name: Choose the RPC (masked; never printed)
         env:
           SECRET_RPC: ${{ secrets.GRAPHITE_DEVNET_RPC_URL }}
-          INPUT_RPC: ${{ inputs.rpc_url }}
+          INPUT_RPC: ${{ inputs.rpc_url || 'https://api.devnet.solana.com' }}
         run: |
           rpc="${SECRET_RPC:-$INPUT_RPC}"
           echo "::add-mask::$rpc"
@@ -86,8 +91,8 @@ jobs:
       - name: Keys, airdrop, Core, AI layer, gated transfer, shutdown, audit
         id: run
         env:
-          SEED: ${{ inputs.seed_evidence }}
-          LAMPORTS: ${{ inputs.airdrop_lamports }}
+          SEED: ${{ inputs.seed_evidence || github.event_name == 'pull_request' }}
+          LAMPORTS: ${{ inputs.airdrop_lamports || '500000000' }}
         run: |
           seed_flag=""
           if [ "$SEED" != "true" ]; then seed_flag="--no-seed-evidence"; fi

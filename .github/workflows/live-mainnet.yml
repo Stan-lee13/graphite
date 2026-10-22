@@ -15,6 +15,10 @@ name: Live mainnet measurement
 # `GRAPHITE_LIVE_RPC_URL` repository secret; it is masked, never printed, and
 # scrubbed from the uploaded logs.
 on:
+  # workflow_dispatch works only once this file is on the default branch; on a
+  # pull request, adding the `live-measure` label runs it with the defaults.
+  pull_request:
+    types: [labeled]
   workflow_dispatch:
     inputs:
       rpc_url:
@@ -52,6 +56,7 @@ defaults:
 jobs:
   measure:
     name: Replay recent mainnet traffic with simulation
+    if: github.event_name != 'pull_request' || github.event.label.name == 'live-measure'
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     env:
@@ -66,7 +71,7 @@ jobs:
       - name: Choose the RPC (masked; never printed)
         env:
           SECRET_RPC: ${{ secrets.GRAPHITE_LIVE_RPC_URL }}
-          INPUT_RPC: ${{ inputs.rpc_url }}
+          INPUT_RPC: ${{ inputs.rpc_url || 'https://api.mainnet-beta.solana.com' }}
         run: |
           rpc="${SECRET_RPC:-$INPUT_RPC}"
           echo "::add-mask::$rpc"
@@ -95,7 +100,7 @@ jobs:
       - name: Fetch recent finalized blocks
         id: fetch
         env:
-          BLOCKS: ${{ inputs.blocks }}
+          BLOCKS: ${{ inputs.blocks || '2' }}
         run: |
           set +e
           python3 tools/live-measure/live_mainnet.py fetch --rpc "$LIVE_RPC_URL" --blocks "$BLOCKS" --out "$RUNNER_TEMP/sample.json"
@@ -135,7 +140,7 @@ jobs:
       - name: Pick the transactions to replay
         if: steps.fetch.outputs.skip == 'false'
         env:
-          N: ${{ inputs.transactions }}
+          N: ${{ inputs.transactions || '200' }}
         run: python3 tools/live-measure/live_mainnet.py select --requests "$RUNNER_TEMP/requests.jsonl" --n "$N" --out "$REPORT_DIR/selected.jsonl"
 
       - name: Start the Core with the RPC attached
@@ -159,8 +164,8 @@ jobs:
         id: replay
         if: steps.fetch.outputs.skip == 'false'
         env:
-          PACE: ${{ inputs.pace_seconds }}
-          L8: ${{ inputs.l8_checks }}
+          PACE: ${{ inputs.pace_seconds || '1.0' }}
+          L8: ${{ inputs.l8_checks || '10' }}
           HARNESS_EXIT: ${{ steps.harness.outputs.exit }}
         run: |
           set +e
