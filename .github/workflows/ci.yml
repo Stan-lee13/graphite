@@ -127,12 +127,12 @@ jobs:
         # Round 30: the log is read back, so the gate is "at least the floor
         # passed and none failed", not just "cargo exited 0" — which it also
         # does when no test binary ran at all. The floors are the counts at
-        # 29e4356 (2,100 / 428 / 1,780); a change that deletes tests below one
+        # the end of Round 30 (2,236 / 466 / 1,875); a change that deletes tests below one
         # lowers it in the same reviewed diff. The log lives outside the tree
         # so the clean-tree check below still sees only what the tests wrote.
         run: |
           cargo test --locked --release 2>&1 | tee "$RUNNER_TEMP/cargo-test.log"
-          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test.log" 2100 ../.github/test-allowlists/rust-ignored.txt
+          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test.log" 2236 ../.github/test-allowlists/rust-ignored.txt
         env:
           # The snapshot's provenance check needs the tags; here a missing
           # tag fails instead of being skipped.
@@ -171,12 +171,12 @@ jobs:
         # synchronous call refuses instead of approving.
         run: |
           cargo test --locked --release --no-default-features --lib 2>&1 | tee "$RUNNER_TEMP/cargo-test-lib.log"
-          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test-lib.log" 428 ../.github/test-allowlists/rust-ignored.txt
+          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test-lib.log" 466 ../.github/test-allowlists/rust-ignored.txt
       - name: Tests — cli feature only, no server or rpc
         if: always()
         run: |
           cargo test --locked --release --no-default-features --features cli 2>&1 | tee "$RUNNER_TEMP/cargo-test-cli.log"
-          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test-cli.log" 1780 ../.github/test-allowlists/rust-ignored.txt
+          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test-cli.log" 1875 ../.github/test-allowlists/rust-ignored.txt
       # The cli leg runs the corpus test too; its output must match as well.
       - name: The feature legs changed nothing in the tree
         if: always()

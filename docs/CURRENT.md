@@ -659,20 +659,19 @@ transaction under the stated threat model, and no external party has yet tried.
 document links here, and `tests/docs_numbers_match_the_code.rs` fails if a live
 document states one elsewhere.
 
-Rust, from the integrated runs of Round 30 on 2026-10-21/22 at `1f5fc1f` (release
-builds, thin LTO off to fit the shared machine; logs kept outside the repository):
+Rust, from the final integrated runs of Round 30 on 2026-10-22 (release builds,
+thin LTO off to fit the shared machine; logs kept outside the repository):
 
-- all features: **2,224 Rust tests pass**, 0 failed, 13 ignored (network- or
-  sample-dependent, plus two soak benchmarks, each named in
-  `.github/test-allowlists/rust-ignored.txt`), across 159 test targets;
-- the featureless library (`--no-default-features --lib`): **459 passed, 2 ignored**;
-- the cli-only build (`--no-default-features --features cli`): **1,863 passed, 4 ignored**,
-  across 159 test targets.
+- all features, and the default features CI runs: **2,236 Rust tests pass**, 0 failed,
+  13 ignored (network- or sample-dependent, plus two soak benchmarks, each named in
+  `.github/test-allowlists/rust-ignored.txt`), across 161 test targets;
+- the featureless library (`--no-default-features --lib`): **466 passed, 2 ignored**;
+- the cli-only build (`--no-default-features --features cli`): **1,875 passed, 4 ignored**,
+  across 161 test targets.
 
-<!-- WS-E --> The WS-E merge (fuzz crate, `graphite benchmark --json`) adds tests; these counts are re-stated after it.
+CI's test-count gate holds each leg at these floors.
 
-Clippy `-D warnings` (all three feature legs) and fmt clean at each workstream's
-head; the integrated tree type-checks on all three legs.
+Clippy `-D warnings` (all three feature legs) and fmt clean on the integrated tree.
 
 TypeScript: agent guard 277; SolanaAgentKit adapter 9; MCP server 9; Vercel AI
 adapter 11; TypeScript SDK 59 (55 hermetic, 4 against a live server — run in

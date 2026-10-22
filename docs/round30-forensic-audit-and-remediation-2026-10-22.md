@@ -202,29 +202,36 @@ Round 30 changes to it:
 
 ## F. Test and build evidence
 
-Integrated tree `1f5fc1f` (all workstreams but WS-E), release builds with thin LTO off, on a shared
-4-CPU machine:
+The final integrated tree (every workstream merged, with the integration fixes), release builds
+with thin LTO off, on a shared 4-CPU machine:
 
 | Suite | Command | Result |
 |---|---|---|
-| Rust, all features | `cargo test --release --all-features --no-fail-fast` | 159 binaries: 2,224 passed, 0 failed, 13 ignored |
-| Rust, featureless library | `cargo test --release --no-default-features --lib` | 459 passed, 0 failed, 2 ignored |
-| Rust, cli only | `cargo test --release --no-default-features --features cli --no-fail-fast` | 159 binaries: 1,863 passed, 0 failed, 4 ignored |
-| Rust type-check | `cargo check --release --all-features --all-targets` (and the two other legs) | clean |
+| Rust, all features | `cargo test --release --all-features --no-fail-fast` | 161 binaries: 2,236 passed, 0 failed, 13 ignored |
+| Rust, default features (CI's leg) | `cargo test --release --no-fail-fast` | 161 binaries: 2,236 passed, 0 failed, 13 ignored |
+| Rust, featureless library | `cargo test --release --no-default-features --lib` | 466 passed, 0 failed, 2 ignored |
+| Rust, cli only | `cargo test --release --no-default-features --features cli --no-fail-fast` | 161 binaries: 1,875 passed, 0 failed, 4 ignored |
+| clippy | `cargo clippy --release … -- -D warnings` on all-features all-targets, featureless lib, cli all-targets | clean |
 | fmt | `cargo fmt --all -- --check` | clean |
-| Agent guard | `npm test` | 277 passed |
+| Agent guard | `npm test`; `npm run emit:corpus` | 277 passed; no fixture drift |
 | SolanaAgentKit / MCP / Vercel AI | `npm test` | 9 / 9 / 11 passed |
 | TypeScript SDK | `npm run check && npm test` | 55 passed, 4 live skipped |
 | Dashboard | `npm test && npm run build` | 31 passed; build OK |
-| Go SDK | `gofmt -l`, `go vet`, `go test -count=1 -v ./...` | 59 top-level tests pass, 0 skipped (+5 under `liveserver`, not run) |
-| Python AI layer | `pytest -q` (hash-locked requirements) | 50 passed |
+| Go SDK | `gofmt -l`, `go vet`, `go test -count=1 -v ./...` | 59 top-level tests pass, 0 skipped (+5 under `liveserver`, run in CI's container job) |
+| Python AI layer / mainnet-sample tools | `pytest -q` (hash-locked requirements) | 50 / 7 passed |
 | Docs consistency | `docs_numbers_match_the_code`, `docs_match_the_registry`, `docs_paths_resolve`, `contract_version_gate` | 8 / 2 / 1 / 4 passed |
 | Hosted CI on the base `29e4356` | run 39610913297 | all 10 jobs green |
-| Assurance | <!-- WS-E --> fuzz durations and execs, mutation scores, coverage, the release evaluation | pending the WS-E merge |
+| Hosted CI on the PR (`63ba7dd`, every workstream merged) | run 39686638069, plus the assurance workflow | every job green, including `CI gate`, MSRV, the container smoke test and the six fuzz smoke jobs |
+| Fuzzing (local, after the R30-WSE-1 fix, 120 s per target) | `cargo +nightly fuzz run <target>` | no crash: `parse_transaction` 312,600 executions (coverage 1,088), `lookup_table` 544,583 (879), `manifest_json` 1,342,845 (3,339), `token_extensions` 1,027,915 (908), `state_diff` 176,640 (1,620), `rpc_json` 2,660,276 (1,578) |
+| Mutation testing (local) | `cargo mutants` on a round-robin quarter of `risk_engine.rs` | 59 mutants (2 unviable): 8 survived every suite → five unit tests → 8 of 8 caught; 57 of 57 caught against the wide suites |
+| Line coverage | library unit tests (the CI job adds every integration suite) | 78.42 % of 37,650 lines; CI floor 78 |
+| Release evaluation | `graphite benchmark --json` (pinned by `tests/release_evaluation.rs`) | holdout 38: 37/37 exploits refused (Wilson 95 % 0.906–1.0), the 1 benign Jupiter swap refused offline; regression 32: 21/21 refused, 5/5 approved, 6 errors; dev 12,943: 11,808/11,808 refused, 1,097/1,099 approved (2 errors on approve labels), 38 errors; hand-built 24: 15/15, 7/7; 2,284 committed mainnet transactions parse (472 v0, 313 v1, 1,499 legacy), unlabelled and unscored |
 
 Each workstream also ran fmt and clippy `-D warnings` on all three feature legs at its own head.
 Rust full-suite runs at each workstream head: WS-A 2,110; WS-B 2,113 (3 stale lib tests then fixed:
-613 lib); WS-F 2,133; WS-G 2,116 — all 0 failed, 13 ignored.
+613 lib); WS-E 2,107; WS-F 2,133; WS-G 2,116 — all 0 failed, 13 ignored. One integrated run
+(after the WS-E merge) failed one test, a race in this round's own audit-log lock (R30-INT-3);
+fixed, then 60 consecutive runs of the audit-log tests passed.
 
 **Deliberate breaks.** Every Round 30 fix was reverted against its own test, and the test failed.
 The per-finding records are in the registry. In summary:
@@ -239,6 +246,7 @@ The per-finding records are in the registry. In summary:
 - **WS-G:** grants off → 7 of 9 failed; facts unchecked → 5 failed.
 - **WS-H:** every boundary fix broken and caught.
 - **WS-I:** 9 breaks caught, including the browser smoke script against a broken colour rule.
+- **WS-E:** the fee-payer condition reverted → `a_creation_declaration_never_excuses_reassigning_the_fee_payer` failed.
 - **WS-J:** the gate's expiry check off → 1 failed.
 - **Integration:**
   - The guard's agreement check skipped → its unit test failed.
