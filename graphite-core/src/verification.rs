@@ -10779,10 +10779,10 @@ mod tests {
             artifact_balance_writes: balance_arrays.then_some(2),
             ..Default::default()
         };
-        let account = |a: &str, signer: bool| ResolvedAccount {
+        let account = |a: &str, name: &str, signer: bool| ResolvedAccount {
             address: a.to_string(),
             role: "writable".to_string(),
-            name: String::new(),
+            name: name.to_string(),
             is_pda: false,
             is_signer: signer,
             is_writable: true,
@@ -10792,8 +10792,15 @@ mod tests {
             pda_mismatch: false,
             privilege_mismatch: false,
         };
-        let accounts = [account(from, true), account(to, false)];
-        let expected = ["debits the source and credits the destination".to_string()];
+        let accounts = [
+            account(from, "source", true),
+            account(to, "destination", false),
+        ];
+        // Round 34 (R33-5): the debit names its account. "debits the source
+        // and credits the destination" names none, and a signer's loss under
+        // a debit line naming no account is now refused whatever the
+        // coverage — which is not what this test is about.
+        let expected = ["debits accounts.source and credits accounts.destination".to_string()];
         let without = GraphiteCore::verify_state_from_diff(
             &diff(false),
             &expected,
