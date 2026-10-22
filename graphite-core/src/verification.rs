@@ -3696,6 +3696,17 @@ impl GraphiteCore {
         self.quarantine_on_upgrade
     }
 
+    /// L4's relaxations of its production defaults (`set_l4_relaxations`).
+    pub fn l4_relaxations(&self) -> crate::state_diff::L4Relaxations {
+        self.l4_relaxations
+    }
+
+    /// Whether a granted withdrawal may carry no minimum output
+    /// (`set_allow_unbounded_withdrawals`).
+    pub fn allow_unbounded_withdrawals(&self) -> bool {
+        self.allow_unbounded_withdrawals
+    }
+
     /// Program upgrades noticed since this core started (roadmap R-M1).
     pub fn program_upgrades_detected(&self) -> u64 {
         self.program_upgrades_detected
