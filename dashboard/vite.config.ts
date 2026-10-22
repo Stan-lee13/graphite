@@ -1,6 +1,6 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
-import { contentSecurityPolicy, securityHeaders } from "./src/csp";
+import { contentSecurityPolicy, securityHeaders } from "./src/csp.ts";
 
 // The dashboard polls the Graphite Core server's read-only /api endpoints.
 // In dev, Vite proxies the Core's read-only routes so the browser never needs
