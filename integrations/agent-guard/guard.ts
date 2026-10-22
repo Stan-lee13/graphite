@@ -78,6 +78,7 @@ export {
 };
 // The operator's spending limits.
 import {
+  assertOutflowAllowed,
   assertSpendPolicyUsable,
   assertSwapAllowed,
   assertTransferAllowed,
@@ -87,9 +88,13 @@ import {
   SpendLedger,
   SpendPolicyRefusal,
   type SpendPolicy,
+  type MeasuredTransferOutflow,
   type SpendReservation,
 } from "./spend-policy.js";
 export { assertSwapAllowed, assertTransferAllowed, spendPolicyFromEnv, SpendPolicyRefusal, type SpendPolicy };
+// Round 32: the fee a message makes its fee payer pay, read from its bytes.
+import { transactionFee } from "./fees.js";
+export { transactionFee };
 // A5-01 / Round 29 (L3): the programs a swap payload may be addressed to —
 // exactly those whose swap instruction the guard decodes.
 import { SWAP_PROGRAM_IDS } from "./swap-programs.js";
@@ -1187,33 +1192,39 @@ export class GraphiteGuard {
       },
     };
 
+    const destPubkey = new PublicKey(destination);
+    const transferIx = SystemProgram.transfer({
+      fromPubkey: this.#signer.publicKey,
+      toPubkey: destPubkey,
+      lamports: grounded.lamports,
+    });
+
+    const SYSTEM_PROGRAM = "11111111111111111111111111111111";
+    const TRANSFER_DISCRIMINATOR = "02000000";
+
+    // C22 TOCTOU closure: bind the AMOUNT, not just program+discriminator+
+    // accounts. The transfer amount lives in `transferIx.data` (u64 LE
+    // lamports after the 0x02 discriminator). Both sides must carry the same
+    // raw data bytes: the Rust content_hash includes instruction_data only
+    // when it is present (generate_audit_id), so we pass it to verification
+    // AND to the AuditBind projection together.
+    const transferData = Array.from(transferIx.data);
+    // ONE transaction object, built before verification and carried through to
+    // submission. The bytes Graphite verifies come out of it, the digest is
+    // re-checked against it immediately before signing, and the signed bytes
+    // come from it. There is no second transaction for the two to drift apart.
+    const bound = await this.#buildBound([transferIx]);
+    // Round 32: the limits count what the wallet pays, not only what it
+    // sends — the amount plus the fee this message asks for, or what one
+    // simulation of these exact bytes takes out of the wallet, whichever is
+    // larger — and the aggregate reserves the same figure.
+    const outflow = await this.#transferOutflow(bound, grounded.lamports);
+    assertOutflowAllowed(this.#spendPolicy, outflow, "transfer");
     // Round 29 (M6): the aggregate limit, claimed now and returned unless
     // the bytes leave the process.
-    const reservation = this.#ledger.reserve(grounded.lamports);
+    const reservation = this.#ledger.reserve(outflow.lamports);
     let handedOff = false;
     try {
-      const destPubkey = new PublicKey(destination);
-      const transferIx = SystemProgram.transfer({
-        fromPubkey: this.#signer.publicKey,
-        toPubkey: destPubkey,
-        lamports: grounded.lamports,
-      });
-
-      const SYSTEM_PROGRAM = "11111111111111111111111111111111";
-      const TRANSFER_DISCRIMINATOR = "02000000";
-
-      // C22 TOCTOU closure: bind the AMOUNT, not just program+discriminator+
-      // accounts. The transfer amount lives in `transferIx.data` (u64 LE
-      // lamports after the 0x02 discriminator). Both sides must carry the same
-      // raw data bytes: the Rust content_hash includes instruction_data only
-      // when it is present (generate_audit_id), so we pass it to verification
-      // AND to the AuditBind projection together.
-      const transferData = Array.from(transferIx.data);
-      // ONE transaction object, built before verification and carried through to
-      // submission. The bytes Graphite verifies come out of it, the digest is
-      // re-checked against it immediately before signing, and the signed bytes
-      // come from it. There is no second transaction for the two to drift apart.
-      const bound = await this.#buildBound([transferIx]);
       const verification = await this.verifyTransaction({
         programId: SYSTEM_PROGRAM, instructionDiscriminator: TRANSFER_DISCRIMINATOR,
         accountAddresses: [this.#walletPublicKey, destination], proposedIntent: groundedIntent, instructions: [transferIx],
@@ -1282,6 +1293,20 @@ export class GraphiteGuard {
       // `#signSubmitAndConfirm` settles the reservation itself once handed off.
       if (!handedOff) reservation.release();
     }
+  }
+
+  /**
+   * What a transfer takes out of the wallet (Round 32): its amount plus the
+   * fee its message asks for, or what one simulation of the exact unsigned
+   * bytes takes from the fee payer, whichever is larger. A simulation that
+   * fails is a refusal: these are the bytes that would be signed.
+   */
+  async #transferOutflow(bound: BoundTransaction, amount: bigint): Promise<MeasuredTransferOutflow> {
+    const fee = transactionFee(bound.messageBytes);
+    const effect = await this.#simulator.measureWalletEffect({ wire: bound.artifactBytes, wallet: this.#walletPublicKey });
+    const stated = amount + fee.totalLamports;
+    const simulated = effect.solOut > 0n ? effect.solOut : 0n;
+    return { lamports: stated > simulated ? stated : simulated, amount, fee, simulated };
   }
 
   /**
@@ -1435,8 +1460,12 @@ export class GraphiteGuard {
       throw e;
     }
     // The priority fee the envelope permits is counted on top of what was
-    // measured: conservative if the simulation charged it already.
-    const outflowLamports = (effect.solOut > 0n ? effect.solOut : 0n) + maxPriorityFeeLamports(this.#swapEnvelope);
+    // measured: conservative if the simulation charged it already. Round 32:
+    // and never below the fee the signed message itself asks for (base fee
+    // per signature plus its priority fee), read from its bytes.
+    const swapFee = transactionFee(boundSwap.messageBytes);
+    const measuredOutflow = (effect.solOut > 0n ? effect.solOut : 0n) + maxPriorityFeeLamports(this.#swapEnvelope);
+    const outflowLamports = measuredOutflow > swapFee.totalLamports ? measuredOutflow : swapFee.totalLamports;
     assertSwapAllowed(this.#spendPolicy, {
       lamports: outflowLamports,
       tokens: [...effect.tokenDelta]

@@ -269,6 +269,39 @@ export function assertTransferAllowed(policy: SpendPolicy, destination: string, 
   }
 }
 
+/**
+ * What a transfer takes out of the wallet (Round 32): the larger of its
+ * amount plus the fee its message asks for, and what one simulation of the
+ * exact bytes takes from the fee payer.
+ */
+export interface MeasuredTransferOutflow {
+  /** The figure the limits are held to. */
+  lamports: bigint;
+  /** The amount the request asked to send. */
+  amount: bigint;
+  /** The fee the message asks for, from its bytes. */
+  fee: { baseFeeLamports: bigint; priorityFeeLamports: bigint; totalLamports: bigint };
+  /** What the simulation took from the fee payer (0 when it took nothing). */
+  simulated: bigint;
+}
+
+/**
+ * Refuse a transfer whose full outflow — amount and fee, or what the
+ * simulation measured — is above the per-transfer cap (Round 32). The
+ * amount alone was held to the cap before anything was built; this is the
+ * second, complete check on the bytes that would be signed.
+ */
+export function assertOutflowAllowed(policy: SpendPolicy, outflow: MeasuredTransferOutflow, what: string): void {
+  const cap = policy.maxTransferLamports;
+  if (cap !== undefined && outflow.lamports > cap) {
+    throw new SpendPolicyRefusal(
+      `the ${what} takes ${outflow.lamports} lamports out of the wallet (${outflow.amount} sent + ` +
+        `${outflow.fee.totalLamports} fee; ${outflow.simulated} measured by simulation), above the per-transfer ` +
+        `cap of ${cap} (GRAPHITE_MAX_TRANSFER_LAMPORTS)`,
+    );
+  }
+}
+
 /** What a swap takes out of the wallet, measured on the transaction itself. */
 export interface MeasuredOutflow {
   lamports: bigint;

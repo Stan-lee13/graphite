@@ -112,8 +112,10 @@ test("F-19-C1: executeTransfer puts no signed transaction on the wire before the
     const verify = h.core.calls.find((c) => c.method === "POST /verify");
     assert.ok(verify, "the bridge must have asked the Core");
     const sims = h.rpc.calls.filter((c) => c.method === "simulateTransaction");
-    assert.equal(sims.length, 1, "the pre-verdict simulation must still run");
-    assert.ok(sims[0].seq < verify!.seq, "the simulation is the pre-verdict step");
+    // The advisory pre-verdict simulation, and (Round 32) the measurement of
+    // what the exact bytes take out of the wallet, which the spend limits use.
+    assert.equal(sims.length, 2, "the pre-verdict simulations must still run");
+    assert.ok(sims.every((s) => s.seq < verify!.seq), "every simulation is a pre-verdict step");
     for (const call of h.rpc.calls) {
       assert.notEqual(
         call.signed,
@@ -436,8 +438,9 @@ test("R-P8 phase 2: with transactionVersion 1 the Core is shown an unsigned v1 t
     const outcome = await h.agent.executeTransfer(REQUEST);
     assert.equal(outcome.executed, false, "the loopback Core blocked; nothing may execute");
     const sims = h.rpc.calls.filter((c) => c.method === "simulateTransaction");
-    // The advisory pre-verdict simulation and the v1 sizing simulation.
-    assert.equal(sims.length, 2);
+    // The advisory pre-verdict simulation, the v1 sizing simulation and
+    // (Round 32) the outflow measurement of the exact bytes.
+    assert.equal(sims.length, 3);
     for (const call of h.rpc.calls) assert.notEqual(call.signed, true, `${call.method} carried a signature`);
     assert.equal(h.rpc.calls.filter((c) => c.method === "sendTransaction").length, 0);
     const verify = h.core.calls.find((c) => c.method === "POST /verify")!;
@@ -492,12 +495,13 @@ test("spend policy: a destination outside the allowlist is refused; inside it, t
   } finally {
     await outside.close();
   }
-  const inside = await harness({ spendPolicy: { maxTransferLamports: 1_500_000_000n, allowedDestinations: [DEST] } });
+  // Round 32: the cap holds the whole outflow, the 5,000-lamport fee included.
+  const inside = await harness({ spendPolicy: { maxTransferLamports: 1_500_005_000n, allowedDestinations: [DEST] } });
   try {
     const outcome = await inside.agent.executeTransfer(REQUEST);
     assert.equal(outcome.executed, false, "the loopback Core blocked; the policy only narrows");
     assert.equal(inside.core.calls.filter((c) => c.method === "POST /verify").length, 1, "within limits, the Core is asked");
-    assert.deepEqual(inside.agent.limits, { maxTransferLamports: 1_500_000_000n, allowedDestinations: [DEST] });
+    assert.deepEqual(inside.agent.limits, { maxTransferLamports: 1_500_005_000n, allowedDestinations: [DEST] });
   } finally {
     await inside.close();
   }
