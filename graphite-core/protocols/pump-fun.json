@@ -511,7 +511,7 @@
    ],
    "expected_state_changes": [
     "debits accounts.user by data.amount lamports",
-    "credits accounts.associated_user with computed token amount",
+    "credits accounts.associated_base_user with computed token amount",
     "updates bonding curve virtual reserves"
    ],
    "allowed_cpis": [
@@ -1009,7 +1009,7 @@
     }
    ],
    "expected_state_changes": [
-    "debits accounts.associated_user by data.amount tokens",
+    "debits accounts.associated_base_user by data.amount tokens",
     "credits accounts.user with computed lamports",
     "updates bonding curve virtual reserves"
    ],

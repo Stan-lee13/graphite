@@ -1181,6 +1181,23 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
             "durable-nonce transactions PERMITTED (GRAPHITE_ALLOW_DURABLE_NONCE=1): they do not expire; each one is verified against its nonce account on-chain before L2 passes",
         );
     }
+    // Round 32: the production defaults refuse these; an operator who
+    // relaxes one is told so at every start.
+    if policy.allow_unreadable_value_declarations {
+        tracing_log(
+            "L4 RELAXED (GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS=1): a signer's loss under a declaration Graphite cannot read only WARNS when the instruction's class moves value",
+        );
+    }
+    if policy.allow_signer_lamports_outside_declared_debit {
+        tracing_log(
+            "L4 RELAXED (GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT=1): lamports leaving a signer's wallet under a debit declared for other accounts only WARN",
+        );
+    }
+    if policy.allow_unbounded_withdrawals {
+        tracing_log(
+            "grants RELAXED (GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS=1): a granted withdrawal whose every minimum output is zero is not refused",
+        );
+    }
     if let (Some(summary), Some(dir)) = (plugins, &policy.plugins_dir) {
         // Round 19 (F-19-26): say what "skipped" means. A manifest is the
         // review gate for activating a plugin from this directory; the
@@ -8519,9 +8536,35 @@ Connection: close
             "GRAPHITE_ALLOW_PERMISSIVE_PROFILES",
             "GRAPHITE_ALLOW_DURABLE_NONCE",
             "GRAPHITE_QUARANTINE_ON_UPGRADE",
+            "GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS",
+            "GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT",
+            "GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS",
         ] {
             assert!(policy(name, "yes").is_err(), "{name}=yes");
         }
+        // Round 32: the three relaxations are off unless set, and each reads
+        // its own variable.
+        let unset = policy("GRAPHITE_UNRELATED", "1").unwrap();
+        assert!(
+            !unset.allow_unreadable_value_declarations
+                && !unset.allow_signer_lamports_outside_declared_debit
+                && !unset.allow_unbounded_withdrawals
+        );
+        assert!(
+            policy("GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS", "true")
+                .unwrap()
+                .allow_unreadable_value_declarations
+        );
+        assert!(
+            policy("GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT", "1")
+                .unwrap()
+                .allow_signer_lamports_outside_declared_debit
+        );
+        assert!(
+            policy("GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS", "1")
+                .unwrap()
+                .allow_unbounded_withdrawals
+        );
         // Round 30 (G-02): retired, and refused whatever its value, so an
         // operator who relied on it learns that it no longer exists.
         for value in ["1", "0", "true", "yes"] {

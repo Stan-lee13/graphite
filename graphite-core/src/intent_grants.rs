@@ -37,10 +37,17 @@
 //! source) says what the instruction does with each named account; the
 //! `source` of each entry says where that came from.
 //!
-//! What a grant does NOT judge: amounts (how much is withdrawn, any minimum
-//! out), which is the signer's own business and the agent guard's grounding
-//! (a withdrawal at a manipulated price is an economics question, like a swap's
-//! minimum out). Operations no grant covers keep their R2 refusal; a mint
+//! What a grant does NOT judge: amounts (how much is withdrawn, how high a
+//! minimum out is), which is the signer's own business and the agent guard's
+//! grounding (a withdrawal at a manipulated price is an economics question,
+//! like a swap's minimum out). Round 32 (R30-G-1) judges one thing about them:
+//! a withdrawal whose IDL gives it minimum outputs and whose every minimum is
+//! zero accepts any amount out at all — whoever moves the pool in front of it
+//! takes the difference — so its grant does not hold
+//! ([`GrantOutcome::Unbounded`]) unless the operator allows it
+//! (`GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS`). The minimums are read from the
+//! instruction's own data at the offsets [`IntentGrant::minimum_outputs`]
+//! names. Operations no grant covers keep their R2 refusal; a mint
 //! stays refused under every intent (minting needs a mint authority, and an
 //! agent wallet holding one is administering a token, not using it).
 
@@ -95,8 +102,20 @@ pub struct IntentGrant {
     /// operation this is.
     pub owner: &'static str,
     pub grounding: &'static [Grounding],
+    /// The instruction's minimum-output arguments, read from its data (Round
+    /// 32): each a little-endian `u64` at a byte offset that counts the 8-byte
+    /// discriminator. Empty when the IDL gives the instruction none.
+    pub minimum_outputs: &'static [MinimumOutput],
     /// Where the account semantics come from.
     pub source: &'static str,
+}
+
+/// One minimum-output argument of a granted instruction: its IDL name and
+/// where its little-endian `u64` starts in the instruction data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MinimumOutput {
+    pub name: &'static str,
+    pub offset: usize,
 }
 
 /// The grounded classes. None is a manifest class (`manifest::RISK_CLASSES`),
@@ -180,6 +199,17 @@ pub const GRANTS: &[IntentGrant] = &[
                 mint: "vault_1_mint",
             },
         ],
+        // args: liquidity u128 @8, amount_0_min u64 @24, amount_1_min u64 @32.
+        minimum_outputs: &[
+            MinimumOutput {
+                name: "amount_0_min",
+                offset: 24,
+            },
+            MinimumOutput {
+                name: "amount_1_min",
+                offset: 32,
+            },
+        ],
         source: "graphite-core/scripts/idls/raydium_clmm.json decrease_liquidity_v2: recipient_token_account_0/1 \"the destination token account for receive amount_0/1\", unconstrained",
     },
     // Closing a position burns its NFT and refunds the rent to the signer,
@@ -191,6 +221,7 @@ pub const GRANTS: &[IntentGrant] = &[
         class: CLOSE_TO_OWNER,
         owner: "nft_owner",
         grounding: &[],
+        minimum_outputs: &[],
         source: "graphite-core/scripts/idls/raydium_clmm.json close_position: nft_owner signer+writable receives the closed accounts' rent; personal_position seeds [position, position_nft_mint]",
     },
     IntentGrant {
@@ -211,6 +242,18 @@ pub const GRANTS: &[IntentGrant] = &[
                 mint: "vault_1_mint",
             },
         ],
+        // args: lp_token_amount u64 @8, minimum_token_0_amount u64 @16,
+        // minimum_token_1_amount u64 @24.
+        minimum_outputs: &[
+            MinimumOutput {
+                name: "minimum_token_0_amount",
+                offset: 16,
+            },
+            MinimumOutput {
+                name: "minimum_token_1_amount",
+                offset: 24,
+            },
+        ],
         source: "graphite-core/scripts/idls/raydium_cpmm.json withdraw: token_0_account/token_1_account \"the token account for receive token_0/1\", unconstrained; the LP burned from owner_lp_token under owner's signature",
     },
     IntentGrant {
@@ -220,6 +263,7 @@ pub const GRANTS: &[IntentGrant] = &[
         class: WITHDRAW_TO_OWNER,
         owner: "sender",
         grounding: DLMM_TO_SENDER,
+        minimum_outputs: &[],
         source: DLMM_IDL,
     },
     IntentGrant {
@@ -229,6 +273,7 @@ pub const GRANTS: &[IntentGrant] = &[
         class: WITHDRAW_TO_OWNER,
         owner: "sender",
         grounding: DLMM_TO_SENDER,
+        minimum_outputs: &[],
         source: DLMM_IDL,
     },
     IntentGrant {
@@ -238,6 +283,7 @@ pub const GRANTS: &[IntentGrant] = &[
         class: WITHDRAW_TO_OWNER,
         owner: "sender",
         grounding: DLMM_TO_SENDER,
+        minimum_outputs: &[],
         source: DLMM_IDL,
     },
     IntentGrant {
@@ -247,6 +293,7 @@ pub const GRANTS: &[IntentGrant] = &[
         class: WITHDRAW_TO_OWNER,
         owner: "sender",
         grounding: DLMM_TO_SENDER,
+        minimum_outputs: &[],
         source: DLMM_IDL,
     },
     IntentGrant {
@@ -256,6 +303,7 @@ pub const GRANTS: &[IntentGrant] = &[
         class: WITHDRAW_TO_OWNER,
         owner: "sender",
         grounding: DLMM_TO_SENDER,
+        minimum_outputs: &[],
         source: DLMM_IDL,
     },
     // A fee claim pays the position's accrued fees, not its principal: the
@@ -267,6 +315,7 @@ pub const GRANTS: &[IntentGrant] = &[
         class: CLAIM_TO_OWNER,
         owner: "sender",
         grounding: DLMM_TO_SENDER,
+        minimum_outputs: &[],
         source: DLMM_IDL,
     },
     IntentGrant {
@@ -276,6 +325,7 @@ pub const GRANTS: &[IntentGrant] = &[
         class: CLAIM_TO_OWNER,
         owner: "sender",
         grounding: DLMM_TO_SENDER,
+        minimum_outputs: &[],
         source: DLMM_IDL,
     },
     IntentGrant {
@@ -285,6 +335,7 @@ pub const GRANTS: &[IntentGrant] = &[
         class: CLOSE_TO_OWNER,
         owner: "sender",
         grounding: DLMM_RENT_TO_SENDER,
+        minimum_outputs: &[],
         source: "graphite-core/scripts/idls/meteora-dlmm.json close_position: the position's rent goes to rent_receiver, which the program does not constrain",
     },
     IntentGrant {
@@ -294,6 +345,7 @@ pub const GRANTS: &[IntentGrant] = &[
         class: CLOSE_TO_OWNER,
         owner: "sender",
         grounding: DLMM_RENT_TO_SENDER,
+        minimum_outputs: &[],
         source: "graphite-core/scripts/idls/meteora-dlmm.json close_position2: rent to rent_receiver, unconstrained",
     },
     IntentGrant {
@@ -303,6 +355,7 @@ pub const GRANTS: &[IntentGrant] = &[
         class: CLOSE_TO_OWNER,
         owner: "sender",
         grounding: DLMM_RENT_TO_SENDER,
+        minimum_outputs: &[],
         source: "graphite-core/scripts/idls/meteora-dlmm.json close_position_if_empty: rent to rent_receiver, unconstrained",
     },
     IntentGrant {
@@ -323,6 +376,18 @@ pub const GRANTS: &[IntentGrant] = &[
                 mint: "quote_mint",
             },
         ],
+        // args (scripts/out/onchain_idls/pAMMBay6…json): lp_token_amount_in
+        // u64 @8, min_base_amount_out u64 @16, min_quote_amount_out u64 @24.
+        minimum_outputs: &[
+            MinimumOutput {
+                name: "min_base_amount_out",
+                offset: 16,
+            },
+            MinimumOutput {
+                name: "min_quote_amount_out",
+                offset: 24,
+            },
+        ],
         source: "protocols/pump-amm manifest (Pump AMM IDL): user_base_token_account/user_quote_token_account receive the withdrawn liquidity, LP burned from user_pool_token_account under user's signature",
     },
     // Pump's volume accumulator is the user's own PDA; closing it refunds
@@ -334,6 +399,7 @@ pub const GRANTS: &[IntentGrant] = &[
         class: CLOSE_TO_OWNER,
         owner: "user",
         grounding: VOLUME_ACCUMULATOR,
+        minimum_outputs: &[],
         source: "Pump AMM IDL: user_volume_accumulator seeds [\"user_volume_accumulator\", user]; rent returned to user (signer, writable)",
     },
     IntentGrant {
@@ -343,6 +409,7 @@ pub const GRANTS: &[IntentGrant] = &[
         class: CLOSE_TO_OWNER,
         owner: "user",
         grounding: VOLUME_ACCUMULATOR,
+        minimum_outputs: &[],
         source: "Pump.fun IDL: user_volume_accumulator seeds [\"user_volume_accumulator\", user]; rent returned to user (signer, writable)",
     },
     // A burn destroys the signer's own tokens; held to the signer's own
@@ -355,6 +422,7 @@ pub const GRANTS: &[IntentGrant] = &[
         class: BURN_OWN,
         owner: "authority",
         grounding: BURN_FROM_OWN_ATA,
+        minimum_outputs: &[],
         source: "SPL Token Burn: [account (w), mint (w), authority (s)]",
     },
     IntentGrant {
@@ -364,6 +432,7 @@ pub const GRANTS: &[IntentGrant] = &[
         class: BURN_OWN,
         owner: "authority",
         grounding: BURN_FROM_OWN_ATA,
+        minimum_outputs: &[],
         source: "SPL Token BurnChecked: [account (w), mint (w), authority (s)]",
     },
     IntentGrant {
@@ -373,6 +442,7 @@ pub const GRANTS: &[IntentGrant] = &[
         class: BURN_OWN,
         owner: "authority",
         grounding: BURN_FROM_OWN_ATA,
+        minimum_outputs: &[],
         source: "Token-2022 Burn: [account (w), mint (w), authority (s)]",
     },
     IntentGrant {
@@ -382,6 +452,7 @@ pub const GRANTS: &[IntentGrant] = &[
         class: BURN_OWN,
         owner: "authority",
         grounding: BURN_FROM_OWN_ATA,
+        minimum_outputs: &[],
         source: "Token-2022 BurnChecked: [account (w), mint (w), authority (s)]",
     },
     // R-M13: an owner changing its own offer. The offer and the escrow are
@@ -413,6 +484,7 @@ pub const GRANTS: &[IntentGrant] = &[
                 mint: "usdc_mint",
             },
         ],
+        minimum_outputs: &[],
         source: "protocols/marketplace-ccmrkt manifest (IDL): offer seeds [offer, asset_id, buyer], buyer_user_escrow_account seeds [user_escrow, buyer]",
     },
 ];
@@ -428,6 +500,12 @@ pub enum GrantOutcome {
     /// A grant names it, and a fact does not hold: the manifest's class
     /// stands, and this says why the grant did not apply.
     Ungrounded(String),
+    /// Round 32 (R30-G-1): every fact about the accounts holds, and every
+    /// minimum output the instruction's data carries is zero (or the data
+    /// does not carry them): a withdrawal that accepts any amount out. The
+    /// grounded class is given, and the Core refuses the instruction
+    /// (`RiskPattern::UnboundedWithdrawal`) with this reason.
+    Unbounded { class: &'static str, reason: String },
 }
 
 /// The grant for this instruction under this canonical intent, if any.
@@ -449,23 +527,89 @@ pub fn program_has_grant(program_id: &str, canonical_intent: &str) -> bool {
 }
 
 /// The class `def` (an instruction of `program_id`, carrying `accounts` in
-/// the transaction's order) is judged by under `canonical_intent`.
+/// the transaction's order) is judged by under `canonical_intent`, without the
+/// instruction's data: a grant with minimum outputs is [`GrantOutcome::Unbounded`]
+/// unless `allow_unbounded` (see [`ground_with`]).
 pub fn ground(
     program_id: &str,
     def: &InstructionDef,
     canonical_intent: &str,
     accounts: &[String],
 ) -> GrantOutcome {
+    ground_with(program_id, def, canonical_intent, accounts, None, false)
+}
+
+/// [`ground`] with the instruction's `data` (discriminator included), from
+/// which a withdrawal's minimum outputs are read, and the operator's
+/// `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS` decision.
+pub fn ground_with(
+    program_id: &str,
+    def: &InstructionDef,
+    canonical_intent: &str,
+    accounts: &[String],
+    data: Option<&[u8]>,
+    allow_unbounded: bool,
+) -> GrantOutcome {
     let Some(grant) = grant_for(program_id, &def.name, canonical_intent) else {
         return GrantOutcome::NoGrant;
     };
-    match check(grant, def, accounts) {
-        Ok(()) => GrantOutcome::Grounded(grant.class),
-        Err(why) => GrantOutcome::Ungrounded(format!(
+    if let Err(why) = check(grant, def, accounts) {
+        return GrantOutcome::Ungrounded(format!(
             "a '{}' intent declares {} only when the operation is the owner's own, and {why}",
             grant.intent, grant.instruction
-        )),
+        ));
     }
+    if allow_unbounded {
+        return GrantOutcome::Grounded(grant.class);
+    }
+    match unbounded(grant, data) {
+        None => GrantOutcome::Grounded(grant.class),
+        Some(why) => GrantOutcome::Unbounded {
+            class: grant.class,
+            reason: format!(
+                "UnboundedWithdrawal: {} {why}; a withdrawal that accepts any amount out gives whoever moves the pool in front of it the difference (operator opt-out: GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS=1)",
+                grant.instruction
+            ),
+        },
+    }
+}
+
+/// Why `grant`'s minimum outputs do not bound the withdrawal, if they do not:
+/// none can be read from `data`, or every one is zero. `None` for a grant with
+/// no minimum outputs, or one at least one of whose minimums is non-zero.
+fn unbounded(grant: &IntentGrant, data: Option<&[u8]>) -> Option<String> {
+    if grant.minimum_outputs.is_empty() {
+        return None;
+    }
+    let names = grant
+        .minimum_outputs
+        .iter()
+        .map(|m| m.name)
+        .collect::<Vec<_>>()
+        .join(", ");
+    let Some(data) = data else {
+        return Some(format!(
+            "carries no instruction data, so its minimum outputs ({names}) cannot be read"
+        ));
+    };
+    let mut values = Vec::with_capacity(grant.minimum_outputs.len());
+    for m in grant.minimum_outputs {
+        let Some(bytes) = data.get(m.offset..m.offset + 8) else {
+            return Some(format!(
+                "carries {} byte(s) of instruction data, too few to hold `{}` at byte {}",
+                data.len(),
+                m.name,
+                m.offset
+            ));
+        };
+        let mut le = [0u8; 8];
+        le.copy_from_slice(bytes);
+        values.push(u64::from_le_bytes(le));
+    }
+    values
+        .iter()
+        .all(|v| *v == 0)
+        .then(|| format!("sets every minimum output to zero ({names})"))
 }
 
 fn check(grant: &IntentGrant, def: &InstructionDef, accounts: &[String]) -> Result<(), String> {
@@ -731,5 +875,87 @@ mod tests {
             usdc
         ));
         assert!(!is_associated_token_account("not-a-key", owner, usdc));
+    }
+
+    /// The IDL each grant with arguments was read from, by program.
+    const GRANT_IDLS: &[(&str, &str)] = &[
+        (RAYDIUM_CLMM, "scripts/idls/raydium_clmm.json"),
+        (RAYDIUM_CPMM, "scripts/idls/raydium_cpmm.json"),
+        (METEORA_DLMM, "scripts/idls/meteora-dlmm.json"),
+        (
+            PUMP_AMM,
+            "scripts/out/onchain_idls/pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA.json",
+        ),
+    ];
+
+    /// Round 32 (R30-G-1): every minimum output a grant reads is the IDL's
+    /// own `u64` argument of that name, at the offset its preceding arguments
+    /// put it (after the 8-byte discriminator); and every `u64` argument of a
+    /// granted instruction whose name says it is a minimum is read. A grant
+    /// that missed one would judge a withdrawal by half its bounds.
+    #[test]
+    fn the_minimum_outputs_are_the_idls_arguments_at_the_idls_offsets() {
+        let size = |t: &serde_json::Value| match t.as_str() {
+            Some("u8" | "i8" | "bool") => Some(1),
+            Some("u16" | "i16") => Some(2),
+            Some("u32" | "i32") => Some(4),
+            Some("u64" | "i64") => Some(8),
+            Some("u128" | "i128") => Some(16),
+            _ => None,
+        };
+        let mut read = 0;
+        for (program, file) in GRANT_IDLS {
+            let path = format!("{}/{file}", env!("CARGO_MANIFEST_DIR"));
+            let idl: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            for g in GRANTS.iter().filter(|g| g.program_id == *program) {
+                let ix = idl["instructions"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|i| i["name"] == g.instruction)
+                    .unwrap_or_else(|| panic!("{file} has no {}", g.instruction));
+                let mut offset = Some(8usize);
+                let mut minimums = Vec::new();
+                for arg in ix["args"].as_array().unwrap() {
+                    let name = arg["name"].as_str().unwrap();
+                    if arg["type"] == "u64" && name.contains("min") {
+                        minimums.push((name, offset));
+                    }
+                    offset = offset.zip(size(&arg["type"])).map(|(o, s)| o + s);
+                }
+                let declared: Vec<(&str, Option<usize>)> = g
+                    .minimum_outputs
+                    .iter()
+                    .map(|m| (m.name, Some(m.offset)))
+                    .collect();
+                assert_eq!(declared, minimums, "{} {}", file, g.instruction);
+                read += declared.len();
+            }
+        }
+        assert_eq!(
+            read, 6,
+            "CLMM decrease_liquidity_v2, CPMM and Pump AMM withdraw"
+        );
+    }
+
+    #[test]
+    fn a_withdrawal_is_unbounded_only_when_every_minimum_is_zero_or_unreadable() {
+        let g = grant_for(RAYDIUM_CPMM, "withdraw", "withdraw").unwrap();
+        let data = |a: u64, b: u64| {
+            let mut d = vec![0xB7; 8];
+            d.extend_from_slice(&5u64.to_le_bytes());
+            d.extend_from_slice(&a.to_le_bytes());
+            d.extend_from_slice(&b.to_le_bytes());
+            d
+        };
+        assert!(unbounded(g, Some(&data(0, 0))).is_some());
+        assert!(unbounded(g, Some(&data(0, 1))).is_none());
+        assert!(unbounded(g, Some(&data(1, 0))).is_none());
+        assert!(unbounded(g, Some(&data(0, 1)[..31])).is_some(), "short");
+        assert!(unbounded(g, None).is_some(), "no data");
+        // A grant with no minimum outputs is never unbounded.
+        let close = grant_for(RAYDIUM_CLMM, "close_position", "close").unwrap();
+        assert!(unbounded(close, None).is_none());
     }
 }

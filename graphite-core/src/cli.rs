@@ -1096,6 +1096,24 @@ fn operator_core() -> Result<(GraphiteCore, boundary::OperatorPolicy), String> {
     if let Some(p) = policy.pinned_profile {
         eprintln!("wallet profile PINNED by GRAPHITE_WALLET_PROFILE: {p:?}");
     }
+    for (on, name) in [
+        (
+            policy.allow_unreadable_value_declarations,
+            "GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS",
+        ),
+        (
+            policy.allow_signer_lamports_outside_declared_debit,
+            "GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT",
+        ),
+        (
+            policy.allow_unbounded_withdrawals,
+            "GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS",
+        ),
+    ] {
+        if on {
+            eprintln!("production default RELAXED by {name}=1 (as at the server)");
+        }
+    }
     Ok((core, policy))
 }
 

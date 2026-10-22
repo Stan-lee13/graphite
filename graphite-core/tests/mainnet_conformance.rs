@@ -413,6 +413,7 @@ fn measure(doc: &serde_json::Value, honest: bool) -> (Tally, Vec<Row>) {
                 &ix.program_id,
                 def,
                 &resolved[idx],
+                Some(&ix.data),
             ) {
                 Some(intent) => intent.to_string(),
                 None => {

@@ -636,7 +636,8 @@
     }
    ],
    "expected_state_changes": [
-    "protocol state transition"
+    "transfers tokens out of accounts.userSourceCollateral",
+    "credits accounts.reserveDestinationCollateral token balance"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -744,7 +745,8 @@
     }
    ],
    "expected_state_changes": [
-    "protocol state transition"
+    "transfers tokens out of accounts.user_source_collateral",
+    "credits accounts.reserve_destination_collateral token balance"
    ],
    "allowed_cpis": [],
    "risk_rules": [],
@@ -4356,7 +4358,8 @@
     }
    ],
    "expected_state_changes": [
-    "protocol state transition"
+    "transfers tokens out of accounts.reserve_source_collateral",
+    "credits accounts.user_destination_collateral token balance"
    ],
    "allowed_cpis": [],
    "risk_rules": [],

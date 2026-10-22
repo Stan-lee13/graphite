@@ -42,6 +42,9 @@ const CLEARED: &[&str] = &[
     "GRAPHITE_CONNECTION_LIFETIME_SECS",
     "GRAPHITE_ALLOW_DURABLE_NONCE",
     "GRAPHITE_QUARANTINE_ON_UPGRADE",
+    "GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS",
+    "GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT",
+    "GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS",
     "GRAPHITE_CORS_ORIGINS",
     "GRAPHITE_AUDIT_KEY_FILE",
     "GRAPHITE_AUDIT_ANCHOR_DIR",
@@ -159,6 +162,22 @@ fn configuration_the_server_cannot_honour_refuses_to_start() {
         (
             vec![("GRAPHITE_ALLOW_DURABLE_NONCE", s("on"))],
             "GRAPHITE_ALLOW_DURABLE_NONCE",
+        ),
+        // Round 32: the relaxations of the production defaults.
+        (
+            vec![("GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS", s("yes"))],
+            "GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS",
+        ),
+        (
+            vec![(
+                "GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT",
+                s("on"),
+            )],
+            "GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT",
+        ),
+        (
+            vec![("GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS", s("2"))],
+            "GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS",
         ),
         (
             vec![(

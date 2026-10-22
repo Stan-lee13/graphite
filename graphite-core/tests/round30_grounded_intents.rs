@@ -134,14 +134,29 @@ fn hex_to_bytes(hex: &str) -> Vec<u8> {
         .collect()
 }
 
+/// A request with arguments of 1-bytes: 32 of them, enough for the longest
+/// granted instruction's minimum outputs (Raydium CLMM
+/// `decrease_liquidity_v2`: liquidity u128, then two u64 minimums, Round 32),
+/// so every minimum output reads as non-zero.
 fn request(
     program: &str,
     d: &InstructionDef,
     accounts: Vec<String>,
     intent: &str,
 ) -> VerificationInput {
+    request_with_args(program, d, accounts, intent, &[1u8; 32])
+}
+
+/// A request whose instruction data is the discriminator and then `args`.
+fn request_with_args(
+    program: &str,
+    d: &InstructionDef,
+    accounts: Vec<String>,
+    intent: &str,
+    args: &[u8],
+) -> VerificationInput {
     let mut data = hex_to_bytes(&d.discriminator);
-    data.extend_from_slice(&[1u8; 24]);
+    data.extend_from_slice(args);
     VerificationInput {
         proposed_intent: ProposedIntent {
             intent_type: intent.to_string(),
@@ -552,4 +567,208 @@ fn the_close_intent_does_not_reach_an_ungranted_close_on_a_granted_program() {
         checked > 0,
         "DLMM has ungranted close/withdraw instructions to check"
     );
+}
+
+// ── Round 32 (R30-G-1): a granted withdrawal's minimum outputs ─────────────
+
+const CPMM: &str = "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C";
+
+/// The three granted withdrawals with minimum outputs, each with its
+/// accounts paying the owner's own associated token accounts, and the IDL's
+/// argument layout after the discriminator: the u64s before the minimums
+/// (as little-endian words of 8 bytes), then the minimums' names.
+struct MinOutCase {
+    program: &'static str,
+    name: &'static str,
+    /// Bytes of arguments before the first minimum.
+    lead: usize,
+    minimums: [&'static str; 2],
+    accounts: fn(&InstructionDef) -> Vec<String>,
+}
+
+fn min_out_cases() -> [MinOutCase; 3] {
+    [
+        MinOutCase {
+            program: CLMM,
+            name: "decrease_liquidity_v2",
+            // liquidity: u128
+            lead: 16,
+            minimums: ["amount_0_min", "amount_1_min"],
+            accounts: |d| {
+                accounts_for(
+                    CLMM,
+                    d,
+                    &[
+                        ("nft_owner", OWNER.to_string()),
+                        ("vault_0_mint", MINT_X.to_string()),
+                        ("vault_1_mint", MINT_Y.to_string()),
+                        ("recipient_token_account_0", ata(OWNER, MINT_X)),
+                        ("recipient_token_account_1", ata(OWNER, MINT_Y)),
+                    ],
+                )
+            },
+        },
+        MinOutCase {
+            program: CPMM,
+            name: "withdraw",
+            // lp_token_amount: u64
+            lead: 8,
+            minimums: ["minimum_token_0_amount", "minimum_token_1_amount"],
+            accounts: |d| {
+                accounts_for(
+                    CPMM,
+                    d,
+                    &[
+                        ("owner", OWNER.to_string()),
+                        ("vault_0_mint", MINT_X.to_string()),
+                        ("vault_1_mint", MINT_Y.to_string()),
+                        ("token_0_account", ata(OWNER, MINT_X)),
+                        ("token_1_account", ata(OWNER, MINT_Y)),
+                    ],
+                )
+            },
+        },
+        MinOutCase {
+            program: PUMP_AMM,
+            name: "withdraw",
+            // lp_token_amount_in: u64
+            lead: 8,
+            minimums: ["min_base_amount_out", "min_quote_amount_out"],
+            accounts: |d| {
+                accounts_for(
+                    PUMP_AMM,
+                    d,
+                    &[
+                        ("user", OWNER.to_string()),
+                        ("base_mint", MINT_X.to_string()),
+                        ("quote_mint", MINT_Y.to_string()),
+                        ("user_base_token_account", ata(OWNER, MINT_X)),
+                        ("user_quote_token_account", ata(OWNER, MINT_Y)),
+                    ],
+                )
+            },
+        },
+    ]
+}
+
+/// The arguments: `lead` bytes of a non-zero amount, then the two minimums.
+fn min_out_args(lead: usize, first: u64, second: u64) -> Vec<u8> {
+    let mut args = vec![7u8; lead];
+    args.extend_from_slice(&first.to_le_bytes());
+    args.extend_from_slice(&second.to_le_bytes());
+    args
+}
+
+/// A granted withdrawal that sets every minimum output to zero accepts any
+/// amount out: refused, as an unbounded withdrawal, naming its arguments —
+/// per program, with the accounts that make it the owner's own.
+#[test]
+fn a_granted_withdrawal_with_every_minimum_output_zero_is_refused() {
+    for c in min_out_cases() {
+        let d = def(c.program, c.name);
+        let r = verify(&request_with_args(
+            c.program,
+            &d,
+            (c.accounts)(&d),
+            "withdraw",
+            &min_out_args(c.lead, 0, 0),
+        ));
+        let what = format!("{} {}", c.program, c.name);
+        assert_refused(&r, &what, "UnboundedWithdrawal");
+        let findings = &r.risk_verdict.findings;
+        assert!(
+            findings.iter().any(|f| f.pattern == "UnboundedWithdrawal"),
+            "{what}: {}",
+            risk(&r)
+        );
+        for m in c.minimums {
+            assert!(risk(&r).contains(m), "{what}: {m} in {}", risk(&r));
+        }
+        assert!(
+            risk(&r).contains("GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS"),
+            "{what}: names the opt-out"
+        );
+    }
+}
+
+/// Controls: a non-zero minimum on either output bounds the withdrawal, and
+/// it is granted as before.
+#[test]
+fn a_granted_withdrawal_with_a_non_zero_minimum_output_is_granted() {
+    for c in min_out_cases() {
+        let d = def(c.program, c.name);
+        for (first, second) in [(1_000, 2_000), (0, 1), (1, 0)] {
+            let r = verify(&request_with_args(
+                c.program,
+                &d,
+                (c.accounts)(&d),
+                "withdraw",
+                &min_out_args(c.lead, first, second),
+            ));
+            assert_granted(&r, &format!("{} {} ({first}, {second})", c.program, c.name));
+        }
+    }
+}
+
+/// Data too short to hold the minimums cannot show they bound anything: the
+/// grant does not hold.
+#[test]
+fn a_granted_withdrawal_whose_minimums_cannot_be_read_is_refused() {
+    for c in min_out_cases() {
+        let d = def(c.program, c.name);
+        let mut args = min_out_args(c.lead, 1_000, 2_000);
+        args.truncate(c.lead + 12);
+        let r = verify(&request_with_args(
+            c.program,
+            &d,
+            (c.accounts)(&d),
+            "withdraw",
+            &args,
+        ));
+        assert_refused(&r, c.name, "too few to hold");
+    }
+}
+
+/// The operator's opt-out (`GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS`) lets the
+/// zero-minimum withdrawal keep its grant; the accounts are still judged.
+#[test]
+fn the_operator_may_allow_unbounded_withdrawals() {
+    let mut core = GraphiteCore::new();
+    core.set_allow_unbounded_withdrawals(true);
+    for c in min_out_cases() {
+        let d = def(c.program, c.name);
+        let r = core
+            .verify(&request_with_args(
+                c.program,
+                &d,
+                (c.accounts)(&d),
+                "withdraw",
+                &min_out_args(c.lead, 0, 0),
+            ))
+            .expect("a verdict");
+        assert_granted(&r, c.name);
+    }
+    // The opt-out is about amounts only: a stranger's account still fails.
+    let d = def(CPMM, "withdraw");
+    let a = accounts_for(
+        CPMM,
+        &d,
+        &[
+            ("owner", OWNER.to_string()),
+            ("vault_0_mint", MINT_X.to_string()),
+            ("vault_1_mint", MINT_Y.to_string()),
+            ("token_0_account", ata(OWNER, MINT_X)),
+            ("token_1_account", ata(STRANGER, MINT_Y)),
+        ],
+    );
+    let r = core
+        .verify(&request_with_args(
+            CPMM,
+            &d,
+            a,
+            "withdraw",
+            &min_out_args(8, 0, 0),
+        ))
+        .expect("a verdict");
+    assert_refused(&r, "stranger, opted out", "token_1_account");
 }

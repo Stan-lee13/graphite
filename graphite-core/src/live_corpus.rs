@@ -148,17 +148,21 @@ pub fn honest_intent(
 /// grounded grant serves (Round 30, `intent_grants`: withdraw, claim, burn,
 /// configure, and a protocol close) are found too. A grant whose facts hold
 /// for these accounts names the intent; otherwise the class-only answer.
+/// `data` is the instruction's data, from which a granted withdrawal's
+/// minimum outputs are read (Round 32): one whose every minimum is zero is
+/// not grounded, as the Core judges it by default.
 pub fn honest_intent_with_accounts(
     program_id: &str,
     def: &crate::manifest::InstructionDef,
     accounts: &[String],
+    data: Option<&[u8]>,
 ) -> Option<&'static str> {
     crate::intent_grants::GRANTS
         .iter()
         .filter(|g| g.program_id == program_id && g.instruction == def.name)
         .find(|g| {
             matches!(
-                crate::intent_grants::ground(program_id, def, g.intent, accounts),
+                crate::intent_grants::ground_with(program_id, def, g.intent, accounts, data, false),
                 crate::intent_grants::GrantOutcome::Grounded(_)
             )
         })
