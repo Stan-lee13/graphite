@@ -174,9 +174,11 @@ enum Commands {
         #[command(subcommand)]
         action: EvidenceAction,
     },
-    /// Check the audit trail's hash chain, or export a checkpoint of its head
+    /// Check the audit trail's hash chain, export a checkpoint of its head,
+    /// or adopt a key
     ///
-    /// Read-only; safe beside a running server.
+    /// `verify` and `checkpoint` are read-only and safe beside a running
+    /// server; `adopt-key` writes, and needs the server stopped.
     Audit {
         #[command(subcommand)]
         action: AuditAction,
@@ -339,7 +341,9 @@ enum AuditAction {
     /// Exits 0 when nothing failed, 1 on a break or a checkpoint that does
     /// not hold, 2 when the walk could not prove what it was asked to (MACs
     /// under a key not supplied, no chained record, a pruned checkpoint), 3
-    /// when the trail could not be read.
+    /// when the trail could not be read, 4 when keys were supplied and
+    /// something is not covered by them (unkeyed records no key-adoption
+    /// record covers, an unsigned checkpoint). See docs/ops/keys.md.
     Verify {
         /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
         #[arg(long)]
@@ -367,6 +371,25 @@ enum AuditAction {
         /// Write here instead of stdout (never over an existing file)
         #[arg(long)]
         out: Option<PathBuf>,
+    },
+    /// Continue the trail under a key whose head cannot be checked under it
+    ///
+    /// With the server stopped: writes a key-adoption record MAC'd under
+    /// --key-file. For a trail that was never keyed, one keyed before
+    /// key-adoption records existed, or one whose previous key is lost.
+    /// Walks the trail first and refuses a broken one. Check the history
+    /// before adopting it: the adoption vouches for it (docs/ops/keys.md).
+    AdoptKey {
+        /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+        /// The key to continue under
+        #[arg(long)]
+        key_file: PathBuf,
+        /// The key the trail's head is under, when it is still held: the
+        /// head is checked under it and the adoption recorded as checked
+        #[arg(long)]
+        previous_key_file: Option<PathBuf>,
     },
 }
 
@@ -687,6 +710,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     data_dir,
                     key_file,
                     out,
+                },
+            }),
+            AuditAction::AdoptKey {
+                data_dir,
+                key_file,
+                previous_key_file,
+            } => graphite_core::cli::run(graphite_core::cli::CliCommand::Audit {
+                action: graphite_core::cli::AuditAction::AdoptKey {
+                    data_dir,
+                    key_file,
+                    previous_key_file,
                 },
             }),
         },

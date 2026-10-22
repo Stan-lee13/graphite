@@ -704,3 +704,330 @@ fn pruned_archives_leave_a_chain_that_starts_later_and_an_old_checkpoint_unconfi
     ));
     assert_eq!(report.exit_code(), 2);
 }
+
+// ---------------------------------------------------------------------------
+// Round 34: one line grammar for the chain walk and every reader, MAC
+// downgrade, unsigned checkpoints, invented key ids, a walk beside a
+// rotating writer.
+// ---------------------------------------------------------------------------
+
+const VICTIM_TX: &str = "abababababababababababababababababababababababababababababababab";
+
+/// A forged approval of `VICTIM_TX`, built from a real line of the trail:
+/// it keeps that line's chain link, which no longer matches its content.
+fn forged_approval(template: &str) -> String {
+    let mut v: serde_json::Value = serde_json::from_str(template).unwrap();
+    v["transaction_sha256"] = VICTIM_TX.into();
+    v["audit_trail_id"] = "gr-forged".into();
+    v["approved"] = true.into();
+    v["decision"] = "executable_approved".into();
+    v["executable"] = true.into();
+    v.to_string()
+}
+
+/// What a reader in a fresh process answers for the victim.
+fn victim_seen_by_a_reader(path: &Path) -> Option<AuditRecord> {
+    let reader = AuditLog::open_read_only(path).unwrap();
+    let found = reader.find_verification(VerificationKey::TransactionSha256(VICTIM_TX));
+    reader.wait_for_index_jobs();
+    found
+}
+
+/// A keyed trail of `n` records across several archives.
+fn rotated_keyed_trail(tag: &str, byte: u8, n: usize) -> (PathBuf, AuditKey, Vec<PathBuf>) {
+    let dir = temp_dir(tag);
+    let path = audit_path(&dir);
+    let (_, key) = key_file(tag, byte);
+    let log = keyed(&path, &key, 1_500);
+    write_n(&log, 0, n);
+    close(log);
+    let archives: Vec<PathBuf> = archives_of(&path).into_iter().map(|(_, p)| p).collect();
+    assert!(archives.len() >= 2, "{archives:?}");
+    (path, key, archives)
+}
+
+fn name_of(p: &Path) -> String {
+    p.file_name().unwrap().to_string_lossy().into_owned()
+}
+
+#[test]
+fn a_forged_unterminated_line_in_an_archive_breaks_the_chain_and_is_never_read() {
+    let (path, key, archives) = rotated_keyed_trail("forged-unterminated", 21, 30);
+    let template = lines_of(&archives[0])[0].clone();
+    let mut bytes = std::fs::read(&archives[0]).unwrap();
+    bytes.extend_from_slice(forged_approval(&template).as_bytes());
+    std::fs::write(&archives[0], bytes).unwrap();
+
+    let report = verify(&path, std::slice::from_ref(&key));
+    assert_ne!(report.exit_code(), 0, "{report:?}");
+    let b = report.first_break.as_ref().expect("a break");
+    assert_eq!(b.file, name_of(&archives[0]), "{b:?}");
+    assert!(
+        victim_seen_by_a_reader(&path).is_none(),
+        "a reader resolved the victim to the forged approval"
+    );
+}
+
+#[test]
+fn a_line_the_chain_cannot_parse_breaks_the_chain_and_is_never_read() {
+    let (path, key, archives) = rotated_keyed_trail("forged-1e400", 22, 30);
+    let mut lines = lines_of(&archives[0]);
+    let forged = forged_approval(&lines[0]).replacen('{', "{\"x\":1e400,", 1);
+    assert!(serde_json::from_str::<serde_json::Value>(&forged).is_err());
+    lines.insert(1, forged);
+    write_lines(&archives[0], &lines);
+
+    let report = verify(&path, std::slice::from_ref(&key));
+    assert_ne!(report.exit_code(), 0, "{report:?}");
+    let b = report.first_break.as_ref().expect("a break");
+    assert_eq!((b.file.clone(), b.line), (name_of(&archives[0]), 2), "{b:?}");
+    assert!(
+        victim_seen_by_a_reader(&path).is_none(),
+        "a reader resolved the victim to the forged approval"
+    );
+}
+
+#[test]
+fn a_duplicate_key_breaks_the_chain_and_the_record_stays_visible_or_is_named() {
+    let (path, key, archives) = rotated_keyed_trail("dup-key", 23, 30);
+    let mut lines = lines_of(&archives[0]);
+    assert!(lines[0].starts_with("{\"approved\":false,"), "{}", lines[0]);
+    lines[0] = lines[0].replacen("{\"approved\":", "{\"approved\":true,\"approved\":", 1);
+    write_lines(&archives[0], &lines);
+
+    let report = verify(&path, std::slice::from_ref(&key));
+    let reader = AuditLog::open_read_only(&path).unwrap();
+    let visible = reader
+        .find_verification(VerificationKey::AuditTrailId("gr-00000"))
+        .is_some();
+    reader.wait_for_index_jobs();
+    match &report.first_break {
+        // Named: verify does not exit 0, and points at the line.
+        Some(b) => {
+            assert_eq!(
+                (b.file.clone(), b.line),
+                (name_of(&archives[0]), 1),
+                "{b:?}"
+            );
+            assert_ne!(report.exit_code(), 0);
+        }
+        // Or visible to every reader, exactly as verify counted it.
+        None => assert!(
+            visible,
+            "verify accepted a record no reader can see: {report:?}"
+        ),
+    }
+}
+
+/// Recompute every line's link from genesis with no key, as a writer
+/// without the key would after editing the trail.
+fn rechain_all_without_key(lines: &mut [String]) {
+    let mut head = chain::ChainHead::genesis();
+    for line in lines.iter_mut() {
+        let serde_json::Value::Object(map) = serde_json::from_str(line).unwrap() else {
+            panic!()
+        };
+        let (sealed, next) = chain::seal(map, &head, None);
+        *line = sealed;
+        head = next;
+    }
+}
+
+#[test]
+fn a_trail_rewritten_without_macs_does_not_verify_under_its_key() {
+    let dir = temp_dir("downgrade");
+    let path = audit_path(&dir);
+    let (_, key) = key_file("downgrade", 24);
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 0, 8);
+    close(log);
+    let mut lines = lines_of(&path);
+    assert!(lines[2].contains("\"approved\":true"));
+    lines[2] = lines[2].replacen("\"approved\":true", "\"approved\":false", 1);
+    rechain_all_without_key(&mut lines);
+    write_lines(&path, &lines);
+
+    // The server restarts with its key. If it resumes, it MACs two records
+    // on top of the rewritten history.
+    if let Ok(log) = AuditLog::open_with_options(
+        &path,
+        AuditOptions {
+            key: Some(key.clone()),
+            ..AuditOptions::default()
+        },
+    ) {
+        write_n(&log, 8, 2);
+        close(log);
+    }
+    let report = verify(&path, std::slice::from_ref(&key));
+    assert_ne!(
+        report.exit_code(),
+        0,
+        "a rewritten, MAC-stripped trail verified under its key: {report:?}"
+    );
+}
+
+#[test]
+fn a_keyed_writer_refuses_to_resume_onto_an_unkeyed_head() {
+    let dir = temp_dir("unkeyed-head");
+    let path = audit_path(&dir);
+    let log = AuditLog::open(&path).unwrap();
+    write_n(&log, 0, 3);
+    close(log);
+    let (_, key) = key_file("unkeyed-head", 25);
+    let opened = AuditLog::open_with_options(
+        &path,
+        AuditOptions {
+            key: Some(key),
+            ..AuditOptions::default()
+        },
+    );
+    let err = opened.err().expect("a keyed writer resumed onto an unkeyed head");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    assert!(err.to_string().contains("adopt-key"), "{err}");
+}
+
+/// A checkpoint of the head of a trail truncated to five records, with its
+/// MAC removed or put under a key nobody holds.
+#[test]
+fn an_unsigned_checkpoint_or_one_under_an_unknown_key_is_not_confirmed() {
+    let dir = temp_dir("unsigned-checkpoint");
+    let path = audit_path(&dir);
+    let (_, key) = key_file("unsigned-checkpoint", 26);
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 0, 10);
+    let genuine = log.checkpoint().unwrap();
+    close(log);
+    let mut lines = lines_of(&path);
+    lines.truncate(5);
+    write_lines(&path, &lines);
+    let keys = std::slice::from_ref(&key);
+    let head = verify(&path, keys);
+    assert_eq!(
+        verify_audit_trail(&path, keys, Some(&genuine))
+            .unwrap()
+            .exit_code(),
+        1
+    );
+
+    let mut unsigned = genuine.clone();
+    unsigned.seq = 4;
+    unsigned.hash = head.head_hash.clone().unwrap();
+    unsigned.key_id = None;
+    unsigned.mac = None;
+    let mut unknown_key = unsigned.clone();
+    unknown_key.key_id = Some("00".repeat(8));
+    unknown_key.mac = Some("11".repeat(32));
+    for (name, cp) in [("unsigned", unsigned), ("unknown key", unknown_key)] {
+        let r = verify_audit_trail(&path, keys, Some(&cp)).unwrap();
+        assert_ne!(
+            r.checkpoint,
+            Some(CheckpointStatus::Confirmed),
+            "{name}: {r:?}"
+        );
+        assert_ne!(r.exit_code(), 0, "{name}: {r:?}");
+    }
+}
+
+/// The records from seq 5 on rewritten under a key id nobody holds, with
+/// MACs that cannot be checked: not the same thing as a rotation.
+fn invented_key_id_trail(tag: &str, byte: u8) -> (PathBuf, AuditKey) {
+    let dir = temp_dir(tag);
+    let path = audit_path(&dir);
+    let (_, key) = key_file(tag, byte);
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 0, 10);
+    close(log);
+    let mut lines = lines_of(&path);
+    assert!(lines[5].contains("\"approved\":true"));
+    lines[5] = lines[5].replacen("\"approved\":true", "\"approved\":false", 1);
+    rechain_without_key(&mut lines, 5);
+    for line in lines.iter_mut().skip(5) {
+        let mut v: serde_json::Value = serde_json::from_str(line).unwrap();
+        v[CHAIN_FIELD]["key_id"] = "deadbeefdeadbeef".into();
+        v[CHAIN_FIELD]["mac"] = "77".repeat(32).into();
+        *line = v.to_string();
+    }
+    write_lines(&path, &lines);
+    (path, key)
+}
+
+#[test]
+fn an_invented_key_id_is_a_break_not_a_rotation() {
+    let (path, key) = invented_key_id_trail("invented-key", 27);
+    let report = verify(&path, std::slice::from_ref(&key));
+    let b = report
+        .first_break
+        .as_ref()
+        .unwrap_or_else(|| panic!("an invented key id read as a rotation: {report:?}"));
+    assert_eq!(b.seq, Some(5), "{b:?}");
+    assert!(b.reason.contains("deadbeefdeadbeef"), "{b:?}");
+    assert_eq!(report.exit_code(), 1);
+}
+
+#[test]
+fn a_keyed_writer_refuses_to_resume_onto_a_head_under_an_unknown_key() {
+    let (path, key) = invented_key_id_trail("invented-key-resume", 28);
+    let opened = AuditLog::open_with_options(
+        &path,
+        AuditOptions {
+            key: Some(key),
+            ..AuditOptions::default()
+        },
+    );
+    let err = opened
+        .err()
+        .expect("a keyed writer resumed onto a head under a key id it cannot check");
+    assert!(err.to_string().contains("deadbeefdeadbeef"), "{err}");
+}
+
+/// `graphite audit verify` is documented as safe beside a running writer.
+/// A rotation between listing the archives and walking them made it report
+/// a break that is not there (exit 1), a prune an unreadable trail (exit 3).
+#[test]
+fn a_walk_beside_a_rotating_and_pruning_writer_reports_no_false_break() {
+    let dir = temp_dir("walk-beside-writer");
+    let path = audit_path(&dir);
+    let (_, key) = key_file("walk-beside-writer", 29);
+    let log = AuditLog::open_with_options(
+        &path,
+        AuditOptions {
+            rotate_bytes: 1,
+            max_archives: 6,
+            key: Some(key.clone()),
+            ..AuditOptions::default()
+        },
+    )
+    .unwrap();
+    write_n(&log, 0, 8);
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let writer = {
+        let log = log.clone();
+        let stop = stop.clone();
+        std::thread::spawn(move || {
+            let mut i = 8;
+            while !stop.load(Ordering::SeqCst) {
+                assert!(log.append(&rec(&format!("gr-{i:05}"), true)));
+                i += 1;
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+        })
+    };
+    let mut failures = Vec::new();
+    for _ in 0..150 {
+        match verify_audit_trail(&path, std::slice::from_ref(&key), None) {
+            Ok(r) if r.exit_code() == 0 => {}
+            Ok(r) => failures.push(format!("exit {}: {:?}", r.exit_code(), r.first_break)),
+            Err(e) => failures.push(format!("exit 3: {e}")),
+        }
+    }
+    stop.store(true, Ordering::SeqCst);
+    writer.join().unwrap();
+    close(log);
+    assert!(
+        failures.is_empty(),
+        "{} of 150 walks failed beside the writer: {:?}",
+        failures.len(),
+        &failures[..failures.len().min(3)]
+    );
+}

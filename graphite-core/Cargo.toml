@@ -18,6 +18,10 @@ sha2 = "0.11"
 bs58 = "0.5"
 curve25519-dalek = "5"
 hex = "0.4"
+# Wipes the audit MAC key from memory when it is dropped (Round 34, A-7).
+# Already in the tree through the ed25519/curve25519 stack; naming it adds
+# no crate.
+zeroize = "1"
 anyhow = "1"
 # default-features = false is REQUIRED: reqwest's default-tls feature
 # pulls native-tls → openssl-sys, which fails to build on systems without
