@@ -71,6 +71,84 @@ const loadedFetch: typeof globalThis.fetch = globalThis.fetch.bind(globalThis);
 export class ResponseTooLargeError extends Error {}
 
 /**
+ * A response with the same key twice in one object (Round 34, G-6). Not a
+ * SyntaxError: the text is JSON, and `JSON.parse` would read it — keeping
+ * the LAST value of the key, silently.
+ */
+export class DuplicateKeyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DuplicateKeyError";
+  }
+}
+
+function isJsonWhitespace(c: number): boolean {
+  return c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d;
+}
+
+/**
+ * Throw `DuplicateKeyError` if any object in `text`, at any depth, names a
+ * key twice (Round 34, G-6). `text` must already be valid JSON (parse it
+ * first): this walks it once, tracking the keys of each open object, and
+ * compares keys as JSON.parse sees them — `"a"` and `"a"` are one key.
+ * Case matters, as it does to `JSON.parse` (the Go SDK also folds case,
+ * because Go's decoder does).
+ *
+ * `JSON.parse` keeps the last of two equal keys, so
+ * `{"approved":false,…,"approved":true}` read as an approval here while the
+ * Go SDK refused the same bytes (`sdk/go/validate.go`).
+ */
+export function assertNoDuplicateKeys(text: string): void {
+  // One entry per open container: the keys seen so far for an object, null
+  // for an array.
+  const open: (Set<string> | null)[] = [];
+  const n = text.length;
+  for (let i = 0; i < n; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 0x7b /* { */) {
+      open.push(new Set());
+    } else if (c === 0x5b /* [ */) {
+      open.push(null);
+    } else if (c === 0x7d /* } */ || c === 0x5d /* ] */) {
+      open.pop();
+    } else if (c === 0x22 /* " */) {
+      const start = i;
+      let escaped = false;
+      for (i++; i < n; i++) {
+        const d = text.charCodeAt(i);
+        if (d === 0x5c /* backslash: skip the escaped character */) {
+          escaped = true;
+          i++;
+        } else if (d === 0x22) {
+          break;
+        }
+      }
+      const keys = open[open.length - 1];
+      if (!keys) continue; // top level or in an array: a value, not a key
+      // In an object, a string followed by ':' is a key; one after ':' is a value.
+      let j = i + 1;
+      while (j < n && isJsonWhitespace(text.charCodeAt(j))) j++;
+      if (text.charCodeAt(j) !== 0x3a /* : */) continue;
+      const key = escaped ? (JSON.parse(text.slice(start, i + 1)) as string) : text.slice(start + 1, i);
+      if (keys.has(key)) {
+        throw new DuplicateKeyError(
+          `Graphite's response has a duplicate key ${JSON.stringify(key)} in one object (depth ${open.length}). ` +
+            "JSON.parse would keep only the last value, and another reader might keep the first; refused.",
+        );
+      }
+      keys.add(key);
+    }
+  }
+}
+
+/** `JSON.parse`, refusing a document with a duplicate key in any object (Round 34, G-6). */
+export function parseJsonStrict(text: string): unknown {
+  const value: unknown = JSON.parse(text);
+  assertNoDuplicateKeys(text);
+  return value;
+}
+
+/**
  * Read a response body as JSON, refusing more than `maxBytes`: a declared
  * `content-length` over the bound is refused before reading, and the stream
  * is cancelled the moment the running count passes it, so an endless or
@@ -103,7 +181,7 @@ export async function readJsonBounded(response: Response, maxBytes: number): Pro
     all.set(c, offset);
     offset += c.byteLength;
   }
-  return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(all));
+  return parseJsonStrict(new TextDecoder("utf-8", { fatal: true }).decode(all));
 }
 
 /**
@@ -782,7 +860,7 @@ export class GraphiteClient {
     try {
       raw = await readJsonBounded(response, MAX_RESPONSE_BYTES);
     } catch (e) {
-      if (e instanceof ResponseTooLargeError) throw e;
+      if (e instanceof ResponseTooLargeError || e instanceof DuplicateKeyError) throw e;
       throw new Error(`Graphite ${what} returned ${response.status} with a body that is not JSON`);
     }
     const violation = check(raw);
