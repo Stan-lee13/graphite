@@ -5280,9 +5280,8 @@ impl GraphiteCore {
             // high-risk — the same declaration, a different gate. "delegate"
             // is canonically "stake", so both are high-risk, as "delegate"
             // always was.
-            let canonical = proposed_intent.intent_type.trim().to_lowercase();
             let high_risk = matches!(
-                crate::risk_engine::canonical_intent(&canonical),
+                crate::risk_engine::canonical_intent(&proposed_intent.intent_type).as_str(),
                 "swap" | "bridge" | "withdraw" | "stake" | "mint" | "claim" | "burn" | "configure"
             );
             if high_risk {
@@ -5383,7 +5382,8 @@ impl GraphiteCore {
         // `delegate`, SPL `MintTo` and `Burn` among them. The class is the
         // instruction's machine-readable identity; the prose is not read.
         let raw_intent = intent_type.trim().to_lowercase();
-        let intent = crate::risk_engine::canonical_intent(&raw_intent);
+        let canonical = crate::risk_engine::canonical_intent(intent_type);
+        let intent = canonical.as_str();
         let ix_name = instruction_name.to_lowercase();
 
         let declares = match crate::manifest::intent_declares_class(intent, security_class) {
@@ -6974,6 +6974,12 @@ impl GraphiteCore {
         // Round 32 (R30-G-1): a grant whose accounts hold and whose every
         // minimum output is zero — refused as an unbounded withdrawal.
         let mut unbounded_withdrawal: Option<String> = None;
+        // Round 34 (R33-1): an instruction a grant names under ANOTHER
+        // intent (a Stake `Withdraw` labelled `stake`): which intent declares
+        // it, and where its value would go — said beside the refusal.
+        let mut declared_elsewhere: Option<String> = None;
+        let declared_intent =
+            crate::risk_engine::canonical_intent(&input.proposed_intent.intent_type);
         let (expected_account_count, variable_accounts, manifest_risk_class) = match manifest {
             Some(m) => {
                 let ix = m.instruction_for(&effective_discriminator);
@@ -6985,9 +6991,7 @@ impl GraphiteCore {
                         match crate::intent_grants::ground_with(
                             &input.program_id,
                             i,
-                            crate::risk_engine::canonical_intent(
-                                &input.proposed_intent.intent_type.trim().to_lowercase(),
-                            ),
+                            &declared_intent,
                             &input.account_addresses,
                             input.instruction_data.as_deref(),
                             self.allow_unbounded_withdrawals,
@@ -7004,6 +7008,12 @@ impl GraphiteCore {
                                 class.to_string()
                             }
                             crate::intent_grants::GrantOutcome::NoGrant => {
+                                declared_elsewhere = crate::intent_grants::declared_elsewhere(
+                                    &input.program_id,
+                                    i,
+                                    &declared_intent,
+                                    &input.account_addresses,
+                                );
                                 i.security_class().to_string()
                             }
                         },
@@ -7079,6 +7089,14 @@ impl GraphiteCore {
                 pattern,
                 reason: format!("{reason} | {why}"),
             },
+        };
+        // Round 34 (R33-1): explained, never decided — only beside a refusal.
+        let risk_verdict = match (risk_verdict, declared_elsewhere) {
+            (RiskVerdict::Blocked { pattern, reason }, Some(why)) => RiskVerdict::Blocked {
+                pattern,
+                reason: format!("{reason} | {why}"),
+            },
+            (verdict, _) => verdict,
         };
         // The accounts made the withdrawal the owner's own, and its data
         // accepts any amount out: refused, under its own pattern, unless the
@@ -7691,6 +7709,22 @@ impl GraphiteCore {
             Some((b, by_shape)) => (Some(b.clone()), by_shape),
             None => (None, false),
         };
+        // Round 34 (S-3): when the shape's baseline judges, the program's is
+        // still an anchor. A shape's baseline is bootstrapped from
+        // observations the program's band let through, so ten of them at that
+        // band's edge give the shape a band centred on the edge: its upper
+        // bound moved from about c+2s to about c+4.5s of the program's, and
+        // nothing checked the program's band again once the shape matured.
+        // A transaction must now pass both.
+        let program_anchor: Option<crate::simulation_integrity::ComputeBaseline> =
+            if judged_by_shape {
+                self.graph()
+                    .baseline_for(&input.program_id, None)
+                    .map(|(b, _)| b.clone())
+            } else {
+                None
+            };
+        let mut flagged_by_program_anchor = false;
         // Build the simulation usage, preferring live RPC simulation. This
         // runs REGARDLESS of whether a mature baseline exists, for two
         // reasons — and the second one is a bug fix.
@@ -7979,6 +8013,53 @@ impl GraphiteCore {
                                 crate::simulation_integrity::MAX_TRANSACTION_COMPUTE_UNITS
                             ));
                         }
+                        // Round 34 (S-5): the simulator's `loadedAddresses`
+                        // must be the accounts Graphite resolved from the
+                        // lookup tables itself. Every index into the balance
+                        // arrays, the inner-instruction report and the CPI
+                        // callees past the static keys is read through that
+                        // list; one the RPC reordered (writable reversed) or
+                        // substituted attributes each balance to another
+                        // account. A legacy message loads nothing through a
+                        // table, so any loaded address is a contradiction too.
+                        // The whole result is set aside, as for implausible
+                        // units: refused as an incomplete simulation.
+                        let mismatched_lookups: Option<String> = match (
+                            artifact_message.as_ref(),
+                            sim_res.loaded_addresses.as_ref(),
+                        ) {
+                            (Some(message), Some(loaded)) if message.has_lookup_accounts() => {
+                                match &resolved_lookups {
+                                    Some(Ok(own))
+                                        if own.writable != loaded.writable
+                                            || own.readonly != loaded.readonly =>
+                                    {
+                                        Some(format!(
+                                            "the RPC's loadedAddresses (writable [{}], readonly [{}]) are not the accounts Graphite resolved from the lookup tables (writable [{}], readonly [{}]) — every balance and callee past the static keys would be attributed through the RPC's list",
+                                            loaded.writable.join(", "),
+                                            loaded.readonly.join(", "),
+                                            own.writable.join(", "),
+                                            own.readonly.join(", ")
+                                        ))
+                                    }
+                                    _ => None,
+                                }
+                            }
+                            (Some(message), Some(loaded))
+                                if !message.has_lookup_accounts() && !loaded.is_empty() =>
+                            {
+                                Some(format!(
+                                    "the RPC reports {} account(s) loaded through lookup tables for a message that uses none",
+                                    loaded.len()
+                                ))
+                            }
+                            _ => None,
+                        };
+                        if let Some(why) = &mismatched_lookups {
+                            tracing::warn!("discarding the simulation: {why}");
+                            diff_unavailable = Some(why.clone());
+                        }
+                        let discard = implausible_units || mismatched_lookups.is_some();
                         // A provider that volunteered a number under a name
                         // Solana does not define, and how it compared to what
                         // Graphite derived from the same response. Reported
@@ -7992,7 +8073,7 @@ impl GraphiteCore {
                         // Only a COMPLETE RPC result may enter the accumulator:
                         // nonzero units AND both derived fields present.
                         sim_err = sim_res.err.clone();
-                        if sim_res.err.is_none() {
+                        if sim_res.err.is_none() && !discard {
                             observed_cpi_programs = observed_cpi_callees(
                                 artifact_message.as_ref(),
                                 sim_res.loaded_addresses.as_ref(),
@@ -8041,7 +8122,7 @@ impl GraphiteCore {
                         // failure), and until this line those units were
                         // recorded as trusted evidence and certified L3
                         // "clean (RPC-verified)" (F-15-02).
-                        if !implausible_units
+                        if !discard
                             && sim_res.err.is_none()
                             && sim_res.units_consumed > 0
                             && sim_res.account_writes.is_some()
@@ -8202,7 +8283,7 @@ impl GraphiteCore {
                             post.len(),
                             sim_res.err
                         );
-                        if !implausible_units && !post.is_empty() && sim_res.err.is_none() {
+                        if !discard && !post.is_empty() && sim_res.err.is_none() {
                             match within_budget(
                                 &budget,
                                 client.get_multiple_accounts_at(&diff_addresses),
@@ -8541,27 +8622,44 @@ impl GraphiteCore {
                 // baselines (std == 0) are handled INSIDE
                 // check_simulation_integrity (any deviation from an
                 // identical-history mean is a max-signal divergence).
-                let check_result = match crate::simulation_integrity::check_simulation_integrity(
-                    &crate::simulation_integrity::SimulationIntegrityInput {
-                        program_id: input.program_id.clone(),
-                        simulation_usage: usage.clone(),
-                        baseline: baseline.clone(),
-                        divergence_threshold: 2.0,
-                    },
-                ) {
-                    Ok(result) => result,
-                    // Fail-closed (Constitution P12): on integrity check error
-                    // (e.g. a corrupted seeded baseline), flag the simulation
-                    // rather than silently passing it.
-                    Err(e) => {
-                        tracing::error!("simulation integrity check error: {}", e);
-                        crate::simulation_integrity::SimulationIntegrityResult {
-                            flagged: true,
-                            divergence_score: f64::MAX,
-                            reason: None,
+                let judge = |baseline: &crate::simulation_integrity::ComputeBaseline| {
+                    match crate::simulation_integrity::check_simulation_integrity(
+                        &crate::simulation_integrity::SimulationIntegrityInput {
+                            program_id: input.program_id.clone(),
+                            simulation_usage: usage.clone(),
+                            baseline: baseline.clone(),
+                            divergence_threshold: 2.0,
+                        },
+                    ) {
+                        Ok(result) => result,
+                        // Fail-closed (Constitution P12): on integrity check
+                        // error (e.g. a corrupted seeded baseline), flag the
+                        // simulation rather than silently passing it.
+                        Err(e) => {
+                            tracing::error!("simulation integrity check error: {}", e);
+                            crate::simulation_integrity::SimulationIntegrityResult {
+                                flagged: true,
+                                divergence_score: f64::MAX,
+                                reason: None,
+                            }
                         }
                     }
                 };
+                let mut check_result = judge(baseline);
+                // Round 34 (S-3): the shape's band does not excuse a value
+                // outside the program's own.
+                if !check_result.flagged {
+                    if let Some(anchor) = program_anchor
+                        .as_ref()
+                        .filter(|b| b.sample_count >= crate::simulation_integrity::MIN_SAMPLES)
+                    {
+                        let by_program = judge(anchor);
+                        if by_program.flagged {
+                            flagged_by_program_anchor = true;
+                            check_result = by_program;
+                        }
+                    }
+                }
 
                 // Provenance-aware verdict (Constitution P5 — simulation is
                 // evidence, never ground truth): a CLEAN verdict is certified
@@ -9654,7 +9752,9 @@ impl GraphiteCore {
                             usage.cpi_hops,
                             if rpc_sim_ok { "RPC-measured" } else { "caller-supplied" },
                             div,
-                            if judged_by_shape {
+                            if flagged_by_program_anchor {
+                                "the program's baseline, which still anchors this transaction shape's"
+                            } else if judged_by_shape {
                                 "this transaction shape's baseline"
                             } else {
                                 "the program's baseline"
@@ -9666,7 +9766,9 @@ impl GraphiteCore {
                         usage.compute_units,
                         usage.account_writes,
                         usage.cpi_hops,
-                        if judged_by_shape {
+                        if judged_by_shape && program_anchor.is_some() {
+                            "this transaction shape's baseline, and the program's as its anchor"
+                        } else if judged_by_shape {
                             "this transaction shape's baseline"
                         } else {
                             "the program's baseline (this shape's is not yet mature)"

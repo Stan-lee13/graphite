@@ -386,11 +386,10 @@ fn honest_labels_pass_the_class_gate() {
             "DelegateStake",
             "stake",
         ),
-        (
-            "Stake11111111111111111111111111111111111111",
-            "Withdraw",
-            "stake",
-        ),
+        // Round 34 (R33-1) re-pin: (Stake, Withdraw, "stake") was listed here
+        // as an honest label. A stake intent declaring the `withdraw` class
+        // let "stake my SOL" withdraw the user's stake to any account; it is
+        // refused now (`a_stake_label_does_not_declare_a_stake_withdrawal`).
     ] {
         let (disc, n, class) = ix(program, name);
         let r = core.verify(&request(program, &disc, n, intent)).unwrap();
@@ -408,6 +407,31 @@ fn honest_labels_pass_the_class_gate() {
                 .iter()
                 .all(|f| !f.reason.contains("Intent-class mismatch")),
             "{name} declared '{intent}': {:?}",
+            r.risk_verdict
+        );
+    }
+}
+
+/// Round 34 (R33-1): a stake label does not declare a Stake Withdraw — L5 and
+/// Check 9b both refuse it, naming the class. (Withdrawing stake is declared
+/// by `withdraw`, and granted only when `to` is the withdrawer.)
+#[test]
+fn a_stake_label_does_not_declare_a_stake_withdrawal() {
+    let core = GraphiteCore::new();
+    let program = "Stake11111111111111111111111111111111111111";
+    let (disc, n, class) = ix(program, "Withdraw");
+    assert_eq!(class, "withdraw");
+    assert_eq!(intent_declares_class("stake", &class), Some(false));
+    for intent in ["stake", "delegate"] {
+        let r = core.verify(&request(program, &disc, n, intent)).unwrap();
+        assert!(!r.approved, "Withdraw declared '{intent}' was approved");
+        assert_eq!(l5(&r), LayerStatus::Failed, "Withdraw declared '{intent}'");
+        assert!(
+            r.risk_verdict
+                .findings
+                .iter()
+                .any(|f| f.reason.contains("Intent-class mismatch")),
+            "Withdraw declared '{intent}': {:?}",
             r.risk_verdict
         );
     }

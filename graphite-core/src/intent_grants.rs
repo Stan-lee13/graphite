@@ -41,11 +41,16 @@
 //! minimum out is), which is the signer's own business and the agent guard's
 //! grounding (a withdrawal at a manipulated price is an economics question,
 //! like a swap's minimum out). Round 32 (R30-G-1) judges one thing about them:
-//! a withdrawal whose IDL gives it minimum outputs and whose every minimum is
-//! zero accepts any amount out at all — whoever moves the pool in front of it
-//! takes the difference — so its grant does not hold
+//! a withdrawal whose IDL gives it minimum outputs and one of whose minimums
+//! is zero accepts any amount of that output at all — whoever moves the pool
+//! in front of it takes the difference — so its grant does not hold
 //! ([`GrantOutcome::Unbounded`]) unless the operator allows it
-//! (`GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS`). The minimums are read from the
+//! (`GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS`). Round 34 (R33-11): ANY zero
+//! minimum, not only all of them — `amount_0_min = 1, amount_1_min = 0`
+//! bounds one side and leaves the other to whoever trades first. What a
+//! non-zero minimum is worth is not judged: whether `1` is dust needs the
+//! expected output, which this layer (the instruction's own bytes, before any
+//! post-state) does not have. The minimums are read from the
 //! instruction's own data at the offsets [`IntentGrant::minimum_outputs`]
 //! names. Operations no grant covers keep their R2 refusal; a mint
 //! stays refused under every intent (minting needs a mint authority, and an
@@ -144,6 +149,9 @@ const METEORA_DLMM: &str = "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo";
 const PUMP_AMM: &str = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
 const PUMP_FUN: &str = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 const MARKETPLACE_CCMR: &str = "CcmRKTuZCGJBWQwMHvDYApBRvSZNHqGJXkznqpDTSQUr";
+const STAKE_PROGRAM: &str = "Stake11111111111111111111111111111111111111";
+const SPL_STAKE_POOL: &str = "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy";
+const MARINADE: &str = "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD";
 
 const DLMM_TO_SENDER: &[Grounding] = &[
     Grounding::AssociatedTokenAccount {
@@ -171,6 +179,20 @@ const BURN_FROM_OWN_ATA: &[Grounding] = &[Grounding::AssociatedTokenAccount {
     owner: "authority",
     mint: "mint",
 }];
+/// SPL Stake Pool `WithdrawSol`: the SOL goes to `destination`, the pool
+/// tokens are burned from `user_pool_token_account` under
+/// `user_transfer_authority`'s signature.
+const STAKE_POOL_SOL_TO_SIGNER: &[Grounding] = &[Grounding::SameKey {
+    account: "destination",
+    owner: "user_transfer_authority",
+}];
+/// SPL Stake Pool `WithdrawStake`: the split-off stake account's staker and
+/// withdrawer are set to `user_withdraw_authority`, which does not sign.
+const STAKE_POOL_STAKE_TO_SIGNER: &[Grounding] = &[Grounding::SameKey {
+    account: "user_withdraw_authority",
+    owner: "user_transfer_authority",
+}];
+const STAKE_POOL_SOURCE: &str = "SPL Stake Pool (spl-stake-pool program, instruction.rs): WithdrawSol pays `destination` (unconstrained); WithdrawStake makes `user_withdraw_authority` (not a signer) the new stake account's authority; `user_transfer_authority` signs for the pool tokens burned";
 
 /// Every grant. Kept small on purpose: each entry is an instruction whose
 /// account semantics were read from its IDL, and each is pinned by the tests
@@ -455,6 +477,96 @@ pub const GRANTS: &[IntentGrant] = &[
         minimum_outputs: &[],
         source: "Token-2022 BurnChecked: [account (w), mint (w), authority (s)]",
     },
+    // Round 34 (R33-1): the staking withdrawals an honest agent makes. A
+    // stake intent declares none of them (`manifest::INTENT_DECLARES`); each
+    // is a `withdraw`, declared only when the value goes to the key that
+    // signs as its owner. "To a signer" is held to THAT signer — the
+    // instruction's own required signer, proven by the layout — and not to
+    // any signer of the transaction: in a transaction someone else co-signs
+    // (a fee payer, a counterparty), "a signer" includes the stranger.
+    //
+    // Stake `Withdraw` moves lamports from the stake account to `to`, which
+    // the program does not constrain; `withdrawer` must sign. The amount is
+    // the instruction's own argument (no minimum to bound).
+    IntentGrant {
+        program_id: STAKE_PROGRAM,
+        instruction: "Withdraw",
+        intent: "withdraw",
+        class: WITHDRAW_TO_OWNER,
+        owner: "withdrawer",
+        grounding: &[Grounding::SameKey {
+            account: "to",
+            owner: "withdrawer",
+        }],
+        minimum_outputs: &[],
+        source: "Stake program StakeInstruction::Withdraw(u64): [stake (w), recipient (w), clock, stake history, withdraw authority (s), optional lockup custodian (s)]; the recipient is unconstrained",
+    },
+    // Stake Pool withdrawals pay at the pool's exchange rate, which moves
+    // once per epoch (`UpdateStakePoolBalance`), not with the trades in front
+    // of a withdrawal: the slippage variants' `minimum_lamports_out` is not
+    // the sandwich bound a pool's minimum out is, and is not read.
+    IntentGrant {
+        program_id: SPL_STAKE_POOL,
+        instruction: "WithdrawSol",
+        intent: "withdraw",
+        class: WITHDRAW_TO_OWNER,
+        owner: "user_transfer_authority",
+        grounding: STAKE_POOL_SOL_TO_SIGNER,
+        minimum_outputs: &[],
+        source: STAKE_POOL_SOURCE,
+    },
+    IntentGrant {
+        program_id: SPL_STAKE_POOL,
+        instruction: "WithdrawSolWithSlippage",
+        intent: "withdraw",
+        class: WITHDRAW_TO_OWNER,
+        owner: "user_transfer_authority",
+        grounding: STAKE_POOL_SOL_TO_SIGNER,
+        minimum_outputs: &[],
+        source: STAKE_POOL_SOURCE,
+    },
+    IntentGrant {
+        program_id: SPL_STAKE_POOL,
+        instruction: "WithdrawStake",
+        intent: "withdraw",
+        class: WITHDRAW_TO_OWNER,
+        owner: "user_transfer_authority",
+        grounding: STAKE_POOL_STAKE_TO_SIGNER,
+        minimum_outputs: &[],
+        source: STAKE_POOL_SOURCE,
+    },
+    IntentGrant {
+        program_id: SPL_STAKE_POOL,
+        instruction: "WithdrawStakeWithSlippage",
+        intent: "withdraw",
+        class: WITHDRAW_TO_OWNER,
+        owner: "user_transfer_authority",
+        grounding: STAKE_POOL_STAKE_TO_SIGNER,
+        minimum_outputs: &[],
+        source: STAKE_POOL_SOURCE,
+    },
+    // Marinade `liquidUnstake` swaps mSOL from `getMsolFrom` (under
+    // `getMsolFromAuthority`'s signature) for SOL paid to `transferSolTo`,
+    // which the program does not constrain. Its IDL gives it no minimum out
+    // (`msol_amount` only); the fee is capped by the program's own
+    // `max_fee`. Marinade `claim` (no signer: the program pays the ticket's
+    // beneficiary, which its accounts do not show), `removeLiquidity` (the
+    // mSOL leg goes to `transferMsolTo`, whose mint is not among its
+    // accounts) and `withdrawStakeAccount` (the beneficiary is an argument)
+    // have no grant and stay refused under every intent.
+    IntentGrant {
+        program_id: MARINADE,
+        instruction: "liquidUnstake",
+        intent: "withdraw",
+        class: WITHDRAW_TO_OWNER,
+        owner: "getMsolFromAuthority",
+        grounding: &[Grounding::SameKey {
+            account: "transferSolTo",
+            owner: "getMsolFromAuthority",
+        }],
+        minimum_outputs: &[],
+        source: "graphite-core/protocols/marinade.json (Marinade IDL) liquidUnstake: [state, msolMint, liqPoolSolLegPda, liqPoolMsolLeg, treasuryMsolAccount, getMsolFrom (w), getMsolFromAuthority (s), transferSolTo (w), systemProgram, tokenProgram]; args msol_amount",
+    },
     // R-M13: an owner changing its own offer. The offer and the escrow are
     // PDAs seeded by the buyer (L4 derives them), and the USDC moves between
     // the buyer's own associated account and the buyer's escrow's.
@@ -500,9 +612,10 @@ pub enum GrantOutcome {
     /// A grant names it, and a fact does not hold: the manifest's class
     /// stands, and this says why the grant did not apply.
     Ungrounded(String),
-    /// Round 32 (R30-G-1): every fact about the accounts holds, and every
-    /// minimum output the instruction's data carries is zero (or the data
-    /// does not carry them): a withdrawal that accepts any amount out. The
+    /// Round 32 (R30-G-1): every fact about the accounts holds, and a minimum
+    /// output the instruction's data carries is zero (or the data does not
+    /// carry them): a withdrawal that accepts any amount of that output
+    /// (Round 34, R33-11: any one zero minimum, not only all of them). The
     /// grounded class is given, and the Core refuses the instruction
     /// (`RiskPattern::UnboundedWithdrawal`) with this reason.
     Unbounded { class: &'static str, reason: String },
@@ -574,9 +687,47 @@ pub fn ground_with(
     }
 }
 
+/// Round 34 (R33-1): why the declared intent does not describe `def` when a
+/// grant names it under ANOTHER intent — the intent that does, and whether
+/// the transaction's accounts make the operation the owner's own (if not,
+/// which account the value would go to). `None` when a grant names it for
+/// `canonical_intent` itself, or no grant names it at all.
+///
+/// Only ever said beside a refusal: it explains, it never decides. A Stake
+/// `Withdraw` of the user's stake to a stranger, labelled `stake`, is refused
+/// because a stake intent declares no withdrawal; this adds where the
+/// lamports would have gone.
+pub fn declared_elsewhere(
+    program_id: &str,
+    def: &InstructionDef,
+    canonical_intent: &str,
+    accounts: &[String],
+) -> Option<String> {
+    if grant_for(program_id, &def.name, canonical_intent).is_some() {
+        return None;
+    }
+    let grant = GRANTS
+        .iter()
+        .find(|g| g.program_id == program_id && g.instruction == def.name)?;
+    Some(match check(grant, def, accounts) {
+        Ok(()) => format!(
+            "{} is declared by a '{}' intent, not a '{canonical_intent}' one",
+            grant.instruction, grant.intent
+        ),
+        Err(why) => format!(
+            "{} is declared only by a '{}' intent, and only when the operation is the owner's own — here {why}",
+            grant.instruction, grant.intent
+        ),
+    })
+}
+
 /// Why `grant`'s minimum outputs do not bound the withdrawal, if they do not:
-/// none can be read from `data`, or every one is zero. `None` for a grant with
-/// no minimum outputs, or one at least one of whose minimums is non-zero.
+/// they cannot be read from `data`, or one of them is zero (Round 34, R33-11:
+/// a zero minimum leaves that output to whoever moves the pool first, whatever
+/// the others say). `None` for a grant with no minimum outputs, or one whose
+/// every minimum is non-zero. Whether a non-zero minimum is a fair one is not
+/// judged here: that needs the expected output, which the bytes alone do not
+/// give.
 fn unbounded(grant: &IntentGrant, data: Option<&[u8]>) -> Option<String> {
     if grant.minimum_outputs.is_empty() {
         return None;
@@ -592,7 +743,7 @@ fn unbounded(grant: &IntentGrant, data: Option<&[u8]>) -> Option<String> {
             "carries no instruction data, so its minimum outputs ({names}) cannot be read"
         ));
     };
-    let mut values = Vec::with_capacity(grant.minimum_outputs.len());
+    let mut zero = Vec::new();
     for m in grant.minimum_outputs {
         let Some(bytes) = data.get(m.offset..m.offset + 8) else {
             return Some(format!(
@@ -604,12 +755,20 @@ fn unbounded(grant: &IntentGrant, data: Option<&[u8]>) -> Option<String> {
         };
         let mut le = [0u8; 8];
         le.copy_from_slice(bytes);
-        values.push(u64::from_le_bytes(le));
+        if u64::from_le_bytes(le) == 0 {
+            zero.push(m.name);
+        }
     }
-    values
-        .iter()
-        .all(|v| *v == 0)
-        .then(|| format!("sets every minimum output to zero ({names})"))
+    match zero.len() {
+        0 => None,
+        n if n == grant.minimum_outputs.len() => {
+            Some(format!("sets every minimum output to zero ({names})"))
+        }
+        _ => Some(format!(
+            "sets the minimum output {} to zero (of {names}), so that output is unbounded whatever the others say",
+            zero.join(", ")
+        )),
+    }
 }
 
 fn check(grant: &IntentGrant, def: &InstructionDef, accounts: &[String]) -> Result<(), String> {
@@ -650,7 +809,7 @@ fn check(grant: &IntentGrant, def: &InstructionDef, accounts: &[String]) -> Resu
                 let (a, o) = (key(account)?, key(owner)?);
                 if a != o {
                     return Err(format!(
-                        "`{account}` ({a}) is not `{owner}` ({o}) — the refund would go to another key"
+                        "`{account}` ({a}) is not `{owner}` ({o}) — what it pays would go to a key that did not sign for it"
                     ));
                 }
             }
@@ -810,7 +969,7 @@ mod tests {
             .collect();
         for w in listed.iter().filter(|w| **w != "unknown") {
             assert!(
-                canonical.contains(&crate::risk_engine::canonical_intent(w)),
+                canonical.contains(&crate::risk_engine::canonical_intent(w).as_str()),
                 "the schema lists {w}, which is no canonical intent's word"
             );
         }
@@ -939,8 +1098,12 @@ mod tests {
         );
     }
 
+    /// Round 34 (R33-11) re-pin: this test was
+    /// `a_withdrawal_is_unbounded_only_when_every_minimum_is_zero_or_unreadable`
+    /// and pinned `(0, 1)` and `(1, 0)` as bounded. A zero minimum leaves its
+    /// output to whoever moves the pool first, whatever the other says.
     #[test]
-    fn a_withdrawal_is_unbounded_only_when_every_minimum_is_zero_or_unreadable() {
+    fn a_withdrawal_is_unbounded_when_any_minimum_is_zero_or_unreadable() {
         let g = grant_for(RAYDIUM_CPMM, "withdraw", "withdraw").unwrap();
         let data = |a: u64, b: u64| {
             let mut d = vec![0xB7; 8];
@@ -950,9 +1113,15 @@ mod tests {
             d
         };
         assert!(unbounded(g, Some(&data(0, 0))).is_some());
-        assert!(unbounded(g, Some(&data(0, 1))).is_none());
-        assert!(unbounded(g, Some(&data(1, 0))).is_none());
-        assert!(unbounded(g, Some(&data(0, 1)[..31])).is_some(), "short");
+        let one_side = unbounded(g, Some(&data(1, 0))).expect("(1, 0) is unbounded");
+        assert!(
+            one_side.contains("minimum_token_1_amount") && !one_side.contains("every"),
+            "{one_side}"
+        );
+        assert!(unbounded(g, Some(&data(0, 1))).is_some());
+        assert!(unbounded(g, Some(&data(1, 1))).is_none());
+        assert!(unbounded(g, Some(&data(1_000, 2_000))).is_none());
+        assert!(unbounded(g, Some(&data(1, 1)[..31])).is_some(), "short");
         assert!(unbounded(g, None).is_some(), "no data");
         // A grant with no minimum outputs is never unbounded.
         let close = grant_for(RAYDIUM_CLMM, "close_position", "close").unwrap();

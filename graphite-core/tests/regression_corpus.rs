@@ -1413,11 +1413,17 @@ fn build_regression() -> (RegressionCorpus, Vec<Note>) {
             "stake",
             good_evidence(),
         ),
-        true,
+        // Round 34 (R33-1) re-pin: this row expected `true` ("declared as a
+        // stake operation — proceeds"). A stake intent declared the
+        // `withdraw` class, so a Stake Withdraw of the user's stake to any
+        // `to` the caller named was approved under "stake my SOL". A stake
+        // intent declares no withdrawal now; withdrawing stake is a
+        // `withdraw`, granted only when `to` is the withdrawer.
+        false,
         "regression",
         "risk-class",
-        "synthetic-benign",
-        "Stake Withdraw declared as a stake operation — proceeds",
+        "synthetic-attack",
+        "Stake Withdraw declared as a stake operation — refused: a stake intent declares no withdrawal (R33-1)",
     );
     // External review R2: the same withdrawal labelled "transfer" used to
     // proceed too — the label cleared L5 on prose and Check 9 accepted it for

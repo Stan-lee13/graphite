@@ -691,13 +691,18 @@ fn a_granted_withdrawal_with_every_minimum_output_zero_is_refused() {
     }
 }
 
-/// Controls: a non-zero minimum on either output bounds the withdrawal, and
-/// it is granted as before.
+/// Controls: a non-zero minimum on every output bounds the withdrawal, and it
+/// is granted as before.
+///
+/// Round 34 (R33-11) re-pin: this test also granted `(0, 1)` and `(1, 0)` —
+/// "a non-zero minimum on EITHER output bounds the withdrawal". It does not:
+/// the zero side accepts any amount, and whoever moves the pool first takes
+/// it. See `a_withdrawal_with_a_dust_minimum_is_not_bounded`.
 #[test]
 fn a_granted_withdrawal_with_a_non_zero_minimum_output_is_granted() {
     for c in min_out_cases() {
         let d = def(c.program, c.name);
-        for (first, second) in [(1_000, 2_000), (0, 1), (1, 0)] {
+        for (first, second) in [(1_000, 2_000), (1, 1)] {
             let r = verify(&request_with_args(
                 c.program,
                 &d,
@@ -706,6 +711,40 @@ fn a_granted_withdrawal_with_a_non_zero_minimum_output_is_granted() {
                 &min_out_args(c.lead, first, second),
             ));
             assert_granted(&r, &format!("{} {} ({first}, {second})", c.program, c.name));
+        }
+    }
+}
+
+/// Round 34 (R33-11): `UnboundedWithdrawal` fired only when EVERY minimum was
+/// zero, so `amount_0_min = 1, amount_1_min = 0` — one side bounded by a
+/// token's smallest unit, the other not at all — kept its grant. A zero
+/// minimum leaves its output to whoever moves the pool in front of the
+/// withdrawal, whatever the other minimum says: refused, naming the zero one.
+/// (Whether a non-zero minimum like `1` is fair is not judged — that needs the
+/// expected output, which the instruction's bytes do not carry.)
+#[test]
+fn a_withdrawal_with_a_dust_minimum_is_not_bounded() {
+    for c in min_out_cases() {
+        let d = def(c.program, c.name);
+        for (first, second, zero) in [(1, 0, c.minimums[1]), (0, 1, c.minimums[0])] {
+            let r = verify(&request_with_args(
+                c.program,
+                &d,
+                (c.accounts)(&d),
+                "withdraw",
+                &min_out_args(c.lead, first, second),
+            ));
+            let what = format!("{} {} ({first}, {second})", c.program, c.name);
+            assert_refused(&r, &what, "UnboundedWithdrawal");
+            assert!(
+                r.risk_verdict
+                    .findings
+                    .iter()
+                    .any(|f| f.pattern == "UnboundedWithdrawal"),
+                "{what}: {}",
+                risk(&r)
+            );
+            assert!(risk(&r).contains(zero), "{what}: names {zero}: {}", risk(&r));
         }
     }
 }

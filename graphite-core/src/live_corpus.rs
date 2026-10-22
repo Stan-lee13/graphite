@@ -149,8 +149,8 @@ pub fn honest_intent(
 /// configure, and a protocol close) are found too. A grant whose facts hold
 /// for these accounts names the intent; otherwise the class-only answer.
 /// `data` is the instruction's data, from which a granted withdrawal's
-/// minimum outputs are read (Round 32): one whose every minimum is zero is
-/// not grounded, as the Core judges it by default.
+/// minimum outputs are read (Round 32): one with a zero minimum (Round 34:
+/// any of them) is not grounded, as the Core judges it by default.
 pub fn honest_intent_with_accounts(
     program_id: &str,
     def: &crate::manifest::InstructionDef,
