@@ -34,8 +34,8 @@ eliminated.
 | G-06 whole operation classes refused | **Fixed for 21 grounded instructions** (withdraw, claim, close, burn, configure); the rest stays refused | R30-G-1, G-2, G-3 |
 | G-07 audit trail not tamper-evident | **Fixed when keyed** (hash chain + HMAC, verify, checkpoint, anchor directory); unkeyed stays corruption-evident; truncation and stale restore need an anchored checkpoint | R30-C-1, C-2, C-3 |
 | G-08 single-provider L8 | **Narrowed.** `inclusion_assurance` on every reconciliation, provider-independence checks, a high-assurance mode; no light-client proof | R30-D-1 |
-| G-09 release evaluation | <!-- WS-E --> Pending the WS-E merge. | — |
-| G-10 fuzzing / mutation / coverage | <!-- WS-E --> Pending the WS-E merge. | — |
+| G-09 release evaluation | **Done (residual stated).** `graphite benchmark --json` scores every split from committed inputs with Wilson intervals and counts verification errors apart from refusals; pinned by `tests/release_evaluation.rs`; the sealed holdout is pinned by hash. The holdout is 38 rows (37 exploits, 1 benign), too small for a broad claim | R30-WSE-3, WSE-4 |
+| G-10 fuzzing / mutation / coverage | **Wired (residual stated).** Six cargo-fuzz targets (PR smoke, daily 30 min each), weekly sharded `cargo mutants` with per-module floors, a 78 % line-coverage floor. Fuzzing found a P1 in its first minute. Only a quarter of the risk engine's mutants were run locally; three floors are provisional; the scheduled jobs have not run yet | R30-WSE-1, WSE-2 |
 | G-11 branch protection | **Open (owner, STOP-SHIP).** Rulesets, CODEOWNERS and the `CI gate` job are prepared; nothing is enforced until an owner applies them | R30-J-2 |
 | G-12 operations and external items | **Open (owner/external)** — the owner gate in the round report | — |
 
@@ -137,7 +137,7 @@ eliminated.
 
 | ID | Sev | Class | Location | Finding | Status | Regression test | Break | Residual / owner |
 |---|---|---|---|---|---|---|---|---|
-| R30-J-1 / K-10 | P2 | design weakness | `.github/workflows/ci.yml` | CI could pass with no tests run, a new skip, or a masked pipe | fixed: `shell: bash` (pipefail), `.github/scripts/test-count.sh` floors, `.github/test-allowlists/rust-ignored.txt` | 17 hand-written log cases; real logs | — | not yet run on the hosted runners |
+| R30-J-1 / K-10 | P2 | design weakness | `.github/workflows/ci.yml` | CI could pass with no tests run, a new skip, or a masked pipe | fixed: `shell: bash` (pipefail), `.github/scripts/test-count.sh` floors, `.github/test-allowlists/rust-ignored.txt` | 17 hand-written log cases; real logs | — | ran green on the PR (run 39686638069): every floor met |
 | R30-J-2 | P2 | operational/governance blocker (G-11) | repository settings | `main` unprotected | **open (owner, STOP-SHIP)**: `.github/rulesets/main.json`, `main-review.json`, `release-tags.json`, `.github/CODEOWNERS`, `docs/ops/branch-protection.md`, the `CI gate` job | — | — | an owner must apply the rulesets |
 | R30-J-3 | P3 | functional bug | CI concurrency | rapid merges could leave a `main` commit without a finished run | fixed | — | — | — |
 | R30-J-4 | P3 | design weakness | `.github/npm-audit/` | allowlist entries never expired | fixed: `review-by` at most 120 days ahead, enforced | `gate.test.mjs` (10) | 1 failed | — |
@@ -146,6 +146,26 @@ eliminated.
 | R30-J-7 / K-08 | P3 | claim mismatch | `.env.example` | offered the retired learning flag | fixed | — | — | — |
 | R30-J-8 / K-06 | Info | claim mismatch | `.github/npm-audit/*.allow` | prose said the MCP SDK advisories were unfixed | fixed | — | — | — |
 | Dependabot | Info | dependency | 18 open PRs | 7 applied with their package tests (#40, #37, #39, #25, #33, #32, #34); #24 superseded by a fresher digest; 10 deferred: #41, #12, TypeScript 7 ×6 (#14, #18, #21, #23, #27, #28), #22 React 19, #26 the rust 1.99 image | partly applied | package suites | — | **owner**: the deferred majors as their own reviewed changes |
+
+### Assurance and release evaluation (WS-E)
+
+| ID | Sev | Class | Location | Finding | Status | Regression test | Break | Residual / owner |
+|---|---|---|---|---|---|---|---|---|
+| R30-WSE-1 | P1 | confirmed vulnerability | `state_diff.rs`, the owner-change block of `check_state_diff` | when a manifest declared any creation ("initialize account", "create", "open"), the allocation excuse also covered the fee payer, so the fee payer's wallet could be reassigned to another program without a Critical finding. Found by the `state_diff` fuzz target in its first 60 seconds | fixed: the fee payer is never an allocation; only a declared authority change can excuse its owner change | `tests/round30_fuzz_findings.rs` (with a benign control: the excuse still covers other accounts) | the condition reverted: `a_creation_declaration_never_excuses_reassigning_the_fee_payer` failed | `mainnet_conformance` and every corpus verdict unchanged |
+| R30-WSE-2 | P3 | test-coverage gap | `risk_engine.rs` | 8 of a round-robin quarter of the risk engine's mutants survived every suite (the distinct-name count behind the hidden-transfer gate, the deep-chain count's exclusion of root and infrastructure, CPI warnings with no allowed list, `detect_fake_swap`, `program_supports_intent_in`) | fixed: five unit tests | `risk_engine` unit tests | re-run: 8 of 8 mutants caught | three quarters of the risk engine, and every other module, not mutated locally |
+| R30-WSE-3 | Info | test anti-pattern | the regression replay | a verification error counts as a block, so 6 of 27 regression attack fixtures pass only through errors; 38 dev rows error, 2 of them approve-labelled Zeta rows | reported, not fixed in the replay: the release evaluation counts errors apart and an error on an approve label as a false refusal | `tests/release_evaluation.rs` | — | the replay itself still accepts an error as a block |
+| R30-WSE-4 | Info | evidence gap (G-09) | — | no generated, pinned release evaluation | fixed: `graphite benchmark --json`; the holdout files (`exploit_corpus.json`, `real_mainnet_jup.json`, the corpus's holdout rows) pinned by hash; only the guarded builder (`GRAPHITE_RESEAL_HOLDOUT=1`) may write them | `tests/release_evaluation.rs` | — | the builder guard was checked by a source test, not executed |
+
+### Introduced and fixed within the round (integration)
+
+Not counted below: these were defects in Round 30's own changes, caught before the round closed.
+
+| ID | Sev | Class | Location | Finding | Status | Evidence |
+|---|---|---|---|---|---|---|
+| R30-INT-1 | P3 | CI masking | `.github/workflows/ci.yml` | a job-level `defaults.run` replaces the workflow-level one, so the seven jobs that set a working directory ran `bash -e` without pipefail (the first hosted run's logs) | fixed: `shell: bash` in each | hosted logs show `bash --noprofile --norc -e -o pipefail` |
+| R30-INT-2 | P3 | functional bug | `.env.example` | empty `GRAPHITE_AUDIT_KEY_FILE=` / `GRAPHITE_AUDIT_ANCHOR_DIR=` lines made the compose service crash-loop (the server refuses a set-but-empty audit setting) | fixed: commented | reproduced locally with the server binary; the hosted container job green |
+| R30-INT-3 | P3 | concurrency bug | `durable.rs` `spawn_index_job` | an index job dropped its completion guard before its clone of the log, so a same-process reopen could find the new writer lock still held (one full-suite failure) | fixed: the clone drops first; reopening tests wait for index jobs | `durable::` tests 60 consecutive runs, 0 failures |
+| R30-INT-4 | P3 | test contract | `integrations/agent-guard/loopback-mocks.ts` | the guard's approving stand-in did not speak the Round 30 verdict contract once the SDK validated it | fixed; the guard's own decision recomputation is now unit-tested directly | `residual-policy.test.ts` (break caught) |
 
 ### Documentation (coordinator)
 
@@ -163,8 +183,8 @@ Confirmed findings at the baseline `29e4356`, by severity (Info and non-findings
 
 | | P0 | P1 | P2 | P3 |
 |---|---|---|---|---|
-| Found | 0 | 5 | 14 | 35 |
-| Fixed in code (with a regression test) or in docs | 0 | 5 | 13 | 35 |
+| Found | 0 | 6 | 14 | 36 |
+| Fixed in code (with a regression test) or in docs | 0 | 6 | 13 | 36 |
 | Open | 0 | 0 | 1 (R30-J-2, owner) | 0 |
 
 Every P1 and every fixed P2 has a regression test that a deliberate revert showed failing,
@@ -172,5 +192,5 @@ except R30-A-2 (the exit-code mapping was tested through the rule, not broken on
 R30-C-2 (the commands are exercised by tests; the operational gap is not a revertible check).
 "Fixed" does not mean "no residual": the residual column is part of the record.
 
-<!-- WS-E --> WS-E's findings (fuzzing, mutation testing, coverage, the release evaluation) are
-added here when it merges, and the counts with them.
+The counts include WS-E's R30-WSE-1 (P1) and R30-WSE-2 (P3); the integration items above,
+introduced and fixed within the round, are not counted.

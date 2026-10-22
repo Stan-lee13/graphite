@@ -638,7 +638,7 @@ jobs:
           # The live-server tests skip without a server (the container job
           # runs them against one); nothing else may skip.
           npm test 2>&1 | tee "$RUNNER_TEMP/sdk-ts.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sdk-ts.log" 46 \
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sdk-ts.log" 55 \
             "$(grep -cE '^live\("' src/live-server.test.ts)"
           # The published package must actually build, and must not ship the
           # test file — dist/ is gitignored, so a broken build config would
@@ -657,7 +657,7 @@ jobs:
           # Every *.test.ts in the directory, so a test file cannot sit in
           # the repository looking like a gate without ever running.
           npm test 2>&1 | tee "$RUNNER_TEMP/agent-guard.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/agent-guard.log" 249
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/agent-guard.log" 277
           # The guard and the Rust Core are two implementations of one
           # agreement: the guard serializes a transaction and describes its
           # instructions, the Core reads both and decides whether they agree.
@@ -680,7 +680,7 @@ jobs:
           npm ci --ignore-scripts
           npm run typecheck
           npm test 2>&1 | tee "$RUNNER_TEMP/vercel-ai.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/vercel-ai.log" 9
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/vercel-ai.log" 11
       - name: MCP server typecheck + tests
         working-directory: integrations/mcp-server
         run: |
@@ -751,7 +751,7 @@ jobs:
       - name: Tests
         run: |
           go test -count=1 -v ./... 2>&1 | tee "$RUNNER_TEMP/go-test.log"
-          bash ../../.github/scripts/test-count.sh go "$RUNNER_TEMP/go-test.log" 52
+          bash ../../.github/scripts/test-count.sh go "$RUNNER_TEMP/go-test.log" 59
 
   dashboard:
     name: Dashboard — typecheck, tests + production build
@@ -789,7 +789,7 @@ jobs:
           NODE_OPTIONS: --test-reporter=tap
         run: |
           npm test 2>&1 | tee "$RUNNER_TEMP/dashboard.log"
-          bash ../.github/scripts/test-count.sh tap "$RUNNER_TEMP/dashboard.log" 20
+          bash ../.github/scripts/test-count.sh tap "$RUNNER_TEMP/dashboard.log" 31
       - name: Build
         run: npm run build
       # Round 29 (audit 2026-10-20, D6): what the build ships. No source
@@ -838,7 +838,7 @@ jobs:
       - name: Tests
         run: |
           pytest -q 2>&1 | tee "$RUNNER_TEMP/pytest-ai.log"
-          bash ../.github/scripts/test-count.sh pytest "$RUNNER_TEMP/pytest-ai.log" 44
+          bash ../.github/scripts/test-count.sh pytest "$RUNNER_TEMP/pytest-ai.log" 50
       # Round 29 (audit 2026-10-20, M1-M3): the sample fetcher and the
       # row-by-row verifier, against a stand-in endpoint (no network).
       - name: mainnet-sample tool tests

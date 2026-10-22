@@ -5,7 +5,7 @@ fixed in Round 23. An external review of the result followed (R1–R26 with W1�
 re-verified one at a time and answered through `eb17aa5` and Round 24; a second external review
 (E1–E10) was answered in Round 25; a full-repository audit of `19a2974` (2026-10-20: 4 HIGH,
 16 MEDIUM, LOW and informational items by area) was answered in Round 29; a forensic whole-repository
-audit of `29e4356` (2026-10-21: twelve leads G-01 … G-12, 0 P0, 5 P1, 14 P2, 35 P3) was answered in
+audit of `29e4356` (2026-10-21: twelve leads G-01 … G-12, 0 P0, 6 P1, 14 P2, 36 P3) was answered in
 Round 30 (`../docs/audit-r30/findings-registry.md`). **Internal engineering
 work by the maintainer and AI engineering agents, plus external reviews answered here. Not an
 independent third-party audit and not a certification.** The independent audit remains an owner
@@ -136,7 +136,7 @@ Recorded, not hidden. Each is in `01-findings.md` or `02-roadmap-gap.md` with it
 **Open engineering:**
 
 - the guard off `@solana/web3.js` 1.x (R-M15);
-- scheduled mutation, fuzz and coverage runs (R-P11/12/15). Rust coverage is not measured.
+- the scheduled mutation, fuzz and coverage jobs (R-P11/12/15) are wired (Round 30) but have not run on the hosted runners; three mutation floors are provisional, and the 78 % line-coverage floor rests on the library's unit tests alone.
 
 **Not measured:**
 

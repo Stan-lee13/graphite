@@ -633,8 +633,8 @@ sends.
 ## The forensic audit of `29e4356` (Round 30, 2026-10-22)
 
 A whole-repository forensic audit of the Round 29 merge, worked by eleven workstreams against a
-brief of twelve leads (G-01 … G-12) and every open item in these records. It found no P0, 5 P1,
-14 P2 and 35 P3; every one is fixed except R30-J-2 (branch protection, an owner action). Each
+brief of twelve leads (G-01 … G-12) and every open item in these records. It found no P0, 6 P1,
+14 P2 and 36 P3; every one is fixed except R30-J-2 (branch protection, an owner action). Each
 finding, its test and the deliberate revert that showed the test fails without the fix are in
 [`../docs/audit-r30/findings-registry.md`](../docs/audit-r30/findings-registry.md); the ledger of
 every file, the architecture reconstructed from the code and the regression matrix of every

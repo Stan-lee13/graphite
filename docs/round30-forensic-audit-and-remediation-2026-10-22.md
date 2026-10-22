@@ -32,12 +32,12 @@ deliberate revert showed failing; every known residual is written down.
 | Severity | Found at `29e4356` | Fixed | Open |
 |---|---|---|---|
 | P0 | 0 | 0 | 0 |
-| P1 | 5 | 5 | 0 |
+| P1 | 6 | 6 | 0 |
 | P2 | 14 | 13 | 1 — R30-J-2, branch protection (owner) |
-| P3 | 35 | 35 | 0 |
+| P3 | 36 | 36 | 0 |
 
-Info items and non-findings are listed in the registry and not counted. <!-- WS-E --> WS-E's
-findings are added when it merges.
+Info items and non-findings are listed in the registry and not counted; nor are four defects
+in this round's own changes that were caught and fixed before it closed (R30-INT-1 … 4).
 
 **Unauthorised sign/send paths.** None known. Every live signing primitive in the repository is
 reached only through `GraphiteGuard.executeTransfer` / `executeSwap`. In order, that path runs:
@@ -73,6 +73,7 @@ the guard, or code that patches `crypto.subtle` — that needs a separate signin
 | R30-B-1 (G-02) | Name a permissive profile in their own requests and raise a fresh program's confidence for every caller (0.44 → 0.64 in three transfers) | `tests/round30_trust_learning.rs`: 40 attacker requests, sequential and 32 concurrent, add 0 samples; all 11 targeted tests fail with the eight reversions |
 | R30-F-1 | Move a signer's tokens or lamports under a manifest whose declaration is silent or unreadable, at most a warning (5 SOL under "frobnicate the widget") | `tests/r30_declared_effects.rs` (6 fail with the signer rule off) |
 | R30-C-1 (G-07) | With write access to the data directory, rewrite the audit trail coherently | `durable::chain_trail_tests`, `tests/round30_audit_chain.rs` (any-MAC break caught) |
+| R30-WSE-1 | Declare any account creation in a manifest and have the fee payer's wallet reassigned to another program without a Critical finding — found by the new `state_diff` fuzz target in its first minute | `tests/round30_fuzz_findings.rs` (fails with the condition reverted; a benign control keeps the allocation excuse for other accounts) |
 
 **Remaining risk**, each detailed in §H and the registry:
 - **Code:**
@@ -184,6 +185,12 @@ Round 30 changes to it:
   - Compose: stop grace and a strict healthcheck; an MSRV job.
   - Rulesets and CODEOWNERS prepared; runbooks in `ops/`.
   - Seven safe Dependabot updates applied; ten deferred.
+- **WS-E — assurance and the release evaluation.**
+  - `graphite-core/fuzz/`: six cargo-fuzz targets (transaction parsing, lookup tables, manifest JSON, Token-2022 extensions, the state-diff check, RPC JSON), each with invariants beyond "no panic"; a PR smoke run and a daily 30-minute run per target.
+  - The fee-payer owner-change gap the fuzzer found (R30-WSE-1), fixed.
+  - Weekly sharded `cargo mutants` with per-module floors; five unit tests for the eight surviving risk-engine mutants.
+  - A 78 % line-coverage floor.
+  - `graphite benchmark --json`: a release evaluation from committed inputs, pinned; the holdout sealed by hash.
 - **WS-K — the ledger, the architecture map and the historical regression matrix** (`audit-r30/`).
 - **Integration (coordinator):**
   - the guard's test mocks speak the Round 30 contract;
@@ -191,6 +198,7 @@ Round 30 changes to it:
   - the SDK client captures `fetch` at load (broken and caught);
   - the dashboard shows L8 assurance and audit integrity;
   - `.env.example`, compose and the key runbook document the audit key, the anchor directory and the read key.
+  - Fixed within the round: CI jobs with a working directory had lost pipefail (R30-INT-1); empty audit settings in `.env.example` crash-looped compose (R30-INT-2); an index job could hold the audit writer lock after it counted itself done (R30-INT-3).
 
 ## F. Test and build evidence
 
@@ -261,8 +269,10 @@ The unmodified `apt-get` step and the online crate fetch run only in CI.
 6. Review the deferred Dependabot updates as their own changes: #41 (13 new crates, including the
    archive compression backend), #12 (sha2 0.11), TypeScript 7 in six packages (#14, #18, #21,
    #23, #27, #28), #22 (React 19), #26 (rust 1.99 with the CI toolchain).
-7. <!-- WS-E --> Confirm the fuzz, mutation and coverage workflows' budgets and floors.
-8. <!-- WS-E --> Review the generated release evaluation before any public claim.
+7. Confirm the assurance workflow's budgets and floors once it has run on the hosted runners; replace
+   the three provisional mutation floors (0.60) with measured ones.
+8. Review `graphite benchmark --json` before any public claim: its holdout is 38 rows, and it
+   scores the core's `approved` offline, where every approval is `analysis_only`.
 9. **Deployment:**
    - TLS at the proxy, DNS, monitoring and alerting on `/health` `degraded` and the `/metrics` series, with on-call.
    - Backups and a restore drill (`ops/backup-restore.md`).
@@ -311,11 +321,18 @@ The unmodified `apt-get` step and the online crate fetch run only in CI.
    - The decision rendering was checked against a stand-in Core before the server emitted the field.
    - The browser smoke script is not in CI.
 8. **Not run here:**
-   - the new CI behaviour (`CI gate`, MSRV job, merge-queue and schedule triggers, test-count floors) has not yet run on the hosted runners;
+   - of the new CI behaviour, the `CI gate`, MSRV and fuzz-smoke jobs and the test-count floors ran green on the PR (run 39686638069 at `63ba7dd`); the merge-queue and schedule triggers, and the weekly mutation and coverage jobs, have not run;
    - govulncheck was blocked (the proxy refuses `vuln.go.dev`);
    - the unmodified Dockerfile's `apt-get` step ran only in CI.
-9. <!-- WS-E --> Fuzzing, mutation testing and coverage: pending the WS-E merge.
-10. <!-- WS-E --> The release evaluation's figures: pending the WS-E merge.
+9. **Fuzzing, mutation, coverage.**
+   - Each fuzz target ran about two minutes locally; no differential fuzzing against agave.
+   - Only a quarter of the risk engine's mutants were run locally; `state_diff.rs` (857 mutants), `tx_artifact.rs` (324) and `simulation_integrity.rs` (178) were not mutated, and their 0.60 floors are provisional.
+   - The coverage figure (78.42 %) is the library's unit tests only.
+   - The weekly mutation and coverage jobs have not run on the hosted runners; the fuzz smoke has.
+10. **The release evaluation.** The holdout is 38 rows (37 exploits, 1 benign Jupiter swap refused
+    offline), so its false-refusal rate means almost nothing. The regression replay still counts a
+    verification error as a block (R30-WSE-3); the evaluation counts errors apart. The holdout
+    builder's reseal guard was checked by a source test, not executed.
 11. **Ledger depth.** 294 files were pattern-scanned rather than read by a person (§B).
 
 Launch stays blocked on §G items 1–3 and 9 regardless of anything above.

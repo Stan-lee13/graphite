@@ -230,7 +230,7 @@ A forensic whole-repository audit of the Round 29 merge (internal engineering wo
 independent audit), worked by eleven workstreams. Its report is
 `docs/round30-forensic-audit-and-remediation-2026-10-22.md`; every finding, with its test and
 the deliberate revert that showed the test fails without the fix, is in
-`docs/audit-r30/findings-registry.md`. No P0 was found; five P1s were fixed.
+`docs/audit-r30/findings-registry.md`. No P0 was found; six P1s were fixed.
 
 - **`approved` was never permission to sign; now the verdict says what is (G-01).** Every
   verdict carries `decision` (`executable_approved`, `analysis_only`, `inconclusive`, `blocked`)

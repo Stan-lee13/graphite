@@ -172,8 +172,8 @@ the public service. Owner decisions are marked.
 
 - [ ] **Independent third-party audit** — every report so far is internal engineering work and says so (owner)
 - [ ] **Branch protection on `main`** — required CI, no force-push; today CI is advisory because the branch accepts direct pushes. Round 30 prepared the rulesets (`.github/rulesets/main.json`, `main-review.json`, `release-tags.json`), CODEOWNERS and one `CI gate` check to require; applying them is the owner's (STOP-SHIP)
-- [ ] **A generated, test-pinned release evaluation (R-P1)** <!-- WS-E --> — pending the WS-E merge
-- [ ] **Coverage-guided fuzzing, scheduled mutation testing, a coverage floor (R-P11, R-P12, R-P15)** <!-- WS-E --> — pending the WS-E merge
+- [x] **A generated, test-pinned release evaluation (R-P1)** — `graphite benchmark --json`, pinned by `tests/release_evaluation.rs` (Round 30); a larger, independent holdout is still to come
+- [ ] **Coverage-guided fuzzing, scheduled mutation testing, a coverage floor (R-P11, R-P12, R-P15)** — wired in Round 30 (`graphite-core/fuzz/`, `.github/workflows/assurance.yml`); the provisional mutation floors still need measuring and the weekly and daily jobs have yet to run
 - [ ] **The 155 unreadable value-moving declarations that only warn (Round 30, R30-F-1)** — tighten or keep, an owner decision
 - [x] Token-2022 `TransferFee` modelled — transfers and harvests in Round 20; withdrawals, several transfers into one account and send-and-receive in Round 21, by replaying the executed instructions; the epoch read; a pending schedule always judged (Round 22). Transfer hooks that run a program judged by what the bytes let them reach (Round 22)
 - [x] **Message version 1 parsed** — done in Round 19 (it was 17.0% of the 19,458-transaction mainnet sample of 2026-09-23 and refused by name until then); the v1 config values surfaced in `scope.compute_budget` in Round 21, with the legacy/v0 Compute Budget instructions

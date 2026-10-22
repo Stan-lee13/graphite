@@ -71,7 +71,7 @@ Each has named tests; see the audit table.
 | G-07 | A tamper-evident audit trail | **Done when keyed**; an anchored checkpoint for truncation and stale restore | `tests/round30_audit_chain.rs` |
 | R-P18 (part) | L8 assurance stated | `inclusion_assurance`, provider independence, high-assurance mode; light-client proof still EXT | `tests/round30_l8_assurance.rs` |
 | R-M13 / R-M14 (part) | Honest intents | 21 grounded grants; the rest still refused | `tests/round30_grounded_intents.rs` |
-| R-P1, R-P11/12/15 | Release evaluation; fuzzing, mutation, coverage | <!-- WS-E --> pending the WS-E merge | — |
+| R-P1, R-P11/12/15 | Release evaluation; fuzzing, mutation, coverage | **R-P1 done** (`graphite benchmark --json`, pinned); fuzzing, mutation and coverage **wired** with floors, two of them provisional | `tests/release_evaluation.rs`, `tests/round30_fuzz_findings.rs`, `.github/workflows/assurance.yml` |
 
 Not closed by Round 29, and still in the tables below: R-P1, R-P7, R-P10, R-P11/12/15, R-P16/17,
 R-P18, A2-08, R-M4, R-M5, R-M6, R-M7/8, R-M9, R-M10, R-M12, R-M13, R-M14, R-M15.
