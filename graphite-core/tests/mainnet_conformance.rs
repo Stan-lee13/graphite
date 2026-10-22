@@ -851,8 +851,18 @@ const COMMITTED_BLOCKS: &str =
 //     no intent declares, so the risk column was PermissionEscalation; the
 //     transfer is now the primary and the risk column is Clear. L2 refuses
 //     each ("durable nonce refused") before and after.
+//
+// Re-pinned in Round 34 (R33-1), from `bda80e69…` at `b473a31`. Diffed row by
+// row (`GRAPHITE_MAINNET_VERDICTS_OUT` on both builds): 1 of 2,277 rows
+// changed, none from refused to approved, approvals 0 before and after —
+//   row 1273, Stake `Withdraw` (`04000000248b9e00…`, slot 449808325): the
+//     harness labels every Stake-program instruction `stake`
+//     (`live_corpus::classify_intent`), and a stake intent no longer declares
+//     the `withdraw` class, so the risk column is PermissionEscalation
+//     (Check 9b) where it was Clear. Not approved before or after (offline,
+//     no earned evidence).
 const COMMITTED_VERDICTS_SHA256: &str =
-    "bda80e6978580f94bf34d40282f937537ca14e8d767d91a9cfc6c28dc44149cf";
+    "de8c8a6fef34cefb2ecc11a8c5150951ad25aa169ad6e187edb75c8f52859f58";
 
 #[test]
 fn the_committed_mainnet_blocks_give_the_recorded_verdicts_every_run() {

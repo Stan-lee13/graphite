@@ -193,10 +193,21 @@ type Pin = (
 // words, so L5 refused them; the IDL-backed lines name the token movement,
 // L5 passes, and the regenerated corpus labels them approved. Nothing else
 // in any split moved.
+//
+// Re-pinned in Round 34 (R33-1): regression TP 21 → 22, TN 5 → 4; dev TP
+// 11,802 → 11,804, TN 1,103 → 1,101. The three rows are the corpus's Stake
+// `Withdraw` fixtures labelled `stake` — regression "Stake Withdraw declared as
+// a stake operation" (`dade3cea…`, was `55c52f79…` labelled approve), dev
+// canonical `94b985a3…` and dev near-prefix `1624bd65…`. A stake intent no
+// longer declares the `withdraw` class, so the regenerated corpus labels them
+// refused and the pipeline refuses them: each moved from a correct approval
+// to a correct refusal, none from refused to approved. Nothing else moved
+// (the two Orca rows whose fixtures gained the `whirlpool_program` slot, K-7,
+// keep their labels and outcomes).
 const PINNED: &[Pin] = &[
     ("holdout", 38, 0, 0, 37, 0, 1, 0),
-    ("regression", 32, 6, 0, 21, 5, 0, 0),
-    ("dev", 12_943, 38, 0, 11_802, 1_103, 0, 0),
+    ("regression", 32, 6, 0, 22, 4, 0, 0),
+    ("dev", 12_943, 38, 0, 11_804, 1_101, 0, 0),
     ("hand-built", 24, 0, 2, 15, 7, 0, 0),
 ];
 
