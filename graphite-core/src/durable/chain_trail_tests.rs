@@ -804,12 +804,30 @@ fn name_of(p: &Path) -> String {
     p.file_name().unwrap().to_string_lossy().into_owned()
 }
 
+/// `forged_approval` with a link recomputed to match its content (no MAC):
+/// a line the grammar alone does not refuse, so only the rule that a line
+/// without its newline is never read keeps it from the readers.
+fn resealed_forgery(template: &str) -> String {
+    let serde_json::Value::Object(mut map) =
+        serde_json::from_str(&forged_approval(template)).unwrap()
+    else {
+        panic!()
+    };
+    map.remove(CHAIN_FIELD);
+    let head = chain::ChainHead {
+        next_seq: 999,
+        prev: [7u8; 32],
+        keyed: false,
+    };
+    chain::seal(map, &head, None).0
+}
+
 #[test]
 fn a_forged_unterminated_line_in_an_archive_breaks_the_chain_and_is_never_read() {
     let (path, key, archives) = rotated_keyed_trail("forged-unterminated", 21, 30);
     let template = lines_of(&archives[0])[0].clone();
     let mut bytes = std::fs::read(&archives[0]).unwrap();
-    bytes.extend_from_slice(forged_approval(&template).as_bytes());
+    bytes.extend_from_slice(resealed_forgery(&template).as_bytes());
     std::fs::write(&archives[0], bytes).unwrap();
 
     let report = verify(&path, std::slice::from_ref(&key));
@@ -820,6 +838,35 @@ fn a_forged_unterminated_line_in_an_archive_breaks_the_chain_and_is_never_read()
         victim_seen_by_a_reader(&path).is_none(),
         "a reader resolved the victim to the forged approval"
     );
+}
+
+/// The active file's final line without its newline is not judged (a write
+/// may be in flight) — and so it is never read either. A keyed writer does
+/// not resume onto it: it is a whole record without a MAC.
+#[test]
+fn a_forged_unterminated_tail_of_the_active_file_is_never_read() {
+    let (path, key, _) = rotated_keyed_trail("forged-active-tail", 39, 20);
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 20, 2);
+    close(log);
+    let template = lines_of(&path)[0].clone();
+    let mut bytes = std::fs::read(&path).unwrap();
+    bytes.extend_from_slice(resealed_forgery(&template).as_bytes());
+    std::fs::write(&path, bytes).unwrap();
+    let report = verify(&path, std::slice::from_ref(&key));
+    assert_eq!(report.exit_code(), 0, "{report:?}");
+    assert_eq!(report.unparseable_lines, 1);
+    assert!(victim_seen_by_a_reader(&path).is_none());
+    let err = AuditLog::open_with_options(
+        &path,
+        AuditOptions {
+            key: Some(key.clone()),
+            ..AuditOptions::default()
+        },
+    )
+    .err()
+    .expect("a keyed writer resumed onto an unkeyed forged tail");
+    assert!(err.to_string().contains("carries no MAC"), "{err}");
 }
 
 #[test]
@@ -1450,6 +1497,45 @@ fn verify_and_every_reader_agree_on_every_mutated_line() {
         }
     }
     let _ = archives;
+}
+
+/// An index is written beside the trail by whoever can write the data
+/// directory. One forged to point at a forged line is never an answer: the
+/// read-back applies the line grammar, not the index's word.
+#[test]
+fn a_forged_index_pointing_at_a_forged_line_is_never_an_answer() {
+    let (path, _key, archives) = rotated_keyed_trail("forged-index", 38, 30);
+    let mut lines = lines_of(&archives[0]);
+    let forged = forged_approval(&lines[0]);
+    let offset: u64 = lines[0].len() as u64 + 1;
+    lines.insert(1, forged);
+    write_lines(&archives[0], &lines);
+    let index_dir = path.with_file_name("audit.jsonl-index");
+    std::fs::create_dir_all(&index_dir).unwrap();
+    let (sha, len) = archive_index::file_sha256(&archives[0]).unwrap();
+    let key = format!("tx:{VICTIM_TX}");
+    let last: HashMap<String, u64> = [(key.clone(), offset)].into_iter().collect();
+    let counts: HashMap<String, (usize, usize)> = [(key, (1, 0))].into_iter().collect();
+    archive_index::write(
+        &archive_index::index_path(&index_dir, &archives[0]).unwrap(),
+        len,
+        &sha,
+        archive_index::IndexSource {
+            last: &last,
+            counts: &counts,
+            lifecycle: &HashMap::new(),
+        },
+    )
+    .unwrap();
+    let reader = AuditLog::open_read_only(&path).unwrap();
+    assert!(reader
+        .find_verification(VerificationKey::TransactionSha256(VICTIM_TX))
+        .is_none());
+    assert_eq!(
+        reader.count_verifications(VerificationKey::TransactionSha256(VICTIM_TX)),
+        (0, 0)
+    );
+    reader.wait_for_index_jobs();
 }
 
 #[test]
