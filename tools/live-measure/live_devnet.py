@@ -5,8 +5,13 @@ One run, each step reported:
   1. keys      — two throwaway keypairs (payer, and a second address recorded
                  for the report); the payer's secret goes to a mode-600 file
                  and an environment variable, never to the log.
-  2. airdrop   — devnet faucet, with backoff. A faucet that refuses is
-                 reported as SKIPPED, honestly: nothing after it is claimed.
+  2. airdrop   — devnet faucet, retried with backoff. When it still refuses
+                 and a pinned solana-test-validator is supplied (`--validator`;
+                 the workflow downloads Agave by exact version and sha256), the
+                 run falls back to that local real Solana runtime and airdrops
+                 from it; without one, a refusing faucet is reported as
+                 SKIPPED, honestly: nothing after it is claimed.
+                 `--cluster local-validator` skips the faucet altogether.
   3. evidence  — optional operator seeding for the System program
                  (`graphite evidence seed` / `baseline`), exactly what an
                  operator does before a fresh Core approves anything: without
@@ -21,11 +26,15 @@ One run, each step reported:
   8. audit     — `graphite audit verify --json` over the run's trail.
 
     python3 live_devnet.py --graphite graphite-core/target/release/graphite \\
-        --rpc https://api.devnet.solana.com --out-dir report/
+        --rpc https://api.devnet.solana.com --validator path/to/solana-test-validator --out-dir report/
+    python3 live_devnet.py --graphite ... --cluster local-validator --validator ... --out-dir report/
+
+The report names the cluster the gated path actually ran on.
 
 Fails (exit 1) on a defect: the guard refusing or failing after funding, an
 L8 discrepancy, an unclean Core shutdown, or an audit trail that does not
-verify. Exit 0 with status SKIPPED when the faucet refused.
+verify. Exit 0 with status SKIPPED when the faucet refused and no local
+validator was supplied.
 """
 import argparse
 import json
@@ -92,6 +101,60 @@ def airdrop(rpc, pubkey, lamports, *, wait_s=90, call=solrpc.call, sleep=time.sl
     raise solrpc.RpcError(f"airdrop not visible after {wait_s}s")
 
 
+AIRDROP_FAILURES = (solrpc.RateLimited, solrpc.RpcError, KeyError, TypeError)
+
+
+def airdrop_with_retry(rpc, pubkey, lamports, *, rounds=3, pause=30.0, airdrop_fn=airdrop, sleep=time.sleep):
+    """The faucet, `rounds` times, `pause`·2^n apart (each round already backs
+    off on a 429 inside solrpc.call). Returns (balance, attempts); raises the
+    last refusal, with every attempt recorded on it as `.attempts`."""
+    attempts = []
+    for n in range(rounds):
+        try:
+            bal = airdrop_fn(rpc, pubkey, lamports)
+            attempts.append({"round": n + 1, "result": "paid"})
+            return bal, attempts
+        except AIRDROP_FAILURES as e:
+            attempts.append({"round": n + 1, "result": f"{type(e).__name__}: {e}"[:200]})
+            last = e
+            if n < rounds - 1:
+                sleep(pause * (2**n))
+    last.attempts = attempts
+    raise last
+
+
+def start_validator(binary, work, *, port=8899, faucet_port=9900, timeout=120, popen=subprocess.Popen, call=solrpc.call,
+                    sleep=time.sleep, clock=time.monotonic):
+    """A local real Solana runtime: solana-test-validator on loopback, with
+    its own faucet, fresh ledger. Returns (process, rpc url) once getHealth
+    says ok."""
+    ledger = os.path.join(work, "ledger")
+    cmd = [binary, "--ledger", ledger, "--reset", "--quiet", "--bind-address", "127.0.0.1",
+           "--rpc-port", str(port), "--faucet-port", str(faucet_port)]
+    proc = popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    rpc = f"http://127.0.0.1:{port}"
+    deadline = clock() + timeout
+    last = None
+    while clock() < deadline:
+        if proc.poll() is not None:
+            raise RuntimeError(f"solana-test-validator exited {proc.returncode} before it was healthy")
+        try:
+            if call(rpc, "getHealth", [], attempts=1, timeout=5).get("result") == "ok":
+                return proc, rpc
+        except (solrpc.RpcError, solrpc.RateLimited, ValueError) as e:  # not up yet
+            last = e
+        sleep(1)
+    proc.terminate()
+    raise TimeoutError(f"solana-test-validator not healthy after {timeout}s ({last})")
+
+
+def validator_version(binary):
+    try:
+        return subprocess.run([binary, "--version"], capture_output=True, text=True, timeout=30).stdout.strip()
+    except (OSError, subprocess.SubprocessError) as e:
+        return f"unknown ({type(e).__name__})"
+
+
 def wait_http(url, key=None, timeout=60):
     deadline = time.monotonic() + timeout
     last = None
@@ -144,7 +207,8 @@ def l8_outcome(l8):
 
 
 def run(args):
-    report = {"rpc_host": solrpc.host_of(args.rpc), "steps": [], "defects": [], "notes": [], "status": None}
+    report = {"cluster": args.cluster, "cluster_reason": "requested", "rpc_host": solrpc.host_of(args.rpc), "steps": [],
+              "defects": [], "notes": [], "status": None}
     work = tempfile.mkdtemp(prefix="graphite-devnet-")
     data_dir = os.path.join(work, "data")
     os.makedirs(data_dir)
@@ -160,6 +224,11 @@ def run(args):
                     p.wait(10)
                 except subprocess.TimeoutExpired:
                     p.kill()
+        # The local validator's own log, when one ran (its ledger goes too).
+        vlog = os.path.join(work, "ledger", "validator.log")
+        if os.path.exists(vlog):
+            with open(vlog, errors="replace") as src, open(os.path.join(args.out_dir, "validator.log"), "w") as dst:
+                dst.writelines(src.readlines()[-400:])
         # The throwaway payer key and the run's data dir go with the run.
         shutil.rmtree(work, ignore_errors=True)
         return report
@@ -179,13 +248,41 @@ def run(args):
         step(report, "keys", "ok", payer=keys["payer"], destination=keys["destination"])
         report["payer"] = keys["payer"]
 
-        # 2. airdrop
+        # 2. airdrop — the devnet faucet (retried), else a local real runtime
+        def local_cluster(why):
+            proc, rpc = start_validator(args.validator, work)
+            procs.append(proc)
+            report.update(cluster="local-validator", cluster_reason=why, rpc_host=solrpc.host_of(rpc))
+            step(report, "validator", "ok", version=validator_version(args.validator), rpc_host=solrpc.host_of(rpc), reason=why)
+            return rpc
+
+        if args.cluster == "local-validator":
+            if not args.validator:
+                step(report, "validator", "FAILED", error="--cluster local-validator needs --validator")
+                report["defects"].append("local-validator mode without a solana-test-validator binary")
+                return finish("DEFECTS")
+            args.rpc = local_cluster("forced (--cluster local-validator)")
         try:
-            bal = airdrop(args.rpc, keys["payer"], args.airdrop_lamports)
-            step(report, "airdrop", "ok", lamports=bal)
-        except (solrpc.RateLimited, solrpc.RpcError, KeyError, TypeError) as e:
-            step(report, "airdrop", "SKIPPED", reason=f"the faucet refused or never paid out: {e}")
-            return finish("SKIPPED")
+            bal, attempts = airdrop_with_retry(args.rpc, keys["payer"], args.airdrop_lamports,
+                                               rounds=1 if args.cluster == "local-validator" else args.faucet_rounds)
+            step(report, "airdrop", "ok", lamports=bal, attempts=attempts)
+        except AIRDROP_FAILURES as e:
+            attempts = getattr(e, "attempts", [])
+            if args.cluster == "local-validator" or not args.validator:
+                step(report, "airdrop", "SKIPPED", reason=f"the faucet refused or never paid out: {e}", attempts=attempts)
+                if args.cluster == "local-validator":
+                    report["defects"].append("the local validator's faucet did not pay out")
+                    return finish("DEFECTS")
+                return finish("SKIPPED")
+            step(report, "airdrop", "REFUSED", reason=f"the devnet faucet refused or never paid out: {e}", attempts=attempts)
+            try:
+                args.rpc = local_cluster(f"fallback: the devnet faucet refused after {len(attempts)} rounds")
+                bal, _ = airdrop_with_retry(args.rpc, keys["payer"], args.airdrop_lamports, rounds=1)
+                step(report, "airdrop", "ok", lamports=bal, cluster="local-validator")
+            except (RuntimeError, TimeoutError, OSError, *AIRDROP_FAILURES) as e2:
+                step(report, "validator", "FAILED", error=f"{type(e2).__name__}: {e2}"[:300])
+                report["defects"].append("the faucet refused and the local-validator fallback did not start or pay out")
+                return finish("DEFECTS")
 
         # 3. evidence (operator seeding — what an operator does before a fresh Core
         #    approves anything)
@@ -310,7 +407,20 @@ def run(args):
 
 
 def markdown(report):
-    out = [f"# Live devnet — gated path end to end: {report['status']}", "", f"RPC host: `{report['rpc_host']}`", ""]
+    cluster = report.get("cluster", "devnet")
+    out = [
+        f"# Live {'devnet' if cluster == 'devnet' else 'local validator'} — gated path end to end: {report['status']}",
+        "",
+        f"Cluster: **{cluster}** ({report.get('cluster_reason', 'requested')}) · RPC host: `{report['rpc_host']}`",
+        "",
+    ]
+    if cluster == "local-validator":
+        out += [
+            "The gated path ran against a local real Solana runtime (a pinned solana-test-validator, its own faucet "
+            "and ledger), not devnet: the same bytes, simulation, signing, submission and L8 reconciliation, on a "
+            "cluster nobody else uses. Solscan links in the guard log do not resolve for it.",
+            "",
+        ]
     out += ["| step | status | detail |", "|---|---|---|"]
     for s in report["steps"]:
         detail = {k: v for k, v in s.items() if k not in ("step", "status")}
@@ -323,7 +433,8 @@ def markdown(report):
     if report.get("notes"):
         out += ["", "## Not proven by this run", ""] + [f"- {n}" for n in report["notes"]]
     if report["status"] == "SKIPPED":
-        out += ["", "The faucet refused; nothing after the airdrop was run or claimed. Rerun later."]
+        out += ["", "The faucet refused and no local validator was supplied; nothing after the airdrop was run or claimed. "
+                "Rerun later, or with `--cluster local-validator`."]
     return "\n".join(out) + "\n"
 
 
@@ -331,6 +442,10 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--graphite", required=True, help="the graphite binary (server + cli features)")
     ap.add_argument("--rpc", default="https://api.devnet.solana.com")
+    ap.add_argument("--cluster", choices=["devnet", "local-validator"], default="devnet",
+                    help="devnet (falls back to --validator when the faucet refuses) or a local validator outright")
+    ap.add_argument("--validator", default=None, help="a solana-test-validator binary (pinned Agave release)")
+    ap.add_argument("--faucet-rounds", type=int, default=3)
     ap.add_argument("--airdrop-lamports", type=int, default=500_000_000)
     ap.add_argument("--core-port", type=int, default=7331)
     ap.add_argument("--no-seed-evidence", dest="seed_evidence", action="store_false")

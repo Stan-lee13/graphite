@@ -21,8 +21,37 @@ page under **Artifacts**; the report is also the job summary.
 Inputs (all optional):
 
 - mainnet: `rpc_url`, `transactions` (200), `blocks` (2), `pace_seconds`
-  (1.0), `l8_checks` (10).
-- devnet: `rpc_url`, `seed_evidence` (true), `airdrop_lamports` (5×10⁸).
+  (1.0), `l8_checks` (10), `fresh_transactions` (40), `seed_evidence`
+  (false; a labelled PR seeds).
+- devnet: `rpc_url`, `seed_evidence` (true), `airdrop_lamports` (5×10⁸),
+  `cluster` (`devnet`; a labelled PR uses `local-validator`).
+
+## What the reports break down (Round 32, P3b)
+
+- **Why** — every L3/L4 failure and inconclusive, by reason, overall and per
+  program: the simulator's own error (`InstructionError{2, Custom(6001)}`,
+  `AccountNotFound`, `BlockhashNotFound`, `InsufficientFundsForFee`, …), or
+  why no verdict was reached (`no mature baseline`, `incomplete: RPC
+  rate-limited`, …), with addresses and numbers normalised out. Printed in the
+  job log and the summary.
+- **Fresh blockhash** — the first `fresh_transactions` are verified twice,
+  back to back: as recorded, and with the unsigned frame's blockhash rewritten
+  to a current one from getLatestBlockhash (`wire.py`; legacy, v0 and v1 at
+  its fixed offset 8; durable-nonce transactions are skipped and counted —
+  their blockhash slot is the nonce). Nothing is signed or sent. The Core
+  simulates with `replaceRecentBlockhash: true`, so the two passes are
+  expected to agree; the table shows whether they do.
+- **Fresh Core** — with no seeded or earned evidence no program can reach
+  `executable_approved` and L3 cannot flag; the report says so. With
+  `seed_evidence`, the System and SPL Token programs are seeded first
+  (`live_mainnet.py seed`) and get their own *Seeded programs* table.
+- **Cluster** (devnet) — the public faucet is retried (3 rounds, 30 s / 60 s
+  apart, each backing off on 429); when it still refuses, the run falls back
+  to a pinned Agave `solana-test-validator` (exact version and archive
+  sha256 in `live-devnet.yml`) on loopback, airdrops from it and runs the same
+  gated flow. The report names the cluster and why. To bump Agave: download
+  the new `solana-release-x86_64-unknown-linux-gnu.tar.bz2`, `sha256sum` it,
+  and change `AGAVE_VERSION` and `AGAVE_SHA256` together.
 
 A provider URL that carries a key goes in a repository secret instead —
 `GRAPHITE_LIVE_RPC_URL` (mainnet) or `GRAPHITE_DEVNET_RPC_URL` (devnet) —
@@ -53,7 +82,9 @@ anything but `ApprovedAndExecuted` (a discrepancy, or an `Unavailable` whose
 reason is Graphite failing to read the chain's answer), an unclean shutdown,
 `graphite audit verify` exiting 1 or 3 (2 — an unkeyed trail,
 corruption-evident only — is accepted and reported), or the runner itself
-crashing. SKIPPED (exit 0): the faucet refused. INCONCLUSIVE (exit 0): the
+crashing, or the local-validator fallback not starting or not paying out.
+SKIPPED (exit 0): the faucet refused and no validator binary was given (the
+workflow always gives one). INCONCLUSIVE (exit 0): the
 transfer executed but L8 could not reach the chain for a transient reason
 (429, timeout, connection) or the confirmation was still pending.
 
@@ -83,7 +114,19 @@ python3 tools/live-measure/live_devnet.py --graphite graphite-core/target/releas
 ```
 
 `--rate-limit getBlock,requestAirdrop` makes the mock answer those methods
-with HTTP 429, to see the INCONCLUSIVE and SKIPPED paths.
+with HTTP 429, to see the INCONCLUSIVE and SKIPPED paths (and, with
+`--validator`, the local-validator fallback). `--fail-programs A,B` makes a
+simulation that calls A or B report `InstructionError{i, Custom(6001)}`; a
+simulation asked without `replaceRecentBlockhash` on a stale blockhash reports
+`BlockhashNotFound`, as a validator does.
+
+With an Agave release unpacked locally, the devnet flow runs on a real
+runtime with no network at all:
+
+```
+python3 tools/live-measure/live_devnet.py --graphite graphite-core/target/release/graphite \
+    --cluster local-validator --validator path/to/solana-release/bin/solana-test-validator --out-dir /tmp/lv
+```
 
 Unit tests (no network):
 

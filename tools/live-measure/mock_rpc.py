@@ -10,14 +10,26 @@ chain.
 
 `--rate-limit getBlock,requestAirdrop` answers those methods with HTTP 429, to
 exercise the backoff and the honest "inconclusive / skipped" reporting.
+
+`--fail-programs P1,P2` makes a simulation that calls one of those programs
+report `{"InstructionError":[i,{"Custom":6001}]}` (i: that instruction), and a
+simulation asked WITHOUT `replaceRecentBlockhash` whose blockhash is not the
+mock's current one reports `BlockhashNotFound`, as a validator does — so the
+replay's reason breakdown and its stale/fresh comparison have something to
+read (Round 32, P3b).
 """
 import argparse
 import base64
 import json
+import os
 import sys
 import threading
 from collections import defaultdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import wire  # noqa: E402
+from solrpc import b58decode  # noqa: E402
 
 DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG"
 BLOCKHASH = "4sGjMW1sUnHzSxGspuhpqLDx6wiyjNtZAMdL4VZHirAn"
@@ -47,7 +59,8 @@ def shortvec(data, at):
 
 
 def effects(raw):
-    """(account keys, lamport deltas, fee) of a wire transaction: the fee (5000 per
+    """(account keys, lamport deltas, fee, top-level program ids) of a wire
+    transaction: the fee (5000 per
     signature) from the payer, and every top-level System transfer. Enough for
     a balance-array answer that is consistent with the bytes; nothing else
     about execution is modelled."""
@@ -61,9 +74,11 @@ def effects(raw):
     at += 32 * nkeys + 32  # keys, recent blockhash
     delta = [0] * nkeys
     delta[0] -= 5000 * nsig
+    programs = []
     nix, at = shortvec(raw, at)
     for _ in range(nix):
         prog = raw[at]
+        programs.append(keys[prog] if prog < nkeys else None)
         at += 1
         nacc, at = shortvec(raw, at)
         accs = list(raw[at : at + nacc])
@@ -77,11 +92,19 @@ def effects(raw):
             lamports = int.from_bytes(data[4:12], "little")
             delta[accs[0]] -= lamports
             delta[accs[1]] += lamports
-    return keys, delta, 5000 * nsig
+    return keys, delta, 5000 * nsig, programs
+
+
+def recent_blockhash(raw):
+    """The frame's blockhash (any version), or None when it does not parse."""
+    try:
+        return b58encode(wire.blockhash(raw))
+    except ValueError:
+        return None
 
 
 class State:
-    def __init__(self, sample_path, rate_limited, genesis):
+    def __init__(self, sample_path, rate_limited, genesis, fail_programs=()):
         self.blocks = defaultdict(list)
         if sample_path:
             with open(sample_path, encoding="utf-8") as f:
@@ -89,6 +112,7 @@ class State:
                     self.blocks[r["slot"]].append(r)
         self.head = (max(self.blocks) + 40) if self.blocks else 400_000_000
         self.rate_limited = set(rate_limited)
+        self.fail_programs = set(fail_programs)
         self.genesis = genesis
         self.balances = defaultdict(int)
         # With a mainnet sample loaded, every account other people's
@@ -155,13 +179,24 @@ class State:
         if method == "simulateTransaction":
             cfg = params[1] if len(params) > 1 and isinstance(params[1], dict) else {}
             addrs = (cfg.get("accounts") or {}).get("addresses")
-            balances, after = {}, {}
+            balances, after, err = {}, {}, None
+            raw = base64.b64decode(params[0]) if cfg.get("encoding") == "base64" else None
             try:
-                parsed = effects(base64.b64decode(params[0])) if cfg.get("encoding") == "base64" else None
+                parsed = effects(raw) if raw is not None else None
             except (IndexError, ValueError):
                 parsed = None  # a layout this mock does not read: no balance arrays, as an incomplete answer
+            if raw is not None and not cfg.get("replaceRecentBlockhash") and recent_blockhash(raw) not in (None, BLOCKHASH):
+                err = "BlockhashNotFound"
+            elif raw is not None and self.fail_programs:
+                # The calling instruction's index where this mock can read the
+                # instructions (legacy, v0); 0 for a frame it cannot (v1).
+                hit = next((i for i, p in enumerate(parsed[3]) if p in self.fail_programs), None) if parsed else None
+                if hit is None and any(b58decode(p) in raw for p in self.fail_programs):
+                    hit = 0
+                if hit is not None:
+                    err = {"InstructionError": [hit, {"Custom": 6001}]}
             if parsed:
-                keys, delta, fee = parsed
+                keys, delta, fee, _ = parsed
                 pre = [self.balance(k) for k in keys]
                 balances = {"preBalances": pre, "postBalances": [a + d for a, d in zip(pre, delta)], "fee": fee,
                             "preTokenBalances": [], "postTokenBalances": [], "loadedAddresses": {"writable": [], "readonly": []}}
@@ -169,7 +204,7 @@ class State:
             return {
                 "context": {"slot": self.head},
                 "value": {
-                    "err": None,
+                    "err": err,
                     "logs": [f"Program {SYSTEM_PROGRAM} invoke [1]", f"Program {SYSTEM_PROGRAM} success"],
                     "accounts": [self.account(a, after) for a in addrs] if addrs is not None else None,
                     "unitsConsumed": 150,
@@ -187,7 +222,7 @@ class State:
             if raw is None:
                 raise KeyError("sendTransaction (base64 only)")
             sig = b58encode(raw[1:65])
-            keys, delta, fee = effects(raw)
+            keys, delta, fee, _ = effects(raw)
             with self.lock:
                 pre = [self.balance(k) for k in keys]
                 for k, a, d in zip(keys, pre, delta):
@@ -268,8 +303,10 @@ def main(argv=None):
     ap.add_argument("--sample")
     ap.add_argument("--rate-limit", default="")
     ap.add_argument("--genesis", default=DEVNET_GENESIS)
+    ap.add_argument("--fail-programs", default="")
     args = ap.parse_args(argv)
-    state = State(args.sample, [m for m in args.rate_limit.split(",") if m], args.genesis)
+    state = State(args.sample, [m for m in args.rate_limit.split(",") if m], args.genesis,
+                  [p for p in args.fail_programs.split(",") if p])
     server = ThreadingHTTPServer(("127.0.0.1", args.port), handler_for(state))
     print(f"mock rpc on 127.0.0.1:{args.port}", flush=True)
     server.serve_forever()

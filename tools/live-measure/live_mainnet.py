@@ -21,13 +21,28 @@ has earned no evidence yet. What it fails on is a Graphite defect:
 A public endpoint's rate limit is not a defect: calls back off, and what
 could not be measured is counted and reported as such.
 
+Every L3/L4 failure and inconclusive is broken down by its reason — the
+simulator's error (`InstructionError{2, Custom(6001)}`, `AccountNotFound`, …)
+or why no verdict was reached — overall and per program (Round 32, P3b).
+
+`--fresh N` re-verifies the first N transactions with the blockhash of their
+unsigned frame rewritten to one just fetched with getLatestBlockhash (see
+wire.py: a measurement-side byte rewrite; nothing is signed or sent), each
+right after its stale twin, and reports the two passes side by side: the
+stale replay is not what an agent submits, the fresh one is.
+
+`seed` seeds operator evidence for the System and SPL Token programs before
+the Core starts (as live_devnet.py does for System), so that a simple transfer
+can reach `executable_approved` and the L3 anchored-baseline path runs.
+
     python3 live_mainnet.py fetch   --rpc URL --blocks 2 --out sample.json
     (graphite-core) GRAPHITE_MAINNET_SAMPLE=sample.json GRAPHITE_MAINNET_HONEST_INTENT=1 \\
         GRAPHITE_MAINNET_REQUESTS=requests.jsonl cargo test --release --test mainnet_conformance \\
         -- --ignored real_mainnet_traffic --nocapture
     python3 live_mainnet.py select  --requests requests.jsonl --n 200 --out selected.jsonl
-    GRAPHITE_API_KEY=... python3 live_mainnet.py replay --selected selected.jsonl \\
-        --sample sample.json --core http://127.0.0.1:7331 --out-dir report/
+    python3 live_mainnet.py seed    --graphite graphite --data-dir DATA --out seed.json   # optional
+    GRAPHITE_API_KEY=... LIVE_RPC_URL=... python3 live_mainnet.py replay --selected selected.jsonl \\
+        --sample sample.json --core http://127.0.0.1:7331 --fresh 40 [--seeded seed.json] --out-dir report/
 
 No credentials are read but GRAPHITE_API_KEY (the local Core's) and an
 optional RPC URL, which is never printed: logs name its host only.
@@ -38,6 +53,7 @@ import json
 import os
 import re
 import statistics
+import subprocess
 import sys
 import time
 import urllib.error
@@ -48,6 +64,19 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "mainnet-sample"))
 
 import solrpc  # noqa: E402
+import wire  # noqa: E402
+
+SYSTEM_PROGRAM = "11111111111111111111111111111111"
+SPL_TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+# What an operator seeds before a fresh Core approves anything: 3 simulation
+# matches (SimulationValidated) and a baseline L3 anchors on. System matches
+# live_devnet.py; SPL Token's band covers Transfer (~4.6k CU) through
+# TransferChecked (~6.2k CU) — a whole multi-program transaction measured
+# against it is expected to fall outside, which is what the run shows.
+SEED_BASELINES = {
+    SYSTEM_PROGRAM: {"mean": 150, "std": 30, "samples": 10},
+    SPL_TOKEN_PROGRAM: {"mean": 5000, "std": 1500, "samples": 10},
+}
 
 INHERENT = {"program_semantics", "inner_instructions"}
 DECISIONS = ("executable_approved", "analysis_only", "inconclusive", "blocked")
@@ -238,6 +267,125 @@ def l3_class(result):
     return status
 
 
+# ── why: the reason behind every L3/L4 failure and inconclusive ─────────────
+
+ADDRESS_RE = re.compile(r"\b[1-9A-HJ-NP-Za-km-z]{32,44}\b")
+HEX_RE = re.compile(r"\b[0-9a-f]{40,}\b")
+NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
+
+
+def norm(text, limit=90):
+    """A reason as a class: its first clause, with addresses, hashes and
+    numbers taken out, so that one cause counts once however often it
+    occurs."""
+    text = re.split(r" \| | — |; ", str(text), maxsplit=1)[0]
+    text = ADDRESS_RE.sub("<addr>", text)
+    text = HEX_RE.sub("<hash>", text)
+    text = NUMBER_RE.sub("N", text)
+    text = " ".join(text.split())
+    return text[:limit] + ("…" if len(text) > limit else "")
+
+
+def sim_error_class(err):
+    """The simulator's `err`, as the Core quotes it (rpc_client.rs: a string
+    variant bare, anything else as compact JSON), named:
+    `BlockhashNotFound`, `AccountNotFound`, `InsufficientFundsForFee`,
+    `InstructionError{2, Custom(6001)}`, `InstructionError{0, InvalidAccountData}`,
+    `InsufficientFundsForRent`, …"""
+    err = str(err).strip()
+    try:
+        value, _ = json.JSONDecoder().raw_decode(err)
+    except ValueError:
+        m = re.match(r"[A-Za-z][A-Za-z0-9_]*", err)
+        return m.group(0) if m else "unparsed: " + norm(err, 60)
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict) and len(value) == 1:
+        name, inner = next(iter(value.items()))
+        if name == "InstructionError" and isinstance(inner, list) and len(inner) == 2:
+            index, kind = inner
+            if isinstance(kind, dict) and len(kind) == 1:
+                kname, kval = next(iter(kind.items()))
+                kind = f"{kname}({kval})" if kname == "Custom" else kname
+            return f"InstructionError{{{index}, {kind}}}"
+        return name
+    return "unparsed: " + norm(json.dumps(value), 60)
+
+
+def _after_reported(text):
+    i = text.find("reported ")
+    return text[i + len("reported ") :] if i >= 0 else None
+
+
+def incomplete_class(why):
+    low = why.lower()
+    if RATE_LIMIT_RE.search(why):
+        return "RPC rate-limited"
+    m = re.search(r"simulation failed: (.*?)\)?$", why)
+    if m:
+        return "simulation call failed: " + norm(m.group(1), 60)
+    if "response was incomplete" in low:
+        return "simulator response incomplete"
+    if "programs this transaction called" in low:
+        return "callee report unreadable"
+    if "cpi tree" in low:
+        return "CPI tree not rebuilt"
+    if "pre/post state diff" in low:
+        return "no state diff"
+    return norm(why, 60)
+
+
+def l3_reason(l3):
+    text = str(l3.get("reason", ""))
+    low = text.lower()
+    if text.startswith("Simulation FAILED"):
+        return sim_error_class(_after_reported(text) or "")
+    if "anchored band" in low:
+        return "flagged: outside the anchored band"
+    if "flagged" in low:
+        return "flagged: divergence from " + ("the shape baseline" if "shape" in low else "the program baseline")
+    if text.startswith("Simulation INCOMPLETE"):
+        return "incomplete: " + incomplete_class(text.split("—", 1)[-1].strip())
+    if "no trusted baseline" in low:
+        return "no mature baseline"
+    if "no transaction artifact" in low:
+        return "no artifact"
+    if "no rpc endpoint" in low:
+        return "no RPC"
+    if RATE_LIMIT_RE.search(text):
+        return "RPC rate-limited"
+    return norm(text)
+
+
+def l4_reason(l4):
+    text = str(l4.get("reason", ""))
+    m = re.search(r"simulation failed: (.*?)\)", text)
+    if m:
+        inner = m.group(1)
+        if RATE_LIMIT_RE.search(inner):
+            return "simulation call failed: RPC rate-limited"
+        quoted = _after_reported(inner)
+        return "simulation failed: " + (sim_error_class(quoted) if quoted else norm(inner, 60))
+    if RATE_LIMIT_RE.search(text):
+        return "RPC rate-limited"
+    return norm(text)
+
+
+def failure_reasons(result):
+    """`["L3 failed: InstructionError{2, Custom(6001)}", "L4 inconclusive: …"]`:
+    one entry per L3/L4 layer that did not pass, naming why."""
+    out = []
+    for prefix, explain in (("L3", l3_reason), ("L4", l4_reason)):
+        l = layer(result, prefix)
+        if l and l.get("status") in ("failed", "inconclusive"):
+            out.append(f"{prefix} {l['status']}: {explain(l)}")
+    return out
+
+
+def finding_patterns(result):
+    return sorted({str(f.get("pattern", "")) for f in (result.get("risk_verdict") or {}).get("findings") or [] if isinstance(f, dict)})
+
+
 # ── replay ───────────────────────────────────────────────────────────────────
 
 
@@ -273,8 +421,140 @@ def percentile(values, p):
     return round(s[k], 1)
 
 
-def replay(selected, sample_rows, core, key, *, pace=1.0, l8=10, sleep=time.sleep, post_fn=post, get_fn=get):
-    """Every selected request through the Core, then L8 for a few executed
+class FreshBlockhash:
+    """getLatestBlockhash, reused for `ttl` seconds (a blockhash stays valid
+    for ~60 s; one fetch per transaction would only spend the rate limit)."""
+
+    def __init__(self, rpc, *, ttl=20.0, call=solrpc.call, clock=time.monotonic):
+        self.rpc, self.ttl, self.call, self.clock = rpc, ttl, call, clock
+        self.value, self.at, self.fetches = None, None, 0
+
+    def __call__(self):
+        if self.value is None or self.clock() - self.at > self.ttl:
+            r = self.call(self.rpc, "getLatestBlockhash", [{"commitment": "confirmed"}], attempts=4)
+            if "error" in r:
+                raise solrpc.RpcError(f"getLatestBlockhash: {r['error']}")
+            self.value = solrpc.b58decode(r["result"]["value"]["blockhash"])
+            if len(self.value) != 32:
+                raise solrpc.RpcError("getLatestBlockhash: not a 32-byte hash")
+            self.at = self.clock()
+            self.fetches += 1
+        return self.value
+
+
+def verify_one(report, entry, body_in, core, key, post_fn, tag=""):
+    """One /verify call, judged. Returns the row, or None on a transport
+    error (already recorded as a defect)."""
+    t0 = time.monotonic()
+    try:
+        status, body = post_fn(f"{core}/verify", key, body_in)
+    except Exception as e:  # connection reset, refused: the server fell over
+        report["server_errors"].append({"row": entry["row"], "error": f"{tag}{type(e).__name__}: {e}"})
+        report["defects"].append(f"{tag}row {entry['row']}: /verify transport error {type(e).__name__}: {e}")
+        return None
+    latency = (time.monotonic() - t0) * 1000
+    row = {
+        "row": entry["row"],
+        "slot": entry["slot"],
+        "program_id": entry["program_id"],
+        "instruction": entry.get("instruction_name") or "",
+        "failed_on_chain": bool(entry.get("failed_on_chain")),
+        "http": status,
+        "latency_ms": round(latency, 1),
+    }
+    if status >= 500:
+        report["server_errors"].append({"row": entry["row"], "status": status, "body": body})
+        report["defects"].append(f"{tag}row {entry['row']}: /verify answered {status}")
+    elif status != 200:
+        # A request the Core refused as malformed (400/422) or throttled
+        # (429): counted, not judged. The harness built it, so a 4xx is
+        # worth reading, but it is not a verdict.
+        report["refused_requests"][str(status)] += 1
+        row["refusal"] = (body or {}).get("error") if isinstance(body, dict) else str(body)[:200]
+    else:
+        result = body
+        l3 = layer(result, "L3") or {}
+        l4 = layer(result, "L4") or {}
+        row.update(
+            {
+                "decision": result.get("decision"),
+                "executable": result.get("executable"),
+                "approved": result.get("approved"),
+                "manifest_found": result.get("manifest_found"),
+                "risk": (result.get("risk_verdict") or {}).get("status"),
+                "policy": result.get("policy_verdict"),
+                "l3": l3_class(result),
+                "l3_reason": str(l3.get("reason", ""))[:240],
+                "l4": l4.get("status"),
+                "l4_reason": str(l4.get("reason", ""))[:240],
+                # Classified from the full text, not the truncated copy.
+                "reasons": failure_reasons(result),
+                "findings": finding_patterns(result),
+                "simulation_flagged": result.get("simulation_flagged"),
+                "simulation_divergence": result.get("simulation_divergence"),
+                "unobserved_codes": (result.get("scope") or {}).get("unobserved_codes"),
+                "transaction_sha256": (result.get("scope") or {}).get("transaction_sha256"),
+                "audit_trail_id": result.get("audit_trail_id"),
+                "rpc_rate_limited": rate_limited(result),
+            }
+        )
+        found = defects_for(entry, result)
+        if found:
+            row["defects"] = found
+            report["defects"].extend(f"{tag}row {entry['row']} ({entry['program_id']}): {d}" for d in found)
+    return row
+
+
+def outcome(row):
+    return {"decision": row.get("decision"), "l3": row.get("l3"), "reasons": row.get("reasons") or []}
+
+
+def fresh_one(report, entry, stale_row, core, key, post_fn, blockhash_fn):
+    """The same request with a just-fetched blockhash in its unsigned frame,
+    verified right after its stale twin (same Core state, seconds apart)."""
+    f = report["fresh"]
+    f["requested"] += 1
+    frame = (entry.get("input") or {}).get("signed_transaction")
+    if not frame:
+        f["skipped"]["no artifact"] += 1
+        return
+    try:
+        lay = wire.layout(frame)
+    except ValueError:
+        f["skipped"]["frame does not parse"] += 1
+        return
+    if lay.durable_nonce:
+        # Its blockhash slot is the nonce value: there is no "fresh" for it.
+        f["skipped"][f"durable nonce ({lay.version})"] += 1
+        return
+    if blockhash_fn is None:
+        f["skipped"]["no RPC for a fresh blockhash"] += 1
+        return
+    try:
+        new_hash = blockhash_fn()
+    except (solrpc.RateLimited, solrpc.RpcError, KeyError, TypeError, ValueError) as e:
+        f["skipped"][f"no fresh blockhash ({type(e).__name__})"] += 1
+        return
+    try:
+        patched = wire.patch_blockhash(frame, new_hash)
+    except ValueError as e:
+        f["skipped"][norm(e, 60)] += 1
+        return
+    row = verify_one(report, entry, dict(entry["input"], signed_transaction=list(patched)), core, key, post_fn, tag="fresh ")
+    if row is None:
+        return
+    row["version"] = lay.version
+    f["patched_by_version"][lay.version] += 1
+    f["rows"].append(row)
+    if stale_row.get("decision") and row.get("decision"):
+        s, n = outcome(stale_row), outcome(row)
+        f["pairs"].append({"row": entry["row"], "program_id": entry["program_id"], "version": lay.version, "stale": s, "fresh": n, "changed": s != n})
+
+
+def replay(selected, sample_rows, core, key, *, pace=1.0, l8=10, fresh=0, blockhash_fn=None, seeded=None,
+           sleep=time.sleep, post_fn=post, get_fn=get):
+    """Every selected request through the Core (the first `fresh` of them
+    twice: stale, then with a fresh blockhash), then L8 for a few executed
     ones. Returns the report dict."""
     report = {
         "core": core,
@@ -285,6 +565,8 @@ def replay(selected, sample_rows, core, key, *, pace=1.0, l8=10, sleep=time.slee
         "server_errors": [],
         "refused_requests": Counter(),
         "l8": [],
+        "seeded": seeded,
+        "fresh": {"asked": fresh, "requested": 0, "skipped": Counter(), "patched_by_version": Counter(), "rows": [], "pairs": []},
     }
     try:
         report["health"] = get_fn(f"{core}/health")
@@ -299,63 +581,14 @@ def replay(selected, sample_rows, core, key, *, pace=1.0, l8=10, sleep=time.slee
         return finish(report)
 
     for i, entry in enumerate(selected):
-        t0 = time.monotonic()
-        try:
-            status, body = post_fn(f"{core}/verify", key, entry["input"])
-        except Exception as e:  # connection reset, refused: the server fell over
-            report["server_errors"].append({"row": entry["row"], "error": f"{type(e).__name__}: {e}"})
-            report["defects"].append(f"row {entry['row']}: /verify transport error {type(e).__name__}: {e}")
-            sleep(pace)
-            continue
-        latency = (time.monotonic() - t0) * 1000
-        row = {
-            "row": entry["row"],
-            "slot": entry["slot"],
-            "program_id": entry["program_id"],
-            "instruction": entry.get("instruction_name") or "",
-            "failed_on_chain": bool(entry.get("failed_on_chain")),
-            "http": status,
-            "latency_ms": round(latency, 1),
-        }
-        if status >= 500:
-            report["server_errors"].append({"row": entry["row"], "status": status, "body": body})
-            report["defects"].append(f"row {entry['row']}: /verify answered {status}")
-        elif status != 200:
-            # A request the Core refused as malformed (400/422) or throttled
-            # (429): counted, not judged. The harness built it, so a 4xx is
-            # worth reading, but it is not a verdict.
-            report["refused_requests"][str(status)] += 1
-            row["refusal"] = (body or {}).get("error") if isinstance(body, dict) else str(body)[:200]
-        else:
-            result = body
-            l3 = layer(result, "L3") or {}
-            l4 = layer(result, "L4") or {}
-            row.update(
-                {
-                    "decision": result.get("decision"),
-                    "executable": result.get("executable"),
-                    "approved": result.get("approved"),
-                    "manifest_found": result.get("manifest_found"),
-                    "risk": (result.get("risk_verdict") or {}).get("status"),
-                    "policy": result.get("policy_verdict"),
-                    "l3": l3_class(result),
-                    "l3_reason": str(l3.get("reason", ""))[:240],
-                    "l4": l4.get("status"),
-                    "l4_reason": str(l4.get("reason", ""))[:240],
-                    "simulation_flagged": result.get("simulation_flagged"),
-                    "simulation_divergence": result.get("simulation_divergence"),
-                    "unobserved_codes": (result.get("scope") or {}).get("unobserved_codes"),
-                    "transaction_sha256": (result.get("scope") or {}).get("transaction_sha256"),
-                    "audit_trail_id": result.get("audit_trail_id"),
-                    "rpc_rate_limited": rate_limited(result),
-                }
-            )
-            found = defects_for(entry, result)
-            if found:
-                row["defects"] = found
-                report["defects"].extend(f"row {entry['row']} ({entry['program_id']}): {d}" for d in found)
-        report["rows"].append(row)
+        row = verify_one(report, entry, entry["input"], core, key, post_fn)
         sleep(pace)
+        if row is None:
+            continue
+        report["rows"].append(row)
+        if i < fresh:
+            fresh_one(report, entry, row, core, key, post_fn, blockhash_fn)
+            sleep(pace)
 
     # L8: a handful of transactions the chain executed, reconciled against the
     # verdict this run recorded for their exact bytes.
@@ -416,6 +649,34 @@ def finish(report):
     report["l3"] = dict(Counter(r["l3"] for r in rows))
     report["l4"] = dict(Counter(str(r["l4"]) for r in rows))
     report["risk"] = dict(Counter(str(r["risk"]) for r in rows))
+    report["reasons"] = dict(Counter(x for r in rows for x in r.get("reasons") or []).most_common())
+    by_reason = defaultdict(Counter)
+    for r in rows:
+        for x in r.get("reasons") or []:
+            by_reason[r["program_id"]][x] += 1
+    report["reasons_by_program"] = {p: dict(c.most_common()) for p, c in sorted(by_reason.items(), key=lambda kv: -sum(kv[1].values()))}
+    report["finding_patterns"] = dict(Counter(p for r in rows for p in r.get("findings") or []).most_common())
+    seeded = (report.get("seeded") or {}).get("programs") or {}
+    report["seeded_outcomes"] = {
+        p: {
+            "verdicts": sum(1 for r in rows if r["program_id"] == p),
+            "decisions": dict(Counter(r["decision"] for r in rows if r["program_id"] == p)),
+            "l3": dict(Counter(r["l3"] for r in rows if r["program_id"] == p)),
+            "reasons": dict(Counter(x for r in rows if r["program_id"] == p for x in r.get("reasons") or []).most_common()),
+        }
+        for p in seeded
+    }
+    f = report.get("fresh")
+    if f is not None:
+        pairs = f["pairs"]
+        f["skipped"] = dict(f["skipped"])
+        f["patched_by_version"] = dict(f["patched_by_version"])
+        f["compared"] = len(pairs)
+        f["changed"] = sum(1 for p in pairs if p["changed"])
+        for side in ("stale", "fresh"):
+            f[f"{side}_decisions"] = dict(Counter(p[side]["decision"] for p in pairs))
+            f[f"{side}_l3"] = dict(Counter(p[side]["l3"] for p in pairs))
+            f[f"{side}_reasons"] = dict(Counter(x for p in pairs for x in p[side]["reasons"]).most_common())
     report["failed_on_chain"] = sum(1 for r in rows if r["failed_on_chain"])
     lat = [r["latency_ms"] for r in report["rows"] if "latency_ms" in r]
     report["latency_ms"] = {
@@ -449,6 +710,26 @@ def markdown(report, harness=None):
             "That is the endpoint, not Graphite; rerun later or set the `GRAPHITE_LIVE_RPC_URL` secret.",
             "",
         ]
+    seeded = sorted(((report.get("seeded") or {}).get("programs") or {}))
+    if report.get("seeded") and not report["seeded"].get("ok", True):
+        out += [f"**Operator evidence seeding did not complete:** {report['seeded'].get('error')}", ""]
+    if seeded:
+        out += [
+            f"**Evidence:** operator evidence was seeded for {', '.join(f'`{p}`' for p in seeded)} only "
+            "(simulation matches + an anchored compute baseline, `graphite evidence seed|baseline`). Those programs "
+            "can reach `executable_approved`, and their L3 is judged against the seeded anchor, which can FLAG; every "
+            "other program is as on a fresh Core (next paragraph). See *Seeded programs* below.",
+            "",
+        ]
+    out += [
+        "**A fresh Core has earned no evidence for "
+        + ("any other program" if seeded else "any program")
+        + ".** No verdict for such a program can be `executable_approved` (every built-in profile refuses without "
+        "evidence), and L3 has no anchored baseline to compare against, so it cannot FLAG a divergence either: "
+        "`no mature baseline` below is that state, not a measurement failure. What this run measures for them is the "
+        "pipeline's behaviour and the simulator's answers, not approvals.",
+        "",
+    ]
     out += [
         "| | |",
         "|---|---:|",
@@ -476,6 +757,9 @@ def markdown(report, harness=None):
     out += ["", "## L4 (state diff)", "", "| status | count |", "|---|---:|"]
     for k, v in sorted(report["l4"].items(), key=lambda kv: -kv[1]):
         out.append(f"| {k} | {v} |")
+    out += reasons_markdown(report)
+    out += fresh_markdown(report.get("fresh"))
+    out += seeded_markdown(report)
     out += ["", "## L8 (inclusion) on transactions the chain executed", "", "| reconciliation | count |", "|---|---:|"]
     for k, v in report["l8_summary"]["reconciliation"].items():
         out.append(f"| `{k}` | {v} |")
@@ -496,8 +780,111 @@ def markdown(report, harness=None):
         "- `BlockedButExecuted` in L8 is the alarm firing as designed: Graphite refused a transaction "
         "somebody else executed.",
         "- `inclusion_assurance` is `single_provider` unless a witness RPC was configured.",
+        "- The Core simulates with `replaceRecentBlockhash: true` (graphite-core/src/rpc_client.rs, "
+        "`simulate_config`), so a stale blockhash cannot by itself make L3 fail; the fresh pass measures that "
+        "rather than assuming it.",
     ]
     return "\n".join(out) + "\n"
+
+
+def _cell(text):
+    return str(text).replace("|", "\\|")
+
+
+def reasons_markdown(report, top=60):
+    out = ["", "## Why: every L3/L4 failure and inconclusive, by reason", ""]
+    if not report.get("reasons"):
+        return out + ["None: every measured L3 and L4 passed (or no verdict was measured)."]
+    out += ["| layer · status: reason | count |", "|---|---:|"]
+    out += [f"| {_cell(k)} | {v} |" for k, v in report["reasons"].items()]
+    out += ["", f"### By program (top {top} rows)", "", "| program | layer · status: reason | count |", "|---|---|---:|"]
+    flat = [(p, k, v) for p, c in report["reasons_by_program"].items() for k, v in c.items()]
+    flat.sort(key=lambda t: -t[2])
+    out += [f"| `{p}` | {_cell(k)} | {v} |" for p, k, v in flat[:top]]
+    if len(flat) > top:
+        out.append(f"| … | {len(flat) - top} more rows in report.json (`reasons_by_program`) | |")
+    if report.get("finding_patterns"):
+        out += ["", "### Risk findings behind the refusals", "", "| pattern | verdicts |", "|---|---:|"]
+        out += [f"| `{k}` | {v} |" for k, v in report["finding_patterns"].items()]
+    return out
+
+
+def fresh_markdown(f):
+    if not f or not f.get("asked"):
+        return []
+    out = [
+        "",
+        "## Fresh-blockhash pass (what an agent would actually submit)",
+        "",
+        f"The first {f['asked']} transactions were verified twice, back to back: as recorded (a blockhash minutes "
+        "old) and with the unsigned frame's blockhash rewritten to one just fetched (getLatestBlockhash). "
+        "Measurement-side bytes only: nothing was signed or sent.",
+        "",
+        f"- compared: {f.get('compared', 0)} pairs · outcome changed: **{f.get('changed', 0)}** · "
+        f"patched by version: {f.get('patched_by_version') or {}} · skipped: {f.get('skipped') or {}}",
+        "",
+        "| | stale | fresh |",
+        "|---|---:|---:|",
+    ]
+    for d in DECISIONS:
+        out.append(f"| decision `{d}` | {f.get('stale_decisions', {}).get(d, 0)} | {f.get('fresh_decisions', {}).get(d, 0)} |")
+    for k in sorted(set(f.get("stale_l3", {})) | set(f.get("fresh_l3", {}))):
+        out.append(f"| L3 outcome: {_cell(k)} | {f['stale_l3'].get(k, 0)} | {f['fresh_l3'].get(k, 0)} |")
+    for k in sorted(set(f.get("stale_reasons", {})) | set(f.get("fresh_reasons", {}))):
+        out.append(f"| reason · {_cell(k)} | {f['stale_reasons'].get(k, 0)} | {f['fresh_reasons'].get(k, 0)} |")
+    changed = [p for p in f.get("pairs", []) if p["changed"]]
+    if changed:
+        out += ["", "| row | program | version | stale | fresh |", "|---:|---|---|---|---|"]
+        for p in changed[:30]:
+            s, n = p["stale"], p["fresh"]
+            out.append(
+                f"| {p['row']} | `{p['program_id']}` | {p['version']} | {s['decision']} · {_cell(s['l3'])} · {_cell('; '.join(s['reasons']))} "
+                f"| {n['decision']} · {_cell(n['l3'])} · {_cell('; '.join(n['reasons']))} |"
+            )
+    return out
+
+
+def seeded_markdown(report):
+    outcomes = report.get("seeded_outcomes") or {}
+    if not outcomes:
+        return []
+    out = ["", "## Seeded programs", ""]
+    seed = report.get("seeded") or {}
+    if not seed.get("ok", True):
+        out += [f"**Seeding did not complete:** {seed.get('error')}", ""]
+    out += ["| program | verdicts | " + " | ".join(DECISIONS) + " | L3 | reasons |", "|---|---:|" + "---:|" * len(DECISIONS) + "---|---|"]
+    for p, o in outcomes.items():
+        out.append(
+            f"| `{p}` | {o['verdicts']} | " + " | ".join(str(o["decisions"].get(d, 0)) for d in DECISIONS)
+            + f" | {_cell(o['l3'] or '—')} | {_cell(o['reasons'] or '—')} |"
+        )
+    if all(o["verdicts"] == 0 for o in outcomes.values()):
+        out += ["", "No sampled transaction was attributed to a seeded program, so the seeded path was not exercised."]
+    return out
+
+
+# ── seed (operator evidence, before the Core starts) ────────────────────────
+
+
+def seed(graphite, data_dir, programs=None, *, run=subprocess.run):
+    """`graphite evidence seed` + `baseline` for each program, then `show`.
+    Returns the record the replay report carries."""
+    programs = programs or SEED_BASELINES
+    doc = {"ok": True, "programs": {}}
+    for p, b in programs.items():
+        cmds = [
+            [graphite, "evidence", "seed", "--data-dir", data_dir, "--program", p, "--simulation-matches", "3"],
+            [graphite, "evidence", "baseline", "--data-dir", data_dir, "--program", p, "--mean-compute-units", str(b["mean"]),
+             "--std-compute-units", str(b["std"]), "--samples", str(b["samples"])],
+        ]
+        for c in cmds:
+            r = run(c, capture_output=True, text=True)
+            if r.returncode != 0:
+                doc.update(ok=False, error=f"`graphite {' '.join(c[1:3])}` for {p} exited {r.returncode}: {(r.stderr or '')[-300:]}")
+                return doc
+        show = run([graphite, "evidence", "show", "--data-dir", data_dir, "--program", p], capture_output=True, text=True)
+        doc["programs"][p] = {"baseline": b, "show": ((show.stdout or show.stderr) or "")[-600:]}
+    return doc
 
 
 def read_jsonl(path):
@@ -522,9 +909,27 @@ def main(argv=None):
     r.add_argument("--core", default="http://127.0.0.1:7331")
     r.add_argument("--pace", type=float, default=1.0)
     r.add_argument("--l8", type=int, default=10)
+    r.add_argument("--fresh", type=int, default=0, help="re-verify the first N with a fresh blockhash (needs --rpc)")
+    r.add_argument("--rpc", default=os.environ.get("LIVE_RPC_URL"), help="for getLatestBlockhash only (default: $LIVE_RPC_URL)")
+    r.add_argument("--seeded", default=None, help="the record `seed` wrote, when evidence was seeded")
     r.add_argument("--harness-exit", type=int, default=None)
     r.add_argument("--out-dir", required=True)
+    sd = sub.add_parser("seed")
+    sd.add_argument("--graphite", required=True)
+    sd.add_argument("--data-dir", required=True)
+    sd.add_argument("--out", required=True)
     args = ap.parse_args(argv)
+
+    if args.cmd == "seed":
+        doc = seed(args.graphite, args.data_dir)
+        with open(args.out, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh, indent=1)
+        for p, d in doc["programs"].items():
+            print(f"seeded {p}: baseline {d['baseline']}\n{d['show']}")
+        if not doc["ok"]:
+            print(f"SEEDING FAILED: {doc['error']}", flush=True)
+            return 1
+        return 0
 
     if args.cmd == "fetch":
         try:
@@ -548,7 +953,21 @@ def main(argv=None):
     key = os.environ.get("GRAPHITE_API_KEY", "")
     with open(args.sample, encoding="utf-8") as fh:
         sample_rows = [dict(r, row=i) for i, r in enumerate(json.load(fh)["rows"])]
-    report = replay(read_jsonl(args.selected), sample_rows, args.core, key, pace=args.pace, l8=args.l8)
+    seeded = None
+    if args.seeded:
+        try:
+            with open(args.seeded, encoding="utf-8") as fh:
+                seeded = json.load(fh)
+        except (OSError, ValueError) as e:
+            seeded = {"ok": False, "programs": {}, "error": f"no seeding record: {type(e).__name__}: {e}"}
+    blockhash_fn = FreshBlockhash(args.rpc) if (args.fresh and args.rpc) else None
+    if args.fresh:
+        print(f"fresh pass: {args.fresh} transactions, blockhash from {solrpc.host_of(args.rpc) if args.rpc else '(no RPC: skipped)'}", flush=True)
+    report = replay(read_jsonl(args.selected), sample_rows, args.core, key, pace=args.pace, l8=args.l8,
+                    fresh=args.fresh, blockhash_fn=blockhash_fn, seeded=seeded)
+    if seeded is not None and not seeded.get("ok", True):
+        report["defects"].append(f"operator evidence seeding failed: {seeded.get('error')}")
+        report["status"] = "DEFECTS"
     harness = None
     if args.harness_exit is not None:
         harness = {
