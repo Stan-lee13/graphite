@@ -1,0 +1,206 @@
+# Prometheus alerting rules for Graphite Core.
+#
+# Every series here is one the server actually exports (graphite-core/src/
+# server.rs, `metrics_handler`), plus `up` from the scrape itself and
+# `graphite_health_degraded` from deploy/scripts/health-textfile.sh, which
+# turns each `/health` `degraded_reasons` entry into a series for the
+# node-exporter textfile collector (one reason, `simulation_baseline_frozen`,
+# has no counter of its own).
+#
+# severity: page  — wake someone: the gate may have been bypassed, or verdicts
+#                   are not being recorded.
+# severity: ticket — fix within the working day.
+#
+# Test: promtool test rules deploy/prometheus/graphite-alerts.test.yml
+
+groups:
+  - name: graphite-gate
+    rules:
+      # A transaction Graphite BLOCKED executed on-chain: the gate was bypassed.
+      - alert: GraphiteBlockedTransactionExecuted
+        expr: increase(graphite_execution_discrepancies_total[10m]) > 0
+        labels:
+          severity: page
+        annotations:
+          summary: "A transaction Graphite blocked executed on-chain ({{ $labels.instance }})"
+          description: >-
+            L8 reconciliation found a blocked transaction on-chain. Something
+            signed outside the gate. docs/ops/incidents.md, "Failed finalization / L8 discrepancy".
+
+      # A caller reported signing, submitting or confirming a transaction whose
+      # most recent verdict was BLOCKED.
+      - alert: GraphiteLifecycleOnBlocked
+        expr: increase(graphite_lifecycle_events_on_blocked_total[10m]) > 0
+        labels:
+          severity: page
+        annotations:
+          summary: "A lifecycle event was reported for a blocked transaction ({{ $labels.instance }})"
+          description: >-
+            An agent reported signing/submission/confirmation of a transaction
+            Graphite refused. Find the record with `graphite execution` and the
+            agent's own logs; docs/ops/incidents.md.
+
+      - alert: GraphiteLifecycleSequenceAnomaly
+        expr: increase(graphite_lifecycle_sequence_anomalies_total[30m]) > 0
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Lifecycle reports out of order or contradictory ({{ $labels.instance }})"
+          description: >-
+            A duplicate, out-of-order or unpreceded lifecycle stage, or a
+            signature that differs from the one on record: one report is false.
+
+  - name: graphite-l8-rpc
+    rules:
+      - alert: GraphiteRpcBytesRejected
+        expr: increase(graphite_execution_chain_bytes_rejected_total[30m]) > 0
+        labels:
+          severity: ticket
+        annotations:
+          summary: "The RPC returned transaction bytes not bound to their signature ({{ $labels.instance }})"
+          description: A faulty or hostile RPC provider. Compare against the witness; consider switching providers.
+
+      - alert: GraphiteRpcInconsistent
+        expr: increase(graphite_execution_chain_inconsistent_total[30m]) > 0
+        labels:
+          severity: ticket
+        annotations:
+          summary: "The primary RPC gave two accounts of one signature ({{ $labels.instance }})"
+          description: getSignatureStatuses and getTransaction disagree; no positive L8 conclusion is drawn from it.
+
+      - alert: GraphiteWitnessDisagreement
+        expr: increase(graphite_execution_witness_disagreements_total[1h]) > 3
+        labels:
+          severity: ticket
+        annotations:
+          summary: "The inclusion witness keeps disagreeing with the primary RPC ({{ $labels.instance }})"
+          description: Sustained disagreement means one endpoint is wrong about the chain, or the witness is unreachable.
+
+      - alert: GraphiteProgramUpgraded
+        expr: increase(graphite_program_upgrades_detected_total[1h]) > 0
+        labels:
+          severity: ticket
+        annotations:
+          summary: "A manifested program was redeployed or changed upgrade authority ({{ $labels.instance }})"
+          description: >-
+            Its evidence was withdrawn; it is refused until re-earned or
+            re-seeded. Review the upgrade before re-seeding (docs/ops/incidents.md).
+
+  - name: graphite-audit
+    rules:
+      - alert: GraphiteAuditDisabled
+        expr: graphite_audit_enabled == 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: "No audit trail is attached ({{ $labels.instance }})"
+          description: Verdicts are not being recorded (Constitution P9).
+
+      - alert: GraphiteAuditWritesFailing
+        expr: increase(graphite_audit_writes_failed_total[10m]) > 0
+        labels:
+          severity: page
+        annotations:
+          summary: "Audit records are failing to append ({{ $labels.instance }})"
+          description: >-
+            The server refuses (503) any verdict it cannot record. Usually a
+            full or read-only disk: docs/ops/incidents.md, "Disk full / audit writes failing".
+
+      - alert: GraphiteAuditRotationFailing
+        expr: increase(graphite_audit_rotations_failed_total[30m]) > 0
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Audit log rotation is failing ({{ $labels.instance }})"
+          description: The active file grows without bound and every dashboard read scans it.
+
+      - alert: GraphiteAuditActiveFileLarge
+        expr: graphite_audit_active_bytes > 536870912
+        for: 30m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "The active audit file is over 512 MiB ({{ $labels.instance }})"
+          description: Rotation is off (GRAPHITE_AUDIT_ROTATE_BYTES=0) or not happening.
+
+      - alert: GraphiteAuditNotTamperEvident
+        expr: graphite_audit_tamper_evident == 0 and graphite_audit_enabled == 1
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "The audit trail is not keyed ({{ $labels.instance }})"
+          description: >-
+            Without GRAPHITE_AUDIT_KEY_FILE the hash chain is corruption-evident
+            only: anyone who can write the data directory can rewrite it.
+            docs/ops/keys.md, "Audit MAC key".
+
+      - alert: GraphiteAuditAnchorFailing
+        expr: increase(graphite_audit_anchor_writes_failed_total[1h]) > 0
+        labels:
+          severity: ticket
+        annotations:
+          summary: "A rotation checkpoint could not be written to the anchor directory ({{ $labels.instance }})"
+          description: The trail since the last anchored checkpoint is not anchored.
+
+      - alert: GraphiteGraphSnapshotFailing
+        expr: increase(graphite_graph_snapshots_failed_total[30m]) > 0
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Semantic-graph snapshots are failing ({{ $labels.instance }})"
+          description: Trust tiers and baselines earned since the last good snapshot exist only in memory.
+
+  - name: graphite-service
+    rules:
+      - alert: GraphiteDown
+        expr: up{job="graphite"} == 0
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: "Prometheus cannot scrape Graphite Core ({{ $labels.instance }})"
+          description: Agents behind the guard refuse everything while the Core is unreachable (fail-closed); nothing executes.
+
+      - alert: GraphiteDegraded
+        expr: max by (instance, reason) (graphite_health_degraded) == 1
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Graphite reports itself degraded: {{ $labels.reason }} ({{ $labels.instance }})"
+          description: The `/health` degraded reason, from deploy/scripts/health-textfile.sh. docs/ops/incidents.md.
+
+      - alert: GraphiteVerifyErrorRate
+        expr: |
+          (
+            sum by (instance) (rate(graphite_verify_errors_total[10m]))
+            /
+            clamp_min(sum by (instance) (rate(graphite_verify_requests_total[10m])), 1e-9)
+          ) > 0.05
+          and sum by (instance) (rate(graphite_verify_requests_total[10m])) > 0.01
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Over 5% of verification requests fail before a verdict ({{ $labels.instance }})"
+          description: Malformed requests (422) or verdicts the trail could not record (503).
+
+      - alert: GraphiteLoadShedding
+        expr: increase(graphite_load_shed_total[10m]) > 0
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Verification requests are being shed at the in-flight limit ({{ $labels.instance }})"
+          description: Raise GRAPHITE_MAX_CONCURRENT only with CPU to match, or add capacity.
+
+      - alert: GraphiteAuthFailureSpike
+        expr: sum by (instance) (rate(graphite_auth_failures_total[5m])) > 1
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "More than one refused key per second ({{ $labels.instance }})"
+          description: A misconfigured client after a key rotation, or someone guessing keys.

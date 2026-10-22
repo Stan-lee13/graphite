@@ -1,0 +1,174 @@
+# Graphite in production on one host: Caddy (TLS, HSTS, route allow-list) in
+# front of Graphite Core, plus the optional AI layer (`--profile ai`).
+#
+# A complete file, not an overlay on the root docker-compose.yml: that one
+# builds from source, publishes the Core on host loopback and takes the API
+# key from the environment. Here the Core runs a released image pinned by
+# digest, publishes nothing (only Caddy is reachable), and reads every key
+# from a file-backed secret, so no key is in `docker inspect`, in the compose
+# model or in a shell's environment.
+#
+# Prepare (once), from this directory:
+#   install -d -m 0700 secrets anchors
+#   for k in api_key admin_api_key read_api_key audit_key; do openssl rand -hex 32 > secrets/$k; done
+#   sudo chown 10001:10001 secrets/* anchors && sudo chmod 0600 secrets/*
+#     # 10001 is the image's user. The server refuses an audit key that
+#     # group/other can read; leave admin_api_key EMPTY to disable /admin/*.
+#   cat > .env <<'EOF'
+#   GRAPHITE_IMAGE=ghcr.io/<owner>/graphite-core:<version>@sha256:<digest>
+#   GRAPHITE_SITE=graphite.example.com
+#   ACME_EMAIL=ops@example.com
+#   EOF
+#   # plus GRAPHITE_RPC_URL, GRAPHITE_RPC_WITNESS_URL, GRAPHITE_WALLET_PROFILE…
+#   # in graphite.env (mode 0600; every variable is in the root .env.example).
+#
+# Verify the image before the first pull (docs/ops/production-checklist.md):
+#   gh attestation verify oci://ghcr.io/<owner>/graphite-core@sha256:<digest> --repo <owner>/graphite
+#
+# Run:      docker compose -f docker-compose.prod.yml up -d
+# With AI:  docker compose -f docker-compose.prod.yml --profile ai up -d
+# Validate: docker compose -f docker-compose.prod.yml config --quiet
+
+name: graphite
+
+services:
+  caddy:
+    image: caddy:2.11.7@sha256:3095ad245c353e3bdb27a38f22a095c1cfa9e295ab21c0214c3e72b0e2960525
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      GRAPHITE_SITE: ${GRAPHITE_SITE:?set GRAPHITE_SITE (the public host name) in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+      GRAPHITE_UPSTREAM: graphite:7331
+    volumes:
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [edge, backend]
+    depends_on:
+      graphite:
+        condition: service_healthy
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 256M, pids: 256 }
+    logging: &logging
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  graphite:
+    image: ${GRAPHITE_IMAGE:?set GRAPHITE_IMAGE to a verified release, pinned by digest}
+    restart: unless-stopped
+    # The keys come from secrets, exported only into the server's own process.
+    # admin_api_key may be an empty file: /admin/* is then disabled.
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        GRAPHITE_API_KEY="$$(cat /run/secrets/api_key)"
+        GRAPHITE_READ_API_KEY="$$(cat /run/secrets/read_api_key)"
+        export GRAPHITE_API_KEY GRAPHITE_READ_API_KEY
+        admin="$$(cat /run/secrets/admin_api_key)"
+        if [ -n "$$admin" ]; then GRAPHITE_ADMIN_API_KEY="$$admin"; export GRAPHITE_ADMIN_API_KEY; fi
+        unset admin
+        exec graphite server --host 0.0.0.0 --port 7331
+    command: []
+    env_file:
+      - path: graphite.env
+        required: false
+    environment:
+      GRAPHITE_DATA_DIR: /data
+      GRAPHITE_REGISTRY_STATE: /data/registry_state.json
+      # Tamper-evident trail, with the key outside the data volume.
+      GRAPHITE_AUDIT_KEY_FILE: /run/secrets/audit_key
+      # Rotation checkpoints, outside the data volume; ship them off the host
+      # (deploy/scripts/anchor-checkpoints.sh with ANCHOR_S3_URI).
+      GRAPHITE_AUDIT_ANCHOR_DIR: /anchors
+      # Caddy is the one proxy hop in front.
+      GRAPHITE_TRUST_PROXY: "1"
+      GRAPHITE_LOG_FORMAT: json
+    secrets: [api_key, read_api_key, admin_api_key, audit_key]
+    volumes:
+      - graphite-data:/data
+      - ./anchors:/anchors
+    networks: [backend]
+    user: "10001:10001"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 512M, pids: 256 }
+    logging: *logging
+    # Strict: a degraded node (audit writes failing, audit disabled, …) is
+    # unhealthy, and Caddy does not start in front of one.
+    healthcheck:
+      test: ["CMD", "graphite", "healthcheck", "--strict"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Advisory intent parser (stdlib Python, no dependencies). It has no
+  # authentication of its own, so it is on the backend network only and Caddy
+  # does not route to it: reach it from agents on that network. It never
+  # makes a security decision (Constitution P1).
+  ai:
+    profiles: [ai]
+    image: python:3.13-slim-bookworm@sha256:e32be0e55814a08977501ca863271d9bd02443710db8f2afaf8372e2c4508530
+    restart: unless-stopped
+    command: ["python3", "-I", "/app/python-ai-layer/intent_parser.py", "--serve", "--port", "8081"]
+    environment:
+      GRAPHITE_AI_LAYER_HOST: 0.0.0.0
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      # It reads the verified manifests from ../graphite-core/protocols
+      # relative to itself.
+      - ../../python-ai-layer/intent_parser.py:/app/python-ai-layer/intent_parser.py:ro
+      - ../../graphite-core/protocols:/app/graphite-core/protocols:ro
+    networks: [backend]
+    user: "10001:10001"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 256M, pids: 64 }
+    logging: *logging
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:8081/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+secrets:
+  api_key:
+    file: ./secrets/api_key
+  read_api_key:
+    file: ./secrets/read_api_key
+  admin_api_key:
+    file: ./secrets/admin_api_key
+  audit_key:
+    file: ./secrets/audit_key
+
+networks:
+  edge: {}
+  # Core and AI layer: reachable from Caddy, not published. Not `internal`,
+  # because the Core calls its RPC providers.
+  backend: {}
+
+volumes:
+  graphite-data:
+  caddy-data:
+  caddy-config:

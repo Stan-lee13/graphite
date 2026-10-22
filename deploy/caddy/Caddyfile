@@ -1,0 +1,95 @@
+# Graphite Core behind Caddy: TLS (automatic ACME certificates), HSTS, a body
+# limit that matches the server's, and only the routes a remote caller needs.
+#
+#   GRAPHITE_SITE      the public name, e.g. graphite.example.com (ACME needs
+#                      ports 80 and 443 reachable and DNS pointing here)
+#   GRAPHITE_UPSTREAM  where the Core listens: 127.0.0.1:7331 for the systemd
+#                      unit, graphite:7331 inside the compose network
+#   ACME_EMAIL         the certificate account's contact address
+#
+# Run the Core with GRAPHITE_TRUST_PROXY=1: Caddy is the one hop in front of
+# it. Caddy replaces any X-Forwarded-For a client sends (no `trusted_proxies`
+# is configured here), so the right-most entry the Core reads is the address
+# Caddy saw.
+#
+# Validate: caddy validate --config deploy/caddy/Caddyfile --adapter caddyfile
+{
+	email {$ACME_EMAIL:ops@example.com}
+	# No admin API at all (it would listen on localhost:2019): a configuration
+	# change is applied by restarting Caddy, which keeps open connections
+	# draining for its grace period.
+	admin off
+	servers {
+		# Matches the Core's own connection limits (10 s request timeout,
+		# 120 s connection lifetime): slow clients are cut off at the edge.
+		timeouts {
+			read_header 10s
+			read_body 10s
+			write 30s
+			idle 60s
+		}
+	}
+}
+
+{$GRAPHITE_SITE:graphite.example.com} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		X-Frame-Options "DENY"
+		Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+		-Server
+	}
+
+	# The Core refuses bodies over 1 MiB (MAX_BODY_SIZE in server.rs, 1048576
+	# bytes; "1MB" here would be 1000000). Caddy enforces the same limit
+	# itself: it cuts the body off at 1 MiB and answers 413, whatever the
+	# upstream would have done (deploy/tests/run.sh checks both sides of it).
+	request_body {
+		max_size 1MiB
+	}
+
+	# What a remote caller may reach. Everything else answers 404 from the
+	# edge, so /health, /metrics and /admin/* stay on the private side:
+	#   /health   -- the orchestrator and Prometheus probe the Core directly;
+	#   /metrics  -- Prometheus scrapes the Core directly (deploy/prometheus/);
+	#   /admin/*  -- operators use an SSH tunnel to the Core, never the edge.
+	@verify {
+		method POST
+		path /verify /verify/execution /audit/event
+	}
+	@read {
+		method GET
+		path /manifests /api/*
+	}
+
+	handle @verify {
+		reverse_proxy {$GRAPHITE_UPSTREAM:127.0.0.1:7331} {
+			transport http {
+				dial_timeout 2s
+				response_header_timeout 15s
+			}
+		}
+	}
+	handle @read {
+		reverse_proxy {$GRAPHITE_UPSTREAM:127.0.0.1:7331} {
+			transport http {
+				dial_timeout 2s
+				response_header_timeout 15s
+			}
+		}
+	}
+	handle {
+		respond 404
+	}
+
+	# Access log as JSON. Caddy redacts the Authorization and Cookie headers in
+	# its logs unless `log_credentials` is set, which it is not: the bearer key
+	# never reaches the log.
+	log {
+		output stdout
+		format json
+	}
+}
