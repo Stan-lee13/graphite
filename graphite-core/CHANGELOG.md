@@ -5,6 +5,25 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 
 ## [0.3.0-beta] — unreleased (the contract since v0.2.0-beta)
 
+Round 32 (2026-10-22) — production readiness ([report](../docs/round32-production-readiness-2026-10-22.md)):
+
+- **Safer L4 defaults (operator-facing).** Three refusals are now the default, each with a strict-parsed opt-out that the server logs at startup (`.env.example`):
+  - A signer's loss under a declaration Graphite cannot read is Critical whatever the instruction's class. Round 30 exempted the value-moving classes; `GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS=1` restores that warning.
+  - W19: lamports leaving a signer under a debit declared only for other accounts are Critical. They are counted net of created accounts' rent and of SOL wrapped into the signer's own token accounts. `GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT=1` restores the warning.
+  - A new finding, `UnboundedWithdrawal`, withdraws the grant from a Raydium CLMM `decrease_liquidity_v2`, Raydium CPMM `withdraw` or Pump AMM `withdraw` whose every minimum output is zero, or whose data is too short to read them. `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS=1` keeps the grant.
+- **Declarations.** 16 placeholder declarations were rewritten from their IDLs: Orca Whirlpools liquidity and fee instructions, Meteora DLMM liquidity and claim instructions, Kamino collateral, and the Marginfi borrow. Pump.fun `buy_v2`/`sell_v2` named `associated_user`, but the v2 layout calls that slot `associated_base_user`, so a sell's base-token debit was outside every declared scope. A census test now checks that every declaration names a real account.
+- **Measured impact.** The mainnet conformance digest is unchanged. Six synthetic corpus rows (the rewritten deposits under a `transfer` intent) went from refused to approved, because the accurate prose carries the words L5 reads. The release-evaluation dev split was re-pinned for those six rows (TP 11,808 → 11,802, TN 1,097 → 1,103).
+- **Lifecycle requests.** Lifecycle requests accept `instruction_bind_key` as an alias of `content_hash` (server, `graphite execution --instruction-bind-key`, TypeScript and Go SDKs). This is additive.
+- **Agent guard.**
+  - One guard per wallet on a host (`GRAPHITE_GUARD_LOCK_DIR`; `GRAPHITE_GUARD_ALLOW_SHARED_WALLET=1` opts out).
+  - The network fee counts toward the aggregate cap.
+- **CI, release and deployment.**
+  - A browser smoke of the dashboard against a live Core runs with axe.
+  - The deployment kit (`deploy/`) is checked by its own tools and run on loopback.
+  - A release workflow (`.github/workflows/release.yml`) does a reproducible double build, produces SBOMs, pushes the image to GHCR by digest, and adds provenance and SBOM attestations.
+  - Live mainnet and devnet measurement workflows were added.
+  - The coverage job prints its measured figures.
+
 Round 31 (2026-10-22) — dependencies, no contract change:
 
 - Rust 1.99.1 in CI and in the builder image (`rust:1.99.1-bookworm` by digest); MSRV stays 1.89 (checked by its job).

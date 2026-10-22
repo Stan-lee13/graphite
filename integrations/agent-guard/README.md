@@ -226,6 +226,15 @@ submitted — and nothing is signed under a residual the operator has not accept
   `GRAPHITE_GUARD_STATE_FILE` this survives a restart. A second call for a request already
   running (a model's double call, a missing `await`, a confirmation hook calling back in)
   is refused with `RequestInFlight` before anything is built.
+- **One guard per wallet (Round 32).** The aggregate cap and the repeat record are kept
+  per guard, so two guards signing for one key would each spend the whole allowance.
+  Every guard takes a lock named for its wallet's public key in a directory the guards
+  on a host share (`GRAPHITE_GUARD_LOCK_DIR`, default `<tmpdir>/graphite-guard`); a
+  second guard for the same wallet refuses to start while the first runs.
+  `GRAPHITE_GUARD_ALLOW_SHARED_WALLET=1` lets it start, logged as limits that hold per
+  guard. The lock names its owner by pid, so it sees only guards that share the
+  directory and a pid namespace: one guard per wallet across hosts or containers is the
+  operator's to arrange. The network fee counts toward the aggregate cap.
 - **Same-process integrity (Round 29, M8; Round 30).** Every collaborator that takes part
   in a decision (Core client, RPC connection and simulator, residual, spend and swap
   policies, AI layer URL, wallet profile) is an ES private field; the instance and its

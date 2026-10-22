@@ -127,12 +127,12 @@ jobs:
         # Round 30: the log is read back, so the gate is "at least the floor
         # passed and none failed", not just "cargo exited 0" — which it also
         # does when no test binary ran at all. The floors are the counts at
-        # Round 31 (2,237 / 466 / 1,875); a change that deletes tests below one
+        # Round 32 (2,248 / 470 / 1,886); a change that deletes tests below one
         # lowers it in the same reviewed diff. The log lives outside the tree
         # so the clean-tree check below still sees only what the tests wrote.
         run: |
           cargo test --locked --release 2>&1 | tee "$RUNNER_TEMP/cargo-test.log"
-          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test.log" 2237 ../.github/test-allowlists/rust-ignored.txt
+          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test.log" 2248 ../.github/test-allowlists/rust-ignored.txt
         env:
           # The snapshot's provenance check needs the tags; here a missing
           # tag fails instead of being skipped.
@@ -171,12 +171,12 @@ jobs:
         # synchronous call refuses instead of approving.
         run: |
           cargo test --locked --release --no-default-features --lib 2>&1 | tee "$RUNNER_TEMP/cargo-test-lib.log"
-          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test-lib.log" 466 ../.github/test-allowlists/rust-ignored.txt
+          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test-lib.log" 470 ../.github/test-allowlists/rust-ignored.txt
       - name: Tests — cli feature only, no server or rpc
         if: always()
         run: |
           cargo test --locked --release --no-default-features --features cli 2>&1 | tee "$RUNNER_TEMP/cargo-test-cli.log"
-          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test-cli.log" 1875 ../.github/test-allowlists/rust-ignored.txt
+          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test-cli.log" 1886 ../.github/test-allowlists/rust-ignored.txt
       # The cli leg runs the corpus test too; its output must match as well.
       - name: The feature legs changed nothing in the tree
         if: always()
@@ -473,6 +473,8 @@ jobs:
           for env in "" "-e GRAPHITE_DEV_MODE=1"; do
             docker rm -f graphite-keyless >/dev/null 2>&1 || true
             set +e
+            # $env is split on purpose: "" adds nothing, the other adds -e and its value.
+            # shellcheck disable=SC2086
             timeout --kill-after=10 60 docker run --name graphite-keyless $env graphite-core:ci
             code=$?
             set -e
@@ -508,7 +510,7 @@ jobs:
           # copies, so it is what CI runs.
           cp .env.example .env
           # A missing key must stop compose before anything starts.
-          if GRAPHITE_API_KEY= docker compose config >/dev/null 2>&1; then
+          if GRAPHITE_API_KEY='' docker compose config >/dev/null 2>&1; then
             echo "::error::docker compose config accepted an empty GRAPHITE_API_KEY"; exit 1
           fi
           docker compose config --quiet
@@ -955,6 +957,70 @@ jobs:
       - name: Browser smoke (seeded Core, every view, desktop and phone, axe)
         run: .github/scripts/dashboard-e2e.sh graphite-core/target/release/graphite
 
+  # Round 32: the deployment kit (deploy/) checked by its own tools and run
+  # against a live Core and Caddy on loopback — the Caddy route allow-list,
+  # the Prometheus rules and their unit tests, the systemd unit's exposure,
+  # the compose file, and the backup / restore / anchoring / key-rotation
+  # scripts. deploy/tests/run.sh exits non-zero on any failed check.
+  deploy:
+    name: Deploy kit — static checks and loopback run
+    runs-on: ubuntu-24.04
+    # A release build of the Core plus two Go builds; 45 leaves a cold cache room.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, 2026-09-12
+        with:
+          toolchain: 1.99.1
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: graphite-core
+      - name: Build the Core
+        # The features and flags of the shipped binary (Dockerfile).
+        run: cargo build --manifest-path graphite-core/Cargo.toml --locked --release --features server,cli --bin graphite
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache: false
+      - name: Build Caddy and promtool at pinned releases
+        # Caddy through the Go module proxy, whose checksum database verifies
+        # every module. promtool cannot be `go install`ed (its module has
+        # replace directives), so it is built from the release tag, and the
+        # tag must resolve to the pinned commit.
+        env:
+          CADDY_VERSION: v2.11.7
+          PROMETHEUS_TAG: v3.15.1
+          PROMETHEUS_COMMIT: bae3eced0a5369e050e83ea73bc381d7c4b1a719
+        run: |
+          set -euo pipefail
+          bin="$RUNNER_TEMP/deploy-bin"
+          mkdir -p "$bin"
+          GOBIN="$bin" go install "github.com/caddyserver/caddy/v2/cmd/caddy@$CADDY_VERSION"
+          git clone -q -c advice.detachedHead=false --depth 1 --branch "$PROMETHEUS_TAG" \
+            https://github.com/prometheus/prometheus "$RUNNER_TEMP/prometheus"
+          got="$(git -C "$RUNNER_TEMP/prometheus" rev-parse HEAD)"
+          if [ "$got" != "$PROMETHEUS_COMMIT" ]; then
+            echo "::error::$PROMETHEUS_TAG resolved to $got, pinned $PROMETHEUS_COMMIT"; exit 1
+          fi
+          (cd "$RUNNER_TEMP/prometheus" && go build -o "$bin/promtool" ./cmd/promtool)
+          "$bin/caddy" version
+          "$bin/promtool" --version
+          shellcheck --version
+      - name: Deploy tests
+        run: |
+          set -euo pipefail
+          bin="$RUNNER_TEMP/deploy-bin"
+          GRAPHITE_BIN="$PWD/graphite-core/target/release/graphite" CADDY_BIN="$bin/caddy" \
+            PROMTOOL_BIN="$bin/promtool" bash deploy/tests/run.sh 2>&1 | tee "$RUNNER_TEMP/deploy.log"
+          # Every check ran: a section that silently stopped running would
+          # still exit 0 with fewer checks.
+          passed="$(sed -n 's/^deploy tests: \([0-9]*\) passed, 0 failed$/\1/p' "$RUNNER_TEMP/deploy.log")"
+          if [ -z "$passed" ] || [ "$passed" -lt 87 ]; then
+            echo "::error::deploy tests: ${passed:-no summary} passed, floor 87"; exit 1
+          fi
+
   # Round 30 (G-11): the one check the `main` ruleset requires
   # (.github/rulesets/main.json). Requiring each job by name would tie the
   # ruleset to matrix labels ("Go SDK — fmt, vet, tests (1.27.3)") that change
@@ -965,7 +1031,7 @@ jobs:
   ci-gate:
     name: CI gate
     if: always()
-    needs: [rust, msrv, supply-chain, runtime-oracle, container, typescript, go, dashboard, dashboard-e2e, python]
+    needs: [rust, msrv, supply-chain, runtime-oracle, container, typescript, go, dashboard, dashboard-e2e, deploy, python]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

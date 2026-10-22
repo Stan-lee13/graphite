@@ -212,6 +212,12 @@ def run(args):
     work = tempfile.mkdtemp(prefix="graphite-devnet-")
     data_dir = os.path.join(work, "data")
     os.makedirs(data_dir)
+    # A keyed trail, as production runs it: the key sits outside the data
+    # directory (the Core refuses one inside it), mode 0600, never logged.
+    audit_key = os.path.join(work, "audit.key")
+    fd = os.open(audit_key, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(secrets.token_hex(32) + "\n")
     api_key = secrets.token_hex(32)
     procs = []
 
@@ -306,7 +312,7 @@ def run(args):
 
         # 4. core
         env = dict(os.environ, GRAPHITE_API_KEY=api_key, GRAPHITE_DATA_DIR=data_dir, GRAPHITE_RPC_URL=args.rpc,
-                   GRAPHITE_LOG_FORMAT="json")
+                   GRAPHITE_LOG_FORMAT="json", GRAPHITE_AUDIT_KEY_FILE=audit_key)
         core_log = open(os.path.join(args.out_dir, "core.log"), "w")
         core = subprocess.Popen([args.graphite, "server", "--port", str(args.core_port)], env=env,
                                 stdout=core_log, stderr=subprocess.STDOUT)
@@ -320,6 +326,9 @@ def run(args):
             return finish("DEFECTS")
         step(report, "core", "ok", verification_mode=health.get("verification_mode"), rpc_attached=health.get("rpc_attached"),
              audit_integrity=(health.get("audit") or {}).get("integrity"))
+        if (health.get("audit") or {}).get("integrity") != "tamper_evident":
+            report["defects"].append("the Core's audit trail is not tamper-evident with GRAPHITE_AUDIT_KEY_FILE set")
+            return finish("DEFECTS")
         if health.get("verification_mode") != "executable":
             report["defects"].append("the Core is not in executable mode with the devnet RPC attached")
             return finish("DEFECTS")
@@ -380,15 +389,17 @@ def run(args):
         ai.terminate()
 
         # 8. audit
-        a = subprocess.run([args.graphite, "audit", "verify", "--data-dir", data_dir, "--json"], capture_output=True, text=True)
+        a = subprocess.run([args.graphite, "audit", "verify", "--data-dir", data_dir, "--key-file", audit_key, "--json"],
+                           capture_output=True, text=True)
         try:
             audit = json.loads(a.stdout)
         except ValueError:
             audit = {"raw": a.stdout[-600:], "stderr": a.stderr[-600:]}
         report["audit"] = {"exit": a.returncode, "report": audit}
-        # 0: nothing failed. 2: could not prove what was asked — an unkeyed trail
-        # is corruption-evident only, which this run does not claim more of.
-        if a.returncode in (0, 2):
+        # 0: every record's chain link and MAC checked under the run's key.
+        # Anything else — 2 included, "could not prove what was asked" — is a
+        # defect: the trail is keyed, so tamper evidence is what was asked.
+        if a.returncode == 0:
             step(report, "audit", "ok", exit=a.returncode)
         else:
             step(report, "audit", "FAILED", exit=a.returncode)

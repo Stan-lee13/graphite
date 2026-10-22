@@ -25,6 +25,8 @@ independent third party has yet tried; `main` has no branch protection (the
 rulesets that would add it are prepared in `.github/rulesets/`, not applied).
 Round 30's verdict: release blocked on those owner and external items; the code
 is ready for an independent audit. Only `executable: true` permits signing.
+Rounds 31–32 did everything code and CI can do toward production (below); the
+release blockers are unchanged and are the owner's and an auditor's.
 
 ## Security Architecture
 
@@ -223,6 +225,31 @@ a new digest; a resubmitted one is idempotent on-chain); RPC entry-count misalig
 applies to decompressed chunks — 65 KB inflating to 64 MiB is refused at 32 MiB in 35 ms);
 the rate limiter at its million-bucket bound (452 ns per check, measured); `audit_trail_id`
 spoofing (a fabricated id resolves to nothing and is never rescued by a coarser key).
+
+## Production Readiness (2026-10-22; Rounds 31–32)
+
+Internal engineering work, not an independent audit. Report:
+`docs/round32-production-readiness-2026-10-22.md`.
+
+- **Every dependency updated (Round 31).** reqwest 0.13 trusts the host's store by default; the
+  RPC client is held to the bundled Mozilla roots, so its trust anchors are unchanged (pinned by a
+  test). Rust 1.99.1 in CI and the image.
+- **A signer's loss under an unreadable declaration is refused whatever its class (R32-P1-1).**
+  This reverses the Round 30 owner decision below; `GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS=1`
+  restores the warning for value-moving classes. 16 declarations were rewritten from IDLs.
+- **W19 refuses (R32-P1-3).** Lamports leaving the signer's wallet under a debit declared for other
+  accounts are Critical, net of created accounts' rent and SOL wrapped into the signer's own token
+  accounts; `GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT=1` restores the warning.
+- **A granted withdrawal with no minimum output is refused (R32-P1-4)**: `UnboundedWithdrawal`, for
+  the three grants whose IDLs carry minimum outputs; `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS=1`.
+- **A wrong account name in Pump.fun v2 (R32-P1-2)** put a sell's base-token debit outside every
+  declared scope; fixed, and every declaration must now name a real account.
+- **One agent guard per wallet (R32-P2-1)**: two guards for one key each spent the whole aggregate
+  allowance; a per-wallet lock now refuses the second on the same host. The fee counts toward the
+  cap (R32-P2-2).
+- **Release and deployment (R32-P4).** A release workflow with a reproducible double build, SBOMs,
+  digest-pinned images and provenance attestations; a deployment kit tested in CI; live mainnet and
+  devnet workflows (0 defects on their first runs).
 
 ## The Forensic Audit of `29e4356`, Remediated (2026-10-22; Round 30)
 
@@ -673,7 +700,7 @@ These are documented scope boundaries, not hidden vulnerabilities:
 - **State diffing needs RPC and a signed transaction** — L4 builds a real pre/post account diff only when an RPC client is attached (`GRAPHITE_RPC_URL`) AND the caller supplies `signed_transaction`; a bare `instruction_data` payload can be simulated for compute numbers but the post-state it implies is not trustworthy, so no diff is built from it. A caller may pass `state_diff` directly, but under `CallerSupplied` provenance it can only fail the layer, never certify it (a clean caller diff yields `Inconclusive`). The diff also covers only the instruction's declared writable accounts; an RPC that will not return post-state (over 100 addresses, or an older node) leaves L4 on its structural fallback. Token balance changes are decoded for SPL Token and Token-2022 accounts and mints — other program-owned account data is compared by length and owner only, so a semantic change inside an opaque account is seen as "data changed", not interpreted.
 - **The P10 gate on a FIRST manifest submission bootstraps a baseline; it does not validate the manifest** — a brand-new program has no prior recorded behaviour, so there is nothing for its first submission to regress against. A fixture recorded under the candidate manifest and replayed under the same manifest agrees with itself by construction. Requiring one still matters: it stops a program being enshrined with an empty regression history, which would leave every later version un-gatable too. The submitter chooses which transaction to pin (`graphite registry record-fixture` prints the outcome it pinned), the same assumption the upgrade path already makes. Every upgrade of a manifest already in force is replayed, whether or not it raises the tier, and the candidate is replayed at the tier the registry computes for it, which is the tier it would run at (Round 24, W12).
 - **A fresh deployment approves nothing until the semantic graph has evidence** — the three evidence-derived confidence signals (SimulationMatch, HistoricalVolume, CommunityVerification) are 0.50 of the total signal weight and all read the graph, so on an empty graph the highest reachable confidence for a fully manifested protocol is 0.44 while the lowest built-in profile threshold is 0.55 (Gaming). Measured on the shipped container: 20 combinations across 5 protocols and 4 profiles, 0 approved. This is fail-closed and intentional — trust is earned, not assumed — but it means an instance with no earned history and no `GRAPHITE_RPC_URL` will block 100% of traffic indefinitely, because evidence can only be earned through RPC-verified simulation of traffic whose verdict clears the weakest built-in bar on its own (Round 30: never the profile a request names; `GRAPHITE_LEARN_FROM_POLICY_REFUSALS` is retired), observed volume, or reviewer attestations. `graphite evidence seed` and `graphite evidence baseline` are the operator paths for restoring an exported graph or standing an instance up before that history exists. Both are CLI-only: nothing on the HTTP surface can write evidence, because request-body evidence would let any caller mint an earned-looking tier (G4). What is seeded is EVIDENCE, not a tier — `append` recomputes the tier from it exactly as it does for earned records (P7) — and seeded evidence is operator-ASSERTED rather than observed, which the command states plainly and the append-only graph preserves.
-- **Lamports leaving the signer's wallet under a declared debit are disclosed, not refused (Round 24, W19).** When the primary's manifest declares a debit of named accounts, a further lamport outflow from the signer's own wallet is reported as `SignerLamportsOutsideDeclaredDebit` (a warning). It is not refused because the same outflow is every tip and every rent payment for an account a sibling creates, and Graphite does not bind amounts: `ExtractedParameters.amount` is carried, not compared. The agent guard bounds it by the operator's cap on the measured outflow and, for a swap, by the amount and token the request names, checked against a simulation of the exact bytes (Round 25), and by the route's own minimum output, which the guard decodes and holds to the simulated delivery, a slippage bound and a price floor (Round 29; the Core does not read it); a direct `/verify` caller must bound it itself. Wrapping or unwrapping wSOL is not supported by the guard: the Risk Engine refuses `CloseAccount`.
+- **Lamports leaving the signer's wallet under a declared debit are refused by default (Round 32; disclosed only from Round 24, W19).** When the primary's manifest declares a debit of named accounts, a further lamport outflow from the signer's own wallet is `SignerLamportsOutsideDeclaredDebit`, Critical since Round 32, net of the rent of accounts the transaction creates and of SOL wrapped into the signer's own token accounts. A tip or a plain SOL transfer beside such an instruction is therefore refused; an operator who measures and accepts that sets `GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT=1`, which restores the Round 24 warning, and then the following holds. Graphite does not bind amounts: `ExtractedParameters.amount` is carried, not compared. The agent guard bounds it by the operator's cap on the measured outflow and, for a swap, by the amount and token the request names, checked against a simulation of the exact bytes (Round 25), and by the route's own minimum output, which the guard decodes and holds to the simulated delivery, a slippage bound and a price floor (Round 29; the Core does not read it); a direct `/verify` caller must bound it itself. Wrapping or unwrapping wSOL is not supported by the guard: the Risk Engine refuses `CloseAccount`.
 - **A lookup table's freshness is not checked against the current slot (Round 24, W17).** Graphite resolves a v0 or v1 transaction's tables from the RPC's current state; it does not refuse a table extended in the current slot, whose new entries the runtime would not yet serve. The direction is refusal (the runtime fails the transaction); Graphite's verdict may name accounts the runtime would not load.
 - **Registry records keep no signatures (Round 24, W11).** The registry verifies a submission's signature and its attestations when it accepts them, and records the result; the stored record does not carry the signatures, so a registry file cannot be re-verified offline by a third party. Signed, append-only registry records are roadmap work.
 - **The holdout is small, and its one benign row is refused (Round 29).** The holdout is 37 real exploits, labelled from the public SolPhishHunter dataset and live fetches, and one real successful Jupiter swap labelled benign by provenance (two rows that had failed on chain are no longer scored). All 37 exploits are refused; so is the swap, because offline its lookup tables cannot be resolved and the gate fails closed (precision 0.974 on n=38). The exploits run descriptively on evidence the engine ignores, and there are no v0 or v1 rows in the benchmark.

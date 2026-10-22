@@ -379,6 +379,9 @@ unauthenticated instance — and even then only on a loopback address.
 | `GRAPHITE_AUDIT_ROTATE_BYTES` | `67108864` (64 MiB) | Rotate the active audit file at this size, bounding disk growth and the dashboard's per-poll scan cost. `0` disables rotation, which leaves the active file and its in-memory indexes unbounded (a startup warning says so). |
 | `GRAPHITE_AUDIT_MAX_ARCHIVES` | `0` (keep all) | Rotated archives to retain. The default keeps the complete audit trail (P9); set a limit only if you accept that the oldest history is deleted. |
 | `GRAPHITE_ALLOW_DURABLE_NONCE` | `0` | `1` permits durable-nonce transactions, which never expire, and only after the nonce account is verified on-chain. Refused at L2 by default. Process-wide. A legacy (version 0) nonce account is refused either way, as the runtime refuses it. |
+| `GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS` | `0` | A signer's loss under a protocol declaration Graphite cannot read is refused whatever the instruction's class (Round 32). `1` turns it back into a warning for the classes that move value (swap, deposit, withdrawal and the like). Process-wide; logged at startup. |
+| `GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT` | `0` | W19: lamports leaving a signer's wallet through an instruction whose declared debit names other accounts only are refused (Round 32), net of created accounts' rent and wrapped SOL. This also refuses a tip or a plain SOL transfer beside such an instruction; `1` restores the warning. Process-wide; logged at startup. |
+| `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS` | `0` | A granted Raydium CLMM, Raydium CPMM or Pump AMM withdrawal whose every minimum output is zero loses its grant (`UnboundedWithdrawal`, Round 32). `1` keeps the grant. Process-wide; logged at startup. |
 | `GRAPHITE_QUARANTINE_ON_UPGRADE` | `0` | With an RPC attached, Graphite always notices when a manifested program is redeployed or handed to a new upgrade authority (reported on the verdict as `program_upgrades`, on `/health`, and as `graphite_program_upgrades_detected_total`). `1` also quarantines the program until the operator reviews the manifest and lifts it. Any value other than `0`/`1`/`true`/`false` refuses to start. |
 | `GRAPHITE_PLUGINS_DIR` | *(unset)* | Directory of plugin manifests to activate (the review gate: pending or rejected manifests are skipped). A directory that fails to load is a startup error, never a silent removal of the checks it carried. The in-tree built-in plugins are active regardless. |
 | `GRAPHITE_PLUGIN_EVENTS_FILE` | *(unset)* | Append every verification event to this JSON-lines file, for observability. A file that cannot be opened for append refuses to start. |
@@ -389,7 +392,9 @@ unauthenticated instance — and even then only on a loopback address.
 **Every variable is parsed strictly.** `GRAPHITE_MAX_CONCURRENT` and
 `GRAPHITE_MAX_CONNECTIONS` must be greater than `0`; `GRAPHITE_MAX_CONNECTIONS_PER_IP`,
 `GRAPHITE_AUDIT_ROTATE_BYTES` and `GRAPHITE_AUDIT_MAX_ARCHIVES` at least `0`;
-`GRAPHITE_ALLOW_PERMISSIVE_PROFILES`, `GRAPHITE_ALLOW_DURABLE_NONCE`,
+`GRAPHITE_ALLOW_PERMISSIVE_PROFILES`, `GRAPHITE_ALLOW_DURABLE_NONCE`, the three
+Round 32 opt-outs (`GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS`,
+`GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT`, `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS`),
 `GRAPHITE_QUARANTINE_ON_UPGRADE` and `GRAPHITE_L8_HIGH_ASSURANCE` accept
 `1`/`true`/`0`/`false`, trimmed and in any case; the retired
 `GRAPHITE_LEARN_FROM_POLICY_REFUSALS` refuses to start with any value. A value that does not parse refuses to

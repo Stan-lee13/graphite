@@ -206,6 +206,22 @@ jobs:
         run: |
           cargo llvm-cov --release --all-features --lib --tests \
             --fail-under-lines 78 --summary-only --json --output-path coverage.json
+      - name: Report the measured coverage
+        # The JSON summary prints nothing to the log; the numbers a floor is
+        # raised to belong in the run, not only in an artifact.
+        if: always()
+        run: |
+          python3 - coverage.json <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, sys
+          data = json.load(open(sys.argv[1]))["data"][0]
+          t = data["totals"]["lines"]
+          print(f"TOTAL line coverage: {t['percent']:.2f}% ({t['covered']}/{t['count']} lines)")
+          for f in sorted(data["files"], key=lambda f: f["filename"]):
+              name = f["filename"].split("graphite-core/", 1)[-1]
+              if name.startswith("src/"):
+                  l = f["summary"]["lines"]
+                  print(f"  {name}: {l['percent']:.2f}% ({l['covered']}/{l['count']})")
+          PY
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
