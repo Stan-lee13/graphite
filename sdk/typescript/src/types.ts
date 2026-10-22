@@ -615,11 +615,18 @@ export type CallerLifecycleEvent = "signing" | "submission" | "confirmation" | "
 export interface LifecycleEventInput {
   event_type: CallerLifecycleEvent;
   /**
-   * The verification's `content_hash`: 16 lowercase hex characters. An
-   * instruction-level key — every transaction carrying that instruction
+   * The verification's `instruction_bind_key`: 16 lowercase hex characters.
+   * An instruction-level key — every transaction carrying that instruction
    * shares it — so send `audit_trail_id` (and `transaction_sha256`) with it.
+   * This or `content_hash` is required (Round 32, R-M10); the client sends
+   * the key under both names, which every Core accepts.
    */
-  content_hash: string;
+  instruction_bind_key?: string;
+  /**
+   * @deprecated Round 32 (R-M10): send `instruction_bind_key`. The same key
+   * under its first name; when both are given they must be equal.
+   */
+  content_hash?: string;
   /** The exact verification. The most exact key; resolves first. */
   audit_trail_id?: string;
   /** The exact transaction (`scope.transaction_sha256`, 64 lowercase hex). */
@@ -707,6 +714,11 @@ export interface ExecutionCheckInput {
   /** The on-chain signature to confirm. */
   signature: string;
   /** The verification this execution corresponds to (instruction-level key). */
+  instruction_bind_key?: string;
+  /**
+   * @deprecated Round 32 (R-M10): send `instruction_bind_key`. When both are
+   * given they must be equal.
+   */
   content_hash?: string;
   /** The exact transaction (`scope.transaction_sha256`). */
   transaction_sha256?: string;

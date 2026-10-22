@@ -79,7 +79,8 @@
     }
    ],
    "expected_state_changes": [
-    "moves user funds between token accounts"
+    "transfers tokens out of accounts.liquidity_vault",
+    "credits accounts.destination_token_account token balance"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

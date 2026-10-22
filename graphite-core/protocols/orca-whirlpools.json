@@ -259,7 +259,10 @@
     }
    ],
    "expected_state_changes": [
-    "Orca Whirlpools instruction"
+    "transfers tokens out of accounts.token_vault_a",
+    "transfers tokens out of accounts.token_vault_b",
+    "credits accounts.token_owner_account_a token balance",
+    "credits accounts.token_owner_account_b token balance"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -368,7 +371,10 @@
     }
    ],
    "expected_state_changes": [
-    "Orca Whirlpools instruction"
+    "transfers tokens out of accounts.token_vault_a",
+    "transfers tokens out of accounts.token_vault_b",
+    "credits accounts.token_owner_account_a token balance",
+    "credits accounts.token_owner_account_b token balance"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -699,7 +705,8 @@
     }
    ],
    "expected_state_changes": [
-    "whirlpool protocol state transition"
+    "transfers tokens out of accounts.reward_vault",
+    "credits accounts.reward_owner_account token balance"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -795,7 +802,10 @@
     }
    ],
    "expected_state_changes": [
-    "Orca Whirlpools instruction"
+    "transfers tokens out of accounts.token_vault_a",
+    "transfers tokens out of accounts.token_vault_b",
+    "credits accounts.token_owner_account_a token balance",
+    "credits accounts.token_owner_account_b token balance"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -918,7 +928,10 @@
     }
    ],
    "expected_state_changes": [
-    "Orca Whirlpools instruction"
+    "transfers tokens out of accounts.token_vault_a",
+    "transfers tokens out of accounts.token_vault_b",
+    "credits accounts.token_owner_account_a token balance",
+    "credits accounts.token_owner_account_b token balance"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -1289,7 +1302,10 @@
     }
    ],
    "expected_state_changes": [
-    "whirlpool protocol state transition"
+    "transfers tokens out of accounts.token_owner_account_a",
+    "transfers tokens out of accounts.token_owner_account_b",
+    "credits accounts.token_vault_a token balance",
+    "credits accounts.token_vault_b token balance"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -1412,7 +1428,10 @@
     }
    ],
    "expected_state_changes": [
-    "Orca Whirlpools instruction"
+    "transfers tokens out of accounts.token_owner_account_a",
+    "transfers tokens out of accounts.token_owner_account_b",
+    "credits accounts.token_vault_a token balance",
+    "credits accounts.token_vault_b token balance"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

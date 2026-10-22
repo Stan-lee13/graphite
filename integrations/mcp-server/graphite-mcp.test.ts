@@ -163,12 +163,19 @@ test("M7: a person declines: verified, but nothing is signed, recorded or sent",
       { action: "cancel" as const },
       { action: "accept" as const, content: { approve: false } },
     ]) {
-      const c = await connect(await s.guard(2_000_000_000n), "elicit", () => answer);
-      const out = result(await c.client.callTool({ name: "graphite_transfer_sol", arguments: { request: REQUEST } }));
-      assert.equal(out.executed, false);
-      assert.equal(out.refusedBy, "person", JSON.stringify(answer));
-      assert.equal(c.asked.length, 1);
-      await c.close();
+      // Round 32: one guard per wallet at a time, so each is closed before
+      // the next is created for the same wallet.
+      const guard = await s.guard(2_000_000_000n);
+      const c = await connect(guard, "elicit", () => answer);
+      try {
+        const out = result(await c.client.callTool({ name: "graphite_transfer_sol", arguments: { request: REQUEST } }));
+        assert.equal(out.executed, false);
+        assert.equal(out.refusedBy, "person", JSON.stringify(answer));
+        assert.equal(c.asked.length, 1);
+      } finally {
+        await c.close();
+        guard.close();
+      }
     }
     assert.equal(s.core.calls.filter((x) => x.method === "POST /verify").length, 3, "each was verified first");
     assert.equal(s.core.calls.filter((x) => x.method === "POST /audit/event").length, 0, "no signing on the trail");

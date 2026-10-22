@@ -93,14 +93,13 @@ export function CopyId({
   tail?: number;
 }) {
   const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
   return (
     <button
       type="button"
       className={copied ? "copy copied" : "copy"}
       title={copied ? "Copied" : `Copy ${value}`}
-      aria-label={copied ? "Copied" : `Copy ${value}`}
       translate="no"
       onClick={() => {
         void navigator.clipboard?.writeText(value).then(
@@ -115,7 +114,11 @@ export function CopyId({
         );
       }}
     >
+      {/* Round 32 (WCAG 2.5.3): the name starts with the visible text and
+          then says what the button does with the whole value; an aria-label
+          of "Copy <value>" did not contain the shortened text shown. */}
       <span className="copy-text">{copied ? "Copied" : short ? shortId(value, head, tail) : value}</span>
+      {copied ? null : <span className="sr-only">, copy {value}</span>}
       {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
     </button>
   );

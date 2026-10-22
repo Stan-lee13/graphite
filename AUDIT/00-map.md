@@ -12,7 +12,7 @@ Graphite is a transaction-intent verification layer for Solana. An agent (or wal
 
 | Component | Path | Language | Size | Role |
 |---|---|---|---|---|
-| Core library | `graphite-core/src/` | Rust 1.98.1 | 48.4k lines, 28 files | The verifier |
+| Core library | `graphite-core/src/` | Rust 1.99.1 | 48.4k lines, 28 files | The verifier |
 | Pipeline | `src/verification.rs` | Rust | 9.2k | `GraphiteCore::verify`: L1–L7 per request, L8 post-submission |
 | Wire parser | `src/tx_artifact.rs` | Rust | 2.0k | legacy / v0 / v1 messages, ALTs, runtime writability (agave demotion) |
 | State diff | `src/state_diff.rs` | Rust | 4.5k | L4: pre/post diff, Token-2022 fee replay, extension judgement |
@@ -31,7 +31,7 @@ Graphite is a transaction-intent verification layer for Solana. An agent (or wal
 | Runtime oracle | `tools/runtime-oracle/` | Rust + agave 5.0 | — | Parser never looser than agave; 2×300k generated frames in CI |
 | Mainnet sampler | `tools/mainnet-sample/` | Python | — | Paced public-RPC block fetch for conformance runs |
 | TypeScript SDK | `sdk/typescript/` | TS | — | Thin client, AuditBind, content_hash parity |
-| Go SDK | `sdk/go/` | Go 1.26 (`go.mod`; CI tests 1.26.8 and 1.27.1) | — | Thin client, VerificationResult parity |
+| Go SDK | `sdk/go/` | Go 1.26 (`go.mod`; CI tests 1.26.10 and 1.27.3) | — | Thin client, VerificationResult parity |
 | SAK integration | `integrations/solana-agent-kit/` | TS | — | Bridge: BoundTransaction, signs only after an approved artifact-bound verdict |
 | Python AI layer | `python-ai-layer/` | Python 3.11 | — | Advisory intent parsing, separate process |
 | Dashboard | `dashboard/` | React / Vite | — | Read-only views over `/api/*` |

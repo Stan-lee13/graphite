@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 // Caller-reported lifecycle stages. Graphite records construction, simulation
@@ -37,8 +38,16 @@ const (
 type LifecycleEventInput struct {
 	// EventType is one of the Lifecycle* constants.
 	EventType string `json:"event_type"`
-	// ContentHash is the verification's content_hash (16 lowercase hex). An
-	// instruction-level key — send AuditTrailID and TransactionSHA256 with it.
+	// InstructionBindKey is the verification's instruction_bind_key (16
+	// lowercase hex). An instruction-level key — send AuditTrailID and
+	// TransactionSHA256 with it. This or ContentHash is required (Round 32,
+	// R-M10); the client sends the key under both names, which every Core
+	// accepts.
+	InstructionBindKey string `json:"instruction_bind_key,omitempty"`
+	// ContentHash is the same key under its first name.
+	//
+	// Deprecated: Round 32 (R-M10): set InstructionBindKey. When both are set
+	// they must be equal.
 	ContentHash string `json:"content_hash"`
 	// AuditTrailID names the exact verification; it resolves first.
 	AuditTrailID string `json:"audit_trail_id,omitempty"`
@@ -71,11 +80,35 @@ type LifecycleEventReceipt struct {
 
 // ExecutionCheckInput is the body of POST /verify/execution (L8).
 type ExecutionCheckInput struct {
-	Signature         string `json:"signature"`
+	Signature string `json:"signature"`
+	// InstructionBindKey is the verification's instruction-level key.
+	InstructionBindKey string `json:"instruction_bind_key,omitempty"`
+	// ContentHash is the same key under its first name.
+	//
+	// Deprecated: Round 32 (R-M10): set InstructionBindKey. When both are set
+	// they must be equal.
 	ContentHash       string `json:"content_hash,omitempty"`
 	TransactionSHA256 string `json:"transaction_sha256,omitempty"`
 	AuditTrailID      string `json:"audit_trail_id,omitempty"`
 	ReportedBy        string `json:"reported_by,omitempty"`
+}
+
+// instructionKey is the instruction-level key of a lifecycle request under
+// both its names (Round 32, R-M10). InstructionBindKey is the key's name
+// since Round 30; content_hash is the name every Core before Round 32
+// requires, and a Core ignores a field it does not know — so the key is sent
+// under both, equal, and every Core reads the same value. Two different
+// values are refused, as the Core refuses them: one of them is not the key.
+// Empty when neither is set.
+func instructionKey(contentHash, instructionBindKey string) (string, error) {
+	a, b := strings.TrimSpace(contentHash), strings.TrimSpace(instructionBindKey)
+	if a != "" && b != "" && a != b {
+		return "", fmt.Errorf("graphite: content_hash and instruction_bind_key are the same key under two names, and the two given differ")
+	}
+	if b != "" {
+		return b, nil
+	}
+	return a, nil
 }
 
 // InclusionWitness is a second RPC's account of the signature (Round 12).
@@ -152,6 +185,15 @@ func (c *Client) RecordLifecycleEventContext(ctx context.Context, event *Lifecyc
 	if event == nil {
 		return nil, fmt.Errorf("graphite: no lifecycle event")
 	}
+	key, err := instructionKey(event.ContentHash, event.InstructionBindKey)
+	if err != nil {
+		return nil, err
+	}
+	sent := *event
+	if key != "" {
+		sent.ContentHash, sent.InstructionBindKey = key, key
+	}
+	event = &sent
 	body, err := c.post(ctx, "/audit/event", event, fmt.Sprintf("record the %s event", event.EventType))
 	if err != nil {
 		return nil, err
@@ -180,6 +222,15 @@ func (c *Client) VerifyExecutionContext(ctx context.Context, input *ExecutionChe
 	if input == nil {
 		return nil, fmt.Errorf("graphite: no execution check input")
 	}
+	key, err := instructionKey(input.ContentHash, input.InstructionBindKey)
+	if err != nil {
+		return nil, err
+	}
+	sent := *input
+	if key != "" {
+		sent.ContentHash, sent.InstructionBindKey = key, key
+	}
+	input = &sent
 	body, err := c.post(ctx, "/verify/execution", input, "check the execution")
 	if err != nil {
 		return nil, err

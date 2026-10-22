@@ -1,0 +1,193 @@
+# promtool test rules deploy/prometheus/graphite-alerts.test.yml
+rule_files:
+  - graphite-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # The gate was bypassed: one discrepancy pages; none does not.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_execution_discrepancies_total{instance="core:7331", job="graphite"}'
+        values: '0 0 0 1 1 1 1 1 1 1 1 1 1 1 1'
+      - series: 'graphite_lifecycle_events_on_blocked_total{instance="core:7331", job="graphite"}'
+        values: '0x15'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: GraphiteBlockedTransactionExecuted
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: GraphiteBlockedTransactionExecuted
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "A transaction Graphite blocked executed on-chain (core:7331)"
+              description: >-
+                L8 reconciliation found a blocked transaction on-chain. Something
+                signed outside the gate. docs/ops/incidents.md, "Failed finalization / L8 discrepancy".
+      - eval_time: 5m
+        alertname: GraphiteLifecycleOnBlocked
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'graphite_lifecycle_events_on_blocked_total{instance="core:7331", job="graphite"}'
+        values: '0 0 2 2 2 2'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: GraphiteLifecycleOnBlocked
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "A lifecycle event was reported for a blocked transaction (core:7331)"
+              description: >-
+                An agent reported signing/submission/confirmation of a transaction
+                Graphite refused. Find the record with `graphite execution` and the
+                agent's own logs; docs/ops/incidents.md.
+
+  # Audit: disabled pages after a minute; failing writes page; an unkeyed
+  # trail is a ticket only while the trail exists.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_audit_enabled{instance="core:7331", job="graphite"}'
+        values: '1 1 0 0 0 0'
+      - series: 'graphite_audit_tamper_evident{instance="core:7331", job="graphite"}'
+        values: '0x5'
+      - series: 'graphite_audit_writes_failed_total{instance="core:7331", job="graphite"}'
+        values: '0 0 0 0 3 3'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: GraphiteAuditDisabled
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: GraphiteAuditDisabled
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "No audit trail is attached (core:7331)"
+              description: Verdicts are not being recorded (Constitution P9).
+      - eval_time: 5m
+        alertname: GraphiteAuditWritesFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "Audit records are failing to append (core:7331)"
+              description: >-
+                The server refuses (503) any verdict it cannot record. Usually a
+                full or read-only disk: docs/ops/incidents.md, "Disk full / audit writes failing".
+
+  # No trail at all is GraphiteAuditDisabled's page, not also an "unkeyed"
+  # ticket: tamper_evident reads 0 there too.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_audit_enabled{instance="core:7331", job="graphite"}'
+        values: '0x15'
+      - series: 'graphite_audit_tamper_evident{instance="core:7331", job="graphite"}'
+        values: '0x15'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: GraphiteAuditNotTamperEvident
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'graphite_audit_enabled{instance="core:7331", job="graphite"}'
+        values: '1x15'
+      - series: 'graphite_audit_tamper_evident{instance="core:7331", job="graphite"}'
+        values: '0x15'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: GraphiteAuditNotTamperEvident
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "The audit trail is not keyed (core:7331)"
+              description: >-
+                Without GRAPHITE_AUDIT_KEY_FILE the hash chain is corruption-evident
+                only: anyone who can write the data directory can rewrite it.
+                docs/ops/keys.md, "Audit MAC key".
+
+  # A keyed trail does not alert.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_audit_enabled{instance="core:7331", job="graphite"}'
+        values: '1x15'
+      - series: 'graphite_audit_tamper_evident{instance="core:7331", job="graphite"}'
+        values: '1x15'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: GraphiteAuditNotTamperEvident
+        exp_alerts: []
+
+  # Down, and degraded with its reason.
+  - interval: 1m
+    input_series:
+      - series: 'up{instance="core:7331", job="graphite"}'
+        values: '1 1 0 0 0 0'
+      - series: 'graphite_health_degraded{instance="core:7331", reason="simulation_baseline_frozen"}'
+        values: '0 0 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: GraphiteDown
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "Prometheus cannot scrape Graphite Core (core:7331)"
+              description: Agents behind the guard refuse everything while the Core is unreachable (fail-closed); nothing executes.
+      - eval_time: 8m
+        alertname: GraphiteDegraded
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              instance: core:7331
+              reason: simulation_baseline_frozen
+            exp_annotations:
+              summary: "Graphite reports itself degraded: simulation_baseline_frozen (core:7331)"
+              description: The `/health` degraded reason, from deploy/scripts/health-textfile.sh. docs/ops/incidents.md.
+
+  # The error-rate alert needs traffic: 10 % errors on 1 req/s fires; the
+  # same ratio on almost no traffic does not.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_verify_requests_total{instance="core:7331", job="graphite"}'
+        values: '0+60x30'
+      - series: 'graphite_verify_errors_total{instance="core:7331", job="graphite"}'
+        values: '0+6x30'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: GraphiteVerifyErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              instance: core:7331
+            exp_annotations:
+              summary: "Over 5% of verification requests fail before a verdict (core:7331)"
+              description: Malformed requests (422) or verdicts the trail could not record (503).
+  - interval: 1m
+    input_series:
+      - series: 'graphite_verify_requests_total{instance="core:7331", job="graphite"}'
+        values: '0+0.1x30'
+      - series: 'graphite_verify_errors_total{instance="core:7331", job="graphite"}'
+        values: '0+0.01x30'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: GraphiteVerifyErrorRate
+        exp_alerts: []

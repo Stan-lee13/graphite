@@ -146,8 +146,9 @@ enum Commands {
         #[arg(long)]
         signature: String,
         /// content_hash of the verification this execution corresponds to
-        /// (instruction-level; names every transaction carrying that instruction)
-        #[arg(long)]
+        /// (instruction-level; names every transaction carrying that instruction).
+        /// Also accepted as --instruction-bind-key, its name since Round 30
+        #[arg(long, alias = "instruction-bind-key")]
         content_hash: Option<String>,
         /// scope.transaction_sha256 of the verification: the exact transaction
         #[arg(long)]

@@ -1096,6 +1096,24 @@ fn operator_core() -> Result<(GraphiteCore, boundary::OperatorPolicy), String> {
     if let Some(p) = policy.pinned_profile {
         eprintln!("wallet profile PINNED by GRAPHITE_WALLET_PROFILE: {p:?}");
     }
+    for (on, name) in [
+        (
+            policy.allow_unreadable_value_declarations,
+            "GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS",
+        ),
+        (
+            policy.allow_signer_lamports_outside_declared_debit,
+            "GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT",
+        ),
+        (
+            policy.allow_unbounded_withdrawals,
+            "GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS",
+        ),
+    ] {
+        if on {
+            eprintln!("production default RELAXED by {name}=1 (as at the server)");
+        }
+    }
     Ok((core, policy))
 }
 
@@ -3283,6 +3301,36 @@ mod tests {
         let e = policy.apply_to_core(&mut core).unwrap_err();
         assert!(e.contains("GRAPHITE_PLUGINS_DIR"), "{e}");
         assert!(core.quarantine_on_upgrade(), "the switch reached the core");
+
+        // Round 32: the relaxations of the production defaults reach the
+        // core too, each from its own variable, and are off unless set.
+        let mut core = GraphiteCore::new();
+        boundary::OperatorPolicy::default()
+            .apply_to_core(&mut core)
+            .unwrap();
+        assert_eq!(core.l4_relaxations(), Default::default());
+        assert!(!core.allow_unbounded_withdrawals());
+        for (name, check) in [
+            (
+                "GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS",
+                (|c: &GraphiteCore| c.l4_relaxations().unreadable_value_declarations)
+                    as fn(&GraphiteCore) -> bool,
+            ),
+            (
+                "GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT",
+                |c| c.l4_relaxations().signer_lamports_outside_declared_debit,
+            ),
+            ("GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS", |c| {
+                c.allow_unbounded_withdrawals()
+            }),
+        ] {
+            let policy =
+                boundary::OperatorPolicy::from_lookup(|k| (k == name).then(|| "1".to_string()))
+                    .unwrap();
+            let mut core = GraphiteCore::new();
+            policy.apply_to_core(&mut core).unwrap();
+            assert!(check(&core), "{name} reached the core");
+        }
 
         let dir = reg_dir();
         let policy = boundary::OperatorPolicy {

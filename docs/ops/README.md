@@ -12,6 +12,8 @@ of them stops existing, the runbook is wrong, not the code.
 | [backup-restore.md](backup-restore.md) | Backing up the data volume; restoring it |
 | [incidents.md](incidents.md) | Disk full, audit-integrity alert, RPC degraded, program upgrade, failed finalization, security incident |
 | [branch-protection.md](branch-protection.md) | Owner steps that make CI a gate (repository settings, not code) |
+| [production-checklist.md](production-checklist.md) | Going live: every owner and operator step, in order |
+| [../../deploy/README.md](../../deploy/README.md) | The production configuration and scripts (TLS edge, systemd, compose, alerts, dashboard, backup, anchoring) |
 
 What these runbooks assume, and what is not provided here:
 
@@ -24,7 +26,8 @@ What these runbooks assume, and what is not provided here:
 - **Monitoring, alert routing and on-call are the operator's.** The signals
   exist (`/health` `degraded_reasons`, `/metrics`, `graphite execution` exit
   codes); where they page is a deployment decision.
-- **There is no release pipeline.** Nothing in CI builds, signs or publishes
-  an image or a crate; a release is a tag plus a build the operator runs (see
-  upgrade-rollback.md). Signed artifacts, an SBOM and build provenance are open
-  owner items.
+- **Releases are built by `.github/workflows/release.yml`** from a `v*` tag:
+  a reproducible double build, SBOMs, the image on GHCR by digest, SLSA
+  provenance and SBOM attestations, `SHA256SUMS`. Verify with
+  `gh attestation verify` before deploying (production-checklist.md). The
+  pipeline has not yet run on GitHub: the first tag is its first run.

@@ -473,6 +473,30 @@ function decisionViolation(v: Record<string, unknown>): string | null {
 const CALLER_LIFECYCLE_EVENTS: readonly string[] = ["signing", "submission", "confirmation", "finalization"];
 
 /**
+ * A lifecycle request with its instruction-level key under both names
+ * (Round 32, R-M10). `instruction_bind_key` is the key's name since Round 30;
+ * `content_hash` is the name every Core before Round 32 requires, and a Core
+ * ignores a field it does not know — so the key is sent under both, equal,
+ * and every Core reads the same value. Two different values are refused here,
+ * as the Core refuses them: one of them is not the key. Returned unchanged
+ * when neither is given.
+ */
+export function withInstructionBindKey<T extends { content_hash?: string; instruction_bind_key?: string }>(
+  input: T,
+): T {
+  const named = (v: string | undefined) => (typeof v === "string" && v.trim() !== "" ? v.trim() : undefined);
+  const a = named(input.content_hash);
+  const b = named(input.instruction_bind_key);
+  if (a !== undefined && b !== undefined && a !== b) {
+    throw new Error(
+      "[Graphite] content_hash and instruction_bind_key are the same key under two names, and the two given differ",
+    );
+  }
+  const key = b ?? a;
+  return key === undefined ? input : { ...input, content_hash: key, instruction_bind_key: key };
+}
+
+/**
  * Shape guard for `POST /audit/event`'s receipt (audit 2026-10-20, T1). The
  * receipt is what a caller decides on before submitting — `verdict_on_record`
  * above all — so it is checked like a verdict. When `sent` is given, the
@@ -502,8 +526,9 @@ export function validateLifecycleEventReceipt(value: unknown, sent?: LifecycleEv
     if (value.event_type !== sent.event_type) {
       return `the receipt is for ${JSON.stringify(value.event_type)}, not the ${sent.event_type} event sent`;
     }
-    if (typeof sent.content_hash === "string" && value.content_hash !== sent.content_hash.trim()) {
-      return "the receipt names a different `content_hash` from the one sent";
+    const key = sent.instruction_bind_key ?? sent.content_hash;
+    if (typeof key === "string" && value.content_hash !== key.trim()) {
+      return "the receipt names a different instruction key (`content_hash`) from the one sent";
     }
   }
   return null;
@@ -797,7 +822,8 @@ export class GraphiteClient {
    * signing against a `blocked` verdict has just told Graphite the gate was
    * bypassed.
    */
-  async recordLifecycleEvent(event: LifecycleEventInput): Promise<LifecycleEventReceipt> {
+  async recordLifecycleEvent(input: LifecycleEventInput): Promise<LifecycleEventReceipt> {
+    const event = withInstructionBindKey(input);
     const response = await this.send("/audit/event", {
       method: "POST",
       headers: this.headers({ "content-type": "application/json" }),
@@ -825,7 +851,8 @@ export class GraphiteClient {
    * reconciliation that was not recorded is not one the trail can be
    * audited against.
    */
-  async verifyExecution(input: ExecutionCheckInput): Promise<ExecutionCheckResult> {
+  async verifyExecution(given: ExecutionCheckInput): Promise<ExecutionCheckResult> {
+    const input = withInstructionBindKey(given);
     const response = await this.send("/verify/execution", {
       method: "POST",
       headers: this.headers({ "content-type": "application/json" }),

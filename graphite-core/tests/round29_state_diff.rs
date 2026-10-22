@@ -5,9 +5,9 @@
 
 use graphite_core::account_resolution::{AccountIdentity, ResolvedAccount};
 use graphite_core::state_diff::{
-    check_state_diff, decode_mint, decode_token2022_powers, decode_token_account,
+    check_state_diff_with, decode_mint, decode_token2022_powers, decode_token_account,
     detect_token2022_extensions, AccountDelta, AccountSnapshot, DiffProvenance, DiffSeverity,
-    StateDiff, StateDiffCheck, StateDiffReport,
+    L4Relaxations, StateDiff, StateDiffCheck, StateDiffReport,
 };
 
 const TOKEN: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
@@ -66,6 +66,24 @@ fn report_with(
     fee: u64,
     fee_payer: Option<&str>,
 ) -> StateDiffReport {
+    report_relaxed(
+        deltas,
+        accounts,
+        declared,
+        fee,
+        fee_payer,
+        L4Relaxations::default(),
+    )
+}
+
+fn report_relaxed(
+    deltas: Vec<AccountDelta>,
+    accounts: &[ResolvedAccount],
+    declared: &[&str],
+    fee: u64,
+    fee_payer: Option<&str>,
+    relax: L4Relaxations,
+) -> StateDiffReport {
     let diff = StateDiff {
         deltas,
         provenance: DiffProvenance::RpcSimulated,
@@ -73,13 +91,16 @@ fn report_with(
         ..Default::default()
     };
     let declared: Vec<String> = declared.iter().map(|s| s.to_string()).collect();
-    check_state_diff(&StateDiffCheck {
-        diff: &diff,
-        resolved_accounts: accounts,
-        privileges_grounded: true,
-        expected_state_changes: &declared,
-        fee_payer,
-    })
+    check_state_diff_with(
+        &StateDiffCheck {
+            diff: &diff,
+            resolved_accounts: accounts,
+            privileges_grounded: true,
+            expected_state_changes: &declared,
+            fee_payer,
+        },
+        relax,
+    )
 }
 
 fn report(
@@ -600,12 +621,11 @@ fn lamports_into_a_signers_own_token_account_are_not_a_loss() {
 }
 
 /// A silent manifest, or prose Graphite cannot interpret, no longer excuses a
-/// signer's loss unless the manifest's security class for the instruction is
-/// one that moves value (R30: this test pinned the warning for both; the loss
-/// now blocks, and the warning stands only under such a class —
-/// `tests/r30_declared_effects.rs`).
+/// signer's loss (R30: this test pinned the warning for both; the loss now
+/// blocks). Round 32: not even under a class that moves value, unless the
+/// operator restores that warning (`tests/r30_declared_effects.rs`).
 #[test]
-fn a_signers_loss_under_silent_or_uninterpretable_prose_blocks_unless_its_class_moves_value() {
+fn a_signers_loss_under_silent_or_uninterpretable_prose_blocks_unless_relaxed() {
     let wallet = signer();
     let deltas = || {
         vec![
@@ -630,14 +650,27 @@ fn a_signers_loss_under_silent_or_uninterpretable_prose_blocks_unless_its_class_
         Some(DiffSeverity::Critical)
     );
     let transfer_class = graphite_core::state_diff::security_class_line("transfer");
-    let prose = report(
+    let declared = ["frobnicate the widget", transfer_class.as_str()];
+    let prose = report(deltas(), &accounts, &declared);
+    assert!(prose.blocked, "{:?}", prose.findings);
+    assert_eq!(
+        severity_of(&prose, "UndeclaredSignerLamportDebit"),
+        Some(DiffSeverity::Critical)
+    );
+    let relaxed = report_relaxed(
         deltas(),
         &accounts,
-        &["frobnicate the widget", transfer_class.as_str()],
+        &declared,
+        0,
+        None,
+        L4Relaxations {
+            unreadable_value_declarations: true,
+            ..Default::default()
+        },
     );
-    assert!(!prose.blocked, "{:?}", prose.findings);
+    assert!(!relaxed.blocked, "{:?}", relaxed.findings);
     assert_eq!(
-        severity_of(&prose, "UninterpretableDeclarationWithSignerLamportDebit"),
+        severity_of(&relaxed, "UninterpretableDeclarationWithSignerLamportDebit"),
         Some(DiffSeverity::Warning)
     );
 }

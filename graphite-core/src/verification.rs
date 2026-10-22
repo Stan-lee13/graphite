@@ -2922,6 +2922,12 @@ pub struct GraphiteCore {
     /// Whether a durable-nonce transaction may pass L2 at all. Off by default;
     /// see `set_allow_durable_nonce`.
     allow_durable_nonce: bool,
+    /// The operator's relaxations of L4's production defaults (Round 32).
+    /// None by default; see `set_l4_relaxations`.
+    l4_relaxations: crate::state_diff::L4Relaxations,
+    /// Whether a granted withdrawal may carry no minimum output at all
+    /// (Round 32). Off by default; see `set_allow_unbounded_withdrawals`.
+    allow_unbounded_withdrawals: bool,
     /// Simulation observations held until their verdict is on the audit
     /// trail; `None` records them at once. See
     /// `defer_observations_until_recorded`.
@@ -3161,6 +3167,8 @@ impl GraphiteCore {
             data_dir_lock: None,
             rpc_budget: DEFAULT_RPC_BUDGET,
             allow_durable_nonce: false,
+            l4_relaxations: Default::default(),
+            allow_unbounded_withdrawals: false,
             pending_observations: None,
             quarantine_on_upgrade: false,
             program_upgrades_detected: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -3190,6 +3198,8 @@ impl GraphiteCore {
             data_dir_lock: None,
             rpc_budget: DEFAULT_RPC_BUDGET,
             allow_durable_nonce: false,
+            l4_relaxations: Default::default(),
+            allow_unbounded_withdrawals: false,
             pending_observations: None,
             quarantine_on_upgrade: false,
             program_upgrades_detected: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -3216,6 +3226,8 @@ impl GraphiteCore {
             data_dir_lock: None,
             rpc_budget: DEFAULT_RPC_BUDGET,
             allow_durable_nonce: false,
+            l4_relaxations: Default::default(),
+            allow_unbounded_withdrawals: false,
             pending_observations: None,
             quarantine_on_upgrade: false,
             program_upgrades_detected: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -3646,6 +3658,24 @@ impl GraphiteCore {
         self.allow_durable_nonce = allow;
     }
 
+    /// Relax L4's production defaults (Round 32; operator decision, P14):
+    /// restore the warning a signer's loss under an unreadable value-moving
+    /// declaration, or under a declaration that debits only other accounts,
+    /// used to get. Off by default, where both are Critical. See
+    /// `state_diff::L4Relaxations`.
+    pub fn set_l4_relaxations(&mut self, relax: crate::state_diff::L4Relaxations) {
+        self.l4_relaxations = relax;
+    }
+
+    /// Let a granted withdrawal (`intent_grants`) whose every minimum output
+    /// is zero keep its grant (Round 32; operator decision, P14). Off by
+    /// default: a withdrawal that accepts any amount out at all is a
+    /// withdrawal anyone moving the pool first can take, so the grant does not
+    /// hold and the instruction is refused under the withdraw intent.
+    pub fn set_allow_unbounded_withdrawals(&mut self, allow: bool) {
+        self.allow_unbounded_withdrawals = allow;
+    }
+
     /// Quarantine a program the first time a transaction reaches it after its
     /// deployment changed (roadmap R-M1; operator decision, P14).
     ///
@@ -3664,6 +3694,17 @@ impl GraphiteCore {
     /// Whether an upgrade quarantines the program (`set_quarantine_on_upgrade`).
     pub fn quarantine_on_upgrade(&self) -> bool {
         self.quarantine_on_upgrade
+    }
+
+    /// L4's relaxations of its production defaults (`set_l4_relaxations`).
+    pub fn l4_relaxations(&self) -> crate::state_diff::L4Relaxations {
+        self.l4_relaxations
+    }
+
+    /// Whether a granted withdrawal may carry no minimum output
+    /// (`set_allow_unbounded_withdrawals`).
+    pub fn allow_unbounded_withdrawals(&self) -> bool {
+        self.allow_unbounded_withdrawals
     }
 
     /// Program upgrades noticed since this core started (roadmap R-M1).
@@ -5001,17 +5042,21 @@ impl GraphiteCore {
         resolved_accounts: &[ResolvedAccount],
         privileges_grounded: bool,
         fee_payer: Option<&str>,
+        relax: crate::state_diff::L4Relaxations,
     ) -> PipelineLayerResult {
-        use crate::state_diff::{check_state_diff, DiffProvenance, StateDiffCheck};
+        use crate::state_diff::{check_state_diff_with, DiffProvenance, StateDiffCheck};
 
         let layer_name = "L4_StateVerification";
-        let report = check_state_diff(&StateDiffCheck {
-            diff,
-            resolved_accounts,
-            privileges_grounded,
-            expected_state_changes,
-            fee_payer,
-        });
+        let report = check_state_diff_with(
+            &StateDiffCheck {
+                diff,
+                resolved_accounts,
+                privileges_grounded,
+                expected_state_changes,
+                fee_payer,
+            },
+            relax,
+        );
 
         let render = |findings: &mut dyn Iterator<Item = &crate::state_diff::StateDiffFinding>| {
             findings
@@ -6926,6 +6971,9 @@ impl GraphiteCore {
         // (`intent_grants`), and by its manifest class otherwise — with the
         // failed fact kept, to name in the refusal.
         let mut ungrounded_grant: Option<String> = None;
+        // Round 32 (R30-G-1): a grant whose accounts hold and whose every
+        // minimum output is zero — refused as an unbounded withdrawal.
+        let mut unbounded_withdrawal: Option<String> = None;
         let (expected_account_count, variable_accounts, manifest_risk_class) = match manifest {
             Some(m) => {
                 let ix = m.instruction_for(&effective_discriminator);
@@ -6934,13 +6982,15 @@ impl GraphiteCore {
                     Some(i) => (
                         Some(i.layout_for(input.account_addresses.len()).len()),
                         i.variable_accounts,
-                        match crate::intent_grants::ground(
+                        match crate::intent_grants::ground_with(
                             &input.program_id,
                             i,
                             crate::risk_engine::canonical_intent(
                                 &input.proposed_intent.intent_type.trim().to_lowercase(),
                             ),
                             &input.account_addresses,
+                            input.instruction_data.as_deref(),
+                            self.allow_unbounded_withdrawals,
                         ) {
                             crate::intent_grants::GrantOutcome::Grounded(class) => {
                                 class.to_string()
@@ -6948,6 +6998,10 @@ impl GraphiteCore {
                             crate::intent_grants::GrantOutcome::Ungrounded(why) => {
                                 ungrounded_grant = Some(why);
                                 i.security_class().to_string()
+                            }
+                            crate::intent_grants::GrantOutcome::Unbounded { class, reason } => {
+                                unbounded_withdrawal = Some(reason);
+                                class.to_string()
                             }
                             crate::intent_grants::GrantOutcome::NoGrant => {
                                 i.security_class().to_string()
@@ -7019,6 +7073,20 @@ impl GraphiteCore {
             (verdict, None) => verdict,
             (RiskVerdict::Passed, Some(why)) => RiskVerdict::Blocked {
                 pattern: crate::risk_engine::RiskPattern::PermissionEscalation,
+                reason: why,
+            },
+            (RiskVerdict::Blocked { pattern, reason }, Some(why)) => RiskVerdict::Blocked {
+                pattern,
+                reason: format!("{reason} | {why}"),
+            },
+        };
+        // The accounts made the withdrawal the owner's own, and its data
+        // accepts any amount out: refused, under its own pattern, unless the
+        // operator allowed it (then `ground_with` gave `Grounded`).
+        let risk_verdict = match (risk_verdict, unbounded_withdrawal) {
+            (verdict, None) => verdict,
+            (RiskVerdict::Passed, Some(why)) => RiskVerdict::Blocked {
+                pattern: crate::risk_engine::RiskPattern::UnboundedWithdrawal,
                 reason: why,
             },
             (RiskVerdict::Blocked { pattern, reason }, Some(why)) => RiskVerdict::Blocked {
@@ -8225,11 +8293,34 @@ impl GraphiteCore {
                                     // list to be the instruction's own, position
                                     // by position, and every declared sibling to
                                     // match an instruction that is really there.
+                                    //
+                                    // Round 32: only keys an instruction
+                                    // references. A program sees only the
+                                    // accounts its instruction passes (and
+                                    // passes on from those), so a static key
+                                    // no instruction names is untouched by
+                                    // every program here; a balance it moved
+                                    // anyway is `ArtifactEffectsNotCovered`.
+                                    // Refusing it refused an executed mainnet
+                                    // transfer whose message carried one
+                                    // (tests/round32_unreferenced_static_keys.rs).
                                     let undescribed = artifact_message.as_ref().map(|m| {
+                                        let referenced: std::collections::HashSet<&str> = m
+                                            .instructions
+                                            .iter()
+                                            .flat_map(|ix| {
+                                                std::iter::once(ix.program_id.as_str()).chain(
+                                                    ix.accounts.iter().filter_map(|a| a.as_deref()),
+                                                )
+                                            })
+                                            .collect();
                                         let mut out: Vec<String> = m
                                             .static_keys
                                             .iter()
-                                            .filter(|k| !described.contains(k.as_str()))
+                                            .filter(|k| {
+                                                !described.contains(k.as_str())
+                                                    && referenced.contains(k.as_str())
+                                            })
                                             .cloned()
                                             .collect();
                                         // Deterministic output (P2).
@@ -9090,6 +9181,7 @@ impl GraphiteCore {
                 &accounts_for_state_diff(&resolution.resolved_accounts, &effective_metas),
                 privileges_grounded,
                 fee_payer_for_diff.as_deref(),
+                self.l4_relaxations,
             ),
             // A2-04 (2026-09-29 audit): a caller's diff can only make L4
             // WORSE. It replaced the structural check outright, so an empty
@@ -9103,6 +9195,7 @@ impl GraphiteCore {
                     &accounts_for_state_diff(&resolution.resolved_accounts, &effective_metas),
                     privileges_grounded,
                     fee_payer_for_diff.as_deref(),
+                    self.l4_relaxations,
                 );
                 let structural =
                     self.verify_state(&expected_state_changes, &resolution.resolved_accounts);
@@ -10685,16 +10778,28 @@ mod tests {
         };
         let accounts = [account(from, true), account(to, false)];
         let expected = ["debits the source and credits the destination".to_string()];
-        let without =
-            GraphiteCore::verify_state_from_diff(&diff(false), &expected, &accounts, true, None);
+        let without = GraphiteCore::verify_state_from_diff(
+            &diff(false),
+            &expected,
+            &accounts,
+            true,
+            None,
+            Default::default(),
+        );
         assert_eq!(
             without.status,
             LayerStatus::Inconclusive,
             "{}",
             without.reason
         );
-        let with =
-            GraphiteCore::verify_state_from_diff(&diff(true), &expected, &accounts, true, None);
+        let with = GraphiteCore::verify_state_from_diff(
+            &diff(true),
+            &expected,
+            &accounts,
+            true,
+            None,
+            Default::default(),
+        );
         assert_eq!(with.status, LayerStatus::Passed, "control: {}", with.reason);
     }
 

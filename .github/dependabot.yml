@@ -50,6 +50,18 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
 
+  # The cargo-fuzz crate (Round 30) has its own lockfile, outside the core's
+  # build; without this entry its libfuzzer-sys pin never moved.
+  - package-ecosystem: cargo
+    directory: /graphite-core/fuzz
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    groups:
+      graphite-core-fuzz:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
   - package-ecosystem: npm
     directory: /integrations/vercel-ai
     schedule:
@@ -133,6 +145,18 @@ updates:
         update-types: ["version-update:semver-major"]
     groups:
       dashboard:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # Round 32: the browser smoke's own pins (Playwright, axe-core). A
+  # Playwright bump moves the Chromium the CI job downloads with it.
+  - package-ecosystem: npm
+    directory: /dashboard/e2e
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    groups:
+      dashboard-e2e:
         patterns: ["*"]
         update-types: ["minor", "patch"]
 

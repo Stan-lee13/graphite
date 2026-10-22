@@ -1,0 +1,34 @@
+# Scrape configuration for Graphite Core. Merge into your prometheus.yml.
+#
+# /metrics needs a key: give Prometheus the READ key (GRAPHITE_READ_API_KEY),
+# which opens /metrics, /manifests and GET /api/* and nothing else — never the
+# verify key. Store it in a file only Prometheus can read (mode 0600).
+#
+# Scrape the Core directly on its private address, not through Caddy: the
+# Caddyfile does not route /metrics to the outside.
+#
+# Validate: promtool check config --syntax-only deploy/prometheus/prometheus.example.yml
+#           (without --syntax-only it also needs the key file and rule file in place)
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+rule_files:
+  - graphite-alerts.yml
+
+scrape_configs:
+  - job_name: graphite
+    metrics_path: /metrics
+    scheme: http
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/graphite_read_api_key
+    static_configs:
+      # compose: graphite:7331 on the backend network; systemd: 127.0.0.1:7331
+      - targets: ["127.0.0.1:7331"]
+
+  # graphite_health_degraded{reason=…}, written by
+  # deploy/scripts/health-textfile.sh into node_exporter's textfile directory.
+  - job_name: node
+    static_configs:
+      - targets: ["127.0.0.1:9100"]

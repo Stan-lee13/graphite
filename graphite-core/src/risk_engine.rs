@@ -104,6 +104,11 @@ pub enum RiskPattern {
     /// cannot be corrected. The plugin's own pattern is still reported
     /// alongside, namespaced by plugin name.
     PluginBlock,
+    /// A granted withdrawal (`intent_grants`) whose every minimum output is
+    /// zero: it accepts any amount out, so whoever moves the pool in front of
+    /// it takes the difference (Round 32, R30-G-1). The operator may allow it
+    /// (`GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS`).
+    UnboundedWithdrawal,
 }
 
 /// Verdict from risk assessment.
@@ -1428,6 +1433,7 @@ impl RiskPattern {
             RiskPattern::CpiTraceAnomaly => "CpiTraceAnomaly",
             RiskPattern::UnspendableDestination => "UnspendableDestination",
             RiskPattern::PluginBlock => "PluginBlock",
+            RiskPattern::UnboundedWithdrawal => "UnboundedWithdrawal",
         }
     }
 }

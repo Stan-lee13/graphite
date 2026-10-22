@@ -1181,6 +1181,23 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
             "durable-nonce transactions PERMITTED (GRAPHITE_ALLOW_DURABLE_NONCE=1): they do not expire; each one is verified against its nonce account on-chain before L2 passes",
         );
     }
+    // Round 32: the production defaults refuse these; an operator who
+    // relaxes one is told so at every start.
+    if policy.allow_unreadable_value_declarations {
+        tracing_log(
+            "L4 RELAXED (GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS=1): a signer's loss under a declaration Graphite cannot read only WARNS when the instruction's class moves value",
+        );
+    }
+    if policy.allow_signer_lamports_outside_declared_debit {
+        tracing_log(
+            "L4 RELAXED (GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT=1): lamports leaving a signer's wallet under a debit declared for other accounts only WARN",
+        );
+    }
+    if policy.allow_unbounded_withdrawals {
+        tracing_log(
+            "grants RELAXED (GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS=1): a granted withdrawal whose every minimum output is zero is not refused",
+        );
+    }
     if let (Some(summary), Some(dir)) = (plugins, &policy.plugins_dir) {
         // Round 19 (F-19-26): say what "skipped" means. A manifest is the
         // review gate for activating a plugin from this directory; the
@@ -3125,15 +3142,44 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], out)
 }
 
+/// The instruction-level join key of a lifecycle request (R-M10, Round 32):
+/// `content_hash`, or the same value as `instruction_bind_key`. Both may be
+/// sent; if they differ the request is refused rather than one of them
+/// silently chosen. `None` when neither is sent (or both are blank).
+fn instruction_key_of(
+    content_hash: Option<&str>,
+    instruction_bind_key: Option<&str>,
+) -> Result<Option<String>, String> {
+    let named = |v: Option<&str>| {
+        v.map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    };
+    match (named(content_hash), named(instruction_bind_key)) {
+        (Some(a), Some(b)) if a != b => Err(
+            "content_hash and instruction_bind_key are the same key under two names, and the two sent differ"
+                .to_string(),
+        ),
+        (Some(a), _) | (None, Some(a)) => Ok(Some(a)),
+        (None, None) => Ok(None),
+    }
+}
+
 /// Body for `POST /audit/event`.
 #[derive(serde::Deserialize)]
 struct LifecycleEventBody {
     event_type: LifecycleEvent,
     /// Join key back to the verification that approved this transaction —
-    /// the instruction-level one. Required for compatibility; `audit_trail_id`
-    /// or `transaction_sha256` should accompany it, because `content_hash`
-    /// alone names every transaction carrying that instruction.
-    content_hash: String,
+    /// the instruction-level one. One of `content_hash` and
+    /// `instruction_bind_key` (the same value under its Round 30 name) is
+    /// required; both may be sent when they agree. `audit_trail_id` or
+    /// `transaction_sha256` should accompany it, because the key alone names
+    /// every transaction carrying that instruction.
+    #[serde(default)]
+    content_hash: Option<String>,
+    /// `content_hash` under the name that says what it is (R-M10, Round 32).
+    #[serde(default)]
+    instruction_bind_key: Option<String>,
     #[serde(default)]
     audit_trail_id: Option<String>,
     /// The exact transaction this event is about (`scope.transaction_sha256`).
@@ -3162,6 +3208,10 @@ struct ExecutionBody {
     /// audit trail.
     #[serde(default)]
     content_hash: Option<String>,
+    /// `content_hash` under the name that says what it is (R-M10, Round 32);
+    /// both may be sent when they agree.
+    #[serde(default)]
+    instruction_bind_key: Option<String>,
     /// The exact transaction (`scope.transaction_sha256`) this execution is
     /// the submission of. More exact than `content_hash`; still
     /// caller-attested, and cross-checked against the chain's bytes.
@@ -3349,8 +3399,19 @@ async fn execution(
             Json(serde_json::json!({ "error": why })),
         ));
     }
-    if let Some(h) = body.content_hash.as_deref() {
-        let h = h.trim();
+    let instruction_key = match instruction_key_of(
+        body.content_hash.as_deref(),
+        body.instruction_bind_key.as_deref(),
+    ) {
+        Ok(k) => k,
+        Err(why) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": why })),
+            ))
+        }
+    };
+    if let Some(h) = instruction_key.as_deref() {
         if h.len() != 16 || !h.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
             return Err((
                 StatusCode::BAD_REQUEST,
@@ -3404,7 +3465,7 @@ async fn execution(
         .audit_execution(
             &signature,
             crate::verification::ExecutionKeys {
-                content_hash: body.content_hash.as_deref().map(str::trim),
+                content_hash: instruction_key.as_deref(),
                 transaction_sha256: body.transaction_sha256.as_deref().map(str::trim),
                 audit_trail_id: body.audit_trail_id.as_deref().map(str::trim),
             },
@@ -3464,7 +3525,7 @@ async fn execution(
                     content_hash: result
                         .recorded_content_hash
                         .clone()
-                        .or_else(|| body.content_hash.as_deref().map(|h| h.trim().to_string()))
+                        .or_else(|| instruction_key.clone())
                         .unwrap_or_default(),
                     verdict_on_record: None,
                     verdict_on_record_key: None,
@@ -3967,15 +4028,26 @@ async fn lifecycle_event(
             })),
         ));
     }
-    let content_hash = body.content_hash.trim().to_string();
-    if content_hash.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({
-                "error": "content_hash is required — it links this event to the verification that approved the transaction",
-            })),
-        ));
-    }
+    let content_hash = match instruction_key_of(
+        body.content_hash.as_deref(),
+        body.instruction_bind_key.as_deref(),
+    ) {
+        Ok(Some(k)) => k,
+        Ok(None) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "content_hash (or instruction_bind_key, the same key) is required — it links this event to the verification that approved the transaction",
+                })),
+            ))
+        }
+        Err(why) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": why })),
+            ))
+        }
+    };
     // Every field of this body lands on the audit volume. The shape checks
     // refuse what cannot be the thing it claims to be — a content_hash is 16
     // lowercase hex characters, a signature at most 88 base58 characters —
@@ -7015,6 +7087,112 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Round 32 (R-M10): the lifecycle requests take the instruction-level
+    /// key under either name — `content_hash`, or `instruction_bind_key`,
+    /// its name since Round 30 — or under both when they agree. Two values
+    /// that differ are refused rather than one silently chosen, on both
+    /// routes, before any RPC is asked.
+    #[tokio::test]
+    async fn lifecycle_requests_take_the_bind_key_under_either_name() {
+        let (state, dir) = test_state();
+        let log = state.audit.clone().unwrap();
+        assert!(log.append(&verification_row("aaaaaaaaaaaaaaaa", true)));
+        let app = build_app(state, vec![]);
+        for body in [
+            serde_json::json!({"event_type": "signing", "content_hash": "aaaaaaaaaaaaaaaa"}),
+            serde_json::json!({"event_type": "signing", "instruction_bind_key": "aaaaaaaaaaaaaaaa"}),
+            serde_json::json!({
+                "event_type": "signing",
+                "content_hash": "aaaaaaaaaaaaaaaa",
+                "instruction_bind_key": "aaaaaaaaaaaaaaaa",
+            }),
+        ] {
+            let (status, out) = post_json(&app, "/audit/event", None, body.clone()).await;
+            assert_eq!(status, axum::http::StatusCode::OK, "{body}: {out}");
+            assert_eq!(out["verdict_on_record"], "approved", "{body}: {out}");
+        }
+        let (status, out) = post_json(
+            &app,
+            "/audit/event",
+            None,
+            serde_json::json!({
+                "event_type": "signing",
+                "content_hash": "aaaaaaaaaaaaaaaa",
+                "instruction_bind_key": "bbbbbbbbbbbbbbbb",
+            }),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::BAD_REQUEST, "{out}");
+        assert!(
+            out["error"]
+                .as_str()
+                .unwrap()
+                .contains("same key under two names"),
+            "{out}"
+        );
+        let (status, out) = post_json(
+            &app,
+            "/audit/event",
+            None,
+            serde_json::json!({"event_type": "signing"}),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::BAD_REQUEST, "{out}");
+        assert!(
+            out["error"].as_str().unwrap().contains("is required"),
+            "{out}"
+        );
+        // The new name is held to the key's shape like the old one.
+        let (status, _) = post_json(
+            &app,
+            "/audit/event",
+            None,
+            serde_json::json!({"event_type": "signing", "instruction_bind_key": "AAAAAAAAAAAAAAAA"}),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+
+        let signature = bs58::encode([0x22u8; 64]).into_string();
+        let (status, out) = post_json(
+            &app,
+            "/verify/execution",
+            None,
+            serde_json::json!({
+                "signature": signature,
+                "content_hash": "aaaaaaaaaaaaaaaa",
+                "instruction_bind_key": "bbbbbbbbbbbbbbbb",
+            }),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::BAD_REQUEST, "{out}");
+        assert!(
+            out["error"]
+                .as_str()
+                .unwrap()
+                .contains("same key under two names"),
+            "{out}"
+        );
+        let (status, out) = post_json(
+            &app,
+            "/verify/execution",
+            None,
+            serde_json::json!({"signature": signature, "instruction_bind_key": "nothex"}),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::BAD_REQUEST, "{out}");
+        // Under the new name alone the request passes the boundary: with no
+        // RPC client the check reports itself unavailable, not a refusal.
+        let (status, out) = post_json(
+            &app,
+            "/verify/execution",
+            None,
+            serde_json::json!({"signature": signature, "instruction_bind_key": "aaaaaaaaaaaaaaaa"}),
+        )
+        .await;
+        assert_ne!(status, axum::http::StatusCode::BAD_REQUEST, "{out}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Round 9: the one fact Graphite can establish about a caller-reported
     /// event is what its own trail says about the hash. Recorded on the row,
     /// returned to the caller, counted — and a report against a BLOCKED
@@ -8519,9 +8697,35 @@ Connection: close
             "GRAPHITE_ALLOW_PERMISSIVE_PROFILES",
             "GRAPHITE_ALLOW_DURABLE_NONCE",
             "GRAPHITE_QUARANTINE_ON_UPGRADE",
+            "GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS",
+            "GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT",
+            "GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS",
         ] {
             assert!(policy(name, "yes").is_err(), "{name}=yes");
         }
+        // Round 32: the three relaxations are off unless set, and each reads
+        // its own variable.
+        let unset = policy("GRAPHITE_UNRELATED", "1").unwrap();
+        assert!(
+            !unset.allow_unreadable_value_declarations
+                && !unset.allow_signer_lamports_outside_declared_debit
+                && !unset.allow_unbounded_withdrawals
+        );
+        assert!(
+            policy("GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS", "true")
+                .unwrap()
+                .allow_unreadable_value_declarations
+        );
+        assert!(
+            policy("GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT", "1")
+                .unwrap()
+                .allow_signer_lamports_outside_declared_debit
+        );
+        assert!(
+            policy("GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS", "1")
+                .unwrap()
+                .allow_unbounded_withdrawals
+        );
         // Round 30 (G-02): retired, and refused whatever its value, so an
         // operator who relied on it learns that it no longer exists.
         for value in ["1", "0", "true", "yes"] {
