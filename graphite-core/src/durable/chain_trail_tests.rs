@@ -872,8 +872,7 @@ fn a_forged_unterminated_tail_of_the_active_file_is_never_read() {
             ..AuditOptions::default()
         },
     )
-    .err()
-    .expect("a keyed writer resumed onto an unkeyed forged tail");
+    .expect_err("a keyed writer resumed onto an unkeyed forged tail");
     assert!(err.to_string().contains("carries no MAC"), "{err}");
 }
 
@@ -995,9 +994,7 @@ fn a_keyed_writer_refuses_to_resume_onto_an_unkeyed_head() {
             ..AuditOptions::default()
         },
     );
-    let err = opened
-        .err()
-        .expect("a keyed writer resumed onto an unkeyed head");
+    let err = opened.expect_err("a keyed writer resumed onto an unkeyed head");
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
     assert!(err.to_string().contains("adopt-key"), "{err}");
 }
@@ -1090,9 +1087,8 @@ fn a_keyed_writer_refuses_to_resume_onto_a_head_under_an_unknown_key() {
             ..AuditOptions::default()
         },
     );
-    let err = opened
-        .err()
-        .expect("a keyed writer resumed onto a head under a key id it cannot check");
+    let err =
+        opened.expect_err("a keyed writer resumed onto a head under a key id it cannot check");
     assert!(err.to_string().contains("deadbeefdeadbeef"), "{err}");
 }
 
