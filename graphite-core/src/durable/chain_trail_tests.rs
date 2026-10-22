@@ -857,6 +857,14 @@ fn a_forged_unterminated_tail_of_the_active_file_is_never_read() {
     assert_eq!(report.exit_code(), 0, "{report:?}");
     assert_eq!(report.unparseable_lines, 1);
     assert!(victim_seen_by_a_reader(&path).is_none());
+    // The active file's counts are built at open and answered without a
+    // read-back: they must not count it either.
+    let reader = AuditLog::open_read_only(&path).unwrap();
+    assert_eq!(
+        reader.count_verifications(VerificationKey::TransactionSha256(VICTIM_TX)),
+        (0, 0)
+    );
+    drop(reader);
     let err = AuditLog::open_with_options(
         &path,
         AuditOptions {
