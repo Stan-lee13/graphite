@@ -9172,6 +9172,22 @@ impl GraphiteCore {
             .is_some()
         {
             diff_declared.push(crate::state_diff::security_class_line(&manifest_risk_class));
+            // Round 34: which program the located instruction is (R33-6: the
+            // rent of an account it declares it creates is a signer's cost
+            // only when that program or a token program owns the account),
+            // and what its data says it debits a wallet by (R33-15).
+            diff_declared.push(crate::state_diff::instruction_program_line(
+                &input.program_id,
+            ));
+            if let Some((from, lamports)) = input.instruction_data.as_deref().and_then(|data| {
+                crate::state_diff::system_lamport_debit(
+                    &input.program_id,
+                    data,
+                    &input.account_addresses,
+                )
+            }) {
+                diff_declared.push(crate::state_diff::lamport_amount_line(&from, lamports));
+            }
         }
         let diff_declared = &diff_declared;
         let l4_result = match (observed_diff.as_ref(), caller_diff.as_ref()) {

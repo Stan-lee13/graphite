@@ -294,3 +294,70 @@ fn every_declared_account_reference_names_a_layout_account() {
     }
     assert!(refs > 200, "{refs}");
 }
+
+/// Round 34 (R33-5): how many shipped declarations carry a debit line that
+/// names no account ("transfers funds between the protocol and the involved
+/// accounts"), counted with the real parser. Such a line says nothing about
+/// whose value moves: for the signer judgements it is read as a declaration
+/// Graphite cannot read (`DeclaredEffects::debit_names_no_account`), so a
+/// signer's loss under it is refused by default and relaxable only by
+/// `GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS` for a class that moves
+/// value. Pinned so a manifest change re-measures the rule.
+#[test]
+fn debit_lines_that_name_no_account_are_counted() {
+    use graphite_core::intent_grants::GRANTS;
+    let reg = load_seed_manifests();
+    let unscoped_line = |l: &String| {
+        let e = DeclaredEffects::parse(std::slice::from_ref(l));
+        e.debit && e.covers("debit", &[])
+    };
+    let named_line = |l: &String| {
+        let e = DeclaredEffects::parse(std::slice::from_ref(l));
+        e.debit && !e.covers("debit", &[])
+    };
+    let (mut total, mut lines, mut with_unscoped, mut only_unscoped) = (0, 0, 0, 0);
+    for m in reg.list() {
+        for ix in &m.instructions {
+            total += 1;
+            let n = ix
+                .expected_state_changes
+                .iter()
+                .filter(|l| unscoped_line(l))
+                .count();
+            lines += n;
+            if n > 0 {
+                with_unscoped += 1;
+                if !ix.expected_state_changes.iter().any(|l| named_line(l)) {
+                    only_unscoped += 1;
+                }
+            }
+        }
+    }
+    let mut grants_with_unscoped: Vec<String> = Vec::new();
+    for g in GRANTS {
+        let ix = reg
+            .get(g.program_id)
+            .and_then(|m| m.instructions.iter().find(|i| i.name == g.instruction))
+            .unwrap_or_else(|| panic!("{} {}", g.program_id, g.instruction));
+        if ix.expected_state_changes.iter().any(|l| unscoped_line(l)) {
+            grants_with_unscoped.push(format!("{}::{}", g.program_id, g.instruction));
+        }
+    }
+    eprintln!(
+        "[R33-5 census] instructions {total}, unscoped debit lines {lines}, instructions with one {with_unscoped}, with no named debit line beside it {only_unscoped}; grants {} of {}: {grants_with_unscoped:#?}",
+        grants_with_unscoped.len(),
+        GRANTS.len()
+    );
+    assert_eq!(
+        (
+            total,
+            lines,
+            with_unscoped,
+            only_unscoped,
+            grants_with_unscoped.len(),
+            GRANTS.len()
+        ),
+        (3541, 1820, 1802, 1802, 13, 21),
+        "(instructions, unscoped debit lines, instructions with one, of them with no named debit, grants with one, grants)"
+    );
+}
