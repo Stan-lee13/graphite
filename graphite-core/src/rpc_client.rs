@@ -20,6 +20,18 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use thiserror::Error;
 
+/// The bundled Mozilla root certificates, as reqwest certificates: the only
+/// trust anchors the RPC client accepts (Round 31). reqwest 0.13's rustls
+/// backend verifies against the host's store by default; 0.12's
+/// `rustls-tls` used this bundled set, and the RPC trust boundary keeps it,
+/// so which CAs Graphite trusts does not depend on the host or image.
+fn bundled_root_certificates() -> Vec<reqwest::Certificate> {
+    webpki_root_certs::TLS_SERVER_ROOT_CERTS
+        .iter()
+        .filter_map(|der| reqwest::Certificate::from_der(der.as_ref()).ok())
+        .collect()
+}
+
 /// The most instructions the runtime records for one transaction, top-level
 /// and inner together (agave `MAX_INSTRUCTION_TRACE_LENGTH`). An RPC reporting
 /// more inner instructions than this is not describing an execution (A2-11).
@@ -314,15 +326,15 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
         v.as_array()?.iter().map(|n| n.as_u64()).collect()
     };
     let balances = match (
-        value.get("preBalances").and_then(&readable),
-        value.get("postBalances").and_then(&readable),
+        value.get("preBalances").and_then(readable),
+        value.get("postBalances").and_then(readable),
     ) {
         (Some(pre), Some(post)) if pre.len() == post.len() => Some((pre, post)),
         _ => None,
     };
     let derived_account_writes = match (
-        value.get("preBalances").and_then(&readable),
-        value.get("postBalances").and_then(&readable),
+        value.get("preBalances").and_then(readable),
+        value.get("postBalances").and_then(readable),
     ) {
         // An account whose lamport balance moved was written. This undercounts
         // a write that changed only account DATA at identical lamports, so it
@@ -1634,6 +1646,7 @@ impl SolanaRpcClient {
             .timeout(config.timeout)
             .redirect(reqwest::redirect::Policy::none())
             .dns_resolver(std::sync::Arc::new(GuardedResolver))
+            .tls_certs_only(bundled_root_certificates())
             .build()
             .ok();
         Self {
@@ -2375,6 +2388,20 @@ mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::TcpListener;
+
+    /// Round 31: every bundled root parses (none silently dropped by the
+    /// `filter_map`), and the client builds with them as its only anchors.
+    #[test]
+    fn the_rpc_client_trusts_exactly_the_bundled_roots() {
+        let roots = bundled_root_certificates();
+        assert_eq!(roots.len(), webpki_root_certs::TLS_SERVER_ROOT_CERTS.len());
+        assert!(roots.len() > 100, "the Mozilla set, not a stub");
+        let client = SolanaRpcClient::new(RpcConfig::default());
+        assert!(
+            client.http_client.is_some(),
+            "the RPC client must build with the bundled roots"
+        );
+    }
 
     /// R-M1: the loader-v3 layouts, byte for byte, and a refusal for anything else.
     #[test]

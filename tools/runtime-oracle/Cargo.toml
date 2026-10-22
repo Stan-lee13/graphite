@@ -17,14 +17,19 @@ publish = false
 graphite-core = { path = "../../graphite-core", default-features = false }
 # The runtime's wire decoder and sanitizer, from the SDK crates the
 # validator itself uses for them.
-solana-transaction = { version = "5.0.0", features = ["serde", "wincode"] }
-solana-message = { version = "5.0.0", features = ["serde", "wincode"] }
+# Held on 5.x (Round 31): solana-message 6.0.0 drops the v1 limits this
+# oracle pins Graphite to (`v1::MAX_SIGNATURES` 12, `MAX_ADDRESSES` and
+# `MAX_INSTRUCTIONS` 64; 6.0 allows 255). Moving to 6 is a change of the
+# reference the parser is judged against, to be made when the runtime the
+# network runs adopts it, with Graphite's own v1 limits decided alongside.
+solana-transaction = { version = "5.1.0", features = ["serde", "wincode"] }
+solana-message = { version = "5.1.0", features = ["serde", "wincode"] }
 # The v1 (SIMD-0385) wire format has no serde/bincode encoding at all: the
 # crates' serde impl for `VersionedMessage::V1` is documented as "does not
 # match the wire format". The runtime decodes v1 frames with the crates' own
 # wincode `SchemaRead` for `VersionedTransaction`, so the oracle does too
-# (Round 19, F-19-V1). Same major as the one solana-transaction 5.0 pins.
-wincode = { version = "0.6.0", default-features = false, features = ["derive", "alloc", "std"] }
+# (Round 19, F-19-V1). Same major as the one solana-transaction 5.1 pins.
+wincode = { version = "0.6.3", default-features = false, features = ["derive", "alloc", "std"] }
 solana-sanitize = "3.0.1"
 # The runtime's own program and sysvar ids, for the reserved keys the
 # writability check demotes (Round 22). Already in this lockfile through
@@ -32,9 +37,12 @@ solana-sanitize = "3.0.1"
 solana-sdk-ids = "3.1.0"
 # The runtime's packet decoder is bincode 1 with fixint encoding, a 1232-byte
 # limit and trailing bytes rejected (`solana_packet::Packet::deserialize_slice`).
+# Kept on bincode 1 although bincode 3 exists: solana-packet 4.4.1, the
+# runtime's packet crate, still depends on bincode ^1.3.3, and the oracle must
+# decode exactly as the runtime does.
 bincode = "1.3.3"
 serde_json = "1.0"
-ed25519-dalek = { version = "2", default-features = false, features = ["std", "rand_core"] }
+ed25519-dalek = { version = "3", default-features = false, features = ["alloc", "rand_core"] }
 bs58 = "0.5"
 
 [profile.release]
