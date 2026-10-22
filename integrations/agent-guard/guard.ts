@@ -50,8 +50,18 @@ import {
 import { GUARD_CAPABILITIES, UnsupportedCapability, type GuardCapabilities } from "./capabilities.js";
 export { GUARD_CAPABILITIES, UnsupportedCapability, type GuardCapabilities };
 // Round 30: the aggregate spend and unresolved submissions, durable on request.
-import { GuardState, GuardStateError, openGuardState, GUARD_STATE_FILE_ENV } from "./guard-state.js";
-export { GuardState, GuardStateError, GUARD_STATE_FILE_ENV };
+import {
+  GuardState,
+  GuardStateError,
+  openGuardState,
+  takeWalletLock,
+  walletLockPlan,
+  WalletLock,
+  GUARD_ALLOW_SHARED_WALLET_ENV,
+  GUARD_LOCK_DIR_ENV,
+  GUARD_STATE_FILE_ENV,
+} from "./guard-state.js";
+export { GuardState, GuardStateError, WalletLock, GUARD_ALLOW_SHARED_WALLET_ENV, GUARD_LOCK_DIR_ENV, GUARD_STATE_FILE_ENV };
 export { RpcSimulator, assertEverySignatureSlotEmpty };
 // Round 19 (F-19-C5): the AI layer's answer is checked against the user's text.
 import {
@@ -359,6 +369,18 @@ export interface GuardConfig {
      */
     stateFile?: string;
     /**
+     * The directory every guard on this host shares for its per-wallet locks
+     * (Round 32, guard-state.ts). Overrides GRAPHITE_GUARD_LOCK_DIR. Default
+     * `<tmpdir>/graphite-guard`.
+     */
+    walletLockDir?: string;
+    /**
+     * Let this guard start while another guard runs for the same wallet: the
+     * spend limits then hold per guard, not per wallet. Overrides
+     * GRAPHITE_GUARD_ALLOW_SHARED_WALLET. Default false (Round 32).
+     */
+    allowSharedWallet?: boolean;
+    /**
      * How long a confirmation hook may take before it counts as declined, in
      * milliseconds. Default `DEFAULT_CONFIRM_TIMEOUT_MS` (Round 30).
      */
@@ -386,6 +408,8 @@ export const GUARD_CONFIG_KEYS: readonly (keyof GuardConfig)[] = Object.freeze([
   "swapPolicy",
   "swapEnvelope",
   "stateFile",
+  "walletLockDir",
+  "allowSharedWallet",
   "confirmTimeoutMs",
 ] as const);
 
@@ -573,6 +597,8 @@ export class GraphiteGuard {
    * since Round 30 the aggregate's reservations: durable with a state file.
    */
   #state: GuardState;
+  /** This guard's claim on its wallet (Round 32): one guard per wallet on a host. */
+  #walletLock: WalletLock;
   /** Requests being executed right now, by the same key (Round 30). */
   #inFlight = new Set<string>();
   #confirmTimeoutMs: number;
@@ -589,7 +615,7 @@ export class GraphiteGuard {
     signer: WalletSigner; residualPolicy: ResidualPolicy;
     aiLayerTimeoutMs: number; transactionVersion: BridgeTransactionVersion; reporterName: string;
     spendPolicy: SpendPolicy; swapPolicy: SwapPolicy; swapEnvelope: SwapEnvelopeConfig; rpcUrl: string;
-    state: GuardState; confirmTimeoutMs: number;
+    state: GuardState; walletLock: WalletLock; confirmTimeoutMs: number;
   }) {
     this.#graphite = c.graphite;
     this.#connection = c.connection;
@@ -605,6 +631,7 @@ export class GraphiteGuard {
     this.#reporterName = c.reporterName;
     this.#spendPolicy = c.spendPolicy;
     this.#state = c.state;
+    this.#walletLock = c.walletLock;
     this.#ledger = new SpendLedger(c.spendPolicy, Date.now, c.state);
     this.#swapPolicy = c.swapPolicy;
     this.#swapEnvelope = c.swapEnvelope;
@@ -689,6 +716,7 @@ export class GraphiteGuard {
     if (!Number.isSafeInteger(confirmTimeoutMs) || confirmTimeoutMs < 1) {
       throw new Error(`[Graphite] confirmTimeoutMs ${String(confirmTimeoutMs)} is not a positive integer. REFUSING TO START.`);
     }
+    const lockPlan = walletLockPlan({ lockDir: config?.walletLockDir, allowSharedWallet: config?.allowSharedWallet });
 
     const signer = await walletSignerFrom(privateKey);
     const connection = connectionWithoutRedirects(rpcUrl);
@@ -714,14 +742,24 @@ export class GraphiteGuard {
     console.log(describeSwapPolicy(swapPolicy));
     // Round 30: opened last, after everything that can refuse to start, so a
     // refused start does not hold the state file's lock.
+    // Round 32: the wallet's lock first, so a second guard for the same
+    // wallet is refused before it touches any state file.
     const windowMs = (spendPolicy.spendWindowSeconds ?? DEFAULT_SPEND_WINDOW_SECONDS) * 1000;
-    const state = openGuardState(config?.stateFile, Date.now() - windowMs);
+    const walletLock = takeWalletLock(signer.publicKey.toBase58(), lockPlan);
+    let state: GuardState;
+    try {
+      state = openGuardState(config?.stateFile, Date.now() - windowMs);
+    } catch (e) {
+      walletLock.close();
+      throw e;
+    }
+    console.log(walletLock.describe());
     console.log(state.describe());
 
     return new GraphiteGuard({
       graphite, connection, walletProfile, aiLayerUrl, signer, residualPolicy, aiLayerTimeoutMs,
       transactionVersion, reporterName: config?.reporter ?? "agent-guard", spendPolicy, swapPolicy, swapEnvelope,
-      rpcUrl, state, confirmTimeoutMs,
+      rpcUrl, state, walletLock, confirmTimeoutMs,
     });
   }
 
@@ -731,11 +769,13 @@ export class GraphiteGuard {
   }
 
   /**
-   * Release the state file's lock (Round 30). The guard signs nothing after
-   * this; a process that exits releases it anyway.
+   * Release the state file's lock (Round 30) and the wallet's (Round 32).
+   * The guard signs nothing after this; a process that exits releases them
+   * anyway.
    */
   close(): void {
     this.#state.close();
+    this.#walletLock.close();
   }
 
   async parseIntent(naturalLanguage: string): Promise<ProposedIntent> {

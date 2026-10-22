@@ -23,17 +23,49 @@
  * lost. One process uses one file: a lock file next to it holds the owner's
  * pid, and a second process refuses to start while that pid is alive.
  *
+ * One guard per wallet (Round 32). The aggregate limit is kept per state
+ * file, so two guards signing for the same key with different state files
+ * (or none) each spent the whole allowance: the limit held per process, not
+ * per wallet. Every guard now also takes a lock named for its wallet's
+ * public key in a directory every guard on the host shares
+ * (`GRAPHITE_GUARD_LOCK_DIR`, default `<tmpdir>/graphite-guard`), and a
+ * second guard for the same wallet refuses to start while the first runs.
+ * `GRAPHITE_GUARD_ALLOW_SHARED_WALLET=1` lets it start, logged as the limits
+ * holding per guard. The lock names its owner by pid, so it sees only
+ * processes that share the directory AND a pid namespace: guards on other
+ * hosts or in other containers are not seen, even through a shared volume
+ * (a pid from another namespace reads as dead, or as an unrelated process),
+ * and their spend is not counted. One guard per wallet across hosts is the
+ * operator's to arrange.
+ *
  * Without the variable, the same state is kept in memory, as before, and the
  * startup log says a restart forgets it.
  */
-import { closeSync, existsSync, fsyncSync, openSync, readFileSync, renameSync, unlinkSync, writeSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  linkSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-/** Every state holding a lock, released when the process exits. */
-const OPEN = new Set<GuardState>();
+/** Every lock this process holds, by path; released when the process exits. */
+const HELD = new Set<string>();
 let exitHooked = false;
 
 /** Environment variable naming the guard's state file. */
 export const GUARD_STATE_FILE_ENV = "GRAPHITE_GUARD_STATE_FILE";
+/** The directory every guard on a host shares for its per-wallet locks (Round 32). */
+export const GUARD_LOCK_DIR_ENV = "GRAPHITE_GUARD_LOCK_DIR";
+/** "1": a guard may sign for a wallet another running guard holds (Round 32). */
+export const GUARD_ALLOW_SHARED_WALLET_ENV = "GRAPHITE_GUARD_ALLOW_SHARED_WALLET";
 
 /** A submission whose outcome the guard has not seen confirmed. */
 export interface UnresolvedSubmission {
@@ -112,6 +144,160 @@ function pidAlive(pid: number): boolean {
   }
 }
 
+/**
+ * Take the lock at `lockPath` for this process, or throw `GuardStateError`
+ * with `held(owner)` while another live process (or this one) holds it.
+ *
+ * The pid is written to a private file first and linked into place, so the
+ * lock never exists without its owner in it: a second process that finds it
+ * always reads a pid, never an empty file it would take for a crash's.
+ */
+function acquirePidLock(lockPath: string, held: (owner: number) => string): void {
+  const tmp = `${lockPath}.${process.pid}.${Date.now()}.tmp`;
+  const fd = openSync(tmp, "w", 0o600);
+  try {
+    writeSync(fd, String(process.pid));
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        linkSync(tmp, lockPath);
+        HELD.add(lockPath);
+        if (!exitHooked) {
+          exitHooked = true;
+          process.once("exit", () => {
+            for (const path of [...HELD]) releasePidLock(path);
+          });
+        }
+        return;
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "EEXIST") {
+          throw new GuardStateError(`the lock ${lockPath} could not be created: ${(e as Error).message}. REFUSING TO START.`);
+        }
+        const owner = Number(readFileSync(lockPath, "utf8").trim());
+        // This process holds it when it took it and has not released it. The
+        // same pid with no hold here is an earlier incarnation that crashed
+        // (in a container the guard is often pid 1 every time).
+        const heldHere = owner === process.pid && HELD.has(lockPath);
+        const heldElsewhere = owner !== process.pid && Number.isSafeInteger(owner) && owner > 0 && pidAlive(owner);
+        if (heldHere || heldElsewhere) throw new GuardStateError(held(owner));
+        // The owner is gone (a crash): the lock is stale.
+        unlinkSync(lockPath);
+      }
+    }
+    throw new GuardStateError(`the lock ${lockPath} could not be taken. REFUSING TO START.`);
+  } finally {
+    try {
+      unlinkSync(tmp);
+    } catch {
+      // already gone
+    }
+  }
+}
+
+/** Drop a lock this process holds. Idempotent; never removes another process's. */
+function releasePidLock(lockPath: string): void {
+  if (!HELD.delete(lockPath)) return;
+  try {
+    if (readFileSync(lockPath, "utf8").trim() === String(process.pid)) unlinkSync(lockPath);
+  } catch {
+    // already gone
+  }
+}
+
+/**
+ * One guard per wallet on this host (Round 32): a lock named for the
+ * wallet's public key in a directory every guard shares. See the header.
+ */
+export class WalletLock {
+  readonly #wallet: string;
+  readonly #path: string | null;
+
+  private constructor(wallet: string, path: string | null) {
+    this.#wallet = wallet;
+    this.#path = path;
+  }
+
+  /**
+   * Take the lock for `wallet` in `dir` (created, private, if missing).
+   * Throws `GuardStateError` while another running guard holds it.
+   */
+  static take(wallet: string, dir: string): WalletLock {
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(wallet)) {
+      throw new GuardStateError(`${JSON.stringify(wallet)} is not a base58 public key. REFUSING TO START.`);
+    }
+    if (dir.trim() === "") throw new GuardStateError(`${GUARD_LOCK_DIR_ENV} is empty. REFUSING TO START.`);
+    try {
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
+    } catch (e) {
+      throw new GuardStateError(`the lock directory ${dir} could not be created: ${(e as Error).message}. REFUSING TO START.`);
+    }
+    const path = join(dir, `wallet-${wallet}.lock`);
+    acquirePidLock(
+      path,
+      (owner) =>
+        `another guard (process ${owner}) is running for wallet ${wallet} (${path}). Each guard keeps its own ` +
+        "aggregate spend, so two guards for one wallet could each spend the whole allowance. Stop the other " +
+        `guard, or set ${GUARD_ALLOW_SHARED_WALLET_ENV}=1 to run both with limits that hold per guard, not per ` +
+        "wallet. REFUSING TO START.",
+    );
+    return new WalletLock(wallet, path);
+  }
+
+  /** No lock: the operator allowed a shared wallet (`GRAPHITE_GUARD_ALLOW_SHARED_WALLET=1`). */
+  static shared(wallet: string): WalletLock {
+    return new WalletLock(wallet, null);
+  }
+
+  /** For the startup log. */
+  describe(): string {
+    return this.#path === null
+      ? `[Graphite] wallet lock: NONE — ${GUARD_ALLOW_SHARED_WALLET_ENV}=1: other guards may sign for ${this.#wallet}, ` +
+          "and the spend limits hold per guard, not per wallet"
+      : `[Graphite] wallet lock: ${this.#path} — one guard per wallet on this host`;
+  }
+
+  /** Release the lock. Idempotent. */
+  close(): void {
+    if (this.#path !== null) releasePidLock(this.#path);
+  }
+}
+Object.freeze(WalletLock.prototype);
+Object.freeze(WalletLock);
+
+/** Where a guard's wallet lock lives, or that the operator waived it. */
+export type WalletLockPlan = { shared: true } | { shared: false; dir: string };
+
+/**
+ * The wallet lock the configuration (or, where it is silent, the
+ * environment) asks for, read before anything is contacted.
+ * `GRAPHITE_GUARD_ALLOW_SHARED_WALLET` is "1" or "0"; anything else refuses
+ * to start.
+ */
+export function walletLockPlan(
+  config: { lockDir?: string; allowSharedWallet?: boolean } = {},
+  env: Record<string, string | undefined> = process.env,
+): WalletLockPlan {
+  let shared = config.allowSharedWallet;
+  if (shared === undefined) {
+    const raw = env[GUARD_ALLOW_SHARED_WALLET_ENV];
+    if (raw !== undefined && raw !== "" && raw !== "0" && raw !== "1") {
+      throw new GuardStateError(`${GUARD_ALLOW_SHARED_WALLET_ENV}=${JSON.stringify(raw)} is not "1" or "0". REFUSING TO START.`);
+    }
+    shared = raw === "1";
+  }
+  if (shared) return { shared: true };
+  return { shared: false, dir: config.lockDir ?? env[GUARD_LOCK_DIR_ENV] ?? join(tmpdir(), "graphite-guard") };
+}
+
+/** Take the lock `plan` names for `wallet` (none, when the operator waived it). */
+export function takeWalletLock(wallet: string, plan: WalletLockPlan): WalletLock {
+  return plan.shared ? WalletLock.shared(wallet) : WalletLock.take(wallet, plan.dir);
+}
+
 export class GuardState {
   readonly #path: string | null;
   #fd: number | null = null;
@@ -163,42 +349,13 @@ export class GuardState {
   }
 
   #lock(lockPath: string): void {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const fd = openSync(lockPath, "wx", 0o600);
-        writeSync(fd, String(process.pid));
-        fsyncSync(fd);
-        closeSync(fd);
-        this.#lockPath = lockPath;
-        OPEN.add(this);
-        if (!exitHooked) {
-          exitHooked = true;
-          process.once("exit", () => {
-            for (const s of OPEN) s.close();
-          });
-        }
-        return;
-      } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== "EEXIST") {
-          throw new GuardStateError(`the lock ${lockPath} could not be created: ${(e as Error).message}. REFUSING TO START.`);
-        }
-        const owner = Number(readFileSync(lockPath, "utf8").trim());
-        // This process holds it when one of its own open states does. The
-        // same pid with no open state is an earlier incarnation that crashed
-        // (in a container the guard is often pid 1 every time).
-        const heldHere = owner === process.pid && [...OPEN].some((s) => s.#lockPath === lockPath);
-        const heldElsewhere = owner !== process.pid && Number.isSafeInteger(owner) && owner > 0 && pidAlive(owner);
-        if (heldHere || heldElsewhere) {
-          throw new GuardStateError(
-            `${lockPath} is held by process ${owner}, which is running. One guard per state file: two would ` +
-              "each spend the whole aggregate allowance. REFUSING TO START.",
-          );
-        }
-        // The owner is gone (a crash): the lock is stale.
-        unlinkSync(lockPath);
-      }
-    }
-    throw new GuardStateError(`the lock ${lockPath} could not be taken. REFUSING TO START.`);
+    acquirePidLock(
+      lockPath,
+      (owner) =>
+        `${lockPath} is held by process ${owner}, which is running. One guard per state file: two would ` +
+        "each spend the whole aggregate allowance. REFUSING TO START.",
+    );
+    this.#lockPath = lockPath;
   }
 
   #replay(text: string): void {
@@ -306,14 +463,9 @@ export class GuardState {
       this.#fd = null;
     }
     if (this.#lockPath !== null) {
-      try {
-        if (readFileSync(this.#lockPath, "utf8").trim() === String(process.pid)) unlinkSync(this.#lockPath);
-      } catch {
-        // already gone
-      }
+      releasePidLock(this.#lockPath);
       this.#lockPath = null;
     }
-    OPEN.delete(this);
   }
 }
 Object.freeze(GuardState.prototype);

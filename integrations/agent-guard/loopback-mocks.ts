@@ -445,13 +445,20 @@ export async function mockApprovingCore(
     body: approvedVerdictFor(body, { ...verdict, auditTrailId: `gr-loopback-${String(++n).padStart(8, "0")}` }),
   }));
   core.respond.set("POST /audit/event", (body) => {
-    const e = body as { event_type: string; content_hash: string };
+    const e = body as { event_type: string; content_hash?: string; instruction_bind_key?: string };
+    // As the Core reads the key (Round 32, R-M10): either name, or both when
+    // they agree; two different values are refused.
+    if (e.content_hash !== undefined && e.instruction_bind_key !== undefined && e.content_hash !== e.instruction_bind_key) {
+      return { status: 400, body: { error: "content_hash and instruction_bind_key are the same key under two names, and the two sent differ" } };
+    }
+    const key = e.instruction_bind_key ?? e.content_hash;
+    if (key === undefined) return { status: 400, body: { error: "content_hash (or instruction_bind_key, the same key) is required" } };
     return {
       status: 200,
       body: {
         recorded: true,
         event_type: e.event_type,
-        content_hash: e.content_hash,
+        content_hash: key,
         verdict_on_record: "approved",
         verdict_on_record_key: "audit_trail_id",
         sequence_anomalies: [],

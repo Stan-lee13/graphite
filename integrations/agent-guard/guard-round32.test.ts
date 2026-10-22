@@ -10,7 +10,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
-import { GraphiteGuard, SpendPolicyRefusal, swapPolicyFromEnv, type SpendPolicy } from "./guard.js";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { GraphiteGuard, GuardStateError, SpendPolicyRefusal, swapPolicyFromEnv, type SpendPolicy } from "./guard.js";
+import { takeWalletLock, walletLockPlan } from "./guard-state.js";
 import { mockApprovingCore, mockRpc, mockService, type MockRpc, type MockService } from "./loopback-mocks.js";
 
 const DEST = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
@@ -106,6 +110,15 @@ test("fee: the same transfer under a cap that holds its fee executes (control)",
     assert.equal(outcome.executed, true);
     assert.equal(coreAsked(h), 1);
     assert.equal(sends(h), 1);
+    // R-M10: every lifecycle request names the instruction key under its
+    // Round 30 name and its first one, the same value.
+    const lifecycle = h.core.calls.filter((c) => c.method === "POST /audit/event" || c.method === "POST /verify/execution");
+    assert.ok(lifecycle.length >= 3, "signing, submission and L8 reached the Core");
+    for (const c of lifecycle) {
+      const p = c.params as { content_hash?: string; instruction_bind_key?: string };
+      assert.match(p.instruction_bind_key ?? "", /^[0-9a-f]{16}$/, c.method);
+      assert.equal(p.content_hash, p.instruction_bind_key, c.method);
+    }
   } finally {
     await h.close();
   }
@@ -151,4 +164,117 @@ test("fee: a simulation that takes more than the amount and fee is what the cap 
   } finally {
     await h.close();
   }
+});
+
+// ---------------------------------------------------------------------------
+// One guard per wallet (Round 32): two guards for the same key, with
+// different state files or none, kept two aggregates — each could spend the
+// whole allowance.
+
+async function guardFor(
+  wallet: Keypair,
+  config: { stateFile?: string; walletLockDir?: string; allowSharedWallet?: boolean },
+): Promise<{ agent: GraphiteGuard; close(): Promise<void> }> {
+  const w = wallet.publicKey.toBase58();
+  const rpc = await mockRpc({ ledger: { [w]: { lamports: Number(10n * SOL), owner: SYSTEM } } });
+  const core = await mockApprovingCore();
+  const ai = await mockService();
+  try {
+    const agent = await GraphiteGuard.create({
+      privateKey: bs58.encode(wallet.secretKey),
+      rpcUrl: rpc.url,
+      graphiteCoreUrl: core.url,
+      aiLayerUrl: ai.url,
+      spendPolicy: { maxTransferLamports: 2n * SOL, maxTotalLamports: 2n * SOL },
+      swapPolicy: swapPolicyFromEnv({ GRAPHITE_SWAP_MIN_RATES: "SOL/USDC=100" }),
+      swapEnvelope: {},
+      ...config,
+    });
+    return {
+      agent,
+      close: async () => {
+        agent.close();
+        await Promise.all([rpc.close(), core.close(), ai.close()]);
+      },
+    };
+  } catch (e) {
+    await Promise.all([rpc.close(), core.close(), ai.close()]);
+    throw e;
+  }
+}
+
+const lockDir = () => mkdtempSync(join(tmpdir(), "graphite-r32-locks-"));
+
+test("wallet: a second guard for the same wallet is refused while the first runs, whatever its state file", async () => {
+  const dir = lockDir();
+  const wallet = Keypair.generate();
+  const first = await guardFor(wallet, { walletLockDir: dir, stateFile: join(dir, "a.state") });
+  try {
+    for (const stateFile of [join(dir, "b.state"), undefined]) {
+      await assert.rejects(guardFor(wallet, { walletLockDir: dir, stateFile }), (e: unknown) => {
+        assert.ok(e instanceof GuardStateError, String(e));
+        assert.match(
+          (e as Error).message,
+          new RegExp(`another guard \\(process ${process.pid}\\) is running for wallet ${wallet.publicKey.toBase58()}`),
+        );
+        assert.match((e as Error).message, /GRAPHITE_GUARD_ALLOW_SHARED_WALLET=1/);
+        return true;
+      });
+    }
+    assert.equal(existsSync(join(dir, "b.state.lock")), false, "the refused guard took no state lock");
+    // Another wallet is another guard's business.
+    const other = await guardFor(Keypair.generate(), { walletLockDir: dir });
+    await other.close();
+  } finally {
+    await first.close();
+  }
+  // Closed: the wallet is free again.
+  const again = await guardFor(wallet, { walletLockDir: dir });
+  await again.close();
+  assert.deepEqual(readdirSync(dir).filter((f) => f.endsWith(".lock")), [], "every lock released");
+});
+
+test("wallet: a guard in another live process holds the wallet; a dead one's lock is taken over", async () => {
+  const dir = lockDir();
+  const wallet = Keypair.generate();
+  const lock = join(dir, `wallet-${wallet.publicKey.toBase58()}.lock`);
+  // The parent of this test process is alive and is not this process.
+  writeFileSync(lock, String(process.ppid));
+  await assert.rejects(guardFor(wallet, { walletLockDir: dir }), new RegExp(`another guard \\(process ${process.ppid}\\)`));
+  assert.equal(readFileSync(lock, "utf8"), String(process.ppid), "a live owner's lock is left alone");
+  writeFileSync(lock, "2147483646");
+  const g = await guardFor(wallet, { walletLockDir: dir });
+  try {
+    assert.equal(readFileSync(lock, "utf8"), String(process.pid));
+  } finally {
+    await g.close();
+  }
+});
+
+test("wallet: GRAPHITE_GUARD_ALLOW_SHARED_WALLET=1 lets a second guard start, logged; anything but 1 or 0 refuses", async () => {
+  const dir = lockDir();
+  const wallet = Keypair.generate();
+  const first = await guardFor(wallet, { walletLockDir: dir });
+  try {
+    const shared = await guardFor(wallet, { walletLockDir: dir, allowSharedWallet: true });
+    await shared.close();
+    assert.ok(
+      existsSync(join(dir, `wallet-${wallet.publicKey.toBase58()}.lock`)),
+      "closing the shared guard leaves the first's lock",
+    );
+  } finally {
+    await first.close();
+  }
+  assert.deepEqual(walletLockPlan({}, { GRAPHITE_GUARD_ALLOW_SHARED_WALLET: "1" }), { shared: true });
+  assert.deepEqual(walletLockPlan({}, { GRAPHITE_GUARD_ALLOW_SHARED_WALLET: "0", GRAPHITE_GUARD_LOCK_DIR: dir }), {
+    shared: false,
+    dir,
+  });
+  for (const bad of ["yes", "true", " 1", "2"]) {
+    assert.throws(
+      () => walletLockPlan({}, { GRAPHITE_GUARD_ALLOW_SHARED_WALLET: bad }),
+      /is not "1" or "0"\. REFUSING TO START/,
+    );
+  }
+  assert.match(takeWalletLock(wallet.publicKey.toBase58(), { shared: true }).describe(), /NONE .* hold per guard, not per wallet/);
 });

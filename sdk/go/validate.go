@@ -692,8 +692,12 @@ func lifecycleReceiptViolation(value any, sent *LifecycleEventInput) string {
 		if r["event_type"] != sent.EventType {
 			return fmt.Sprintf("the receipt is for %v, not the %s event sent", r["event_type"], sent.EventType)
 		}
-		if r["content_hash"] != strings.TrimSpace(sent.ContentHash) {
-			return "the receipt names a different `content_hash` from the one sent"
+		key := sent.InstructionBindKey
+		if strings.TrimSpace(key) == "" {
+			key = sent.ContentHash
+		}
+		if r["content_hash"] != strings.TrimSpace(key) {
+			return "the receipt names a different instruction key (`content_hash`) from the one sent"
 		}
 	}
 	return ""

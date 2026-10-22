@@ -148,6 +148,18 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
 
+  # Round 32: the browser smoke's own pins (Playwright, axe-core). A
+  # Playwright bump moves the Chromium the CI job downloads with it.
+  - package-ecosystem: npm
+    directory: /dashboard/e2e
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    groups:
+      dashboard-e2e:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
   # sdk/go has no dependencies today; this keeps the `go` directive and any
   # future module under review.
   - package-ecosystem: gomod
