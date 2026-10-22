@@ -4770,8 +4770,18 @@ mod tests {
         assert_eq!(log.count_verifications(key), (1, 0));
         assert_eq!(count_scans(&log), 0);
         {
+            // Round 34: a record the readers can read is a chained one in
+            // canonical form (`chain::RecordGate`); the unchained line this
+            // test used to write after chained records is not a record at
+            // all now, and would rightly not be counted. The point here is
+            // the recount, so the foreign record is a valid chained line.
             let mut f = OpenOptions::new().append(true).open(&path).unwrap();
-            let line = serde_json::to_string(&counted("gr-foreign", false)).unwrap();
+            let serde_json::Value::Object(map) =
+                serde_json::to_value(counted("gr-foreign", false)).unwrap()
+            else {
+                panic!()
+            };
+            let (line, _) = chain::seal(map, &log.chain_head_now(), None);
             writeln!(f, "{line}").unwrap();
         }
         assert_eq!(

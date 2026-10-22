@@ -85,9 +85,12 @@ pub struct AuditKey {
 impl Drop for AuditKey {
     fn drop(&mut self) {
         use zeroize::Zeroize;
+        // Zeroes every byte, spare capacity included, and empties the Vec.
         self.key.zeroize();
         #[cfg(test)]
-        KEYS_WIPED.with(|n| n.set(n.get() + 1));
+        if self.key.is_empty() {
+            KEYS_WIPED.with(|n| n.set(n.get() + 1));
+        }
     }
 }
 
