@@ -154,6 +154,12 @@ export interface ExecuteParams {
    */
   confirmTimeoutMs?: number;
   /**
+   * Called after the confirmation and immediately before the one signing
+   * call (Round 34). The guard refuses here once it is closed or has lost
+   * its wallet's lock. A throw aborts: nothing is signed.
+   */
+  beforeSign?: () => void;
+  /**
    * Called with the transaction's signature after the signing is on the
    * trail and immediately before the bytes are handed to the RPC (Round 30).
    * The guard records the submission as unresolved here, durably, so a crash
@@ -264,6 +270,7 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
 
   // 2. The one signing path: digest and signer set re-derived over this
   //    object, compared against what Graphite hashed.
+  p.beforeSign?.();
   const raw = await p.bound.signApproved(scope.transaction_sha256, p.signers);
   log(
     `[Graphite] ${label}: transaction matches the approved digest ` +

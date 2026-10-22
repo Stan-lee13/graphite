@@ -42,10 +42,23 @@ approves is signed and submitted on whatever cluster `SOLANA_RPC_URL` names.
 - **Graphite's verdict** on the exact bytes, as in every integration.
 - **A per-transaction cap is required** (`GRAPHITE_MAX_TRANSFER_LAMPORTS`); optionally an
   allowlist of destinations (`GRAPHITE_ALLOWED_DESTINATIONS`) and an aggregate limit over a
-  rolling window (`GRAPHITE_MAX_TOTAL_LAMPORTS`, `GRAPHITE_SPEND_WINDOW_SECONDS`; per process,
-  durable across restarts with `GRAPHITE_GUARD_STATE_FILE`). The server refuses to start without the cap, even when the guard has been
-  told to run uncapped. A transfer's amount and destination are checked before anything is
-  built. A swap's outflow is measured by simulating the exact transaction (lamports out of
+  rolling window (`GRAPHITE_MAX_TOTAL_LAMPORTS`, `GRAPHITE_SPEND_WINDOW_SECONDS`; durable
+  across restarts with `GRAPHITE_GUARD_STATE_FILE`). The server refuses to start without the
+  cap, even when the guard has been told to run uncapped. A transfer's amount and
+  destination are checked before anything is built. Both limits count what the wallet pays
+  (Round 32): a transfer's amount plus its network fee, or what a simulation of the exact
+  bytes takes out of the wallet, whichever is larger — so a transfer of exactly the cap is
+  refused.
+- **One guard per wallet** (Round 32). The aggregate limit is kept per guard, so the server
+  takes a lock named for its wallet and refuses to start while another guard (another MCP
+  server, a CLI run, an SDK-built guard) holds the same wallet on this host for the same
+  OS user. Since Round 34 the lock lives where no temp cleaner removes it
+  (`GRAPHITE_GUARD_LOCK_DIR`, else `$XDG_RUNTIME_DIR`, `/run`, or `~/.local/state`; on
+  Windows `%LOCALAPPDATA%`), and it is re-checked before every spend: a server whose lock
+  was deleted refuses to move funds until it is restarted. `GRAPHITE_GUARD_ALLOW_SHARED_WALLET=1`
+  lets a second guard start, and the limits then hold per guard, not per wallet. Guards
+  on other hosts or in other containers are not seen; one per wallet across them is the
+  operator's to arrange. See the guard's README. A swap's outflow is measured by simulating the exact transaction (lamports out of
   the wallet, fee and wrapped SOL included) before it is signed: over the cap is refused,
   and so is a swap that spends any other token, which a lamport cap cannot price.
 - **The swap must be the one the user asked for.** The amount and both tokens are read
