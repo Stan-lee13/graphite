@@ -86,6 +86,27 @@ strip = true
 lto = "thin"
 codegen-units = 1
 
+# Round 34 (R33-8): the profile CI's three test legs run under
+# (`cargo test --profile ci-test`). It IS the release profile — opt-level 3,
+# no debug assertions, no overflow checks, stripped — with one difference:
+# how the code is partitioned for code generation. `lto = "thin"` with
+# `codegen-units = 1` re-optimizes the whole dependency graph once per linked
+# binary, and the default leg links ~160 integration-test binaries, which took
+# 2,557 s of a 60-minute job and cancelled CI on main twice. Without LTO and
+# with 16 units each test binary links in a fraction of that. The semantics a
+# test observes (the code, the optimization level, the assertion and overflow
+# behaviour) are the shipped binary's; only inlining across crate boundaries
+# and unit boundaries can differ, which no test may depend on. The shipped
+# binary is still built with `--release` (Dockerfile, release.yml), and the
+# dashboard-e2e and deploy jobs test that exact build.
+[profile.ci-test]
+inherits = "release"
+lto = false
+codegen-units = 16
+opt-level = 3
+debug-assertions = false
+overflow-checks = false
+
 [dev-dependencies]
 proptest = "1.0"
 # Already in the tree through reqwest's gzip support; used by the tests to

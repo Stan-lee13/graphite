@@ -23,7 +23,9 @@
 #   # in graphite.env (mode 0600; every variable is in the root .env.example).
 #
 # Verify the image before the first pull (docs/ops/production-checklist.md):
-#   gh attestation verify oci://ghcr.io/<owner>/graphite-core@sha256:<digest> --repo <owner>/graphite
+#   gh attestation verify oci://ghcr.io/<owner>/graphite-core@sha256:<digest> --repo <owner>/graphite \
+#     --signer-workflow <owner>/graphite/.github/workflows/release.yml \
+#     --source-ref refs/tags/v<version> --deny-self-hosted-runners
 #
 # Run:      docker compose -f docker-compose.prod.yml up -d
 # With AI:  docker compose -f docker-compose.prod.yml --profile ai up -d

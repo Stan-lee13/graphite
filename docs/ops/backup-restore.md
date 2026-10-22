@@ -19,7 +19,15 @@ The volume name is `<project>_graphite-data`; `docker volume ls` shows it
 
 Record the archive's SHA-256 next to it (`sha256sum`) and copy both off the
 host. An audit trail kept only on the machine it audits is lost with that
-machine.
+machine. `deploy/scripts/backup.sh` writes both for you, plus `<archive>.mac`:
+an HMAC-SHA256 under the audit key over the archive's name and bytes (Round 34,
+R33 D-6). Copy the `.mac` off the host too: since Round 34 `restore.sh`
+refuses an archive without a `.mac` that verifies under a key it is given
+(`ALLOW_UNKEYED_ARCHIVE=1` for a deployment with no audit key), a `.sha256`
+that names any file but the archive itself, and a run without `--anchor-dir`
+(`ALLOW_NO_ANCHOR=1` to override, recorded in your drill notes). The `.sha256`
+alone detects corruption, not substitution: anyone who can write the backup
+store can write a matching checksum, but not a matching MAC.
 
 ## Hot backup (the server keeps running)
 

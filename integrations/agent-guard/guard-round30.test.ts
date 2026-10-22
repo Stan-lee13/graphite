@@ -254,13 +254,21 @@ test("G-01: analysis_only proceeds only under a residual the operator accepted b
   }
 });
 
-test("G-01: a server that predates `decision` is judged by the recomputation alone", async () => {
+// Re-pinned in Round 34 (G-5). This test pinned that a server with no
+// `decision` field was judged by the guard's recomputation of the scope's
+// codes alone, and executed. That recomputation never covered the rest of the
+// Core's rule (risk, policy, simulation, layers), so a response that simply
+// left the field out was executed on less than the Core requires. A response
+// without `decision` is now refused, before anything is signed.
+test("G-01: a server that predates `decision` is refused, not judged by a recomputation of its codes", async () => {
   const h = await harness({ verdict: { decision: null } });
   try {
-    const outcome = await h.agent.executeTransfer(REQUEST);
-    assert.equal(outcome.executed, true);
-    assert.equal(outcome.lifecycle?.decision, "executable_approved");
-    assert.equal(outcome.lifecycle?.reportedDecision, null);
+    await assert.rejects(h.agent.executeTransfer(REQUEST), (e: unknown) => {
+      assert.ok(e instanceof ResidualPolicyRefusal, String(e));
+      assert.match((e as Error).message, /no `decision` field/);
+      return true;
+    });
+    assertNothingSigned(h);
   } finally {
     await h.close();
   }

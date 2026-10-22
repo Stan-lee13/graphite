@@ -23,18 +23,29 @@
 # NOT in the archive (it lives outside the data directory by design); back it
 # up separately, to a different place.
 #
-# Output: OUT_DIR/graphite-<UTC stamp>.tar.gz and .sha256, mode 0600.
-# Needs: bash, tar, gzip, sha256sum, flock, graphite (GRAPHITE_BIN).
+# Output: OUT_DIR/graphite-<UTC stamp>.tar.gz, .sha256 and .mac, mode 0600.
+#
+# The .mac (Round 34, D-6) authenticates the WHOLE archive — the graph
+# snapshot and registry_state.json as well as the trail, which `audit verify`
+# already covers — under the audit MAC key: HMAC-SHA256 over the archive's
+# file name and bytes, keyed with the last --key-file given (else
+# GRAPHITE_AUDIT_KEY_FILE), the key the server writes under now. A .sha256 is
+# a checksum anyone who can write the archive can recompute; the .mac is not.
+# restore.sh refuses an archive without a .mac that verifies. With no key at
+# all (an unkeyed trail) no .mac is written, and restoring it needs
+# ALLOW_UNKEYED_ARCHIVE=1.
+# Needs: bash, tar, gzip, sha256sum, flock, python3, graphite (GRAPHITE_BIN).
 set -euo pipefail
 
 usage() { sed -n '2,4p' "$0" >&2; exit 64; }
 
 hot=0
 keys=()
+keyfiles=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --hot) hot=1; shift ;;
-    --key-file) keys+=(--key-file "$2"); shift 2 ;;
+    --key-file) keys+=(--key-file "$2"); keyfiles+=("$2"); shift 2 ;;
     -h | --help) usage ;;
     --) shift; break ;;
     -*) echo "unknown option $1" >&2; usage ;;
@@ -140,6 +151,26 @@ fi
 tar --sort=name --owner=0 --group=0 --numeric-owner -C "$work/data" -cf - . | gzip -n -9 >"$archive.partial"
 mv "$archive.partial" "$archive"
 (cd "$out" && sha256sum -- "${archive##*/}" >"${archive##*/}.sha256")
+mackey="${GRAPHITE_AUDIT_KEY_FILE:-}"
+if [ "${#keyfiles[@]}" -gt 0 ]; then mackey="${keyfiles[${#keyfiles[@]}-1]}"; fi
+if [ -n "$mackey" ]; then
+  # The key is read from its file by python, never passed on a command line.
+  python3 -I - "$mackey" "$archive" >"$archive.mac.partial" <<'PY'
+import hashlib, hmac, os, sys
+key = open(sys.argv[1], "rb").read().strip()
+if len(key) < 32:
+    sys.exit("backup: the audit key file is shorter than 32 bytes")
+name = os.path.basename(sys.argv[2])
+m = hmac.new(key, b"graphite-backup-v1\n" + name.encode() + b"\n", hashlib.sha256)
+with open(sys.argv[2], "rb") as f:
+    for chunk in iter(lambda: f.read(1 << 20), b""):
+        m.update(chunk)
+print(f"hmac-sha256-v1 {m.hexdigest()} {name}")
+PY
+  mv "$archive.mac.partial" "$archive.mac"
+else
+  echo "backup: no audit key given: no .mac written; restore.sh will need ALLOW_UNKEYED_ARCHIVE=1" >&2
+fi
 cp "$work/verify.txt" "$out/graphite-$stamp.verify.txt"
 echo "backup: $archive"
 sed 's/^/  /' "$work/verify.txt"

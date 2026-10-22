@@ -207,13 +207,19 @@ submitted — and nothing is signed under a residual the operator has not accept
   the summary also names `transactionSha256`, the digest of exactly the bytes that will be
   signed; it is frozen (a hook that edits it fails); only the value `true` confirms; and
   a hook that has not answered within `confirmTimeoutMs` (default 120 s) is a decline.
-- **Only an executable decision is signed (Round 30, G-01).** `approved` alone never was
-  the gate. The residual policy recomputes the execution decision from the verdict's scope
-  — `executable_approved` when nothing beyond the two inherent residuals is unobserved,
-  `analysis_only` when the operator accepted the rest by name — and when the Core reports
-  `decision` / `executable`, requires them to agree. A decision this guard does not know,
-  `blocked` or `inconclusive` on an approval, or an `executable` that contradicts the
-  decision is refused; a server that predates the field is judged by the recomputation.
+- **Only the Core's executable decision is signed, recomputed (Round 30, G-01; Round 34,
+  G-5).** `approved` alone never was the gate. The Core must report `decision` and
+  `executable`, and the guard recomputes the whole of the Core's rule with the SDK's
+  `computeExecutionDecision` — risk `Clear`, policy `Approved`, an artifact-bound scope
+  with its digest that was simulated, every unobserved code inherent, layers reported and
+  none failed — and requires the two to agree. A residual the operator accepted by name
+  (`GRAPHITE_ACCEPT_UNOBSERVED`) makes the verdict `analysis_only`, and the guard signs it
+  only when everything else in the rule holds: an accepted residual excuses itself (an
+  accepted `not_simulated` or `simulation_failed` excuses the missing simulation), nothing
+  more. A decision this guard does not know, `blocked` or `inconclusive` on an approval,
+  an `executable` that contradicts the decision, and (since Round 34) a response without
+  `decision` — a Core older than Round 30, which was judged by the residual codes alone —
+  are refused.
 - **An ambiguous submission is not retried blind (Round 29, L2; Round 30).** The
   transaction id is computed from the signed bytes before sending, and since Round 30 the
   submission is recorded as unresolved BEFORE the bytes are handed to the RPC and resolved
@@ -226,20 +232,53 @@ submitted — and nothing is signed under a residual the operator has not accept
   `GRAPHITE_GUARD_STATE_FILE` this survives a restart. A second call for a request already
   running (a model's double call, a missing `await`, a confirmation hook calling back in)
   is refused with `RequestInFlight` before anything is built.
-- **One guard per wallet (Round 32).** The aggregate cap and the repeat record are kept
-  per guard, so two guards signing for one key would each spend the whole allowance.
-  Every guard takes a lock named for its wallet's public key in a directory the guards
-  on a host share (`GRAPHITE_GUARD_LOCK_DIR`, default `<tmpdir>/graphite-guard`); a
-  second guard for the same wallet refuses to start while the first runs.
-  `GRAPHITE_GUARD_ALLOW_SHARED_WALLET=1` lets it start, logged as limits that hold per
-  guard. The lock names its owner by pid, so it sees only guards that share the
-  directory and a pid namespace: one guard per wallet across hosts or containers is the
-  operator's to arrange. The network fee counts toward the aggregate cap.
+- **One guard per wallet (Round 32; Round 34).** The aggregate cap and the repeat record
+  are kept per guard, so two guards signing for one key would each spend the whole
+  allowance. Every guard takes a lock named for its wallet's public key in a directory its
+  user's guards on a host share, and a second guard for the same wallet refuses to start
+  while the first runs. `GRAPHITE_GUARD_ALLOW_SHARED_WALLET=1` lets it start, logged as
+  limits that hold per guard. The network fee counts toward the aggregate cap.
+  - *Where (Round 34).* `GRAPHITE_GUARD_LOCK_DIR` (or `walletLockDir`), else a directory
+    no temp cleaner sweeps: `$XDG_RUNTIME_DIR/graphite-guard`, else `/run/graphite-guard`
+    where the user can write, else `$XDG_STATE_HOME/graphite-guard` (default
+    `~/.local/state/graphite-guard`); on Windows `%LOCALAPPDATA%\graphite-guard`. It was
+    `<tmpdir>/graphite-guard`, which systemd-tmpfiles, macOS and Storage Sense empty. The
+    directory must be a real directory (not a symbolic link) owned by the guard's user with
+    mode 0700, an existing one included, or the guard refuses to start (owner and mode are
+    not checked on Windows). A lock under `~/.local/state` survives a reboot: if a crash
+    left one whose pid now belongs to another process, the guard refuses to start naming the
+    file, and the operator removes it.
+  - *Held, not just taken (Round 34).* Node cannot hold an flock/fcntl/LockFileEx lock
+    without a native addon, so the lock is a file holding the owner's pid and a random
+    token. The guard remembers its inode and re-reads it before every reservation, before
+    signing and immediately before the signed bytes are sent. A lock that is gone, is
+    another file, or holds anything else refuses the spend (`GuardStateError`, "is no
+    longer this guard's"): a second guard may already hold the wallet with its own
+    allowance, and the first one stops spending until it is restarted. What one guard spent
+    before its lock disappeared is not known to the next.
+  - *Stale locks (Round 34).* A crashed guard's lock is moved aside under a unique name
+    and removed only if it is still the same file with the same content; anything else is
+    put back. Two guards that found the same stale lock could each delete the other's
+    fresh one and both start (31–428 of 1,000 rounds in the regression test, before).
+  - *Scope.* The lock sees only guards of the same OS user that share the directory and a
+    pid namespace: guards for one wallet under two users, on two hosts or in two
+    containers are not seen by each other, and one guard per wallet across them is the
+    operator's to arrange. The state file's own lock (`<state file>.lock`) is taken and
+    re-checked the same way, and every file the lock and state code create is opened
+    O_EXCL|O_NOFOLLOW under a random name.
+- **A closed guard spends nothing (Round 34).** `close()` releases both locks and marks
+  the guard closed; `executeTransfer` and `executeSwap` then refuse with `GuardClosed`
+  before anything is asked, and an execution already running (a confirmation still open)
+  refuses before signing. Without a state file nothing else stopped a closed guard from
+  signing.
 - **Same-process integrity (Round 29, M8; Round 30).** Every collaborator that takes part
   in a decision (Core client, RPC connection and simulator, residual, spend and swap
   policies, AI layer URL, wallet profile) is an ES private field; the instance and its
   prototype are frozen; `SOLANA_PRIVATE_KEY` is deleted from `process.env` once read; and
   `getGraphiteClient()` returns the Core's read-only endpoints, not the client and its key.
+  Round 34: the method that asks the Core about a transaction (`verifyTransaction`, which
+  writes a verification to the trail under the deployment's key) is private too; only
+  `executeTransfer` and `executeSwap` call it, about the transaction they built.
   Round 30: the key is imported into a NON-EXTRACTABLE WebCrypto key pair and its decoded
   bytes zeroed, so the guard holds no secret-key bytes; `BoundTransaction`,
   `ResidualPolicy`, `SpendLedger`, `RpcSimulator` and `GuardState` are frozen, so no method

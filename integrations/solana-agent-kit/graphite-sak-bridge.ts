@@ -100,11 +100,13 @@ export class VerifiedSakAgent {
     return this.#guard.parseIntent(...args);
   }
 
-  verifyTransaction(
-    ...args: Parameters<GraphiteGuard["verifyTransaction"]>
-  ): ReturnType<GraphiteGuard["verifyTransaction"]> {
-    return this.#guard.verifyTransaction(...args);
-  }
+  // Round 34 (G-7): no `verifyTransaction`. The guard's is private: every
+  // call writes a verification to the audit trail under the deployment's
+  // Core key, about whatever the caller describes, and holding the adapter
+  // must not be holding that key (the reason `getGraphiteClient` returns a
+  // read-only facade, Round 29 M8). Verification happens inside
+  // `executeTransfer` / `executeSwap`, about the transaction they built; a
+  // caller that wants a verdict alone builds its own client with its own key.
 
   executeTransfer(...args: Parameters<GraphiteGuard["executeTransfer"]>): ReturnType<GraphiteGuard["executeTransfer"]> {
     return this.#guard.executeTransfer(...args);

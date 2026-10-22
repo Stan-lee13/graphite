@@ -12,6 +12,19 @@
 # 2026-09-12 (debian) and 2026-09-13 (rust) and are the multi-arch manifest
 # lists. The Rust release here is the one CI certifies with
 # (`toolchain: 1.99.1` in ci.yml): tested compiler = shipped compiler.
+#
+# Where the shipped binary comes from (Round 34, D-8):
+#   GRAPHITE_BINARY=source    (default) compiled by the `builder` stage below:
+#                             `docker build .`, docker compose, the CI
+#                             container job.
+#   GRAPHITE_BINARY=prebuilt  copied from the build context named `prebuilt`
+#                             (a directory holding `graphite`); release.yml
+#                             passes build a's reproducible binary, so the
+#                             image ships the bytes the two release builds
+#                             agreed on rather than a third compilation. The
+#                             builder stage is then not built at all.
+ARG GRAPHITE_BINARY=source
+
 FROM rust:1.99.1-bookworm@sha256:48b7f435b8fc6378ce43b44f15e3a47fd8919b2825f835c39bd4bd3da50af5b8 AS builder
 WORKDIR /usr/src/graphite
 # Cargo places target/ under the workspace root (graphite-core/) unless told
@@ -50,6 +63,22 @@ COPY graphite-core/protocols ./graphite-core/protocols
 RUN touch graphite-core/src/lib.rs \
     && cargo build --manifest-path graphite-core/Cargo.toml --locked --release --features server,cli
 
+# The binary, from one of the two places above; only the selected stage is
+# built (BuildKit skips stages the target does not reach).
+FROM scratch AS binary-source
+COPY --from=builder /usr/src/graphite/target/release/graphite /graphite
+
+# An empty placeholder: a build context named `prebuilt` REPLACES this stage
+# (BuildKit: a named context overrides the stage of the same name). Without
+# one, GRAPHITE_BINARY=prebuilt fails at the COPY below; it never falls back
+# to compiling, and never looks for an image called `prebuilt`.
+FROM scratch AS prebuilt
+
+FROM scratch AS binary-prebuilt
+COPY --from=prebuilt --chmod=0755 graphite /graphite
+
+FROM binary-${GRAPHITE_BINARY} AS binary
+
 # Runtime base re-pinned 2026-10-21 (Round 30) to what `bookworm-slim` resolved
 # to that day (read through mirror.gcr.io, Docker Hub's pull-through mirror; a
 # digest is the content's hash, so the mirror cannot substitute it). This
@@ -74,7 +103,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /usr/src/graphite/target/release/graphite /usr/local/bin/graphite
+COPY --from=binary /graphite /usr/local/bin/graphite
 
 # Fixed UID/GID (not an auto-allocated system UID) so the ownership of a
 # mounted volume is predictable across rebuilds and can be matched by the

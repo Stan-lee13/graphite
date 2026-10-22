@@ -29,8 +29,11 @@
  */
 
 import {
+  computeExecutionDecision,
   INHERENT_UNOBSERVED,
+  isArtifactBound,
   UNOBSERVED_CODES,
+  type DecisionInputs,
   type UnobservedCode,
   type VerificationScope,
 } from "../../sdk/typescript/src/types.js";
@@ -61,7 +64,11 @@ export interface ResidualDecision {
    * unobserved, `analysis_only` when the deployment accepted the rest by name.
    */
   decision: "executable_approved" | "analysis_only";
-  /** What the Core reported as `decision`, or null for a server that predates it. */
+  /**
+   * What the Core reported as `decision`. Always present since Round 34: a
+   * response without one is refused. (Typed nullable for callers that
+   * recorded outcomes before.)
+   */
   reportedDecision: ExecutionDecision | null;
 }
 
@@ -71,6 +78,33 @@ export interface DecidableVerdict {
   scope?: VerificationScope;
   decision?: unknown;
   executable?: unknown;
+  /** Round 34 (G-5): the rest of the Core's rule. Missing is never executable. */
+  risk_verdict?: Partial<DecisionInputs["risk_verdict"]>;
+  policy_verdict?: unknown;
+  layers?: DecisionInputs["layers"];
+}
+
+/** Residuals that, accepted, explain a scope with `simulated: false`. */
+const EXPLAINS_NO_SIMULATION: ReadonlySet<UnobservedCode> = new Set<UnobservedCode>(["not_simulated", "simulation_failed"]);
+
+/**
+ * Why the Core's execution rule (`computeExecutionDecision`) does not call
+ * `v` executable, beyond its unobserved codes — which the caller has already
+ * judged. Empty when it does.
+ */
+function unmetConditions(v: DecidableVerdict): string[] {
+  const why: string[] = [];
+  const risk = v.risk_verdict?.status;
+  if (risk !== "Clear") why.push(`risk is ${JSON.stringify(risk ?? "absent")}, not Clear`);
+  if (v.policy_verdict !== "Approved") why.push(`policy verdict is ${JSON.stringify(v.policy_verdict ?? "absent")}, not Approved`);
+  if (!isArtifactBound({ scope: v.scope })) why.push("no transaction digest the verdict is bound to");
+  if (v.scope?.kind === "artifact_bound" && v.scope.simulated !== true) why.push("the transaction was not simulated");
+  if (!Array.isArray(v.layers)) {
+    why.push("no layers reported");
+  } else {
+    for (const l of v.layers) if (l.status === "failed") why.push(`layer ${l.layer} failed`);
+  }
+  return why;
 }
 
 /**
@@ -189,34 +223,44 @@ export class ResidualPolicy {
   }
 
   /**
-   * The whole execution decision on one verdict (Round 30, G-01): approved,
-   * artifact-bound, every residual inherent or accepted — and, when the Core
-   * reports its own `decision`, the same answer.
+   * The whole execution decision on one verdict (Round 30, G-01; Round 34,
+   * G-5): approved, every residual inherent or accepted, the Core's
+   * `decision` reported and the same answer, and the rest of the Core's
+   * rule recomputed here — risk Clear, policy Approved, an artifact-bound
+   * scope with its digest that was simulated, layers reported and none
+   * failed — through the SDK's `computeExecutionDecision`.
    *
-   * The Core's `decision` is not taken on trust: it is recomputed here from
-   * the scope, and a server that says `executable_approved` over a residual,
-   * or `analysis_only` over none, or `blocked` on an approval, or a value
-   * this guard does not know, disagrees with its own verdict and is refused.
-   * `executable` must say the same as `decision`. A server that reports no
-   * `decision` (one that predates it) is judged by the recomputation alone,
-   * which is what this policy always did.
+   * The Core's `decision` is not taken on trust, and it is not optional: a
+   * response without `decision` and a boolean `executable` (a server older
+   * than Round 30) is refused, not judged by the codes alone. A server that
+   * says `executable_approved` over a residual, a non-Clear risk, a policy
+   * refusal, a missing simulation or a failed layer, or `analysis_only` over
+   * none, or `blocked` on an approval, or a value this guard does not know,
+   * disagrees with its own verdict and is refused.
    *
    * `analysis_only` proceeds only when every residual that made it so is one
-   * the operator accepted by name; nothing else turns it into a signature.
+   * the operator accepted by name, and everything else the rule requires
+   * holds: an accepted residual excuses itself, nothing more. (An accepted
+   * `not_simulated` or `simulation_failed` is what excuses `simulated:
+   * false`.) Nothing else turns an analysis into a signature.
    */
   assertExecutableVerdict(verdict: DecidableVerdict, label: string): ResidualDecision {
     if (verdict.approved !== true) {
       throw new ResidualPolicyRefusal(`[Graphite] ${label}: the verdict is not an approval. ABORTING.`);
     }
     const reported = verdict.decision;
-    if (reported !== undefined && !(EXECUTION_DECISIONS as readonly unknown[]).includes(reported)) {
+    if (reported === undefined) {
+      throw new ResidualPolicyRefusal(
+        `[Graphite] ${label}: the verdict has no \`decision\` field (a Core older than Round 30). The guard signs ` +
+          "only on the Core's own executable decision, recomputed and agreed; it does not stand in for a decision " +
+          "the server did not make. Upgrade the Core. ABORTING.",
+      );
+    }
+    if (!(EXECUTION_DECISIONS as readonly unknown[]).includes(reported)) {
       throw new ResidualPolicyRefusal(
         `[Graphite] ${label}: the verdict's decision ${JSON.stringify(reported)} is not one this guard knows ` +
           `(${EXECUTION_DECISIONS.join(", ")}). An unknown decision is not an executable one. ABORTING.`,
       );
-    }
-    if (verdict.executable !== undefined && typeof verdict.executable !== "boolean") {
-      throw new ResidualPolicyRefusal(`[Graphite] ${label}: the verdict's \`executable\` is not a boolean. ABORTING.`);
     }
     if (reported === "blocked" || reported === "inconclusive") {
       throw new ResidualPolicyRefusal(
@@ -224,23 +268,52 @@ export class ResidualPolicy {
           "contradicts itself is not executed. ABORTING.",
       );
     }
+    if (typeof verdict.executable !== "boolean") {
+      throw new ResidualPolicyRefusal(`[Graphite] ${label}: the verdict's \`executable\` is not a boolean. ABORTING.`);
+    }
     const { accepted, inherent } = this.assertExecutable(verdict.scope, label);
     const decision = accepted.length === 0 ? "executable_approved" : "analysis_only";
-    if (reported !== undefined && reported !== decision) {
+    if (reported !== decision) {
       throw new ResidualPolicyRefusal(
         `[Graphite] ${label}: the Core decided "${reported}", but its own scope makes this verdict ` +
           `"${decision}" (${accepted.length === 0 ? "nothing beyond the inherent residuals is unobserved" : `unobserved: ${accepted.join(", ")}`}). ` +
           "The two must agree before anything is signed. ABORTING.",
       );
     }
-    const effective = (reported as ExecutionDecision | undefined) ?? decision;
-    if (verdict.executable !== undefined && verdict.executable !== (effective === "executable_approved")) {
+    if (verdict.executable !== (decision === "executable_approved")) {
       throw new ResidualPolicyRefusal(
         `[Graphite] ${label}: the verdict's \`executable\` (${String(verdict.executable)}) contradicts its ` +
-          `decision "${effective}". ABORTING.`,
+          `decision "${decision}". ABORTING.`,
       );
     }
-    return { accepted, inherent, decision, reportedDecision: (reported as ExecutionDecision | undefined) ?? null };
+    // Round 34 (G-5): the rest of the Core's rule. For an accepted residual,
+    // the rule is applied to the verdict without the residuals the operator
+    // accepted by name (and, when one of them is the missing simulation,
+    // without that too): what they explain is excused, nothing else.
+    const scope = verdict.scope as Extract<VerificationScope, { kind: "artifact_bound" }>;
+    const excused = new Set<UnobservedCode>(accepted);
+    const codes = scope.unobserved_codes ?? [];
+    const judged: DecidableVerdict =
+      accepted.length === 0
+        ? verdict
+        : {
+            ...verdict,
+            scope: {
+              ...scope,
+              simulated: scope.simulated === true || accepted.some((c) => EXPLAINS_NO_SIMULATION.has(c)),
+              unobserved: scope.unobserved.filter((_, i) => !excused.has(codes[i])),
+              unobserved_codes: codes.filter((c) => !excused.has(c)),
+            },
+          };
+    const unmet = unmetConditions(judged);
+    if (unmet.length > 0 || computeExecutionDecision(judged as DecisionInputs) !== "executable_approved") {
+      throw new ResidualPolicyRefusal(
+        `[Graphite] ${label}: the Core decided "${reported}", but the verdict does not meet its own execution rule` +
+          (accepted.length > 0 ? ` (with ${accepted.join(", ")} accepted)` : "") +
+          `: ${unmet.length > 0 ? unmet.join("; ") : "the recomputed decision is not executable"}. ABORTING.`,
+      );
+    }
+    return { accepted, inherent, decision, reportedDecision: reported as ExecutionDecision };
   }
 }
 // Round 30: the gate's methods cannot be replaced at runtime by code holding

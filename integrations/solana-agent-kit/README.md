@@ -4,9 +4,12 @@ The Solana Agent Kit adapter. Status is the project's: security-hardened alpha, 
 independent third-party audit yet ([docs/CURRENT.md](../../docs/CURRENT.md)).
 
 `VerifiedSakAgent` is a thin layer over [`GraphiteGuard`](../agent-guard/README.md):
-`executeTransfer`, `executeSwap`, `parseIntent` and `verifyTransaction` are the
-guard's, and every guarantee in the guard's README holds for them. What the adapter adds
-is SAK's own agent, for a caller's **read-only** use (balances, prices, lookups):
+`executeTransfer`, `executeSwap` and `parseIntent` are the guard's, and every guarantee
+in the guard's README holds for them. (`verifyTransaction` is gone since Round 34: it wrote
+to the audit trail under the deployment's Core key for whoever held the adapter. A caller
+that wants a verdict without executing builds its own `GraphiteClient` with its own key.)
+What the adapter adds is SAK's own agent, for a caller's **read-only** use (balances,
+prices, lookups):
 
 - **SAK never holds the key (Round 19, F-19-C2).** `SolanaAgentKit` is built on
   `VerificationGatedWallet` (`gated-wallet.ts`): a public key whose every signing method

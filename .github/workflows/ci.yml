@@ -53,17 +53,28 @@ permissions:
   contents: read
 
 jobs:
-  rust:
-    name: Rust core — fmt, clippy, tests
+  # Round 34 (R33-8): the one `rust` job became `rust-lint` and a three-leg
+  # `rust-test` matrix. As one job it ran fmt, two checks, three clippy legs and
+  # three release test legs back to back (default 2,557 s, cli 932 s, lib 72 s
+  # on the PR run of e34a42d, which passed in 59:19 of its 60 minutes); on the
+  # pushes of b473a31 and 9f4556e it hit the 60-minute ceiling, was cancelled,
+  # and a cancelled run never saves its cache, so the next push started cold
+  # again. Every step, command, floor, allowlist and clean-tree check is the
+  # same as before, split across jobs that run in parallel, each with its own
+  # cache and its own ceiling; both are in `ci-gate.needs`, and a matrix with a
+  # failed leg reports `failure` there.
+  rust-lint:
+    name: Rust core — fmt, check, clippy
     # A pinned runner image, not `ubuntu-latest` (A6-08): the label moves to a
     # new OS release on GitHub's schedule, not on a reviewed commit here.
     runs-on: ubuntu-24.04
     # Every job has a ceiling (A6-03): without one a hung step holds the
-    # runner for GitHub's 360-minute default before anything turns red. This
-    # job took 29-33 min warm-cached on runs #157-#158 (three release test
-    # builds plus clippy); 60 leaves room for a cold cache after a Cargo.lock
-    # change and the two extra clippy legs, and still fails a hang in an hour.
-    timeout-minutes: 60
+    # runner for GitHub's 360-minute default before anything turns red. Two
+    # checks and three clippy legs, all debug builds sharing one cache: well
+    # under 15 minutes warm (~90 s of the old job's time was everything but
+    # the three test legs); 30 leaves a cold cache after a Cargo.lock change
+    # room.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: graphite-core
@@ -75,13 +86,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # The whole history with its tags. The P13 contract gate
-          # (tests/contract_version_gate.rs) compares the published schemas
-          # with a committed snapshot of the last release, so it runs in any
-          # checkout (Round 29, C3); with the tags it also proves the
-          # snapshot is byte-identical to the release and that no newer
-          # release has left it behind.
-          fetch-depth: 0
       # Pinned to a commit of the `stable` branch (2026-09-12). The action
       # used to read the toolchain from the ref name, so with a SHA it is
       # named explicitly — and named as the exact release the container is
@@ -95,6 +99,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: graphite-core
+          key: lint
       - name: Format
         run: cargo fmt --all -- --check
       - name: Library builds with no features (embedded-use contract)
@@ -104,23 +109,92 @@ jobs:
         if: always()
         run: cargo check --locked --no-default-features --features cli
       - name: Clippy (all targets, all features — includes the rpc feature)
+        if: always()
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
       # The other two feature legs get the same lint gate (A6-06). CURRENT.md
       # says "Clippy -D warnings (all three feature legs)"; until now only the
       # local mirror enforced two of them, so they could drift unseen. The
       # flags are the mirror's: `--lib` for the featureless leg, because that
-      # is all its test leg runs (see below), and `--all-targets` for the cli
-      # leg, whose test leg compiles every target.
+      # is all its test leg runs (see rust-test), and `--all-targets` for the
+      # cli leg, whose test leg compiles every target.
       - name: Clippy (library, no features)
         if: always()
         run: cargo clippy --locked --no-default-features --lib -- -D warnings
       - name: Clippy (all targets, cli feature only)
         if: always()
         run: cargo clippy --locked --all-targets --no-default-features --features cli -- -D warnings
-      - name: Tests
-        # `default = ["server", "cli"]` and `server` pulls `rpc`, so this IS the
-        # all-features run for this crate; a separate `--all-features` job would
-        # compile the same thing twice.
+
+  rust-test:
+    name: Rust core — tests (${{ matrix.leg }})
+    runs-on: ubuntu-24.04
+    # A ceiling per leg (R33-8). Measured under the old single job with
+    # `--release` (thin LTO, one codegen unit): default 2,557 s, cli 932 s,
+    # lib 72 s. Under `--profile ci-test` (graphite-core/Cargo.toml: the
+    # release profile without LTO, 16 codegen units) each leg takes a fraction
+    # of that; the ceilings still hold the OLD timings with room, so even a
+    # cold cache cannot cancel a leg, and a hang still fails within them.
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      # Every leg reports, so one red leg does not hide the state of the others.
+      fail-fast: false
+      matrix:
+        include:
+          # `default = ["server", "cli"]` and `server` pulls `rpc`, so this IS
+          # the all-features run for this crate; a separate `--all-features`
+          # leg would compile the same thing twice.
+          - leg: default
+            flags: ""
+            floor: 2251
+            timeout: 90
+          # `--lib` deliberately. Without a feature there is no async runtime
+          # to drive the synchronous `verify()`, so it refuses with an error
+          # naming the features to build with (`verify_async` is the whole
+          # pipeline in every build), and the behavioural suite, which calls
+          # `verify()`, is inapplicable by construction. What this DOES gate is
+          # the pure deterministic core — the parser, the state diff, the risk
+          # engine, manifest handling, content_hash — plus one assertion that
+          # the synchronous call refuses instead of approving.
+          # The two no-default-features configurations were COMPILED by
+          # `cargo check` and never run until review finding #8 (2026-09-11):
+          # `cargo check --no-default-features` passed for months while
+          # `cargo test --no-default-features` had 28 failures.
+          - leg: lib
+            flags: "--no-default-features --lib"
+            floor: 470
+            timeout: 20
+          - leg: cli
+            flags: "--no-default-features --features cli"
+            floor: 1886
+            timeout: 45
+    defaults:
+      run:
+        working-directory: graphite-core
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The whole history with its tags. The P13 contract gate
+          # (tests/contract_version_gate.rs) compares the published schemas
+          # with a committed snapshot of the last release, so it runs in any
+          # checkout (Round 29, C3); with the tags it also proves the
+          # snapshot is byte-identical to the release and that no newer
+          # release has left it behind.
+          fetch-depth: 0
+      # The compiler rust-lint names and the Dockerfile ships with.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, 2026-09-12
+        with:
+          toolchain: 1.99.1
+      # One cache per leg: the three legs compile three feature sets, and a
+      # shared key would let whichever leg saved first decide what the others
+      # restore.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: graphite-core
+          key: test-${{ matrix.leg }}
+      - name: Tests (${{ matrix.leg }})
+        # `--profile ci-test`: the release profile's semantics without LTO
+        # (graphite-core/Cargo.toml says exactly what differs and why).
         # `--locked` (Round 17, F-16-13): a Cargo.lock that drifts from
         # Cargo.toml fails here instead of being silently re-resolved, so the
         # tests run against the dependency versions the image ships.
@@ -130,13 +204,18 @@ jobs:
         # Round 32 (2,251 / 470 / 1,886); a change that deletes tests below one
         # lowers it in the same reviewed diff. The log lives outside the tree
         # so the clean-tree check below still sees only what the tests wrote.
-        run: |
-          cargo test --locked --release 2>&1 | tee "$RUNNER_TEMP/cargo-test.log"
-          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test.log" 2251 ../.github/test-allowlists/rust-ignored.txt
         env:
+          FLAGS: ${{ matrix.flags }}
+          FLOOR: ${{ matrix.floor }}
+          LEG: ${{ matrix.leg }}
           # The snapshot's provenance check needs the tags; here a missing
           # tag fails instead of being skipped.
           GRAPHITE_CONTRACT_GATE_REQUIRED: "1"
+        run: |
+          # $FLAGS is split on purpose: "" adds nothing, the others add flags.
+          # shellcheck disable=SC2086
+          cargo test --locked --profile ci-test $FLAGS 2>&1 | tee "$RUNNER_TEMP/cargo-test-$LEG.log"
+          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test-$LEG.log" "$FLOOR" ../.github/test-allowlists/rust-ignored.txt
       # `corpus_persists_and_reloads_identically` (tests/regression_corpus.rs)
       # writes the regression corpus back into fixtures/corpus, which is
       # tracked. If the generator and the committed corpus disagree, the test
@@ -146,43 +225,14 @@ jobs:
       # in the same change as whatever moved it.
       # W23 (external review): the check covered fixtures/corpus only, so a
       # test writing to any other tracked path (protocols/, fixtures/artifacts)
-      # left the tree dirty and passed. Every path is checked now.
+      # left the tree dirty and passed. Every path is checked, after every leg
+      # (the cli leg runs the corpus test too; its output must match as well).
       - name: The test run changed nothing in the tree
+        if: always()
         run: |
           git diff --exit-code --stat
           if [ -n "$(git status --porcelain)" ]; then
             echo "::error::the test run changed or added files; a corpus change must be committed with whatever moved it, and nothing else may be written"
-            git status --porcelain
-            exit 1
-          fi
-      # The two configurations below were COMPILED above and never run. That is
-      # not the same gate: `cargo check --no-default-features` passed for months
-      # while `cargo test --no-default-features` had 28 failures (review finding
-      # #8, 2026-09-11).
-      - name: Tests — embeddable core, no features
-        if: always()
-        # `--lib` deliberately. Without a feature there is no async runtime to
-        # drive the synchronous `verify()`, so it refuses with an error naming
-        # the features to build with (`verify_async` is the whole pipeline in
-        # every build), and the behavioural suite, which calls `verify()`, is
-        # inapplicable by construction. What this DOES gate is the pure
-        # deterministic core — the parser, the state diff, the risk engine,
-        # manifest handling, content_hash — plus one assertion that the
-        # synchronous call refuses instead of approving.
-        run: |
-          cargo test --locked --release --no-default-features --lib 2>&1 | tee "$RUNNER_TEMP/cargo-test-lib.log"
-          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test-lib.log" 470 ../.github/test-allowlists/rust-ignored.txt
-      - name: Tests — cli feature only, no server or rpc
-        if: always()
-        run: |
-          cargo test --locked --release --no-default-features --features cli 2>&1 | tee "$RUNNER_TEMP/cargo-test-cli.log"
-          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test-cli.log" 1886 ../.github/test-allowlists/rust-ignored.txt
-      # The cli leg runs the corpus test too; its output must match as well.
-      - name: The feature legs changed nothing in the tree
-        if: always()
-        run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "::error::a test leg changed or added files"
             git status --porcelain
             exit 1
           fi
@@ -640,7 +690,7 @@ jobs:
           # The live-server tests skip without a server (the container job
           # runs them against one); nothing else may skip.
           npm test 2>&1 | tee "$RUNNER_TEMP/sdk-ts.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sdk-ts.log" 55 \
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sdk-ts.log" 62 \
             "$(grep -cE '^live\("' src/live-server.test.ts)"
           # The published package must actually build, and must not ship the
           # test file — dist/ is gitignored, so a broken build config would
@@ -659,7 +709,7 @@ jobs:
           # Every *.test.ts in the directory, so a test file cannot sit in
           # the repository looking like a gate without ever running.
           npm test 2>&1 | tee "$RUNNER_TEMP/agent-guard.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/agent-guard.log" 277
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/agent-guard.log" 301
           # The guard and the Rust Core are two implementations of one
           # agreement: the guard serializes a transaction and describes its
           # instructions, the Core reads both and decides whether they agree.
@@ -1017,8 +1067,47 @@ jobs:
           # Every check ran: a section that silently stopped running would
           # still exit 0 with fewer checks.
           passed="$(sed -n 's/^deploy tests: \([0-9]*\) passed, 0 failed$/\1/p' "$RUNNER_TEMP/deploy.log")"
-          if [ -z "$passed" ] || [ "$passed" -lt 87 ]; then
-            echo "::error::deploy tests: ${passed:-no summary} passed, floor 87"; exit 1
+          # 87 at Round 32; 105 at Round 34 (the archive MAC, --anchor-dir,
+          # the .sha256 naming check and owner preservation across a key
+          # rotation, R33-19 / D-6). The owner checks need root or
+          # passwordless sudo, which the hosted runner has.
+          if [ -z "$passed" ] || [ "$passed" -lt 105 ]; then
+            echo "::error::deploy tests: ${passed:-no summary} passed, floor 105"; exit 1
+          fi
+
+  # Round 34: the scripts the release and the live workflows run, tested
+  # here because those workflows run only on a tag, a dispatch or a schedule.
+  # release-gate.sh (R33-9: which CI run, which commit and which signature a
+  # release accepts), set-rpc-env.sh (D-9), pinned-tools.py (R33-20: every
+  # hand-pinned tool is where .github/pinned-tools.json says) and
+  # check-attestation-commands.py (R33-18: every published verify command
+  # pins the signer workflow).
+  ci-scripts:
+    name: Release gate and CI scripts — their own tests
+    runs-on: ubuntu-24.04
+    # Seconds: shell, python3, git and ssh-keygen only.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Release gate decisions (PR-event vs push-to-main CI, ancestry, tag signatures)
+        run: |
+          bash .github/scripts/release-gate.test.sh 2>&1 | tee "$RUNNER_TEMP/release-gate.log"
+          passed="$(sed -n 's/^release-gate tests: \([0-9]*\) passed, 0 failed$/\1/p' "$RUNNER_TEMP/release-gate.log")"
+          if [ -z "$passed" ] || [ "$passed" -lt 30 ]; then
+            echo "::error::release-gate tests: ${passed:-no summary} passed, floor 30"; exit 1
+          fi
+      - name: Hand-pinned tools are where the list says
+        run: python3 .github/scripts/pinned-tools.py check-pins
+      - name: Every published attestation command pins the signer
+        run: python3 .github/scripts/check-attestation-commands.py
+      - name: The CI scripts' own tests
+        run: |
+          bash .github/scripts/ci-scripts.test.sh 2>&1 | tee "$RUNNER_TEMP/ci-scripts.log"
+          passed="$(sed -n 's/^ci-scripts tests: \([0-9]*\) passed, 0 failed$/\1/p' "$RUNNER_TEMP/ci-scripts.log")"
+          if [ -z "$passed" ] || [ "$passed" -lt 25 ]; then
+            echo "::error::ci-scripts tests: ${passed:-no summary} passed, floor 25"; exit 1
           fi
 
   # Round 30 (G-11): the one check the `main` ruleset requires
@@ -1031,7 +1120,7 @@ jobs:
   ci-gate:
     name: CI gate
     if: always()
-    needs: [rust, msrv, supply-chain, runtime-oracle, container, typescript, go, dashboard, dashboard-e2e, deploy, python]
+    needs: [rust-lint, rust-test, ci-scripts, msrv, supply-chain, runtime-oracle, container, typescript, go, dashboard, dashboard-e2e, deploy, python]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

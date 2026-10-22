@@ -24,7 +24,8 @@ check instead of every job and matrix label.
 ```sh
 gh api -X POST repos/Stan-lee13/graphite/rulesets --input .github/rulesets/main.json
 gh api -X POST repos/Stan-lee13/graphite/rulesets --input .github/rulesets/release-tags.json
-gh api repos/Stan-lee13/graphite/rulesets            # both listed, enforcement "active"
+gh api -X POST repos/Stan-lee13/graphite/rulesets --input .github/rulesets/release-tags-create.json
+gh api repos/Stan-lee13/graphite/rulesets            # all three listed, enforcement "active"
 ```
 
 (Or Settings → Rules → Rulesets → New → Import a ruleset, one file at a time.)
@@ -32,7 +33,12 @@ gh api repos/Stan-lee13/graphite/rulesets            # both listed, enforcement 
 Check it took: a direct `git push origin main` must now be rejected, and a pull
 request with a red job must show `CI gate` failing and the merge button blocked.
 
-`release-tags.json` makes `v*` tags immutable (no deletion, no move). The
+`release-tags-create.json` (Round 34, R33-9) lets only an admin create a `v*` tag; it is a
+separate ruleset so that its admin bypass does not also let an admin delete or move a release
+tag, which `release-tags.json` forbids to everyone. With the release gate
+(`.github/scripts/release-gate.sh`: a signed tag, on `main`, with a passed push-event `CI gate`) and
+the protected `release` environment (`docs/ops/production-checklist.md`, R1–R4), a tag pushed from a
+branch cannot publish. `release-tags.json` makes `v*` tags immutable (no deletion, no move). The
 contract gate (`tests/contract_version_gate.rs`) compares against the last
 release tag, so a moved tag would move the baseline it checks against.
 

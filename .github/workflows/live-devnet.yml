@@ -78,8 +78,10 @@ jobs:
           INPUT_RPC: ${{ inputs.rpc_url || 'https://api.devnet.solana.com' }}
         run: |
           rpc="${SECRET_RPC:-$INPUT_RPC}"
-          echo "::add-mask::$rpc"
-          echo "LIVE_RPC_URL=$rpc" >> "$GITHUB_ENV"
+          # Validated before it is printed, masked, then written in the
+          # delimiter form (Round 34, D-9): a newline in the input can no
+          # longer set another variable for the later steps.
+          bash .github/scripts/set-rpc-env.sh "$rpc" "$GITHUB_ENV"
           R="$rpc" python3 -c 'import os,urllib.parse as u; print("rpc host:", u.urlsplit(os.environ["R"]).hostname)'
           mkdir -p "$REPORT_DIR"
 

@@ -408,8 +408,13 @@ fn seed_reviewed(core: &mut GraphiteCore) {
 #[tokio::test]
 async fn a_verify_key_holder_cannot_raise_a_programs_evidence() {
     let core = core_at(&cluster(Arc::default()));
+    // Round 34 (R33-15): the mock simulates a 1,000,000-lamport transfer
+    // whatever the bytes say. This request said 1,000, so L4 now refuses it
+    // (`SignerLamportsBeyondDeclaredAmount`: the wallet lost more than the
+    // primary's data states) and its confidence differed from `after`'s for
+    // that reason alone. It states what the mock moves.
     let before = core
-        .verify_async(&describe(1_000, WalletProfile::Gaming))
+        .verify_async(&describe(1_000_000, WalletProfile::Gaming))
         .await
         .unwrap();
     assert!(!before.approved, "{}", before.summary);

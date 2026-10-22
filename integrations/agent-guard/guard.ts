@@ -369,9 +369,10 @@ export interface GuardConfig {
      */
     stateFile?: string;
     /**
-     * The directory every guard on this host shares for its per-wallet locks
-     * (Round 32, guard-state.ts). Overrides GRAPHITE_GUARD_LOCK_DIR. Default
-     * `<tmpdir>/graphite-guard`.
+     * The directory every guard of this user on this host shares for its
+     * per-wallet locks (Round 32, guard-state.ts). Overrides
+     * GRAPHITE_GUARD_LOCK_DIR. Default (Round 34): a directory no temp cleaner
+     * sweeps (`defaultWalletLockDir`); it must be this user's, mode 0700.
      */
     walletLockDir?: string;
     /**
@@ -494,6 +495,18 @@ export class RequestInFlight extends Error {
   }
 }
 
+/**
+ * The guard was closed (Round 34): it signs, submits and reserves nothing
+ * after `close()`, with or without a state file. Its locks are released, so
+ * another guard may already hold the wallet.
+ */
+export class GuardClosed extends Error {
+  constructor() {
+    super("[Graphite] this guard is closed: it signs and spends nothing after close(). Create a new guard. REFUSING.");
+    this.name = "GuardClosed";
+  }
+}
+
 /** The read-only part of the Core client a caller may use (Round 29, M8). */
 export interface GraphiteReadClient {
   health(): Promise<{ status: string; service: string; version: string }>;
@@ -599,6 +612,12 @@ export class GraphiteGuard {
   #state: GuardState;
   /** This guard's claim on its wallet (Round 32): one guard per wallet on a host. */
   #walletLock: WalletLock;
+  /**
+   * Set by `close()` (Round 34). Checked first on every signing and spending
+   * path: closing released the locks, and without a state file nothing else
+   * stopped a closed guard from signing.
+   */
+  #closed = false;
   /** Requests being executed right now, by the same key (Round 30). */
   #inFlight = new Set<string>();
   #confirmTimeoutMs: number;
@@ -770,12 +789,32 @@ export class GraphiteGuard {
 
   /**
    * Release the state file's lock (Round 30) and the wallet's (Round 32).
-   * The guard signs nothing after this; a process that exits releases them
-   * anyway.
+   * The guard signs nothing after this (Round 34: every signing and spending
+   * path refuses with `GuardClosed`, an execution already running included);
+   * a process that exits releases the locks anyway. Idempotent.
    */
   close(): void {
+    this.#closed = true;
     this.#state.close();
     this.#walletLock.close();
+  }
+
+  /** Refuse with `GuardClosed` once `close()` has run (Round 34). */
+  #assertOpen(): void {
+    if (this.#closed) throw new GuardClosed();
+  }
+
+  /**
+   * Refuse unless this guard is open and still holds its locks (Round 34):
+   * the wallet's, and the state file's when it has one. A lock deleted under
+   * the guard (a temp cleaner, an operator) may already be another guard's,
+   * with a full allowance; this guard stops spending. Run before every
+   * reservation and immediately before the signed bytes leave the process.
+   */
+  #assertMaySpend(): void {
+    this.#assertOpen();
+    this.#walletLock.assertHeld();
+    this.#state.assertHeld();
   }
 
   async parseIntent(naturalLanguage: string): Promise<ProposedIntent> {
@@ -827,7 +866,14 @@ export class GraphiteGuard {
     };
   }
 
-  async verifyTransaction(params: {
+  /**
+   * Ask the Core about a transaction (Round 34, G-7: private). Every call
+   * writes a verification to the audit trail under this deployment's key, so
+   * like the client itself (`getGraphiteClient`, Round 29 M8) it is not
+   * handed to whoever holds the guard: only `executeTransfer` and
+   * `executeSwap` call it, about the transaction they built.
+   */
+  async #verifyTransaction(params: {
     programId: string; instructionDiscriminator: string; accountAddresses: string[];
     proposedIntent: ProposedIntent; instructions?: TransactionInstruction[];
     cpiTargets?: string[]; instructionData?: number[];
@@ -1068,6 +1114,8 @@ export class GraphiteGuard {
     // confirmation, L8 — is `executeBoundTransaction`, in that order. See
     // execution-lifecycle.ts for why each step sits where it does.
     try {
+      // Round 34: open, and still holding the wallet, before signing.
+      this.#assertMaySpend();
       const lifecycle = await executeBoundTransaction({
         bound,
         verification,
@@ -1079,7 +1127,15 @@ export class GraphiteGuard {
         label,
         confirmTimeoutMs: this.#confirmTimeoutMs,
         ...(confirm ? { confirm: ({ acceptedUnobserved }) => confirm(acceptedUnobserved) } : {}),
-        beforeSubmit: (signature) => this.#state.markUnresolved(key, signature, bound.lastValidBlockHeight),
+        // Round 34: again before signing, after the confirmation, which can
+        // take minutes; the guard can be closed or lose its lock meanwhile.
+        beforeSign: () => this.#assertMaySpend(),
+        // And as the last step before the bytes leave (the signing is
+        // recorded on the trail in between). A refusal here sends nothing.
+        beforeSubmit: (signature) => {
+          this.#assertMaySpend();
+          this.#state.markUnresolved(key, signature, bound.lastValidBlockHeight);
+        },
       });
       reservation.commit();
       if (lifecycle.confirmed) this.#state.markResolved(key);
@@ -1182,6 +1238,7 @@ export class GraphiteGuard {
   }
 
   async executeTransfer(naturalLanguage: string, options: ExecuteOptions = {}): Promise<ExecutionOutcome> {
+    this.#assertOpen();
     const proposedIntent = await this.parseIntent(naturalLanguage);
     console.log(`[Graphite] Parsed intent: ${proposedIntent.intent_type} (conf: ${proposedIntent.confidence_of_parse})`);
 
@@ -1262,10 +1319,11 @@ export class GraphiteGuard {
     assertOutflowAllowed(this.#spendPolicy, outflow, "transfer");
     // Round 29 (M6): the aggregate limit, claimed now and returned unless
     // the bytes leave the process.
+    this.#assertMaySpend();
     const reservation = this.#ledger.reserve(outflow.lamports);
     let handedOff = false;
     try {
-      const verification = await this.verifyTransaction({
+      const verification = await this.#verifyTransaction({
         programId: SYSTEM_PROGRAM, instructionDiscriminator: TRANSFER_DISCRIMINATOR,
         accountAddresses: [this.#walletPublicKey, destination], proposedIntent: groundedIntent, instructions: [transferIx],
         instructionData: transferData,
@@ -1376,6 +1434,7 @@ export class GraphiteGuard {
     payload?: BoundInstructionPayload,
     options: ExecuteOptions = {},
   ): Promise<ExecutionOutcome> {
+    this.#assertOpen();
     const proposedIntent = await this.parseIntent(naturalLanguage);
     console.log(`[Graphite] Parsed intent: ${proposedIntent.intent_type} (conf: ${proposedIntent.confidence_of_parse})`);
 
@@ -1525,10 +1584,11 @@ export class GraphiteGuard {
           `minimum of ${economics.minOut} is held only to the simulated ${economics.simulatedOut}.`,
       );
     }
+    this.#assertMaySpend();
     const reservation = this.#ledger.reserve(outflowLamports);
     let handedOff = false;
     try {
-      const verification = await this.verifyTransaction({
+      const verification = await this.#verifyTransaction({
         programId: payload.programId,
         // Round 29 (L1): the decoded selector, normalised once, is both what
         // the Core hashes and what AuditBind binds below.
