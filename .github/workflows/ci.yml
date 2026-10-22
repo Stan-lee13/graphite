@@ -429,7 +429,7 @@ jobs:
       # container, same throwaway key, same toolchain pin as the Go job.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.3"
           # sdk/go has no dependencies and no go.sum to key a cache on.
           cache: false
       - name: Go SDK conformance against the live container
@@ -717,7 +717,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ["1.26.8", "1.27.1"]
+        go: ["1.26.10", "1.27.3"]
     defaults:
       run:
         working-directory: sdk/go
@@ -889,7 +889,7 @@ jobs:
 
   # Round 30 (G-11): the one check the `main` ruleset requires
   # (.github/rulesets/main.json). Requiring each job by name would tie the
-  # ruleset to matrix labels ("Go SDK — fmt, vet, tests (1.27.1)") that change
+  # ruleset to matrix labels ("Go SDK — fmt, vet, tests (1.27.3)") that change
   # with every toolchain bump, and a renamed or deleted job would quietly stop
   # being required. This job needs every other job and passes only if each of
   # them succeeded: a failure, a cancellation or a skip anywhere fails it. A
