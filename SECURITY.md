@@ -176,7 +176,7 @@ committed as a test and the fix reverted once to show the test fails without it:
   miss) via an in-memory offset index built at open and maintained per append.
 - **Repository integrity (Round 9, R9-08; Round 10, R10-02).** The CI token is read-only;
   every action is pinned to a commit SHA; both container base images are pinned by
-  manifest digest; the toolchain is `1.98.1` in CI and in the container (tested compiler =
+  manifest digest; the toolchain is `1.99.1` in CI and in the container (Round 31) (tested compiler =
   shipped compiler); Go `1.22.12`, `cargo-audit 0.22.2`, and Python test dependencies are
   hash-locked.
 - **L8 took the RPC's word for the chain's bytes (Round 11, R11-01, P1).** Round 10 joined

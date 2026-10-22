@@ -5,6 +5,14 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 
 ## [0.3.0-beta] — unreleased (the contract since v0.2.0-beta)
 
+Round 31 (2026-10-22) — dependencies, no contract change:
+
+- Rust 1.99.1 in CI and in the builder image (`rust:1.99.1-bookworm` by digest); MSRV stays 1.89 (checked by its job).
+- Majors: `sha2` 0.11, `curve25519-dalek` 5, `ed25519-dalek` 3 (the `std` feature is gone; `alloc`), `base64` 0.23, `tower-http` 0.7, `reqwest` 0.13. reqwest 0.13 trusts the host's store by default; the RPC client is held to the bundled Mozilla roots (`webpki-root-certs`, part of the `rpc` feature), so its trust anchors are unchanged (`rpc_client::tests::the_rpc_client_trusts_exactly_the_bundled_roots`).
+- Every other crate at its latest compatible release (`cargo update`); the runtime oracle on solana-transaction / solana-message 5.1.0.
+- Held back: the oracle's solana-transaction / solana-message 6.0 (it removes the v1 `MAX_SIGNATURES`/`MAX_ADDRESSES`/`MAX_INSTRUCTIONS` limits the oracle checks Graphite against — adopting it is a decision about Graphite's own v1 limits) and `bincode` 3 (the runtime's packet crate still decodes with bincode 1).
+- The mainnet conformance digest, the regression corpus and the release-evaluation pins are unchanged.
+
 The crate's version moves from `0.2.0-beta`, the last release tag, because the published contract broke after that tag under the same version (Constitution P13). `tests/contract_version_gate.rs` (Round 28) found both breaks by diffing the schemas against `v0.2.0-beta`; it fails the build whenever a break has no version bump or is not named in this section. Tagging the release remains the owner's decision.
 
 Breaking for a caller (`schemas/proposed-intent-v1.json`, which the caller writes):

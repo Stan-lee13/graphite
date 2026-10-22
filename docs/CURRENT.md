@@ -252,7 +252,7 @@ Container health:                `graphite healthcheck` (the image's HEALTHCHECK
                                  compose file uses `--strict` and a 30 s stop grace (Round 30), and CI checks that a
                                  real /verify is recorded, survives a recreate, and that a stop exits 0
 Repository integrity:            CI token read-only; actions pinned by commit SHA; base images pinned by digest;
-                                 toolchain 1.98.1 in CI and in the container, and the declared MSRV (1.89) built by
+                                 toolchain 1.99.1 in CI and in the container (Round 31), and the declared MSRV (1.89) built by
                                  its own job (Round 30); Go, cargo-audit and Python (hash-locked) pinned; runner
                                  image (ubuntu-24.04) and Node (22.23.3) exact; npm installs run no dependency
                                  install scripts; the Cargo and Python lockfiles audited, and six npm lockfiles
@@ -659,10 +659,10 @@ transaction under the stated threat model, and no external party has yet tried.
 document links here, and `tests/docs_numbers_match_the_code.rs` fails if a live
 document states one elsewhere.
 
-Rust, from the final integrated runs of Round 30 on 2026-10-22 (release builds,
+Rust, from the integrated runs of Round 31 (every dependency updated) on 2026-10-22
 thin LTO off to fit the shared machine; logs kept outside the repository):
 
-- all features, and the default features CI runs: **2,236 Rust tests pass**, 0 failed,
+- all features, and the default features CI runs: **2,237 Rust tests pass**, 0 failed,
   13 ignored (network- or sample-dependent, plus two soak benchmarks, each named in
   `.github/test-allowlists/rust-ignored.txt`), across 161 test targets;
 - the featureless library (`--no-default-features --lib`): **466 passed, 2 ignored**;
@@ -694,6 +694,7 @@ SHA — the runs endpoint, not the combined-status endpoint.
 
 | Date | Report | What it records |
 |---|---|---|
+| 2026-10-22 | Round 31 (no report; see the CHANGELOG's Round 31 entry) | Every dependency at its latest stable release: Rust 1.99.1 in CI and the builder image; sha2 0.11, curve25519-dalek 5, ed25519-dalek 3, base64 0.23, tower-http 0.7, reqwest 0.13 (the RPC client trusts exactly the bundled Mozilla roots, as before); TypeScript 7 in all six packages; React 19; Go 1.26.10 / 1.27.3 in CI; current action pins. Held back with reasons: the oracle's solana-transaction/solana-message 6 (it changes the v1 limits Graphite is judged against) and bincode 3; `@solana/web3.js` stays on 1.x; `@types/node` on 22.x. No pinned output changed |
 | 2026-10-22 | [`round30-forensic-audit-and-remediation-2026-10-22.md`](round30-forensic-audit-and-remediation-2026-10-22.md); findings: [`audit-r30/findings-registry.md`](audit-r30/findings-registry.md); ledger, architecture and history: [`audit-r30/README.md`](audit-r30/README.md) | A forensic whole-repository audit of `29e4356` (the Round 29 merge) answered in one round by eleven workstreams: every verdict says whether it permits signing (G-01); a verify-key holder's self-approved requests no longer train evidence, and the learning opt-in is retired (G-02, R30-B-1); per-shape, anchored baselines (G-03); an upgrade withdraws evidence (G-04); a hash-chained, keyed audit trail with `graphite audit verify` / `checkpoint` (G-07); L8 inclusion assurance and a high-assurance mode (G-08); a signer's loss under an unreadable declaration is Critical (R30-F-1); 21 grounded intents for withdrawals, claims, closes, burns and owner configuration (G-06); the guard executes only a decision it recomputes, keys repeats by effect and persists them; a read-only key; a CI that fails on missing tests; rulesets prepared for an owner to apply. Every Round 29 check never broken has now been broken and caught. Release blocked on owner and external items (branch protection, independent audit, deployment) |
 | 2026-10-21 | [round29-the-audit-remediated-2026-10-21.md](round29-the-audit-remediated-2026-10-21.md) | A full-repository audit of `19a2974` (4 HIGH, 16 MEDIUM) answered in one round: with an RPC a failed or incomplete simulation now refuses (H1); the agent guard decodes six swap programs and holds a route's own minimum to the simulated delivery, a slippage bound and a price floor (H2, H4), and grounds a transfer in one grammar (H3); refusals no longer train confidence (M1); the verdict's tier is the weakest program's (M2); the registry owns its corpus and signs a domain-tagged message (M3); L8 writes an `execution_check` unless it saw inclusion (M4, M9); every adapter requires a cap and a person sees the resolved transaction (M6–M8); 16 risk checks; 3,541 instructions with corrected classes; an honest holdout (37/37 exploits refused, the one benign swap refused offline) and the mainnet pin moved on 3 of 2,277 rows, each attributed. Deliberate breaks run and caught for the core pipeline, server and CLI, RPC and state diff (28 failures on the reverted code), audit trail and parser, agent guard, SDKs and schema, dashboard, AI layer and contract gate; not run for the risk engine, registry, protocol data and attack suites |
 | 2026-10-17 | [round28-archive-index-lifecycle-contract-2026-10-17.md](round28-archive-index-lifecycle-contract-2026-10-17.md) | Each rotated audit archive has a persisted index, checked against the archive's SHA-256, and a count over three 64 MiB archives went from 822 ms to 2.2 ms (R-M11, W10); every lifecycle event names its emitter in an exhaustive `match` a test drives end to end, and `operator_action` is now pinned as unforgeable (R-P14, R28-2); the published schemas are diffed against the last release tag, whose first run found two caller-side breaks since `v0.2.0-beta` under the same version, so the crate is `0.3.0-beta` (R-M2, R28-1) |
