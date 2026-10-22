@@ -703,7 +703,7 @@ document states one elsewhere.
 Rust, from the integrated runs of Round 32 (production readiness) on 2026-10-22
 thin LTO off to fit the shared machine; logs kept outside the repository):
 
-- all features, and the default features CI runs: **2,248 Rust tests pass**, 0 failed,
+- the default features CI runs: **2,251 Rust tests pass**, 0 failed,
   13 ignored (network- or sample-dependent, plus two soak benchmarks, each named in
   `.github/test-allowlists/rust-ignored.txt`), across 161 test targets;
 - the featureless library (`--no-default-features --lib`): **470 passed, 2 ignored**;
