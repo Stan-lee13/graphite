@@ -177,7 +177,8 @@ Pick one form: `deploy/compose/docker-compose.prod.yml` or `deploy/systemd/` (bo
 - [ ] **9i. Backups and a restore drill.** Daily:
   `STOP_CMD="systemctl stop graphite" START_CMD="systemctl start graphite" deploy/scripts/backup.sh --key-file <audit key> /var/lib/graphite <backup dir>`
   (compose: `docker compose -f deploy/compose/docker-compose.prod.yml stop graphite` / `start graphite`
-  and the volume's mountpoint), then copy the archive and its `.sha256` off the host.
+  and the volume's mountpoint), then copy the archive, its `.sha256` and its `.mac` off the host
+  (`restore.sh` refuses an archive without a `.mac` that verifies, and runs without `--anchor-dir`).
   Before go-live and quarterly: restore the latest archive into a scratch directory on another host,
   `deploy/scripts/restore.sh --key-file <every audit key> --anchor-dir <anchors> <archive> <scratch dir>`,
   start a Core on it and check `/health`. Record the drill (date, archive, result).
