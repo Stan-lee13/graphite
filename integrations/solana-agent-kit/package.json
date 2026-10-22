@@ -11,7 +11,7 @@
     "test": "tsx --test *.test.ts"
   },
   "dependencies": {
-    "@solana/web3.js": "^1.99.0",
+    "@solana/web3.js": "^3.1.1",
     "bs58": "^6.0.0",
     "solana-agent-kit": "^2.0.10"
   },
