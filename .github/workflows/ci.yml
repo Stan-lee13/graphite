@@ -894,6 +894,65 @@ jobs:
       - name: Check, no features (embedded-use contract)
         run: cargo check --locked --no-default-features
 
+  # Round 32: the console drawn in a browser against a live Core. The
+  # dashboard job type-checks, unit-tests and builds the console, but nothing
+  # drew a page: whether the production build renders, obeys its own CSP,
+  # fits a phone, passes axe, and draws green only what the Core reported
+  # executable was checked by hand (dashboard/e2e/smoke.mjs, Round 30). The
+  # whole run is .github/scripts/dashboard-e2e.sh, which a contributor runs
+  # locally unchanged.
+  dashboard-e2e:
+    name: Dashboard — browser smoke against a live Core
+    runs-on: ubuntu-24.04
+    # A release build of the Core (~5 min warm, longer cold), the console
+    # build, a Chromium download and 32 page walks. 45 leaves a cold cache room.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The compiler the rust job certifies and the container ships with.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, 2026-09-12
+        with:
+          toolchain: 1.99.1
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: graphite-core
+      - name: Build the Core
+        # The features and flags of the shipped binary (Dockerfile).
+        run: cargo build --manifest-path graphite-core/Cargo.toml --locked --release --features server,cli --bin graphite
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.23.3"
+          cache: npm
+          cache-dependency-path: |
+            dashboard/package-lock.json
+            dashboard/e2e/package-lock.json
+      - name: Build the console
+        working-directory: dashboard
+        # `--ignore-scripts` (A6-09), as in the dashboard job.
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+      - name: Install Playwright, its Chromium, and axe-core
+        working-directory: dashboard/e2e
+        # Exact versions, with integrity hashes, from dashboard/e2e's own
+        # lockfile; the console does not depend on them. Then Playwright's
+        # supported install: the Chromium build this Playwright release is
+        # tested against, and the system libraries it needs.
+        run: |
+          npm ci --ignore-scripts
+          npx --no-install playwright install --with-deps chromium
+      # The seventh npm lockfile, held to the supply-chain job's gate and its
+      # rules (.github/npm-audit/dashboard-e2e.allow).
+      - name: npm advisories — the smoke's own dependencies
+        run: |
+          (cd dashboard/e2e && npm audit --json > "$RUNNER_TEMP/audit-dashboard-e2e.json") && rc=0 || rc=$?
+          echo "npm audit exit ${rc}"
+          node .github/npm-audit/gate.mjs "$RUNNER_TEMP/audit-dashboard-e2e.json" .github/npm-audit/dashboard-e2e.allow
+      - name: Browser smoke (seeded Core, every view, desktop and phone, axe)
+        run: .github/scripts/dashboard-e2e.sh graphite-core/target/release/graphite
+
   # Round 30 (G-11): the one check the `main` ruleset requires
   # (.github/rulesets/main.json). Requiring each job by name would tie the
   # ruleset to matrix labels ("Go SDK — fmt, vet, tests (1.27.3)") that change
@@ -904,7 +963,7 @@ jobs:
   ci-gate:
     name: CI gate
     if: always()
-    needs: [rust, msrv, supply-chain, runtime-oracle, container, typescript, go, dashboard, python]
+    needs: [rust, msrv, supply-chain, runtime-oracle, container, typescript, go, dashboard, dashboard-e2e, python]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

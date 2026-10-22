@@ -443,7 +443,8 @@ test("state: the aggregate spent before a restart still counts after it", async 
   try {
     await assert.rejects(second.agent.executeTransfer(next), (e: unknown) => {
       assert.ok(e instanceof SpendPolicyRefusal, String(e));
-      assert.match((e as Error).message, /bring this guard's outflow in the last 3600 s to 2500000000/);
+      // Round 32: each transfer counts its 5,000-lamport fee as well.
+      assert.match((e as Error).message, /bring this guard's outflow in the last 3600 s to 2500010000/);
       return true;
     });
   } finally {

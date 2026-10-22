@@ -32,6 +32,7 @@ import type {
   VerdictOnRecord,
   VerificationResult,
 } from "../../sdk/typescript/src/types.js";
+import { instructionBindKey } from "../../sdk/typescript/src/types.js";
 import { firstSignatureOf, type BoundTransaction, type TransactionSigner } from "./artifact.js";
 import type { ExecutionDecision, ResidualPolicy } from "./residual-policy.js";
 
@@ -50,11 +51,23 @@ export interface LifecycleReporter {
   recordLifecycleEvent(event: LifecycleEventInput): Promise<LifecycleEventReceipt>;
   verifyExecution(input: {
     signature: string;
+    instruction_bind_key?: string;
     content_hash?: string;
     transaction_sha256?: string;
     audit_trail_id?: string;
     reported_by?: string;
   }): Promise<ExecutionCheckResult>;
+}
+
+/**
+ * The verification's instruction-level key under both its names (Round 32,
+ * R-M10): `instruction_bind_key`, its name since Round 30, and
+ * `content_hash`, which every Core before Round 32 requires. The same value
+ * under both, so every Core reads one key.
+ */
+function bindKeyOf(verification: VerificationResult): { instruction_bind_key: string; content_hash: string } {
+  const key = instructionBindKey(verification);
+  return { instruction_bind_key: key, content_hash: key };
 }
 
 /** What happened, stage by stage. Every field is a fact about this execution. */
@@ -263,7 +276,7 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
   try {
     signing = await p.graphite.recordLifecycleEvent({
       event_type: "signing",
-      content_hash: verification.content_hash,
+      ...bindKeyOf(verification),
       audit_trail_id: verification.audit_trail_id,
       transaction_sha256: scope.transaction_sha256,
       reported_by: p.reportedBy,
@@ -328,7 +341,7 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
     try {
       await p.graphite.recordLifecycleEvent({
         event_type: "submission",
-        content_hash: verification.content_hash,
+        ...bindKeyOf(verification),
         audit_trail_id: verification.audit_trail_id,
         transaction_sha256: scope.transaction_sha256,
         transaction_signature: signature,
@@ -374,7 +387,7 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
     try {
       const receipt = await p.graphite.recordLifecycleEvent({
         event_type: "submission",
-        content_hash: verification.content_hash,
+        ...bindKeyOf(verification),
         audit_trail_id: verification.audit_trail_id,
         transaction_sha256: scope.transaction_sha256,
         transaction_signature: signature,
@@ -429,7 +442,7 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
   try {
     lifecycle.reconciliation = await p.graphite.verifyExecution({
       signature,
-      content_hash: verification.content_hash,
+      ...bindKeyOf(verification),
       transaction_sha256: scope.transaction_sha256,
       audit_trail_id: verification.audit_trail_id,
       reported_by: p.reportedBy,

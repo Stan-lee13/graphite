@@ -128,11 +128,20 @@ export function tokenAccountData(mint: string, owner: string, amount: bigint): U
 
 const SPL_TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 
-/** The static account keys of a base64 legacy or v0 wire transaction (v1: none). */
+/** The static account keys of a base64 legacy, v0 or v1 wire transaction. */
 function staticKeysOf(wire: unknown): string[] {
   if (typeof wire !== "string") return [];
   const bytes = Buffer.from(wire, "base64");
-  if (bytes[0] === 0x81) return [];
+  if (bytes[0] === 0x81) {
+    // v1: prefix, header (3), config mask (u32), lifetime (32), instruction
+    // count (u8), address count (u8), then the addresses (Round 32: the
+    // stand-in reports v1 balances as an Agave RPC does).
+    const at = 1 + 3 + 4 + 32;
+    const count = bytes[at + 1] ?? 0;
+    const keys: string[] = [];
+    for (let k = 0; k < count; k++) keys.push(bs58.encode(bytes.subarray(at + 2 + 32 * k, at + 2 + 32 * (k + 1))));
+    return keys;
+  }
   return VersionedTransaction.deserialize(bytes).message.staticAccountKeys.map((k) => k.toBase58());
 }
 
@@ -436,13 +445,20 @@ export async function mockApprovingCore(
     body: approvedVerdictFor(body, { ...verdict, auditTrailId: `gr-loopback-${String(++n).padStart(8, "0")}` }),
   }));
   core.respond.set("POST /audit/event", (body) => {
-    const e = body as { event_type: string; content_hash: string };
+    const e = body as { event_type: string; content_hash?: string; instruction_bind_key?: string };
+    // As the Core reads the key (Round 32, R-M10): either name, or both when
+    // they agree; two different values are refused.
+    if (e.content_hash !== undefined && e.instruction_bind_key !== undefined && e.content_hash !== e.instruction_bind_key) {
+      return { status: 400, body: { error: "content_hash and instruction_bind_key are the same key under two names, and the two sent differ" } };
+    }
+    const key = e.instruction_bind_key ?? e.content_hash;
+    if (key === undefined) return { status: 400, body: { error: "content_hash (or instruction_bind_key, the same key) is required" } };
     return {
       status: 200,
       body: {
         recorded: true,
         event_type: e.event_type,
-        content_hash: e.content_hash,
+        content_hash: key,
         verdict_on_record: "approved",
         verdict_on_record_key: "audit_trail_id",
         sequence_anomalies: [],

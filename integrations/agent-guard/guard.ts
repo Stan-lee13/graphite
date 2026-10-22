@@ -50,8 +50,18 @@ import {
 import { GUARD_CAPABILITIES, UnsupportedCapability, type GuardCapabilities } from "./capabilities.js";
 export { GUARD_CAPABILITIES, UnsupportedCapability, type GuardCapabilities };
 // Round 30: the aggregate spend and unresolved submissions, durable on request.
-import { GuardState, GuardStateError, openGuardState, GUARD_STATE_FILE_ENV } from "./guard-state.js";
-export { GuardState, GuardStateError, GUARD_STATE_FILE_ENV };
+import {
+  GuardState,
+  GuardStateError,
+  openGuardState,
+  takeWalletLock,
+  walletLockPlan,
+  WalletLock,
+  GUARD_ALLOW_SHARED_WALLET_ENV,
+  GUARD_LOCK_DIR_ENV,
+  GUARD_STATE_FILE_ENV,
+} from "./guard-state.js";
+export { GuardState, GuardStateError, WalletLock, GUARD_ALLOW_SHARED_WALLET_ENV, GUARD_LOCK_DIR_ENV, GUARD_STATE_FILE_ENV };
 export { RpcSimulator, assertEverySignatureSlotEmpty };
 // Round 19 (F-19-C5): the AI layer's answer is checked against the user's text.
 import {
@@ -78,6 +88,7 @@ export {
 };
 // The operator's spending limits.
 import {
+  assertOutflowAllowed,
   assertSpendPolicyUsable,
   assertSwapAllowed,
   assertTransferAllowed,
@@ -87,9 +98,13 @@ import {
   SpendLedger,
   SpendPolicyRefusal,
   type SpendPolicy,
+  type MeasuredTransferOutflow,
   type SpendReservation,
 } from "./spend-policy.js";
 export { assertSwapAllowed, assertTransferAllowed, spendPolicyFromEnv, SpendPolicyRefusal, type SpendPolicy };
+// Round 32: the fee a message makes its fee payer pay, read from its bytes.
+import { transactionFee } from "./fees.js";
+export { transactionFee };
 // A5-01 / Round 29 (L3): the programs a swap payload may be addressed to —
 // exactly those whose swap instruction the guard decodes.
 import { SWAP_PROGRAM_IDS } from "./swap-programs.js";
@@ -354,6 +369,18 @@ export interface GuardConfig {
      */
     stateFile?: string;
     /**
+     * The directory every guard on this host shares for its per-wallet locks
+     * (Round 32, guard-state.ts). Overrides GRAPHITE_GUARD_LOCK_DIR. Default
+     * `<tmpdir>/graphite-guard`.
+     */
+    walletLockDir?: string;
+    /**
+     * Let this guard start while another guard runs for the same wallet: the
+     * spend limits then hold per guard, not per wallet. Overrides
+     * GRAPHITE_GUARD_ALLOW_SHARED_WALLET. Default false (Round 32).
+     */
+    allowSharedWallet?: boolean;
+    /**
      * How long a confirmation hook may take before it counts as declined, in
      * milliseconds. Default `DEFAULT_CONFIRM_TIMEOUT_MS` (Round 30).
      */
@@ -381,6 +408,8 @@ export const GUARD_CONFIG_KEYS: readonly (keyof GuardConfig)[] = Object.freeze([
   "swapPolicy",
   "swapEnvelope",
   "stateFile",
+  "walletLockDir",
+  "allowSharedWallet",
   "confirmTimeoutMs",
 ] as const);
 
@@ -568,6 +597,8 @@ export class GraphiteGuard {
    * since Round 30 the aggregate's reservations: durable with a state file.
    */
   #state: GuardState;
+  /** This guard's claim on its wallet (Round 32): one guard per wallet on a host. */
+  #walletLock: WalletLock;
   /** Requests being executed right now, by the same key (Round 30). */
   #inFlight = new Set<string>();
   #confirmTimeoutMs: number;
@@ -584,7 +615,7 @@ export class GraphiteGuard {
     signer: WalletSigner; residualPolicy: ResidualPolicy;
     aiLayerTimeoutMs: number; transactionVersion: BridgeTransactionVersion; reporterName: string;
     spendPolicy: SpendPolicy; swapPolicy: SwapPolicy; swapEnvelope: SwapEnvelopeConfig; rpcUrl: string;
-    state: GuardState; confirmTimeoutMs: number;
+    state: GuardState; walletLock: WalletLock; confirmTimeoutMs: number;
   }) {
     this.#graphite = c.graphite;
     this.#connection = c.connection;
@@ -600,6 +631,7 @@ export class GraphiteGuard {
     this.#reporterName = c.reporterName;
     this.#spendPolicy = c.spendPolicy;
     this.#state = c.state;
+    this.#walletLock = c.walletLock;
     this.#ledger = new SpendLedger(c.spendPolicy, Date.now, c.state);
     this.#swapPolicy = c.swapPolicy;
     this.#swapEnvelope = c.swapEnvelope;
@@ -684,6 +716,7 @@ export class GraphiteGuard {
     if (!Number.isSafeInteger(confirmTimeoutMs) || confirmTimeoutMs < 1) {
       throw new Error(`[Graphite] confirmTimeoutMs ${String(confirmTimeoutMs)} is not a positive integer. REFUSING TO START.`);
     }
+    const lockPlan = walletLockPlan({ lockDir: config?.walletLockDir, allowSharedWallet: config?.allowSharedWallet });
 
     const signer = await walletSignerFrom(privateKey);
     const connection = connectionWithoutRedirects(rpcUrl);
@@ -709,14 +742,24 @@ export class GraphiteGuard {
     console.log(describeSwapPolicy(swapPolicy));
     // Round 30: opened last, after everything that can refuse to start, so a
     // refused start does not hold the state file's lock.
+    // Round 32: the wallet's lock first, so a second guard for the same
+    // wallet is refused before it touches any state file.
     const windowMs = (spendPolicy.spendWindowSeconds ?? DEFAULT_SPEND_WINDOW_SECONDS) * 1000;
-    const state = openGuardState(config?.stateFile, Date.now() - windowMs);
+    const walletLock = takeWalletLock(signer.publicKey.toBase58(), lockPlan);
+    let state: GuardState;
+    try {
+      state = openGuardState(config?.stateFile, Date.now() - windowMs);
+    } catch (e) {
+      walletLock.close();
+      throw e;
+    }
+    console.log(walletLock.describe());
     console.log(state.describe());
 
     return new GraphiteGuard({
       graphite, connection, walletProfile, aiLayerUrl, signer, residualPolicy, aiLayerTimeoutMs,
       transactionVersion, reporterName: config?.reporter ?? "agent-guard", spendPolicy, swapPolicy, swapEnvelope,
-      rpcUrl, state, confirmTimeoutMs,
+      rpcUrl, state, walletLock, confirmTimeoutMs,
     });
   }
 
@@ -726,11 +769,13 @@ export class GraphiteGuard {
   }
 
   /**
-   * Release the state file's lock (Round 30). The guard signs nothing after
-   * this; a process that exits releases it anyway.
+   * Release the state file's lock (Round 30) and the wallet's (Round 32).
+   * The guard signs nothing after this; a process that exits releases them
+   * anyway.
    */
   close(): void {
     this.#state.close();
+    this.#walletLock.close();
   }
 
   async parseIntent(naturalLanguage: string): Promise<ProposedIntent> {
@@ -1187,33 +1232,39 @@ export class GraphiteGuard {
       },
     };
 
+    const destPubkey = new PublicKey(destination);
+    const transferIx = SystemProgram.transfer({
+      fromPubkey: this.#signer.publicKey,
+      toPubkey: destPubkey,
+      lamports: grounded.lamports,
+    });
+
+    const SYSTEM_PROGRAM = "11111111111111111111111111111111";
+    const TRANSFER_DISCRIMINATOR = "02000000";
+
+    // C22 TOCTOU closure: bind the AMOUNT, not just program+discriminator+
+    // accounts. The transfer amount lives in `transferIx.data` (u64 LE
+    // lamports after the 0x02 discriminator). Both sides must carry the same
+    // raw data bytes: the Rust content_hash includes instruction_data only
+    // when it is present (generate_audit_id), so we pass it to verification
+    // AND to the AuditBind projection together.
+    const transferData = Array.from(transferIx.data);
+    // ONE transaction object, built before verification and carried through to
+    // submission. The bytes Graphite verifies come out of it, the digest is
+    // re-checked against it immediately before signing, and the signed bytes
+    // come from it. There is no second transaction for the two to drift apart.
+    const bound = await this.#buildBound([transferIx]);
+    // Round 32: the limits count what the wallet pays, not only what it
+    // sends — the amount plus the fee this message asks for, or what one
+    // simulation of these exact bytes takes out of the wallet, whichever is
+    // larger — and the aggregate reserves the same figure.
+    const outflow = await this.#transferOutflow(bound, grounded.lamports);
+    assertOutflowAllowed(this.#spendPolicy, outflow, "transfer");
     // Round 29 (M6): the aggregate limit, claimed now and returned unless
     // the bytes leave the process.
-    const reservation = this.#ledger.reserve(grounded.lamports);
+    const reservation = this.#ledger.reserve(outflow.lamports);
     let handedOff = false;
     try {
-      const destPubkey = new PublicKey(destination);
-      const transferIx = SystemProgram.transfer({
-        fromPubkey: this.#signer.publicKey,
-        toPubkey: destPubkey,
-        lamports: grounded.lamports,
-      });
-
-      const SYSTEM_PROGRAM = "11111111111111111111111111111111";
-      const TRANSFER_DISCRIMINATOR = "02000000";
-
-      // C22 TOCTOU closure: bind the AMOUNT, not just program+discriminator+
-      // accounts. The transfer amount lives in `transferIx.data` (u64 LE
-      // lamports after the 0x02 discriminator). Both sides must carry the same
-      // raw data bytes: the Rust content_hash includes instruction_data only
-      // when it is present (generate_audit_id), so we pass it to verification
-      // AND to the AuditBind projection together.
-      const transferData = Array.from(transferIx.data);
-      // ONE transaction object, built before verification and carried through to
-      // submission. The bytes Graphite verifies come out of it, the digest is
-      // re-checked against it immediately before signing, and the signed bytes
-      // come from it. There is no second transaction for the two to drift apart.
-      const bound = await this.#buildBound([transferIx]);
       const verification = await this.verifyTransaction({
         programId: SYSTEM_PROGRAM, instructionDiscriminator: TRANSFER_DISCRIMINATOR,
         accountAddresses: [this.#walletPublicKey, destination], proposedIntent: groundedIntent, instructions: [transferIx],
@@ -1282,6 +1333,20 @@ export class GraphiteGuard {
       // `#signSubmitAndConfirm` settles the reservation itself once handed off.
       if (!handedOff) reservation.release();
     }
+  }
+
+  /**
+   * What a transfer takes out of the wallet (Round 32): its amount plus the
+   * fee its message asks for, or what one simulation of the exact unsigned
+   * bytes takes from the fee payer, whichever is larger. A simulation that
+   * fails is a refusal: these are the bytes that would be signed.
+   */
+  async #transferOutflow(bound: BoundTransaction, amount: bigint): Promise<MeasuredTransferOutflow> {
+    const fee = transactionFee(bound.messageBytes);
+    const effect = await this.#simulator.measureWalletEffect({ wire: bound.artifactBytes, wallet: this.#walletPublicKey });
+    const stated = amount + fee.totalLamports;
+    const simulated = effect.solOut > 0n ? effect.solOut : 0n;
+    return { lamports: stated > simulated ? stated : simulated, amount, fee, simulated };
   }
 
   /**
@@ -1435,8 +1500,12 @@ export class GraphiteGuard {
       throw e;
     }
     // The priority fee the envelope permits is counted on top of what was
-    // measured: conservative if the simulation charged it already.
-    const outflowLamports = (effect.solOut > 0n ? effect.solOut : 0n) + maxPriorityFeeLamports(this.#swapEnvelope);
+    // measured: conservative if the simulation charged it already. Round 32:
+    // and never below the fee the signed message itself asks for (base fee
+    // per signature plus its priority fee), read from its bytes.
+    const swapFee = transactionFee(boundSwap.messageBytes);
+    const measuredOutflow = (effect.solOut > 0n ? effect.solOut : 0n) + maxPriorityFeeLamports(this.#swapEnvelope);
+    const outflowLamports = measuredOutflow > swapFee.totalLamports ? measuredOutflow : swapFee.totalLamports;
     assertSwapAllowed(this.#spendPolicy, {
       lamports: outflowLamports,
       tokens: [...effect.tokenDelta]

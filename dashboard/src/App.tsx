@@ -182,11 +182,15 @@ export function App() {
 
       {layout === "phone" ? (
         <header className="phone-bar">
-          <a className="brand" href={hrefFor("overview")} aria-label="Graphite, overview">
+          {/* Round 32 (WCAG 2.5.3, label in name): the name is the visible
+              text, then where the link goes — an aria-label that replaced
+              the visible words failed axe-core 4.14's default rules. */}
+          <a className="brand" href={hrefFor("overview")}>
             <span className="brand-tile" aria-hidden="true">
               <img src="./graphite-logo.png" alt="" width={30} height={30} />
             </span>
             <span className="brand-name">Graphite</span>
+            <span className="sr-only">, overview</span>
           </a>
           <div className="phone-bar-right">
             <StatusDot core={core} />
@@ -197,7 +201,7 @@ export function App() {
         </header>
       ) : (
         <aside className="sidebar" aria-label="Navigation">
-          <a className="brand" href={hrefFor("overview")} aria-label="Graphite, overview">
+          <a className="brand" href={hrefFor("overview")}>
             <span className="brand-tile" aria-hidden="true">
               <img src="./graphite-logo.png" alt="" width={36} height={36} />
             </span>
@@ -205,12 +209,20 @@ export function App() {
               <span className="brand-name">Graphite</span>
               <span className="brand-sub">Console</span>
             </span>
+            <span className="sr-only">, overview</span>
           </a>
 
-          <button type="button" className="search-btn" aria-label="Search" onClick={() => setPaletteOpen(true)}>
+          {/* The shortcut is announced as one (aria-keyshortcuts), and the
+              name carries the visible words, shortcut included (2.5.3). */}
+          <button
+            type="button"
+            className="search-btn"
+            aria-keyshortcuts={isMac() ? "Meta+K" : "Control+K"}
+            onClick={() => setPaletteOpen(true)}
+          >
             <Search aria-hidden="true" />
             <span>Search</span>
-            <kbd aria-hidden="true">{isMac() ? "⌘" : "Ctrl"} K</kbd>
+            <kbd>{isMac() ? "⌘" : "Ctrl"} K</kbd>
           </button>
 
           <nav className="nav">

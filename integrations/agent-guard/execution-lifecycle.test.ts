@@ -126,15 +126,15 @@ class Fakes implements SubmitConnection, LifecycleReporter {
     return {
       recorded: true,
       event_type: event.event_type,
-      content_hash: event.content_hash,
+      content_hash: event.instruction_bind_key ?? event.content_hash ?? "",
       verdict_on_record: this.verdictOnRecord,
       verdict_on_record_key: this.verdictKey,
       sequence_anomalies: duplicate ? [`duplicate: ${event.event_type} was already reported`] : [],
       prior_events_on_record: this.events.length - 1,
     };
   }
-  l8Inputs: Array<{ signature: string; content_hash?: string; transaction_sha256?: string; audit_trail_id?: string }> = [];
-  async verifyExecution(input: { signature: string; content_hash?: string; transaction_sha256?: string; audit_trail_id?: string }): Promise<ExecutionCheckResult> {
+  l8Inputs: Array<{ signature: string; instruction_bind_key?: string; content_hash?: string; transaction_sha256?: string; audit_trail_id?: string }> = [];
+  async verifyExecution(input: { signature: string; instruction_bind_key?: string; content_hash?: string; transaction_sha256?: string; audit_trail_id?: string }): Promise<ExecutionCheckResult> {
     this.calls.push(`l8:${input.signature}`);
     this.l8Inputs.push(input);
     if (this.failReconcile) throw new Error("rpc unavailable");
@@ -211,6 +211,12 @@ test("the honest path: policy, sign, record signing, send, record submission, co
   // The events carry every join key — the exact ones, not only the
   // instruction-level content_hash — and the reporter.
   assert.equal(fakes.events[0].content_hash, "48c65c638aceb5de");
+  // Round 32 (R-M10): every request names the key under its Round 30 name
+  // too, the same value, so a Round 32 Core and an older one read one key.
+  for (const e of [...fakes.events, ...fakes.l8Inputs]) {
+    assert.equal(e.instruction_bind_key, "48c65c638aceb5de", JSON.stringify(e));
+    assert.equal(e.content_hash, "48c65c638aceb5de", JSON.stringify(e));
+  }
   assert.equal(fakes.events[0].audit_trail_id, "gr-test");
   const digest = (v.scope as { transaction_sha256: string }).transaction_sha256;
   assert.equal(fakes.events[0].transaction_sha256, digest);

@@ -246,6 +246,11 @@ export function GraphView({ selected }: { selected?: string }) {
                 const last = p.col === g.lastCol;
                 const cap = last ? 24 : 32;
                 const label = n.name.length > cap ? `${n.name.slice(0, cap - 1)}…` : n.name;
+                // Round 32 (WCAG 2.5.3): the name starts with exactly what
+                // is drawn — a shortened label, the "×n" degree — and then
+                // says the rest; axe-core 4.14 refused a name that did not.
+                const drawn = last && p.fanIn > 0 ? `${label} ×${p.fanIn}` : label;
+                const name = drawn === n.name ? n.name : `${drawn} (${n.name})`;
                 return (
                   <g
                     key={n.program_id}
@@ -255,7 +260,7 @@ export function GraphView({ selected }: { selected?: string }) {
                     role="button"
                     aria-pressed={selected === n.program_id}
                     tabIndex={0}
-                    aria-label={`${n.name}, ${p.fanIn} inbound, ${p.fanOut} outbound`}
+                    aria-label={`${name}, ${p.fanIn} inbound, ${p.fanOut} outbound`}
                     onKeyDown={(ev) => {
                       if (ev.key === "Enter" || ev.key === " ") {
                         ev.preventDefault();
