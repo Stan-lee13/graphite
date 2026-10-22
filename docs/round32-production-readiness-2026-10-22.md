@@ -92,6 +92,19 @@ the files are on `main`. Results at `67920ae` (before P1's defaults):
   - L8 saw 5 transactions it had blocked execute on chain. That is the expected answer: the
     signer was not behind Graphite.
   - No Graphite defect.
+- **Mainnet after P1's defaults (run 39814104842, `fee7296`).** 894 transactions read with 0 parse
+  failures and 0 verify errors. Of the 200 replayed:
+  - **W19 refused 1 (0.5%).** `UndeclaredSignerLamportDebit`, which comes from an older rule, refused 9
+    (it was 12 of 200 before). `UnboundedWithdrawal` refused 0, and so did the unreadable-declaration rule.
+  - 0 rate limits, 0 server errors, p50 106 ms, no Graphite defect.
+  - **0 `executable_approved`** (3 before). The cause is not W19. The seeded System transfers failed
+    simulation with `AccountNotFound` (2) or diverged from the seeded compute baseline (1), and all 3
+    token transfers diverged from the seeded baseline.
+  - The log carried counts but not the rows, and the per-row report artifact cannot be fetched from
+    this environment. So the runner now prints every watched row: W19, undeclared signer debits,
+    unreadable declarations, unbounded withdrawals and seeded programs. Each row shows the signature,
+    the chain's outcome and compute, every program invoked, and the L3/L4 reasons. The next run says
+    whether that one W19 refusal and the seeded divergences are false refusals.
 - **Devnet (run 39809387361).** The faucet refused, so the run used the pinned Agave 4.2.2
   local validator (sha256 checked). The whole gated path passed: verify → `executable_approved`
   → sign → submit → L8 `ApprovedAndExecuted` → audit verify exit 0. From this round on, the run

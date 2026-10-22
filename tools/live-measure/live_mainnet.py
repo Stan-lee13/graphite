@@ -487,6 +487,7 @@ def verify_one(report, entry, body_in, core, key, post_fn, tag=""):
                 "l3_reason": str(l3.get("reason", ""))[:240],
                 "l4": l4.get("status"),
                 "l4_reason": str(l4.get("reason", ""))[:240],
+                "l4_reason_full": str(l4.get("reason", ""))[:1200],
                 # Classified from the full text, not the truncated copy.
                 "reasons": failure_reasons(result),
                 "findings": finding_patterns(result),
@@ -507,6 +508,48 @@ def verify_one(report, entry, body_in, core, key, post_fn, tag=""):
 
 def outcome(row):
     return {"decision": row.get("decision"), "l3": row.get("l3"), "reasons": row.get("reasons") or []}
+
+
+# L4 findings whose real-traffic cost is worth reading row by row: the
+# Round 32 defaults (W19, an unreadable declaration excusing nothing, an
+# unbounded withdrawal) and the undeclared signer debits beside them. A
+# refusal is a false one when the chain shows an ordinary transaction — a
+# tip or a plain SOL transfer beside a swap — so each such row is printed
+# with what that judgement needs.
+WATCHED_FINDINGS = (
+    "SignerLamportsOutsideDeclaredDebit",
+    "UndeclaredSignerLamportDebit",
+    "UndeclaredTokenDebit",
+    "UnboundedWithdrawal",
+    "a declaration Graphite cannot read",
+)
+
+
+def watched(row, seeded_programs=()):
+    """The watched findings this row's verdict names, plus `seeded` when its
+    program was seeded (its approvals and L3 flags are the seeded path's)."""
+    text = " ".join([str(row.get("l4_reason_full") or row.get("l4_reason") or ""), " ".join(row.get("findings") or [])])
+    hits = [f for f in WATCHED_FINDINGS if f in text]
+    if row.get("program_id") in seeded_programs:
+        hits.append("seeded")
+    return hits
+
+
+def detail(row, src, input_):
+    """What a reader needs to judge one watched row: the signature, the
+    chain's outcome and compute, and every top-level program it invoked."""
+    out = {"failed_on_chain": row.get("failed_on_chain"), "cu_on_chain": (src or {}).get("cu")}
+    try:
+        out["signature"] = solrpc.first_signature(base64.b64decode(src["b64"])) if src else None
+    except (KeyError, ValueError):
+        out["signature"] = None
+    programs = []
+    for ix in (input_ or {}).get("transaction_instructions") or []:
+        p = ix.get("program_id") if isinstance(ix, dict) else None
+        if p:
+            programs.append(p)
+    out["programs"] = programs
+    return out
 
 
 def fresh_one(report, entry, stale_row, core, key, post_fn, blockhash_fn):
@@ -590,9 +633,17 @@ def replay(selected, sample_rows, core, key, *, pace=1.0, l8=10, fresh=0, blockh
             fresh_one(report, entry, row, core, key, post_fn, blockhash_fn)
             sleep(pace)
 
+    by_row = {r["row"]: r for r in sample_rows}
+    seeded_programs = set(((seeded or {}).get("programs") or {}))
+    inputs = {e["row"]: e.get("input") for e in selected}
+    for r in report["rows"]:
+        hits = watched(r, seeded_programs) if r.get("decision") else []
+        if hits:
+            r["watched"] = hits
+            r.update(detail(r, by_row.get(r["row"]), inputs.get(r["row"])))
+
     # L8: a handful of transactions the chain executed, reconciled against the
     # verdict this run recorded for their exact bytes.
-    by_row = {r["row"]: r for r in sample_rows}
     candidates = [r for r in report["rows"] if r.get("decision") and not r["failed_on_chain"] and r.get("transaction_sha256")]
     for r in candidates[:l8]:
         src = by_row.get(r["row"])
@@ -760,6 +811,7 @@ def markdown(report, harness=None):
     out += reasons_markdown(report)
     out += fresh_markdown(report.get("fresh"))
     out += seeded_markdown(report)
+    out += watched_markdown(report)
     out += ["", "## L8 (inclusion) on transactions the chain executed", "", "| reconciliation | count |", "|---|---:|"]
     for k, v in report["l8_summary"]["reconciliation"].items():
         out.append(f"| `{k}` | {v} |")
@@ -788,7 +840,7 @@ def markdown(report, harness=None):
 
 
 def _cell(text):
-    return str(text).replace("|", "\\|")
+    return str(text).replace("\n", " ").replace("|", "\\|")
 
 
 def reasons_markdown(report, top=60):
@@ -860,6 +912,32 @@ def seeded_markdown(report):
         )
     if all(o["verdicts"] == 0 for o in outcomes.values()):
         out += ["", "No sampled transaction was attributed to a seeded program, so the seeded path was not exercised."]
+    return out
+
+
+def watched_markdown(report):
+    rows = [r for r in report["rows"] if r.get("watched")]
+    if not rows:
+        return ["", "## Watched rows", "", "No verdict named a watched L4 finding or a seeded program."]
+    out = [
+        "",
+        "## Watched rows",
+        "",
+        "Every verdict naming " + ", ".join(f"`{f}`" for f in WATCHED_FINDINGS) + " or a seeded program, with what the "
+        "chain did. A refusal of a transaction that succeeded on chain with an ordinary shape (a swap plus a tip or a "
+        "plain SOL transfer) is a candidate false refusal.",
+        "",
+        "| row | signature | program | decision | chain | CU | why watched | programs invoked | L3 | L4 |",
+        "|---:|---|---|---|---|---:|---|---|---|---|",
+    ]
+    for r in rows:
+        sig = (r.get("signature") or "")[:16]
+        out.append(
+            f"| {r['row']} | `{sig}` | `{r['program_id'][:12]}` {_cell(r.get('instruction') or '')} | `{r.get('decision')}` | "
+            f"{'failed' if r.get('failed_on_chain') else 'ok'} | {r.get('cu_on_chain')} | {_cell(', '.join(r['watched']))} | "
+            f"{_cell(' '.join(p[:8] for p in r.get('programs') or []))} | {_cell(r.get('l3_reason') or r.get('l3') or '')} | "
+            f"{_cell(r.get('l4_reason_full') or '')} |"
+        )
     return out
 
 

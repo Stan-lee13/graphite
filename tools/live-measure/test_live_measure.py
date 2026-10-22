@@ -235,6 +235,42 @@ def test_requests_the_core_refused_are_counted_not_judged():
     assert rep["refused_requests"] == {"422": 1} and rep["measured"] == 1
 
 
+def test_watched_l4_findings_are_printed_row_by_row_with_what_the_chain_did():
+    w19 = fixture("blocked")
+    for l in w19["layers"]:
+        if str(l.get("layer", "")).startswith("L4"):
+            l["status"] = "Failed"
+            l["reason"] = "State diff FAILED: SignerLamportsOutsideDeclaredDebit: the signer lost 1000000 lamports\noutside the declared debit"
+    post_fn, get_fn, _ = fake_core([w19, fixture("blocked")])
+    sel = selected(2)
+    sel[0]["input"] = {"transaction_instructions": [{"program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"}, {"program_id": "11111111111111111111111111111111"}]}
+    rows = sample_rows(2)
+    rows[0]["cu"] = 123456
+    rep = lm.replay(sel, rows, "http://core", "k", pace=0, l8=0, sleep=lambda s: None, post_fn=post_fn, get_fn=get_fn)
+    watched = [r for r in rep["rows"] if r.get("watched")]
+    assert [r["row"] for r in watched] == [0]
+    r = watched[0]
+    assert r["watched"] == ["SignerLamportsOutsideDeclaredDebit"]
+    assert r["cu_on_chain"] == 123456 and r["signature"] == solrpc.b58encode(bytes(range(64)))
+    assert r["programs"] == ["JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", "11111111111111111111111111111111"]
+    md = lm.markdown(rep)
+    line = next(l for l in md.splitlines() if l.startswith("| 0 |"))
+    # One table row: the reason's newline does not break the table.
+    assert "SignerLamportsOutsideDeclaredDebit" in line and "JUP6LkbZ 11111111" in line and "123456" in line
+    assert line.endswith("lamports outside the declared debit |")
+
+
+def test_a_seeded_programs_verdicts_are_watched_and_no_watched_row_says_so():
+    post_fn, get_fn, _ = fake_core([fixture("blocked"), fixture("blocked")])
+    seeded = {"ok": True, "programs": {"P1": {}}}
+    rep = lm.replay(selected(2), sample_rows(2), "http://core", "k", pace=0, l8=0, sleep=lambda s: None,
+                    post_fn=post_fn, get_fn=get_fn, seeded=seeded)
+    assert [(r["row"], r["watched"]) for r in rep["rows"] if r.get("watched")] == [(1, ["seeded"])]
+    post_fn, get_fn, _ = fake_core([fixture("blocked")])
+    rep = lm.replay(selected(1), sample_rows(1), "http://core", "k", pace=0, l8=0, sleep=lambda s: None, post_fn=post_fn, get_fn=get_fn)
+    assert "No verdict named a watched L4 finding" in lm.markdown(rep)
+
+
 # ── devnet log parsing ───────────────────────────────────────────────────────
 
 
