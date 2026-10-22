@@ -9172,6 +9172,22 @@ impl GraphiteCore {
             .is_some()
         {
             diff_declared.push(crate::state_diff::security_class_line(&manifest_risk_class));
+            // Round 34: which program the located instruction is (R33-6: the
+            // rent of an account it declares it creates is a signer's cost
+            // only when that program or a token program owns the account),
+            // and what its data says it debits a wallet by (R33-15).
+            diff_declared.push(crate::state_diff::instruction_program_line(
+                &input.program_id,
+            ));
+            if let Some((from, lamports)) = input.instruction_data.as_deref().and_then(|data| {
+                crate::state_diff::system_lamport_debit(
+                    &input.program_id,
+                    data,
+                    &input.account_addresses,
+                )
+            }) {
+                diff_declared.push(crate::state_diff::lamport_amount_line(&from, lamports));
+            }
         }
         let diff_declared = &diff_declared;
         let l4_result = match (observed_diff.as_ref(), caller_diff.as_ref()) {
@@ -10763,10 +10779,10 @@ mod tests {
             artifact_balance_writes: balance_arrays.then_some(2),
             ..Default::default()
         };
-        let account = |a: &str, signer: bool| ResolvedAccount {
+        let account = |a: &str, name: &str, signer: bool| ResolvedAccount {
             address: a.to_string(),
             role: "writable".to_string(),
-            name: String::new(),
+            name: name.to_string(),
             is_pda: false,
             is_signer: signer,
             is_writable: true,
@@ -10776,8 +10792,15 @@ mod tests {
             pda_mismatch: false,
             privilege_mismatch: false,
         };
-        let accounts = [account(from, true), account(to, false)];
-        let expected = ["debits the source and credits the destination".to_string()];
+        let accounts = [
+            account(from, "source", true),
+            account(to, "destination", false),
+        ];
+        // Round 34 (R33-5): the debit names its account. "debits the source
+        // and credits the destination" names none, and a signer's loss under
+        // a debit line naming no account is now refused whatever the
+        // coverage — which is not what this test is about.
+        let expected = ["debits accounts.source and credits accounts.destination".to_string()];
         let without = GraphiteCore::verify_state_from_diff(
             &diff(false),
             &expected,
