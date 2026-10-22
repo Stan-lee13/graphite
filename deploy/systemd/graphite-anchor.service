@@ -1,0 +1,57 @@
+# Exports a checkpoint of the audit trail's head into the anchor directory and,
+# with ANCHOR_S3_URI set, uploads every new checkpoint to an Object-Lock
+# bucket (deploy/scripts/anchor-checkpoints.sh). Started by
+# graphite-anchor.timer; runs beside the server (it reads the trail and takes
+# no lock).
+#
+# Install:
+#   install -D -m 0755 deploy/scripts/anchor-checkpoints.sh /usr/local/lib/graphite/anchor-checkpoints.sh
+#   install -m 0644 deploy/systemd/graphite-anchor.service deploy/systemd/graphite-anchor.timer /etc/systemd/system/
+#   # optional, for the off-host copy (mode 0600):
+#   #   /etc/graphite/anchor.env: ANCHOR_S3_URI=s3://bucket/prefix, AWS_REGION=…,
+#   #   and credentials allowed only s3:PutObject + s3:PutObjectRetention there
+#   systemctl daemon-reload && systemctl enable --now graphite-anchor.timer
+
+[Unit]
+Description=Graphite audit checkpoint export and anchoring
+After=graphite.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/graphite/anchor-checkpoints.sh
+EnvironmentFile=-/etc/graphite/anchor.env
+
+# The same dynamic user as graphite.service, so it reads the same state.
+DynamicUser=yes
+User=graphite
+Group=graphite
+StateDirectory=graphite graphite-anchors
+StateDirectoryMode=0700
+CacheDirectory=graphite-anchor
+Environment=HOME=%C/graphite-anchor
+Environment=GRAPHITE_BIN=/usr/local/bin/graphite
+Environment=GRAPHITE_DATA_DIR=/var/lib/graphite
+Environment=GRAPHITE_AUDIT_ANCHOR_DIR=/var/lib/graphite-anchors
+LoadCredential=audit.key:/etc/graphite/audit.key
+Environment=GRAPHITE_AUDIT_KEY_FILE=%d/audit.key
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0077

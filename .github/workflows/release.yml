@@ -1,0 +1,395 @@
+name: Release
+
+# Round 32: a release is built here, from a `v*` tag, and nowhere else.
+#
+# What a tag produces (and what a manual run rehearses, publishing nothing):
+#   - the `graphite` binary (Linux x86-64, release profile, `--locked`), built
+#     twice on two fresh runners and compared byte for byte: a release whose
+#     two builds differ is not published;
+#   - a CycloneDX SBOM of the crate (cargo-cyclonedx) and an SPDX SBOM of the
+#     container image (syft), and SHA256SUMS over everything;
+#   - the container image, built once as an OCI archive and pushed to GHCR by
+#     that archive's digest, so the image a user pulls is the image that was
+#     scanned and smoke-tested;
+#   - SLSA build provenance and SBOM attestations (Sigstore, via
+#     actions/attest) for the binary tarball and the image;
+#   - a GitHub Release carrying the tarball, the SBOMs and the checksums.
+#
+# A tag is published only when the commit it names passed the `CI gate` check
+# (ci.yml) and its version is the crate's version.
+#
+# Verify a published release:
+#   gh attestation verify graphite-<version>-x86_64-unknown-linux-gnu.tar.gz \
+#     --repo <owner>/graphite
+#   gh attestation verify oci://ghcr.io/<owner>/graphite-core@sha256:<digest> \
+#     --repo <owner>/graphite
+#   sha256sum -c SHA256SUMS
+#
+# Artifact attestations need a public repository, or GitHub Enterprise Cloud
+# for a private one.
+
+on:
+  push:
+    tags: ["v*"]
+  # A rehearsal: every build, SBOM, checksum and smoke step runs; nothing is
+  # pushed, attested or released (the publish job runs only for a tag).
+  workflow_dispatch:
+
+concurrency:
+  # One release per ref at a time, never cancelled half-way through a publish.
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+# Nothing by default. Each job asks for exactly what it uses: the build jobs
+# read the repository; only `publish`, which runs only for a tag, can write
+# packages, attestations and the release.
+permissions: {}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  TARGET: x86_64-unknown-linux-gnu
+
+jobs:
+  gate:
+    name: Release gate — version and CI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 130
+    permissions:
+      contents: read
+      checks: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The tag is the crate's version
+        id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          crate=$(sed -n 's/^version = "\(.*\)"$/\1/p' graphite-core/Cargo.toml | head -n 1)
+          if [ -z "$crate" ]; then
+            echo "::error::could not read the version from graphite-core/Cargo.toml"
+            exit 1
+          fi
+          if [ "$EVENT" = "push" ] && [ "$REF_NAME" != "v$crate" ]; then
+            echo "::error::tag $REF_NAME does not name the crate's version (v$crate)"
+            exit 1
+          fi
+          case "$crate" in *-*) pre=true ;; *) pre=false ;; esac
+          echo "version=$crate" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$pre" >> "$GITHUB_OUTPUT"
+          echo "version $crate (prerelease: $pre)"
+      - name: The commit passed the CI gate
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        # The tag push starts ci.yml for the same commit; a commit merged to
+        # main has usually passed it already. Wait (up to two hours) for a
+        # completed `CI gate` run and require that the latest one succeeded.
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, sys, time
+          repo, sha = os.environ["REPO"], os.environ["SHA"]
+          deadline = time.time() + 120 * 60
+          while True:
+              out = subprocess.run(
+                  ["gh", "api", f"repos/{repo}/commits/{sha}/check-runs?check_name=CI%20gate&per_page=100"],
+                  capture_output=True, text=True, check=True,
+              ).stdout
+              runs = json.loads(out).get("check_runs", [])
+              done = sorted(
+                  (r for r in runs if r["status"] == "completed"),
+                  key=lambda r: r["completed_at"],
+              )
+              if done:
+                  latest = done[-1]
+                  print(f"latest CI gate on {sha}: {latest['conclusion']} ({latest['html_url']})")
+                  if latest["conclusion"] == "success":
+                      sys.exit(0)
+                  if not any(r["status"] != "completed" for r in runs):
+                      print("::error::the CI gate did not pass on this commit; not releasing")
+                      sys.exit(1)
+              if time.time() > deadline:
+                  print("::error::no completed CI gate on this commit within two hours")
+                  sys.exit(1)
+              print("waiting for the CI gate …")
+              time.sleep(60)
+          PY
+
+  binary:
+    name: Binary, crate SBOM (build ${{ matrix.build }})
+    needs: gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      # Two independent builds on two fresh runners; `reproducible` compares
+      # them. A reproducible build is one a third party can redo and get the
+      # same bytes, so it is checked rather than assumed.
+      matrix:
+        build: [a, b]
+    env:
+      VERSION: ${{ needs.gate.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The compiler that CI certifies with and the Dockerfile builds with
+      # (ci.yml, `rust:1.99.1-bookworm`). No cache: a release is built from a
+      # clean slate.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, 2026-09-12
+        with:
+          toolchain: 1.99.1
+      - name: Build
+        # Reproducibility: the workspace path, the home directory (registry
+        # sources) and the timestamp are taken out of the binary; `--locked`
+        # builds exactly Cargo.lock.
+        run: |
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
+          export RUSTFLAGS="--remap-path-prefix=$GITHUB_WORKSPACE=/build --remap-path-prefix=$HOME=/home"
+          cargo build --manifest-path graphite-core/Cargo.toml --locked --release \
+            --features server,cli --target "$TARGET"
+          ./graphite-core/target/"$TARGET"/release/graphite --version
+      - name: Package
+        run: |
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
+          name="graphite-${VERSION}-${TARGET}"
+          mkdir -p "dist/$name"
+          cp "graphite-core/target/$TARGET/release/graphite" "dist/$name/"
+          cp LICENSE README.md SECURITY.md "dist/$name/"
+          # A deterministic tarball: sorted entries, fixed owner and mtime,
+          # gzip without a name or timestamp.
+          tar --sort=name --owner=0 --group=0 --numeric-owner \
+            --mtime="@${SOURCE_DATE_EPOCH}" -C dist -cf - "$name" \
+            | gzip -n -9 > "dist/$name.tar.gz"
+          rm -rf "dist/$name"
+          ( cd dist && sha256sum "$name.tar.gz" ) | tee "dist/$name.tar.gz.sha256"
+          sha256sum "graphite-core/target/$TARGET/release/graphite" | tee binary.sha256
+      - name: Crate SBOM (CycloneDX)
+        if: matrix.build == 'a'
+        run: |
+          cargo install cargo-cyclonedx --locked --version 0.5.9
+          cargo cyclonedx --manifest-path graphite-core/Cargo.toml --format json \
+            --features server,cli --target "$TARGET" --spec-version 1.5 \
+            --override-filename "graphite-core-${VERSION}.cdx"
+          mv "graphite-core/graphite-core-${VERSION}.cdx.json" dist/
+          python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['bomFormat'], d['specVersion'], len(d.get('components', [])), 'components')" \
+            "dist/graphite-core-${VERSION}.cdx.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: binary-${{ matrix.build }}
+          path: |
+            dist/
+            binary.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+  reproducible:
+    name: The two builds are identical
+    needs: binary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: binary-*
+      - name: Compare
+        run: |
+          a=$(cut -d' ' -f1 binary-a/binary.sha256)
+          b=$(cut -d' ' -f1 binary-b/binary.sha256)
+          ta=$(cut -d' ' -f1 binary-a/dist/*.tar.gz.sha256)
+          tb=$(cut -d' ' -f1 binary-b/dist/*.tar.gz.sha256)
+          echo "binary  a=$a b=$b"
+          echo "tarball a=$ta b=$tb"
+          if [ "$a" != "$b" ] || [ "$ta" != "$tb" ]; then
+            echo "::error::the two release builds differ; not publishing an unreproducible release"
+            exit 1
+          fi
+
+  image:
+    name: Container image, image SBOM, smoke test
+    needs: gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.gate.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # Built once, into an OCI archive. The same archive is smoke-tested and
+      # scanned here and pushed, unchanged, by `publish`: the digest users pull
+      # is the digest of what was checked.
+      - name: Build (OCI archive)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: false
+          provenance: false
+          sbom: false
+          outputs: type=oci,dest=${{ runner.temp }}/image.tar,name=graphite-core:${{ needs.gate.outputs.version }}
+      - name: Digest
+        run: |
+          mkdir -p "$RUNNER_TEMP/oci" && tar -C "$RUNNER_TEMP/oci" -xf "$RUNNER_TEMP/image.tar" index.json
+          python3 - "$RUNNER_TEMP/oci/index.json" <<'PY' | tee image.digest
+          import json, sys
+          index = json.load(open(sys.argv[1]))
+          manifests = index["manifests"]
+          if len(manifests) != 1:
+              sys.exit(f"expected one manifest in the archive, found {len(manifests)}")
+          print(manifests[0]["digest"])
+          PY
+      - name: Smoke test the archived image
+        run: |
+          skopeo copy "oci-archive:$RUNNER_TEMP/image.tar" "docker-daemon:graphite-core:release-smoke"
+          key=$(openssl rand -hex 32)
+          docker run -d --name release-smoke -p 127.0.0.1:7331:7331 \
+            -e GRAPHITE_API_KEY="$key" graphite-core:release-smoke
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:7331/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:7331/health | tee health.json
+          python3 -c "import json; h=json.load(open('health.json')); assert h['status']=='ok', h"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:7331/verify -d '{}')
+          [ "$code" = "401" ] || { echo "::error::/verify without a key answered $code, not 401"; exit 1; }
+          docker exec release-smoke graphite healthcheck
+          docker stop -t 30 release-smoke
+          docker logs release-smoke 2>&1 | tail -n 20
+          docker rm release-smoke
+      - name: Image SBOM (SPDX)
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: oci-archive:${{ runner.temp }}/image.tar
+          format: spdx-json
+          output-file: graphite-core-image-${{ needs.gate.outputs.version }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          dependency-snapshot: false
+      - name: Collect
+        run: |
+          mkdir -p image-out
+          mv "$RUNNER_TEMP/image.tar" image-out/
+          mv image.digest "graphite-core-image-${VERSION}.spdx.json" image-out/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image
+          path: image-out/
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish — GHCR, attestations, GitHub Release
+    # Tags only. A manual run stops after the rehearsal above.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [gate, binary, reproducible, image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: write # the GitHub Release
+      packages: write # the image on GHCR
+      id-token: write # Sigstore signing certificate for the attestations
+      attestations: write
+      artifact-metadata: write
+    env:
+      VERSION: ${{ needs.gate.outputs.version }}
+      PRERELEASE: ${{ needs.gate.outputs.prerelease }}
+      REF_NAME: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: binary-a
+          path: binary
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: image
+          path: image
+      - name: Assemble the release files and SHA256SUMS
+        id: files
+        run: |
+          mkdir -p release
+          cp binary/dist/*.tar.gz binary/dist/*.cdx.json release/
+          cp "image/graphite-core-image-${VERSION}.spdx.json" release/
+          ( cd release && sha256sum -- * > SHA256SUMS && cat SHA256SUMS )
+          echo "tarball=$(ls release/*.tar.gz)" >> "$GITHUB_OUTPUT"
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "image=ghcr.io/${owner}/graphite-core" >> "$GITHUB_OUTPUT"
+          echo "digest=$(cat image/image.digest)" >> "$GITHUB_OUTPUT"
+      - name: Push the image by digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+          IMAGE: ${{ steps.files.outputs.image }}
+          DIGEST: ${{ steps.files.outputs.digest }}
+        run: |
+          echo "$GH_TOKEN" | skopeo login ghcr.io --username "$ACTOR" --password-stdin
+          # `--preserve-digests` refuses any conversion that would change the
+          # manifest: what was smoke-tested and scanned is what is pushed.
+          skopeo copy --preserve-digests "oci-archive:image/image.tar" "docker://${IMAGE}:${VERSION}"
+          pushed=$(skopeo inspect --format '{{.Digest}}' "docker://${IMAGE}:${VERSION}")
+          echo "pushed ${IMAGE}:${VERSION} @ ${pushed}"
+          [ "$pushed" = "$DIGEST" ] || { echo "::error::pushed digest $pushed is not the built $DIGEST"; exit 1; }
+      - name: Provenance — binary tarball
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ steps.files.outputs.tarball }}
+      - name: SBOM attestation — binary tarball
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ steps.files.outputs.tarball }}
+          sbom-path: release/graphite-core-${{ needs.gate.outputs.version }}.cdx.json
+      - name: Provenance — image
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ steps.files.outputs.image }}
+          subject-digest: ${{ steps.files.outputs.digest }}
+          push-to-registry: true
+      - name: SBOM attestation — image
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ steps.files.outputs.image }}
+          subject-digest: ${{ steps.files.outputs.digest }}
+          sbom-path: release/graphite-core-image-${{ needs.gate.outputs.version }}.spdx.json
+          push-to-registry: true
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          IMAGE: ${{ steps.files.outputs.image }}
+          DIGEST: ${{ steps.files.outputs.digest }}
+        run: |
+          cat > notes.md <<EOF
+          Graphite Core ${VERSION}.
+
+          Container image: \`${IMAGE}@${DIGEST}\` (also tagged \`${VERSION}\`).
+
+          Verify before you run it:
+
+              sha256sum -c SHA256SUMS
+              gh attestation verify graphite-${VERSION}-${TARGET}.tar.gz --repo ${REPO}
+              gh attestation verify oci://${IMAGE}@${DIGEST} --repo ${REPO}
+
+          The changes are in graphite-core/CHANGELOG.md; deployment is in docs/ops/.
+          EOF
+          flags=(--verify-tag --title "Graphite Core ${VERSION}" --notes-file notes.md)
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "$REF_NAME" --repo "$REPO" "${flags[@]}" release/*

@@ -1,0 +1,97 @@
+# Graphite Core as a hardened systemd service — the alternative to compose on
+# a single host. Caddy (deploy/caddy/Caddyfile) terminates TLS in front of it.
+#
+# Install:
+#   install -m 0755 graphite /usr/local/bin/graphite      # from a verified release
+#   install -d -m 0700 /etc/graphite
+#   install -m 0600 deploy/systemd/graphite.env.example /etc/graphite/graphite.env   # then edit
+#   openssl rand -hex 32 > /etc/graphite/audit.key && chmod 0600 /etc/graphite/audit.key
+#   install -m 0644 deploy/systemd/graphite.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now graphite
+#
+# Check:  systemd-analyze security graphite.service   (aim for an exposure score under 2)
+
+[Unit]
+Description=Graphite Core — transaction verification gate
+Documentation=file:///usr/share/doc/graphite/ops/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/graphite server --host 127.0.0.1 --port 7331
+# API keys, RPC URLs and every other GRAPHITE_* setting. Mode 0600, root-owned:
+# systemd reads it before dropping privileges, the service never can.
+EnvironmentFile=/etc/graphite/graphite.env
+
+# A user that exists only while the service runs; its state directories are
+# created and owned for it. Nothing else on the host can write them.
+DynamicUser=yes
+# Named, so graphite-anchor.service (same User=) runs as the same dynamic UID
+# and can read the data directory and write the anchor directory.
+User=graphite
+Group=graphite
+StateDirectory=graphite graphite-anchors
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/graphite
+Environment=GRAPHITE_DATA_DIR=/var/lib/graphite
+Environment=GRAPHITE_REGISTRY_STATE=/var/lib/graphite/registry_state.json
+# Rotation checkpoints, outside the data directory (the server refuses one
+# inside it). Ship them off the host to WORM storage:
+# deploy/scripts/anchor-checkpoints.sh does that on a timer.
+Environment=GRAPHITE_AUDIT_ANCHOR_DIR=/var/lib/graphite-anchors
+
+# The audit MAC key (tamper-evident trail). systemd hands it to the service
+# as a credential: a 0400 file owned by the dynamic user, in a per-service
+# directory outside the data directory — what the server requires of a key
+# file. The key never sits in the environment or on the data volume.
+LoadCredential=audit.key:/etc/graphite/audit.key
+Environment=GRAPHITE_AUDIT_KEY_FILE=%d/audit.key
+
+# One TLS-terminating proxy in front (Caddy on this host).
+Environment=GRAPHITE_TRUST_PROXY=1
+Environment=GRAPHITE_LOG_FORMAT=json
+
+Restart=on-failure
+RestartSec=5
+# The server drains open requests (10 s) and writes its final snapshot on
+# SIGTERM; give it room.
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+# ---- hardening ----
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateUsers=yes
+ProtectHostname=yes
+ProtectClock=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RemoveIPC=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+UMask=0077
+# Resource ceilings: a pathological payload degrades this service, not the host.
+MemoryMax=1G
+TasksMax=256
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
