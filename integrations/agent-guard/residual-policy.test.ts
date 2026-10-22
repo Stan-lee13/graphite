@@ -126,12 +126,19 @@ test("a code this bridge does not know is refused, even under a permissive polic
 // Round 30 (G-01): the guard's own recomputation of the Core's decision. End
 // to end, the SDK's validator refuses these responses first; this is the
 // second layer, held on its own.
+/** The rest of an approval the Core would call executable: risk, policy, layers (Round 34). */
+const CLEAR = {
+  risk_verdict: { status: "Clear" as const, findings: [] },
+  policy_verdict: "Approved",
+  layers: [{ layer: "L1", name: "Static", passed: true, status: "passed" as const, reason: "ok" }],
+};
+
 test("G-01: the guard refuses a decision its own recomputation contradicts, whatever the SDK let through", () => {
-  const inherent = { approved: true, scope: bound(INHERENT) };
-  const residual = { approved: true, scope: bound(["not_simulated", "program_semantics"]) };
+  const inherent = { approved: true, ...CLEAR, scope: bound(INHERENT) };
+  const residual = { approved: true, ...CLEAR, scope: bound(["not_simulated", "program_semantics"]) };
   const cases: { name: string; policy: ResidualPolicy; verdict: Parameters<ResidualPolicy["assertExecutableVerdict"]>[0]; why: RegExp }[] = [
     { name: "unknown decision", policy: new ResidualPolicy(), verdict: { ...inherent, decision: "executable" }, why: /not one this guard knows/ },
-    { name: "analysis_only over inherent residuals", policy: new ResidualPolicy(), verdict: { ...inherent, decision: "analysis_only" }, why: /its own scope makes this verdict "executable_approved"/ },
+    { name: "analysis_only over inherent residuals", policy: new ResidualPolicy(), verdict: { ...inherent, decision: "analysis_only", executable: false }, why: /its own scope makes this verdict "executable_approved"/ },
     { name: "blocked on an approval", policy: new ResidualPolicy(), verdict: { ...inherent, decision: "blocked" }, why: /its decision is "blocked"/ },
     { name: "executable not a boolean", policy: new ResidualPolicy(), verdict: { ...inherent, decision: "executable_approved", executable: "yes" }, why: /is not a boolean/ },
     { name: "executable false on executable_approved", policy: new ResidualPolicy(), verdict: { ...inherent, decision: "executable_approved", executable: false }, why: /contradicts/ },
@@ -153,4 +160,65 @@ test("G-01: the guard refuses a decision its own recomputation contradicts, what
   // accepted residual yields analysis_only, never executable_approved.
   assert.equal(new ResidualPolicy().assertExecutableVerdict({ ...inherent, decision: "executable_approved", executable: true }, "t").decision, "executable_approved");
   assert.equal(new ResidualPolicy(["not_simulated"]).assertExecutableVerdict({ ...residual, decision: "analysis_only", executable: false }, "t").decision, "analysis_only");
+});
+
+// Round 34 (G-5): the guard recomputed only the scope's codes. A verdict the
+// Core's own rule calls analysis_only — risk not Clear, policy not Approved,
+// nothing simulated, a failed layer — passed when its decision field said
+// executable_approved, and a response with no decision field at all was
+// judged by the codes alone.
+test("decision: the whole Core rule is recomputed — risk, policy, simulation and every layer, not the codes alone", () => {
+  const policy = new ResidualPolicy();
+  const ok = { approved: true, ...CLEAR, scope: bound(INHERENT), decision: "executable_approved", executable: true };
+  assert.equal(policy.assertExecutableVerdict(ok, "t").decision, "executable_approved", "control");
+  const cases: [string, Record<string, unknown>, RegExp][] = [
+    ["risk not Clear", { risk_verdict: { status: "Blocked", findings: [] } }, /risk is "Blocked", not Clear/],
+    ["no risk verdict", { risk_verdict: undefined }, /risk is "absent", not Clear/],
+    ["policy not Approved", { policy_verdict: "Rejected" }, /policy verdict is "Rejected", not Approved/],
+    ["not simulated", { scope: { ...bound(INHERENT), simulated: false } }, /not simulated/],
+    ["a failed layer", { layers: [...CLEAR.layers, { layer: "L6", name: "Policy", passed: false, status: "failed", reason: "x" }] }, /layer L6 failed/],
+    ["no layers", { layers: undefined }, /no layers reported/],
+    ["no digest", { scope: { ...bound(INHERENT), transaction_sha256: "not-a-digest" } }, /no transaction digest/],
+  ];
+  for (const [name, change, why] of cases) {
+    assert.throws(() => policy.assertExecutableVerdict({ ...ok, ...change } as never, "t"), (e: unknown) => {
+      assert.ok(e instanceof ResidualPolicyRefusal, `${name}: ${String(e)}`);
+      assert.match((e as Error).message, why, name);
+      return true;
+    });
+  }
+});
+
+test("decision: a response with no decision, or no executable, is refused — it is not judged by the codes alone", () => {
+  const policy = new ResidualPolicy();
+  const base = { approved: true, ...CLEAR, scope: bound(INHERENT) };
+  assert.throws(() => policy.assertExecutableVerdict(base, "t"), /no `decision` field/);
+  assert.throws(() => policy.assertExecutableVerdict({ ...base, executable: true }, "t"), /no `decision` field/);
+  assert.throws(() => policy.assertExecutableVerdict({ ...base, decision: "executable_approved" }, "t"), /`executable` is not a boolean/);
+});
+
+test("decision: an accepted residual is analysis_only, and everything it does not explain still has to hold", () => {
+  const accepting = new ResidualPolicy(["not_simulated"]);
+  const unsimulated = { ...bound(["not_simulated", "program_semantics"]), simulated: false };
+  const ok = { approved: true, ...CLEAR, scope: unsimulated, decision: "analysis_only", executable: false };
+  const d = accepting.assertExecutableVerdict(ok, "t");
+  assert.equal(d.decision, "analysis_only");
+  assert.deepEqual(d.accepted, ["not_simulated"]);
+  // The accepted residual explains the missing simulation, nothing else.
+  assert.throws(() => accepting.assertExecutableVerdict({ ...ok, risk_verdict: { status: "Blocked", findings: [] } } as never, "t"), /risk is "Blocked"/);
+  assert.throws(() => accepting.assertExecutableVerdict({ ...ok, policy_verdict: "Rejected" }, "t"), /policy verdict is "Rejected"/);
+  assert.throws(
+    () => accepting.assertExecutableVerdict({ ...ok, layers: [{ layer: "L3", name: "Sim", passed: false, status: "failed", reason: "x" }] } as never, "t"),
+    /layer L3 failed/,
+  );
+  // A residual that is not about simulation does not excuse a missing one.
+  const diffOnly = new ResidualPolicy(["no_state_diff"]);
+  assert.throws(
+    () =>
+      diffOnly.assertExecutableVerdict(
+        { ...ok, scope: { ...bound(["no_state_diff", "program_semantics"]), simulated: false } },
+        "t",
+      ),
+    /not simulated/,
+  );
 });
