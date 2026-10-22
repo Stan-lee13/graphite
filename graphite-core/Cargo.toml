@@ -14,17 +14,22 @@ license = "MIT"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2"
-sha2 = "0.10"
+sha2 = "0.11"
 bs58 = "0.5"
-curve25519-dalek = "4"
+curve25519-dalek = "5"
 hex = "0.4"
 anyhow = "1"
 # default-features = false is REQUIRED: reqwest's default-tls feature
 # pulls native-tls → openssl-sys, which fails to build on systems without
 # OpenSSL dev packages (CI containers, minimal Docker images). rustls-tls is
 # the pure-Rust TLS backend.
-reqwest = { version = "0.12", optional = true, default-features = false, features = ["json", "gzip", "brotli", "rustls-tls"] }
-base64 = "0.22"
+reqwest = { version = "0.13", optional = true, default-features = false, features = ["json", "gzip", "brotli", "rustls"] }
+# reqwest 0.13's `rustls` feature verifies against the host's certificate
+# store; 0.12's `rustls-tls` used the bundled Mozilla roots. The RPC client
+# keeps the bundled set (`tls_certs_only`), so which CAs Graphite trusts for
+# its RPC does not depend on the host or image it runs in.
+webpki-root-certs = { version = "1", optional = true }
+base64 = "0.23"
 tracing = "0.1"
 # Without a subscriber installed, EVERY tracing::info!/warn!/error! call in
 # this crate is a silent no-op — including audit-write failures. Found by the
@@ -39,7 +44,7 @@ axum = { version = "0.8", optional = true }
 # for the accept loop's `map_request` and the tests' `oneshot`. 0.4 with an
 # unused `limit` feature compiled a second tower beside it (audit 2026-10-20).
 tower = { version = "0.5", optional = true, features = ["util"] }
-tower-http = { version = "0.6", features = ["cors", "limit", "timeout", "trace", "catch-panic"], optional = true }
+tower-http = { version = "0.7", features = ["cors", "limit", "timeout", "trace", "catch-panic"], optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
 # The server's own accept loop (A4-03, 2026-09-29 audit): axum's `serve` gives
 # hyper no timer, so the request-head read had no deadline and a client that
@@ -50,7 +55,7 @@ hyper-util = { version = "0.1", optional = true, features = ["tokio", "server", 
 
 # CLI (feature-gated)
 clap = { version = "4", features = ["derive"], optional = true }
-ed25519-dalek = { version = "2", default-features = false, features = ["std", "fast"] }
+ed25519-dalek = { version = "3", default-features = false, features = ["alloc", "fast"] }
 
 [features]
 default = ["server", "cli"]
@@ -60,7 +65,7 @@ server = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tower", "dep:tracing-s
 # compiles (verify() degrades to a fail-closed stub) — only the library core
 # is expected to be embeddable without a runtime.
 cli = ["dep:clap", "dep:tokio"]
-rpc = ["dep:reqwest", "dep:tokio"]
+rpc = ["dep:reqwest", "dep:tokio", "dep:webpki-root-certs"]
 
 [profile.release]
 # Strip symbols from the shipped binary: smaller image, and less to work with

@@ -85,12 +85,12 @@ jobs:
       # Pinned to a commit of the `stable` branch (2026-09-12). The action
       # used to read the toolchain from the ref name, so with a SHA it is
       # named explicitly — and named as the exact release the container is
-      # built with (Dockerfile `rust:1.98.1-bookworm`), so the compiler that
+      # built with (Dockerfile `rust:1.99.1-bookworm`), so the compiler that
       # runs the certification is the compiler that produces the shipped
       # binary (Round 10). Bump both together.
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, 2026-09-12
         with:
-          toolchain: 1.98.1
+          toolchain: 1.99.1
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
@@ -127,12 +127,12 @@ jobs:
         # Round 30: the log is read back, so the gate is "at least the floor
         # passed and none failed", not just "cargo exited 0" — which it also
         # does when no test binary ran at all. The floors are the counts at
-        # the end of Round 30 (2,236 / 466 / 1,875); a change that deletes tests below one
+        # Round 31 (2,237 / 466 / 1,875); a change that deletes tests below one
         # lowers it in the same reviewed diff. The log lives outside the tree
         # so the clean-tree check below still sees only what the tests wrote.
         run: |
           cargo test --locked --release 2>&1 | tee "$RUNNER_TEMP/cargo-test.log"
-          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test.log" 2236 ../.github/test-allowlists/rust-ignored.txt
+          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test.log" 2237 ../.github/test-allowlists/rust-ignored.txt
         env:
           # The snapshot's provenance check needs the tags; here a missing
           # tag fails instead of being skipped.
@@ -202,7 +202,7 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, 2026-09-12
         with:
-          toolchain: 1.98.1
+          toolchain: 1.99.1
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: graphite-core
@@ -287,7 +287,7 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, 2026-09-12
         with:
-          toolchain: 1.98.1
+          toolchain: 1.99.1
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
@@ -857,7 +857,7 @@ jobs:
           no-deps: true
 
   # Round 30 (K-20): Cargo.toml declares `rust-version = "1.89"`, and nothing
-  # built on 1.89 — every job uses 1.98.1 — so the declaration was a claim.
+  # built on 1.89 — every job uses 1.99.1 — so the declaration was a claim.
   # Measured 2026-10-21: `cargo +1.89.0 check --locked` passes for the
   # all-features and the featureless library. This keeps it true: a change
   # that needs a newer compiler must raise rust-version in the same diff.
