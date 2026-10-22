@@ -16,10 +16,10 @@ list is [`docs/ops/production-checklist.md`](../docs/ops/production-checklist.md
 | `prometheus/prometheus.example.yml` | Scrape config with the read key | `promtool check config --syntax-only` |
 | `grafana/graphite-dashboard.json` | Verdicts, refusals, L8, audit trail | every query parsed by promtool; every series exists in `server.rs` |
 | `scripts/health-textfile.sh` | `/health` `degraded_reasons` → `graphite_health_degraded{reason=…}` for node_exporter | `deploy/tests/run.sh` |
-| `scripts/backup.sh` | Cold (stop/copy/start) or `--hot` backup; kept only if `graphite audit verify` passes on the copy | same |
-| `scripts/restore.sh` | Checksum, verify the unpacked trail (and against the newest anchored checkpoint), then swap it in, keeping the old directory | same |
+| `scripts/backup.sh` | Cold (stop/copy/start) or `--hot` backup; kept only if `graphite audit verify` passes on the copy; `.sha256` and a `.mac` (HMAC-SHA256 of the archive under the audit key) beside it | same |
+| `scripts/restore.sh` | `--anchor-dir` required; a `.sha256` naming the archive itself, then its `.mac` under a given key; verify the unpacked trail and against the newest anchored checkpoint, then swap it in, keeping the old directory | same |
 | `scripts/anchor-checkpoints.sh` | `graphite audit checkpoint` into the anchor directory; optional upload to an S3 Object-Lock bucket | same (the S3 upload is not exercised: see below) |
-| `scripts/rotate-keys.sh` | New API key in an env file or secret file, new audit MAC key, verify the trail under every key | same |
+| `scripts/rotate-keys.sh` | New API key in an env file or secret file (keeping the file's owner, or an explicit `UID:GID`), new audit MAC key, verify the trail under every key | same |
 | `tests/run.sh` | All of the above, against a real Core and Caddy on loopback | — |
 
 ## Run the checks
@@ -59,6 +59,23 @@ everything when it exits. Exit 0 only when every check passed.
 - **Backups exclude the key.** Back it up separately, to a different place.
   A restore without every key that signed the trail cannot verify its MACs
   (`graphite audit verify` exit 2) and `restore.sh` refuses it.
+- **A backup is authenticated whole, not only its trail (Round 34).**
+  `graphite audit verify` walks the audit trail; the graph snapshot and
+  `registry_state.json` in the same archive were covered only by an unkeyed
+  `.sha256`, which anyone who can write the archive can recompute, and
+  `sha256sum -c` checked whatever file the list named. `backup.sh` now writes
+  `<archive>.mac`, HMAC-SHA256 under the audit key of the archive's name and
+  bytes (the last `--key-file`, else `GRAPHITE_AUDIT_KEY_FILE`); `restore.sh`
+  requires the `.sha256` to name the archive itself and the `.mac` to verify
+  under one of the keys it is given. An unkeyed deployment's backup has no
+  `.mac` and restores only with `ALLOW_UNKEYED_ARCHIVE=1`. `restore.sh` also
+  requires `--anchor-dir` (`ALLOW_NO_ANCHOR=1` for a deployment that has
+  never anchored a checkpoint).
+- **A rotated secret keeps its owner (Round 34).** `rotate-keys.sh env|file`
+  replaces the file by a rename, and under `sudo` the new file used to belong
+  to root; the compose stack reads its secrets as 10001:10001, so the Core
+  could not read its key after the restart. The new file now takes the old
+  one's owner and group (mode 0600), or the `UID:GID` given.
 - **A stale restore is refused by default.** Restoring a backup older than
   the newest anchored checkpoint loses the verdicts recorded since; the
   checkpoint makes that visible and `restore.sh` stops until

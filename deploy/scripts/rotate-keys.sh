@@ -3,11 +3,12 @@
 # keeps the old one, and never prints a secret. The procedure around it
 # (client switch-over, restart, confirmation) is docs/ops/keys.md.
 #
-#   rotate-keys.sh env ENV_FILE VAR       new value for VAR in an env file
+#   rotate-keys.sh env ENV_FILE VAR [UID:GID]
+#                                         new value for VAR in an env file
 #                                         (GRAPHITE_API_KEY, _ADMIN_API_KEY,
 #                                         _READ_API_KEY): ENV_FILE is copied to
 #                                         ENV_FILE.<stamp> first
-#   rotate-keys.sh file PATH              new secret in a one-secret file (the
+#   rotate-keys.sh file PATH [UID:GID]    new secret in a one-secret file (the
 #                                         compose secrets in deploy/compose/):
 #                                         PATH is kept as PATH.<stamp>
 #   rotate-keys.sh audit-key DIR [UID:GID]
@@ -23,19 +24,35 @@
 # A secret is 32 random bytes as 64 hex characters (the server requires 32+
 # characters and refuses equal keys). Restart the server afterwards: keys are
 # read at startup only, and the old API key stops working at that moment.
+#
+# Ownership (Round 34, R33-19): `env` and `file` write a new file and rename
+# it over the old one, and a new file belongs to whoever ran the script — root
+# under sudo — while the production compose stack reads its secrets as
+# 10001:10001 (`cat /run/secrets/...`). The replaced file now keeps the old
+# file's owner and group; UID:GID sets them explicitly (needed for a file that
+# did not exist yet). The mode is 0600 either way.
 set -euo pipefail
 
-usage() { sed -n '6,21p' "$0" >&2; exit 64; }
+usage() { sed -n '6,23p' "$0" >&2; exit 64; }
 umask 077
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 secret() { openssl rand -hex 32; }
+# own TMP TARGET [UID:GID] — before TMP replaces TARGET: the explicit owner,
+# else TARGET's owner when it exists.
+own() {
+  if [ -n "${3:-}" ]; then
+    chown -- "$3" "$1"
+  elif [ -e "$2" ]; then
+    chown --reference="$2" -- "$1"
+  fi
+}
 
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
 case "$cmd" in
   env)
-    [ $# -eq 2 ] || usage
-    file="$1" var="$2"
+    if [ $# -lt 2 ] || [ $# -gt 3 ]; then usage; fi
+    file="$1" var="$2" owner="${3:-}"
     case "$var" in
       GRAPHITE_API_KEY | GRAPHITE_ADMIN_API_KEY | GRAPHITE_READ_API_KEY) ;;
       *) echo "rotate: $var is not one of the server's API keys" >&2; exit 64 ;;
@@ -53,20 +70,22 @@ case "$cmd" in
       END { if (!done) print var "=" val }
     ' "$file" >"$tmp"
     chmod 0600 "$tmp"
+    own "$tmp" "$file" "$owner"
     mv -f -- "$tmp" "$file"
     trap - EXIT
     echo "rotate: $var replaced in $file (previous file: $file.$stamp)."
     echo "        Hand the new value to its clients from the file, restart the server, then delete $file.$stamp."
     ;;
   file)
-    [ $# -eq 1 ] || usage
-    path="$1"
+    if [ $# -lt 1 ] || [ $# -gt 2 ]; then usage; fi
+    path="$1" owner="${2:-}"
     prev=""
     if [ -e "$path" ]; then cp -p -- "$path" "$path.$stamp"; prev=" (previous: $path.$stamp)"; fi
     tmp="$(mktemp "$path.XXXXXX")"
     trap 'rm -f "$tmp"' EXIT
     secret >"$tmp"
     chmod 0600 "$tmp"
+    own "$tmp" "$path" "$owner"
     mv -f -- "$tmp" "$path"
     trap - EXIT
     echo "rotate: new secret in $path$prev"

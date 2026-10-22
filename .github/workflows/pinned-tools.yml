@@ -1,0 +1,41 @@
+name: Pinned tools
+
+# Round 34 (R33-20): the tools the workflows pin by hand — Caddy and promtool
+# for the deploy tests, Agave for live-devnet, cargo-audit, cargo-cyclonedx,
+# the assurance tools, the Rust toolchain — have no Dependabot ecosystem, so
+# nothing told anyone when one fell behind. .github/pinned-tools.json lists
+# them with the date each was last reviewed; this asks upstream (GitHub
+# releases, crates.io) once a week and goes red, with a table in the run
+# summary, when a newer release exists or a pin is older than the list's
+# max_age_days. CI (ci-scripts job) already fails when a workflow's pin and
+# the list disagree. Reads only; no secret.
+
+on:
+  schedule:
+    # Mondays 06:47 UTC, off the hour.
+    - cron: "47 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  report:
+    name: Hand-pinned tools — newer releases and stale pins
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The list matches the workflows
+        run: python3 .github/scripts/pinned-tools.py check-pins
+      - name: Upstream releases and review age
+        env:
+          # Only for the API's rate limit; the token can read, nothing more.
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/pinned-tools.py report

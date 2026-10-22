@@ -1,0 +1,13 @@
+# Release tag signers (Round 34, R33-9). Read by .github/workflows/release.yml
+# through .github/scripts/release-gate.sh: a `v*` tag is released only when it
+# is an annotated tag SSH-signed (git tag -s, gpg.format=ssh) by a key listed
+# here, on a commit that is on main and passed the CI gate of a push to main.
+#
+# OWNER: THIS FILE IS DELIBERATELY EMPTY. Until a key is added below, EVERY
+# release fails closed at the gate ("names no signer"). Add your release
+# signing key (docs/ops/production-checklist.md, "Release integrity"), one line
+# per key, in ssh-keygen's allowed_signers format:
+#
+#   <your git email> namespaces="git" ssh-ed25519 AAAA...
+#
+# and change this file only through a reviewed pull request to main.
