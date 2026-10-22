@@ -359,10 +359,12 @@ expect_rc 1 "restore.sh refuses an archive whose non-trail files changed (MAC)" 
 rm -f "$T/backups/swapped.tar.gz.mac"
 expect_rc 66 "restore.sh refuses an archive with no .mac" "${RS[@]}" "$T/backups/swapped.tar.gz" "$T/restore-swapped"
 # A .sha256 naming ANOTHER archive in the same directory: `sha256sum -c`
-# checked that one and passed, whatever this archive held.
+# checked that one and passed, whatever this archive held. Run as an unkeyed
+# archive (no .mac, ALLOW_UNKEYED_ARCHIVE=1), where the checksum is the only
+# integrity check left, so the MAC cannot stand in for the name check.
 cp "$cold.sha256" "$T/backups/swapped.tar.gz.sha256"
-cp "$cold.mac" "$T/backups/swapped.tar.gz.mac"
-expect_rc 1 "restore.sh refuses a .sha256 that names another archive" "${RS[@]}" "$T/backups/swapped.tar.gz" "$T/restore-swapped"
+expect_rc 1 "restore.sh refuses a .sha256 that names another archive" env ALLOW_UNKEYED_ARCHIVE=1 "${RS[@]}" \
+  "$T/backups/swapped.tar.gz" "$T/restore-swapped"
 [ ! -e "$T/restore-swapped" ] && ok "no refused archive was restored" || bad "a refused archive reached $T/restore-swapped"
 # The MAC is keyed: an intact archive whose .mac was made under a key the
 # restore is not given (anyone can compute a MAC under a key of their own).

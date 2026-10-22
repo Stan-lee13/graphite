@@ -91,11 +91,15 @@ expect 2 "an upstream that could not be asked is an error, not a pass" "${P[@]}"
 echo "== check-attestation-commands.py"
 A=(python3 -I "$here/check-attestation-commands.py")
 expect 0 "every command in the repository pins the signer" "${A[@]}"
-printf 'run:\n  gh attestation verify x.tar.gz --repo o/graphite\n' >"$T/bare.md"
+# The command name is assembled, so this file's own lines are not commands
+# the repository-wide scan above would read.
+V="gh attestation"
+V="$V verify"
+printf 'run:\n  %s x.tar.gz --repo o/graphite\n' "$V" >"$T/bare.md"
 expect 1 "a command with --repo alone fails" "${A[@]}" "$T/bare.md"
-printf 'gh attestation verify x.tar.gz --repo o/graphite \\\n  --signer-workflow o/graphite/.github/workflows/release.yml \\\n  --source-ref refs/tags/v1.0.0\n' >"$T/partial.md"
+printf '%s x.tar.gz --repo o/graphite \\\n  --signer-workflow o/graphite/.github/workflows/release.yml \\\n  --source-ref refs/tags/v1.0.0\n' "$V" >"$T/partial.md"
 expect 1 "a command without --deny-self-hosted-runners fails" "${A[@]}" "$T/partial.md"
-printf 'gh attestation verify x.tar.gz --repo o/graphite \\\n  --signer-workflow o/graphite/.github/workflows/release.yml \\\n  --source-ref refs/tags/v1.0.0 --deny-self-hosted-runners\n' >"$T/full.md"
+printf '%s x.tar.gz --repo o/graphite \\\n  --signer-workflow o/graphite/.github/workflows/release.yml \\\n  --source-ref refs/tags/v1.0.0 --deny-self-hosted-runners\n' "$V" >"$T/full.md"
 expect 0 "a command with all three flags across continuation lines passes" "${A[@]}" "$T/full.md"
 printf 'Run `gh attestation verify` before deploying.\n' >"$T/prose.md"
 expect 1 "a file with no command at all is reported (the scan found nothing)" "${A[@]}" "$T/prose.md"

@@ -71,6 +71,12 @@ case_files pending "$(cr 2 1002 in_progress null '')" -- "$(wr 2 push main)"
 expect 3 "a push-to-main gate still running waits" ci pending
 case_files pending_after_red "$(cr 2 1002 completed '"failure"' 2026-10-22T10:00:00Z)" "$(cr 3 1002 queued null '')" -- "$(wr 2 push main)"
 expect 3 "a red gate with a re-run queued waits" ci pending_after_red
+# Runs on main's code but not started by a push: a manual dispatch, and a
+# pull request whose HEAD branch is main (main proposed into another branch).
+case_files dispatch "$(cr 8 1008 completed '"success"' 2026-10-22T10:00:00Z)" -- "$(wr 8 workflow_dispatch main)"
+expect 3 "a green gate from a workflow_dispatch run on main does not release" ci dispatch
+case_files pr_from_main "$(cr 9 1009 completed '"success"' 2026-10-22T10:00:00Z)" -- "$(wr 9 pull_request main)"
+expect 3 "a green gate from a pull_request whose head branch is main does not release" ci pr_from_main
 case_files tag_push "$(cr 4 1004 completed '"success"' 2026-10-22T10:00:00Z)" -- "$(wr 4 push v0.3.0-beta)"
 expect 3 "a green gate from the tag's own push run does not release" ci tag_push
 case_files other_app "$(cr 2 1002 completed '"success"' 2026-10-22T10:00:00Z 999)" -- "$(wr 2 push main)"

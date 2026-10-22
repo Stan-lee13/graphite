@@ -1095,8 +1095,8 @@ jobs:
         run: |
           bash .github/scripts/release-gate.test.sh 2>&1 | tee "$RUNNER_TEMP/release-gate.log"
           passed="$(sed -n 's/^release-gate tests: \([0-9]*\) passed, 0 failed$/\1/p' "$RUNNER_TEMP/release-gate.log")"
-          if [ -z "$passed" ] || [ "$passed" -lt 28 ]; then
-            echo "::error::release-gate tests: ${passed:-no summary} passed, floor 28"; exit 1
+          if [ -z "$passed" ] || [ "$passed" -lt 30 ]; then
+            echo "::error::release-gate tests: ${passed:-no summary} passed, floor 30"; exit 1
           fi
       - name: Hand-pinned tools are where the list says
         run: python3 .github/scripts/pinned-tools.py check-pins
