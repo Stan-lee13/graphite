@@ -244,6 +244,9 @@ Internal engineering work, not an independent audit. Report:
   the three grants whose IDLs carry minimum outputs; `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS=1`.
 - **A wrong account name in Pump.fun v2 (R32-P1-2)** put a sell's base-token debit outside every
   declared scope; fixed, and every declaration must now name a real account.
+- **A static key no instruction references is not an undescribed effect (R32-L-1).** Found by the
+  live mainnet workflow on an executed System transfer. No program can reach such a key; a balance
+  it moves is still `ArtifactEffectsNotCovered`, and a referenced but unnamed key stays Critical.
 - **One agent guard per wallet (R32-P2-1)**: two guards for one key each spent the whole aggregate
   allowance; a per-wallet lock now refuses the second on the same host. The fee counts toward the
   cap (R32-P2-2).

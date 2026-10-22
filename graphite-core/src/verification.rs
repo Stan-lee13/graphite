@@ -8293,11 +8293,34 @@ impl GraphiteCore {
                                     // list to be the instruction's own, position
                                     // by position, and every declared sibling to
                                     // match an instruction that is really there.
+                                    //
+                                    // Round 32: only keys an instruction
+                                    // references. A program sees only the
+                                    // accounts its instruction passes (and
+                                    // passes on from those), so a static key
+                                    // no instruction names is untouched by
+                                    // every program here; a balance it moved
+                                    // anyway is `ArtifactEffectsNotCovered`.
+                                    // Refusing it refused an executed mainnet
+                                    // transfer whose message carried one
+                                    // (tests/round32_unreferenced_static_keys.rs).
                                     let undescribed = artifact_message.as_ref().map(|m| {
+                                        let referenced: std::collections::HashSet<&str> = m
+                                            .instructions
+                                            .iter()
+                                            .flat_map(|ix| {
+                                                std::iter::once(ix.program_id.as_str()).chain(
+                                                    ix.accounts.iter().filter_map(|a| a.as_deref()),
+                                                )
+                                            })
+                                            .collect();
                                         let mut out: Vec<String> = m
                                             .static_keys
                                             .iter()
-                                            .filter(|k| !described.contains(k.as_str()))
+                                            .filter(|k| {
+                                                !described.contains(k.as_str())
+                                                    && referenced.contains(k.as_str())
+                                            })
                                             .cloned()
                                             .collect();
                                         // Deterministic output (P2).

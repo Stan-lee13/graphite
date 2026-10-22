@@ -105,6 +105,26 @@ the files are on `main`. Results at `67920ae` (before P1's defaults):
     unreadable declarations, unbounded withdrawals and seeded programs. Each row shows the signature,
     the chain's outcome and compute, every program invoked, and the L3/L4 reasons. The next run says
     whether that one W19 refusal and the seeded divergences are false refusals.
+- **Mainnet, row by row (run 39817822320, `4bee1f0`).** The watched-row table settles both open
+  questions:
+  - **The W19 refusal** (row 31) is a Token-2022 `TransferChecked` with a separate System transfer of
+    0.05 SOL beside it. That is the documented cost of the new default: a plain SOL transfer next to an
+    instruction whose declaration names the debited account. It is not a defect, and the rate was
+    0.5% in both runs.
+  - **The undeclared-signer-debit refusals** are all under declarations Graphite cannot read: Flash
+    Trade, Titan, the Address Lookup Table program and other programs whose manifests say nothing.
+    These are Round 30 rules, not P1's defaults.
+  - **The seeded Token rows** failed simulation with `AccountNotFound` against today's state (replays
+    of transactions whose accounts have since been closed), and differ from the runner's single
+    program-wide Token baseline. That baseline is a measurement setting, not something an operator
+    would seed.
+  - **Seeded System transfers:** 2 of 3 were `executable_approved`. The third was refused as
+    `ArtifactAccountsNotDescribed` for a static key that no instruction referenced and whose balance
+    did not move. **That was a false refusal (R32-L-1), and it is fixed:** a key no instruction
+    references can be reached by no program, so it is not an undescribed effect. A balance it moves is
+    still `ArtifactEffectsNotCovered`, and a key an instruction references but the request does not
+    name is still Critical. Tests: `tests/round32_unreferenced_static_keys.rs`; the test fails
+    without the fix.
 - **Devnet (run 39809387361).** The faucet refused, so the run used the pinned Agave 4.2.2
   local validator (sha256 checked). The whole gated path passed: verify → `executable_approved`
   → sign → submit → L8 `ApprovedAndExecuted` → audit verify exit 0. From this round on, the run
