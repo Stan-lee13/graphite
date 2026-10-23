@@ -391,6 +391,27 @@ enum AuditAction {
         #[arg(long)]
         previous_key_file: Option<PathBuf>,
     },
+    /// Accept a torn write a pre-Round-34 writer left in the trail
+    ///
+    /// With the server stopped: appends a chained record (MAC'd when the
+    /// trail is keyed) naming the line that is not JSON at --offset of
+    /// --file, after which `audit verify` tolerates exactly that line.
+    /// Refuses a trail broken by anything else, and any line that is not
+    /// an unacknowledged tear `audit verify` lists. Inspect the line first.
+    AcknowledgeTear {
+        /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+        /// The trail file holding the tear, as `audit verify` names it
+        #[arg(long)]
+        file: String,
+        /// The tear's byte offset in that file, as `audit verify` gives it
+        #[arg(long)]
+        offset: u64,
+        /// Key file to MAC the acknowledgement with (default: GRAPHITE_AUDIT_KEY_FILE)
+        #[arg(long)]
+        key_file: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -721,6 +742,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     data_dir,
                     key_file,
                     previous_key_file,
+                },
+            }),
+            AuditAction::AcknowledgeTear {
+                data_dir,
+                file,
+                offset,
+                key_file,
+            } => graphite_core::cli::run(graphite_core::cli::CliCommand::Audit {
+                action: graphite_core::cli::AuditAction::AcknowledgeTear {
+                    data_dir,
+                    file,
+                    offset,
+                    key_file,
                 },
             }),
         },

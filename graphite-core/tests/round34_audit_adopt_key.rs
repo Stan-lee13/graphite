@@ -196,3 +196,60 @@ fn adopt_key_refuses_a_broken_trail_and_a_running_writer() {
     // Nothing was written.
     assert_eq!(std::fs::read_to_string(&path).unwrap().lines().count(), 3);
 }
+
+/// A torn write a pre-Round-34 writer left (terminated, nothing naming it)
+/// is a break until `graphite audit acknowledge-tear` names it; a line that
+/// is not that tear is refused.
+#[test]
+fn acknowledge_tear_clears_exactly_the_tear_it_names() {
+    let dir = temp_dir("tear");
+    let (key_path, key) = key_file("tear", 43);
+    let key_arg = key_path.to_str().unwrap();
+    let log = AuditLog::open_with_options(
+        audit_path(&dir),
+        AuditOptions {
+            rotate_bytes: 0,
+            key: Some(key.clone()),
+            ..AuditOptions::default()
+        },
+    )
+    .unwrap();
+    for i in 0..4 {
+        assert!(log.append(&rec(i)));
+    }
+    drop(log);
+    let path = audit_path(&dir);
+    let text = std::fs::read_to_string(&path).unwrap();
+    let mut lines: Vec<&str> = text.lines().collect();
+    let half = &lines[1][..lines[1].len() / 2];
+    lines.insert(2, half);
+    let offset = lines[0].len() + lines[1].len() + 2;
+    std::fs::write(&path, format!("{}\n", lines.join("\n"))).unwrap();
+
+    let (code, out) = verify(&dir, &["--key-file", key_arg]);
+    assert_eq!(code, 1, "{out}");
+    assert!(out.contains("TEAR"), "{out}");
+
+    let ack = |off: usize| {
+        graphite()
+            .args(["audit", "acknowledge-tear", "--data-dir"])
+            .arg(&dir)
+            .args(["--file", "audit.jsonl", "--offset", &off.to_string()])
+            .args(["--key-file", key_arg])
+            .output()
+            .unwrap()
+    };
+    // Not the tear: the first record.
+    let wrong = ack(0);
+    assert_eq!(wrong.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&wrong.stderr).contains("no unacknowledged torn write"));
+    let right = ack(offset);
+    assert_eq!(
+        right.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&right.stderr)
+    );
+    let (code, out) = verify(&dir, &["--key-file", key_arg]);
+    assert_eq!(code, 0, "{out}");
+}

@@ -1589,3 +1589,317 @@ fn a_torn_line_no_record_names_is_a_break() {
     assert_eq!(b.line, 3, "{b:?}");
     assert!(b.reason.contains("torn write"), "{b:?}");
 }
+
+// ---------------------------------------------------------------------------
+// Round 34 follow-up: a reader that holds the key checks MACs.
+// ---------------------------------------------------------------------------
+
+/// How a forged line's link claims to be MAC'd.
+#[derive(Clone, Copy, Debug)]
+enum ForgedMac {
+    /// No MAC at all.
+    None,
+    /// The trail's own key id, with a MAC that is not one.
+    UnderTheTrailKey,
+    /// A key id nobody holds.
+    Invented,
+}
+
+/// `content` sealed right after `after` (the line it is inserted behind):
+/// the next seq, `prev` = that line's hash, a hash that matches — a link
+/// that looks valid to anything that does not check the MAC.
+fn self_hashed_forgery(
+    after: &str,
+    content: serde_json::Map<String, serde_json::Value>,
+    mac: ForgedMac,
+    key: &AuditKey,
+) -> String {
+    let v: serde_json::Value = serde_json::from_str(after).unwrap();
+    let link: ChainLink = serde_json::from_value(v[CHAIN_FIELD].clone()).unwrap();
+    let head = chain::ChainHead {
+        next_seq: link.seq + 1,
+        prev: hex::decode(&link.hash).unwrap().try_into().unwrap(),
+        keyed: false,
+    };
+    let (line, _) = chain::seal(content, &head, None);
+    let mut v: serde_json::Value = serde_json::from_str(&line).unwrap();
+    match mac {
+        ForgedMac::None => {}
+        ForgedMac::UnderTheTrailKey => {
+            v[CHAIN_FIELD]["key_id"] = key.id().into();
+            v[CHAIN_FIELD]["mac"] = "5a".repeat(32).into();
+        }
+        ForgedMac::Invented => {
+            v[CHAIN_FIELD]["key_id"] = "c0ffeec0ffeec0ff".into();
+            v[CHAIN_FIELD]["mac"] = "5a".repeat(32).into();
+        }
+    }
+    let line = v.to_string();
+    assert!(
+        matches!(
+            chain::classify_line(line.as_bytes()),
+            chain::LineClass::Chained(_)
+        ),
+        "the forgery passes the grammar: canonical, and its hash matches"
+    );
+    line
+}
+
+fn map_of<T: serde::Serialize>(r: &T) -> serde_json::Map<String, serde_json::Value> {
+    let serde_json::Value::Object(m) = serde_json::to_value(r).unwrap() else {
+        panic!()
+    };
+    m
+}
+
+/// A forged approval of `VICTIM_TX` and a forged lifecycle row for it, each
+/// with a recomputed hash and a link that continues from the line before
+/// it, inserted into an archive and into the active file of a keyed trail.
+/// The walk breaks on them (exit 1); a reader that holds the key never
+/// returns, counts or indexes them. A reader without a key reads them: that
+/// trail is only corruption-evident to it (the documented limit).
+#[test]
+fn a_self_hashed_forgery_in_a_keyed_trail_is_never_read_by_a_reader_with_the_key() {
+    for (n, mac) in [
+        ForgedMac::None,
+        ForgedMac::UnderTheTrailKey,
+        ForgedMac::Invented,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let (path, key, archives) =
+            rotated_keyed_trail(&format!("self-hashed-{n}"), 50 + n as u8, 30);
+        let log = keyed(&path, &key, 0);
+        write_n(&log, 30, 3);
+        close(log);
+        let mut victim = rec("gr-forged", true);
+        victim.transaction_sha256 = Some(VICTIM_TX.into());
+        victim.decision = Some("executable_approved".into());
+        victim.executable = Some(true);
+        let row = LifecycleEventRecord {
+            event_type: LifecycleEvent::Submission,
+            timestamp: now_utc_rfc3339(),
+            content_hash: "ch-forged".into(),
+            verdict_on_record: None,
+            verdict_on_record_key: None,
+            transaction_sha256: Some(VICTIM_TX.into()),
+            audit_trail_id: Some("gr-forged".into()),
+            transaction_signature: Some("sig-forged".into()),
+            reported_by: Some("forger".into()),
+            detail: None,
+            observed_by_graphite: false,
+            sequence_anomalies: Vec::new(),
+        };
+        let mut lines = lines_of(&archives[0]);
+        let forged = self_hashed_forgery(&lines[0], map_of(&victim), mac, &key);
+        let archive_offset = lines[0].len() as u64 + 1;
+        lines.insert(1, forged);
+        write_lines(&archives[0], &lines);
+        let mut active = lines_of(&path);
+        let forged_row = self_hashed_forgery(&active[0], map_of(&row), mac, &key);
+        let forged_victim = self_hashed_forgery(&active[0], map_of(&victim), mac, &key);
+        active.insert(1, forged_row);
+        active.insert(1, forged_victim);
+        write_lines(&path, &active);
+        // An index that points at the archive's forgery, as whoever wrote
+        // the forgery could also write.
+        let index_dir = path.with_file_name("audit.jsonl-index");
+        std::fs::create_dir_all(&index_dir).unwrap();
+        let (sha, len) = archive_index::file_sha256(&archives[0]).unwrap();
+        let ikey = format!("tx:{VICTIM_TX}");
+        let last: HashMap<String, u64> = [(ikey.clone(), archive_offset)].into_iter().collect();
+        let counts: HashMap<String, (usize, usize)> = [(ikey, (1, 0))].into_iter().collect();
+        archive_index::write(
+            &archive_index::index_path(&index_dir, &archives[0]).unwrap(),
+            len,
+            &sha,
+            archive_index::IndexSource {
+                last: &last,
+                counts: &counts,
+                lifecycle: &HashMap::new(),
+            },
+        )
+        .unwrap();
+
+        let report = verify(&path, std::slice::from_ref(&key));
+        assert_eq!(report.exit_code(), 1, "{mac:?}: {report:?}");
+
+        // The server: a writer that holds the key.
+        let server = keyed(&path, &key, 0);
+        let tx = VerificationKey::TransactionSha256(VICTIM_TX);
+        assert!(
+            server.find_verification(tx).is_none(),
+            "{mac:?}: the keyed reader returned the forged approval"
+        );
+        assert_eq!(server.count_verifications(tx), (0, 0), "{mac:?}");
+        assert!(
+            server
+                .lifecycle_history(LifecycleKey {
+                    transaction_signature: Some("sig-forged"),
+                    ..LifecycleKey::default()
+                })
+                .is_empty(),
+            "{mac:?}: the keyed reader returned the forged lifecycle row"
+        );
+        let (_, _, total, _) = server.read_tail_filtered(1000, AuditSelector::All);
+        assert_eq!(total, 33, "{mac:?}: only the written records are counted");
+        for i in [0usize, 15, 32] {
+            let id = format!("gr-{i:05}");
+            assert!(
+                server
+                    .find_verification(VerificationKey::AuditTrailId(&id))
+                    .is_some(),
+                "{mac:?}: {id} is still found"
+            );
+        }
+        close(server);
+
+        // Without a key the reader cannot tell (corruption-evident only).
+        let keyless = AuditLog::open_read_only(&path).unwrap();
+        assert!(
+            keyless.find_verification(tx).is_some(),
+            "{mac:?}: documented limit: a reader without the key reads a self-hashed forgery"
+        );
+        keyless.wait_for_index_jobs();
+    }
+}
+
+/// A trail rotated K1 → K2 with a key-adoption record, read by a server
+/// that holds K2 alone: the records under K1 are vouched for by the checked
+/// adoption record and stay readable; a forgery under K1's id is the
+/// residual (admitted on the adoption's word, not checked). With K1 held as
+/// the previous key, it is checked and refused.
+#[test]
+fn records_under_a_rotated_out_key_stay_readable_when_an_adoption_vouches_for_it() {
+    let dir = temp_dir("vouched");
+    let path = audit_path(&dir);
+    let (_, old) = key_file("vouched-old", 60);
+    let (_, new) = key_file("vouched-new", 61);
+    let log = keyed(&path, &old, 0);
+    write_n(&log, 0, 4);
+    close(log);
+    close(keyed_with_previous(&path, &new, Some(&old)).unwrap());
+    let log = keyed(&path, &new, 0);
+    write_n(&log, 4, 2);
+    assert_eq!(log.read_tail_filtered(100, AuditSelector::All).2, 6);
+    assert!(log
+        .find_verification(VerificationKey::AuditTrailId("gr-00001"))
+        .is_some());
+    close(log);
+    // A forgery under the old key's id with a MAC that is not one.
+    let mut lines = lines_of(&path);
+    let mut victim = rec("gr-forged", true);
+    victim.transaction_sha256 = Some(VICTIM_TX.into());
+    let mut forged: serde_json::Value = serde_json::from_str(&self_hashed_forgery(
+        &lines[0],
+        map_of(&victim),
+        ForgedMac::UnderTheTrailKey,
+        &old,
+    ))
+    .unwrap();
+    assert_eq!(forged[CHAIN_FIELD]["key_id"], old.id());
+    forged[CHAIN_FIELD]["mac"] = "5a".repeat(32).into();
+    lines.insert(1, forged.to_string());
+    write_lines(&path, &lines);
+    let tx = VerificationKey::TransactionSha256(VICTIM_TX);
+    let with_both = keyed_with_previous(&path, &new, Some(&old)).unwrap();
+    assert!(with_both.find_verification(tx).is_none());
+    close(with_both);
+    let new_only = keyed(&path, &new, 0);
+    assert!(
+        new_only.find_verification(tx).is_some(),
+        "the documented residual: a record under a key this reader does not hold is admitted on a checked adoption's word"
+    );
+    close(new_only);
+}
+
+/// A torn write a pre-Round-34 writer resumed past: terminated by the
+/// writer, and the next record continues the chain from the record before
+/// it, with nothing naming the tear.
+fn historic_tear_trail(tag: &str, byte: u8) -> (PathBuf, AuditKey) {
+    let dir = temp_dir(tag);
+    let path = audit_path(&dir);
+    let (_, key) = key_file(tag, byte);
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 0, 5);
+    close(log);
+    let mut lines = lines_of(&path);
+    let half = lines[2][..lines[2].len() / 3].to_string();
+    lines.insert(2, half);
+    write_lines(&path, &lines);
+    (path, key)
+}
+
+#[test]
+fn a_historic_tear_is_a_break_until_the_operator_acknowledges_it() {
+    let (path, key) = historic_tear_trail("historic-tear", 62);
+    let keys = std::slice::from_ref(&key);
+    let before = verify(&path, keys);
+    assert_eq!(before.exit_code(), 1, "{before:?}");
+    assert!(before.other_break.is_none());
+    assert_eq!(before.unacknowledged_tears.len(), 1, "{before:?}");
+    let tear = before.unacknowledged_tears[0].clone();
+    assert_eq!((tear.line, tear.after_seq), (3, Some(1)));
+    // The walk went on past it: every record was checked.
+    assert_eq!(before.chained_records, 5);
+
+    let log = keyed(&path, &key, 0);
+    log.acknowledge_tear(&tear).unwrap();
+    close(log);
+    let after = verify(&path, keys);
+    assert_eq!(after.exit_code(), 0, "{after:?}");
+    assert_eq!((after.tears_acknowledged, after.unparseable_lines), (1, 1));
+    assert!(after.unacknowledged_tears.is_empty());
+    // The acknowledgement is a control record: no reader returns it.
+    let reader = keyed(&path, &key, 0);
+    assert_eq!(reader.read_tail_filtered(100, AuditSelector::All).2, 5);
+    close(reader);
+
+    // It names exactly those bytes: change one and it is a break again.
+    let mut lines = lines_of(&path);
+    let torn = lines[2].clone();
+    lines[2] = torn.replacen('{', "[", 1);
+    assert_ne!(lines[2], torn);
+    write_lines(&path, &lines);
+    let changed = verify(&path, keys);
+    assert_eq!(changed.exit_code(), 1, "{changed:?}");
+    assert_eq!(changed.unacknowledged_tears.len(), 1);
+}
+
+/// The control: a line that is JSON and breaks the chain is never a tear,
+/// so nothing can acknowledge it; and a second tear stays a break when only
+/// the first is acknowledged.
+#[test]
+fn only_a_tear_can_be_acknowledged_and_only_the_one_named() {
+    let (path, key) = historic_tear_trail("tear-control", 63);
+    let keys = std::slice::from_ref(&key);
+    let mut lines = lines_of(&path);
+    let second = lines[4][..lines[4].len() / 2].to_string();
+    lines.insert(5, second);
+    write_lines(&path, &lines);
+    let r = verify(&path, keys);
+    assert_eq!(r.unacknowledged_tears.len(), 2, "{r:?}");
+    let first = r.unacknowledged_tears[0].clone();
+    let log = keyed(&path, &key, 0);
+    log.acknowledge_tear(&first).unwrap();
+    close(log);
+    let r = verify(&path, keys);
+    assert_eq!(r.exit_code(), 1);
+    assert_eq!(r.unacknowledged_tears.len(), 1);
+    assert_eq!(r.first_break.as_ref().unwrap().line, 6, "{r:?}");
+
+    // An edited record is JSON: a break, and not a tear.
+    let (path, key) = historic_tear_trail("tear-control-json", 64);
+    let mut lines = lines_of(&path);
+    lines[4] = lines[4].replacen("transfer", "transfeR", 1);
+    write_lines(&path, &lines);
+    let r = verify(&path, std::slice::from_ref(&key));
+    assert_eq!(r.unacknowledged_tears.len(), 1, "only the torn line: {r:?}");
+    assert!(
+        r.other_break
+            .as_ref()
+            .is_some_and(|b| b.reason.contains("does not match its own chain hash")),
+        "{r:?}"
+    );
+}
