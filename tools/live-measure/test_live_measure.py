@@ -7,6 +7,7 @@ import copy
 import json
 import os
 import sys
+import time
 
 import pytest
 
@@ -690,3 +691,58 @@ def test_local_validator_mode_never_asks_the_public_faucet(tmp_path, devnet_fake
     assert devnet_fakes["airdrops"] == ["http://127.0.0.1:8899"] and rep["cluster"] == "local-validator"
     assert "forced" in rep["cluster_reason"]
     assert live_devnet.run(devnet_args(tmp_path, cluster="local-validator", validator=None))["status"] == "DEFECTS"
+
+
+def test_evidence_is_seeded_under_the_key_the_core_runs_with(tmp_path, devnet_fakes, monkeypatch):
+    # Round 35: seeding without the key left an unkeyed record on the trail,
+    # and the keyed Core then refused to start (R33-4's no-downgrade rule).
+    # A stand-in binary logs the key file each invocation sees, the Core's
+    # launch included; /health never answers, so the run stops there.
+    seen = tmp_path / "seen.txt"
+    fake = tmp_path / "graphite"
+    fake.write_text('#!/bin/sh\necho "$1 ${GRAPHITE_AUDIT_KEY_FILE:-<none>}" >> "%s"\n' % seen)
+    fake.chmod(0o755)
+
+    def no_core(url, **kw):
+        for _ in range(500):
+            if seen.exists() and "server" in seen.read_text():
+                break
+            time.sleep(0.01)
+        raise TimeoutError(f"{url} did not answer")
+
+    monkeypatch.setattr(live_devnet, "wait_http", no_core)
+    rep = live_devnet.run(devnet_args(tmp_path, graphite=str(fake)))
+    assert [(s["step"], s["status"]) for s in rep["steps"]][-2:] == [("evidence", "ok"), ("core", "FAILED")]
+    lines = [l.split(" ", 1) for l in seen.read_text().splitlines()]
+    assert [c for c, _ in lines] == ["evidence", "evidence", "evidence", "server"]
+    keys = {k for _, k in lines}
+    assert len(keys) == 1 and next(iter(keys)).endswith("audit.key")
+
+
+def test_fetch_keeps_going_until_the_sample_is_large_enough(tmp_path, monkeypatch):
+    # Round 35: two blocks held 493 transactions and the harness (which needs
+    # more than 500 verdicts) failed the run. Fetching continues past
+    # `blocks` until `min_transactions`, never past `max_blocks`.
+    import fetch_mainnet
+
+    monkeypatch.setattr(fetch_mainnet, "rows_from_block", lambda slot, block: [{"slot": slot}] * block["n"])
+
+    def fake_call(size, skip=()):
+        def call(rpc, method, params, **kw):
+            if method == "getSlot":
+                return {"result": 1000}
+            if params[0] in skip:
+                return {"error": {"code": -32007, "message": "skipped"}}
+            return {"result": {"n": size}}
+        return call
+
+    out = str(tmp_path / "s.json")
+    doc = lm.fetch("https://rpc.example", 2, out, sleep=lambda s: None, call=fake_call(250))
+    assert len(doc["slots"]) == 4 and doc["count"] == 1000
+    doc = lm.fetch("https://rpc.example", 2, out, max_blocks=3, sleep=lambda s: None, call=fake_call(250))
+    assert len(doc["slots"]) == 3 and doc["count"] == 750
+    doc = lm.fetch("https://rpc.example", 2, out, sleep=lambda s: None, call=fake_call(1500))
+    assert len(doc["slots"]) == 2 and doc["count"] == 3000
+    doc = lm.fetch("https://rpc.example", 2, out, sleep=lambda s: None, call=fake_call(400, skip={940}))
+    assert doc["skipped_slots"] == [940] and doc["slots"] == [960, 920, 900] and doc["count"] == 1200
+    assert json.load(open(out))["count"] == 1200

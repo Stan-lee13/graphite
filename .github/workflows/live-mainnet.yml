@@ -38,7 +38,7 @@ on:
         default: "200"
         type: string
       blocks:
-        description: "Recent blocks to sample (the conformance harness needs 500+ verdicts: 2 blocks is ~2,000)"
+        description: "Recent blocks to sample (at least; more are fetched, up to 8, until the sample holds 1,000 transactions: the conformance harness needs 500+ verdicts)"
         default: "2"
         type: string
       pace_seconds:

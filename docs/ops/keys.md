@@ -113,6 +113,14 @@ hash chain) and verify; an unkeyed record after it is a break. A trail that a
 pre-Round-34 server keyed without an adoption record exits 4 under its key
 until `adopt-key` is run once.
 
+**Run the writing CLI commands with the server's key.** `graphite evidence
+seed` / `baseline`, `graphite quarantine` and the other commands that write the
+trail MAC their records under `GRAPHITE_AUDIT_KEY_FILE` when it is set, and
+write unkeyed records when it is not. Seeding a fresh data directory without
+the key leaves an unkeyed newest record, and the keyed server then refuses to
+start, as above (Round 35: the live-devnet runner did exactly this). Export
+the same `GRAPHITE_AUDIT_KEY_FILE` for those commands as the server uses.
+
 ### `graphite audit verify` exit codes
 
 | Exit | Meaning |

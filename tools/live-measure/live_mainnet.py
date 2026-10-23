@@ -88,18 +88,26 @@ RATE_LIMIT_RE = re.compile(r"(?<![0-9A-Za-z])429(?![0-9A-Za-z])|too many request
 # ── fetch ────────────────────────────────────────────────────────────────────
 
 
-def fetch(rpc_url, blocks, out, *, offset=40, stride=20, sleep=time.sleep, call=solrpc.call):
+def fetch(rpc_url, blocks, out, *, min_transactions=1000, max_blocks=8, offset=40, stride=20, sleep=time.sleep,
+          call=solrpc.call):
     """Recent finalized blocks, in the shape fetch_mainnet.py writes (so the
     conformance harness reads it unchanged). Close to the head on purpose: a
     replay runs against today's state, and the less of it has moved, the more
-    of what is simulated is the transaction as it was."""
+    of what is simulated is the transaction as it was.
+
+    At least `blocks` blocks, and more (up to `max_blocks`) until the sample
+    holds `min_transactions` rows: the harness refuses a sample with 500
+    verdicts or fewer, and block sizes vary (Round 35: two blocks held 493)."""
     from fetch_mainnet import rows_from_block  # the recorded fields, unchanged
 
     head = call(rpc_url, "getSlot", [{"commitment": "finalized"}])["result"]
     rows, fetched, skipped = [], [], []
     slot = head - offset
     tries = 0
-    while len(fetched) < blocks and tries < blocks * 6:
+    def wanted():
+        return len(fetched) < blocks or (len(rows) < min_transactions and len(fetched) < max_blocks)
+
+    while wanted() and tries < max(blocks, max_blocks) * 6:
         tries += 1
         r = call(
             rpc_url,
@@ -976,6 +984,9 @@ def main(argv=None):
     f = sub.add_parser("fetch")
     f.add_argument("--rpc", default=os.environ.get("LIVE_RPC_URL", "https://api.mainnet-beta.solana.com"))
     f.add_argument("--blocks", type=int, default=2)
+    f.add_argument("--min-transactions", type=int, default=1000,
+                   help="keep fetching (up to --max-blocks) until the sample holds this many transactions")
+    f.add_argument("--max-blocks", type=int, default=8)
     f.add_argument("--out", required=True)
     s = sub.add_parser("select")
     s.add_argument("--requests", required=True)
@@ -1011,7 +1022,8 @@ def main(argv=None):
 
     if args.cmd == "fetch":
         try:
-            doc = fetch(args.rpc, args.blocks, args.out)
+            doc = fetch(args.rpc, args.blocks, args.out, min_transactions=args.min_transactions,
+                        max_blocks=args.max_blocks)
         except solrpc.RateLimited as e:
             print(f"RATE-LIMITED: {e} — no sample written; rerun later or set GRAPHITE_LIVE_RPC_URL", flush=True)
             return 3

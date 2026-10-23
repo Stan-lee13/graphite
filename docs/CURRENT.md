@@ -814,7 +814,7 @@ MCP server 9; Vercel AI adapter 11; TypeScript SDK 66 (62 hermetic, 4 against a 
 server — run in CI's container job); `emit:corpus` and `emit:artifact-fixture` with no
 drift. Not touched in Round 34 and not re-run: dashboard 31, production build OK; Go
 SDK 59 top-level test functions (0 skipped), plus 5 behind the `liveserver` tag.
-Python: AI layer 50 (Round 34); `tools/mainnet-sample` 7; `tools/live-measure` 55.
+Python: AI layer 50 (Round 34); `tools/mainnet-sample` 7; `tools/live-measure` 57 (Round 35).
 Deploy kit: 109 checks (`deploy/tests/run.sh`). The runtime oracle: ~628,500 frames
 per CI seed, bincode and wincode, legacy, v0 and v1, never looser than the runtime
 (both seeds, Round 34). The last hosted CI run that passed every job was on the PR
