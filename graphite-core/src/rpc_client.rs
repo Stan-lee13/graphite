@@ -451,6 +451,94 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
             Some(out)
         });
 
+    // Round 35: every inner instruction in whichever form it arrived. Agave's
+    // `simulateTransaction` never sends the compiled form the two lists above
+    // read: each instruction goes through `parse_ui_instruction`, which prints
+    // `{program, programId, parsed, stackHeight}` for a program it can parse
+    // and `{programId, accounts: [<address>…], data, stackHeight}` for the
+    // rest. With only the compiled form read, every transaction that made a
+    // CPI was refused as incomplete on a real RPC (the live mainnet runs:
+    // "callee report unreadable", 23 of 200). The partially decoded form is
+    // read as it is; the parsed form is rebuilt exactly or left unknown
+    // (`parsed_inner`). Resolved against the transaction's account list by
+    // `resolve_reported_inner`. Same completeness rules: one entry that is no
+    // form at all makes the whole report unknown.
+    let mut not_rebuilt: Vec<String> = Vec::new();
+    let inner_reported: Option<Vec<ReportedInnerInstruction>> = value
+        .get("innerInstructions")
+        .and_then(|v| v.as_array())
+        .and_then(|groups| {
+            let mut out = Vec::new();
+            for g in groups {
+                let top_level_index = u8::try_from(g.get("index")?.as_u64()?).ok()?;
+                let instructions = g.get("instructions")?.as_array()?;
+                if out.len() + instructions.len() > MAX_INSTRUCTION_TRACE_LENGTH {
+                    return None;
+                }
+                for ix in instructions {
+                    let stack_height = match ix.get("stackHeight") {
+                        None | Some(serde_json::Value::Null) => None,
+                        Some(h) => {
+                            let h = u32::try_from(h.as_u64()?).ok()?;
+                            if !(2..=MAX_INSTRUCTION_STACK_HEIGHT).contains(&h) {
+                                return None;
+                            }
+                            Some(h)
+                        }
+                    };
+                    let (program, body) = if let Some(i) = ix.get("programIdIndex") {
+                        let program = InnerAccountRef::Index(u8::try_from(i.as_u64()?).ok()?);
+                        let accounts = ix
+                            .get("accounts")?
+                            .as_array()?
+                            .iter()
+                            .map(|a| {
+                                a.as_u64()
+                                    .and_then(|a| u8::try_from(a).ok())
+                                    .map(InnerAccountRef::Index)
+                            })
+                            .collect::<Option<Vec<_>>>()?;
+                        let data = bs58::decode(ix.get("data")?.as_str()?).into_vec().ok()?;
+                        (program, Some((accounts, data)))
+                    } else {
+                        let program_id = ix.get("programId")?.as_str()?;
+                        let body = if let Some(parsed) = ix.get("parsed") {
+                            let rebuilt = crate::parsed_inner::rebuild(program_id, parsed);
+                            if rebuilt.is_none() {
+                                let kind =
+                                    parsed.get("type").and_then(|t| t.as_str()).unwrap_or("?");
+                                not_rebuilt.push(format!("{program_id} `{kind}`"));
+                            }
+                            rebuilt
+                        } else {
+                            let accounts = ix
+                                .get("accounts")?
+                                .as_array()?
+                                .iter()
+                                .map(|a| a.as_str().map(str::to_string))
+                                .collect::<Option<Vec<_>>>()?;
+                            let data = bs58::decode(ix.get("data")?.as_str()?).into_vec().ok()?;
+                            Some((accounts, data))
+                        };
+                        let body = body.map(|(accounts, data)| {
+                            (
+                                accounts.into_iter().map(InnerAccountRef::Address).collect(),
+                                data,
+                            )
+                        });
+                        (InnerAccountRef::Address(program_id.to_string()), body)
+                    };
+                    out.push(ReportedInnerInstruction {
+                        top_level_index,
+                        program,
+                        body,
+                        stack_height,
+                    });
+                }
+            }
+            Some(out)
+        });
+
     // Non-canonical fields, compared and reported — never adopted.
     //
     // Silence is the wrong response to a provider volunteering a number under a
@@ -472,23 +560,16 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
     // already leaves the callee set and the CPI tree unknown above — the
     // fail-closed outcome — but silently, which reads like a broken RPC.
     // Saying which form arrived is what lets an operator tell the two apart.
-    let parsed_form = value
-        .get("innerInstructions")
-        .and_then(|v| v.as_array())
-        .is_some_and(|groups| {
-            groups
-                .iter()
-                .filter_map(|g| g.get("instructions").and_then(|i| i.as_array()))
-                .flatten()
-                .any(|ix| {
-                    ix.get("programIdIndex").is_none()
-                        && (ix.get("programId").is_some() || ix.get("parsed").is_some())
-                })
-        });
-    if parsed_form {
-        provider_anomalies.push(
-            "the RPC returned inner instructions in parsed (jsonParsed) form, which carries no `programIdIndex`; Graphite reads only the compiled form, so the CPI callees and the executed CPI tree of this simulation are unobserved".to_string(),
-        );
+    // Round 35: that form is now read (`inner_reported`); what is still said
+    // is which parsed instructions could not be rebuilt, since they leave the
+    // executed CPI tree unknown and the verdict incomplete.
+    if !not_rebuilt.is_empty() {
+        not_rebuilt.sort();
+        not_rebuilt.dedup();
+        provider_anomalies.push(format!(
+            "the RPC reported inner instruction(s) in parsed form that Graphite does not rebuild to their bytes ({}), so the executed CPI tree of this simulation is unobserved; its callees are known",
+            not_rebuilt.join(", ")
+        ));
     }
 
     let mut compare = |name: &str, provider: Option<u64>, derived: Option<u64>| {
@@ -605,6 +686,7 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
         slot: None,
         inner_program_indexes,
         inner_instructions,
+        inner_reported,
         balances,
     })
 }
@@ -843,6 +925,12 @@ pub struct SimulationResult {
     /// `innerInstructions` was absent or any entry was unreadable.
     #[serde(default)]
     pub inner_instructions: Option<Vec<ObservedInnerInstruction>>,
+    /// Every inner instruction in the form the RPC sent it (Round 35): the
+    /// compiled form, or by address (Agave's parsed and partially decoded
+    /// forms). `resolve_reported_inner` turns it into the two fields above.
+    /// `None` when `innerInstructions` was absent or an entry was in no form.
+    #[serde(default)]
+    pub inner_reported: Option<Vec<ReportedInnerInstruction>>,
     /// `(preBalances, postBalances)`: the simulator's lamports for every
     /// account of the transaction, before and after, read at ONE slot
     /// (Round 21). `None` unless both arrays are present, readable and of
@@ -917,6 +1005,67 @@ pub struct ObservedInnerInstruction {
     /// 3 for one made by that callee, and so on. `None` from an RPC that does
     /// not report it.
     pub stack_height: Option<u32>,
+}
+
+/// How an inner instruction names a program or an account (Round 35): by
+/// index into the transaction's full account list (the compiled form), or by
+/// address (the forms Agave sends).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InnerAccountRef {
+    Index(u8),
+    Address(String),
+}
+
+/// One inner instruction as the RPC reported it (Round 35).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReportedInnerInstruction {
+    pub top_level_index: u8,
+    pub program: InnerAccountRef,
+    /// The accounts and data; `None` for a parsed instruction
+    /// `parsed_inner` does not rebuild (its callee is still known).
+    pub body: Option<(Vec<InnerAccountRef>, Vec<u8>)>,
+    pub stack_height: Option<u32>,
+}
+
+impl SimulationResult {
+    /// Resolve `inner_reported` against the transaction's account list (its
+    /// static keys, then `loaded_addresses`), filling `inner_program_indexes`
+    /// and `inner_instructions` (Round 35). An address that is not in the
+    /// list, or past index 255, leaves the callees unknown; an instruction
+    /// whose accounts or data were not rebuilt leaves the instructions
+    /// unknown. Unknown is `None`, never a shorter list. Without a reported
+    /// form (a result built by hand, or one read before Round 35) the two
+    /// fields are left as they are.
+    pub fn resolve_reported_inner(&mut self, static_keys: &[String]) {
+        let Some(reported) = self.inner_reported.as_ref() else {
+            return;
+        };
+        let mut keys: Vec<&str> = static_keys.iter().map(String::as_str).collect();
+        if let Some(l) = &self.loaded_addresses {
+            keys.extend(l.writable.iter().map(String::as_str));
+            keys.extend(l.readonly.iter().map(String::as_str));
+        }
+        let index = |r: &InnerAccountRef| -> Option<u8> {
+            match r {
+                InnerAccountRef::Index(i) => Some(*i),
+                InnerAccountRef::Address(a) => u8::try_from(keys.iter().position(|k| k == a)?).ok(),
+            }
+        };
+        self.inner_program_indexes = reported.iter().map(|ix| index(&ix.program)).collect();
+        self.inner_instructions = reported
+            .iter()
+            .map(|ix| {
+                let (accounts, data) = ix.body.as_ref()?;
+                Some(ObservedInnerInstruction {
+                    top_level_index: ix.top_level_index,
+                    program_id_index: index(&ix.program)?,
+                    accounts: accounts.iter().map(index).collect::<Option<Vec<u8>>>()?,
+                    data: data.clone(),
+                    stack_height: ix.stack_height,
+                })
+            })
+            .collect();
+    }
 }
 
 /// The `loadedAddresses` half of a `simulateTransaction` response: the accounts

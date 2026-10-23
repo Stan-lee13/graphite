@@ -7993,7 +7993,14 @@ impl GraphiteCore {
                 };
 
                 match sim_outcome {
-                    Ok((sim_res, post)) => {
+                    Ok((mut sim_res, post)) => {
+                        // Round 35: the inner instructions in whatever form
+                        // the RPC sent them (Agave: parsed or partially
+                        // decoded, never compiled), resolved against these
+                        // bytes' account list before anything reads them.
+                        if let Some(message) = artifact_message.as_ref() {
+                            sim_res.resolve_reported_inner(&message.static_keys);
+                        }
                         // A figure above Solana's per-transaction ceiling did
                         // not come from an execution, so nothing in this
                         // response is a measurement — not the compute numbers,

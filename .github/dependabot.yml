@@ -50,6 +50,22 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
 
+  # The inner-instruction oracle (Round 35) pins Agave's parser crate
+  # (solana-transaction-status) at the version mainnet RPCs run; a PR that
+  # moves it is a change of the referee and is reviewed as one.
+  - package-ecosystem: cargo
+    directory: /tools/inner-instruction-oracle
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: bincode
+        update-types: ["version-update:semver-major"]
+    groups:
+      inner-instruction-oracle:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
   # The cargo-fuzz crate (Round 30) has its own lockfile, outside the core's
   # build; without this entry its libfuzzer-sys pin never moved.
   - package-ecosystem: cargo
