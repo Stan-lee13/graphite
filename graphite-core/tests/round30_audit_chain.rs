@@ -10,7 +10,26 @@ use graphite_core::durable::{
     audit_path, AuditKey, AuditLog, AuditOptions, AuditRecord, LifecycleEvent,
 };
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
+use std::sync::{Mutex, MutexGuard};
+
+/// Forks and writer lifetimes, one at a time (Round 35). A `graphite` child
+/// holds a copy of every descriptor this test process has open from its fork
+/// to its exec — a sibling test's writer lock included — so a writer that
+/// dropped its log and opened it again in that window was refused as a
+/// second writer (6 of 200 parallel runs; 0 of 200 serial). The product never
+/// spawns a process; this is the harness's own race.
+static FORK: Mutex<()> = Mutex::new(());
+
+fn fork_guard() -> MutexGuard<'static, ()> {
+    FORK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// `Command::output` under the fork guard.
+fn run(c: &mut Command) -> Output {
+    let _g = fork_guard();
+    c.output().unwrap()
+}
 
 fn graphite() -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_graphite"));
@@ -73,6 +92,7 @@ fn rec(i: usize) -> AuditRecord {
 }
 
 fn keyed_trail(dir: &Path, key: &AuditKey, n: usize, rotate_bytes: u64) {
+    let _g = fork_guard();
     let log = AuditLog::open_with_options(
         audit_path(dir),
         AuditOptions {
@@ -88,12 +108,10 @@ fn keyed_trail(dir: &Path, key: &AuditKey, n: usize, rotate_bytes: u64) {
 }
 
 fn verify(dir: &Path, extra: &[&str]) -> (i32, String) {
-    let out = graphite()
+    let out = run(graphite()
         .args(["audit", "verify", "--data-dir"])
         .arg(dir)
-        .args(extra)
-        .output()
-        .unwrap();
+        .args(extra));
     (
         out.status.code().unwrap(),
         String::from_utf8_lossy(&out.stdout).into_owned(),
@@ -117,12 +135,10 @@ fn verify_exits_by_what_the_walk_proved() {
     assert!(out.contains("CorruptionEvident"));
 
     // The key through the environment, as the server takes it.
-    let out = graphite()
+    let out = run(graphite()
         .args(["audit", "verify", "--json", "--data-dir"])
         .arg(&dir)
-        .env("GRAPHITE_AUDIT_KEY_FILE", &key_path)
-        .output()
-        .unwrap();
+        .env("GRAPHITE_AUDIT_KEY_FILE", &key_path));
     assert_eq!(out.status.code(), Some(0));
     let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(report["integrity"], "tamper_evident");
@@ -161,6 +177,7 @@ fn a_checkpoint_exported_by_the_cli_catches_a_stale_restore() {
     keyed_trail(&dir, &key, 3, 0);
     let backup = std::fs::read(audit_path(&dir)).unwrap();
     // Appending more, from a fresh writer (the first one was dropped).
+    let guard = fork_guard();
     let log = AuditLog::open_with_options(
         audit_path(&dir),
         AuditOptions {
@@ -174,17 +191,16 @@ fn a_checkpoint_exported_by_the_cli_catches_a_stale_restore() {
         assert!(log.append(&rec(i)));
     }
     drop(log);
+    drop(guard);
 
     let cp = temp_dir("checkpoint-out").join("cp.json");
-    let out = graphite()
+    let out = run(graphite()
         .args(["audit", "checkpoint", "--data-dir"])
         .arg(&dir)
         .arg("--key-file")
         .arg(&key_path)
         .arg("--out")
-        .arg(&cp)
-        .output()
-        .unwrap();
+        .arg(&cp));
     assert_eq!(
         out.status.code(),
         Some(0),
@@ -192,13 +208,11 @@ fn a_checkpoint_exported_by_the_cli_catches_a_stale_restore() {
         String::from_utf8_lossy(&out.stderr)
     );
     // Never over an existing file.
-    let again = graphite()
+    let again = run(graphite()
         .args(["audit", "checkpoint", "--data-dir"])
         .arg(&dir)
         .arg("--out")
-        .arg(&cp)
-        .output()
-        .unwrap();
+        .arg(&cp));
     assert_ne!(again.status.code(), Some(0));
 
     let cp_arg = cp.to_str().unwrap();

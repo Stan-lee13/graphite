@@ -11,7 +11,25 @@ use graphite_core::durable::{
     audit_path, AuditKey, AuditLog, AuditOptions, AuditRecord, LifecycleEvent,
 };
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
+use std::sync::{Mutex, MutexGuard};
+
+/// Forks and writer lifetimes, one at a time (Round 35). A `graphite` child
+/// holds a copy of every descriptor this test process has open from its fork
+/// to its exec — a sibling test's writer lock included — so a writer opened
+/// in that window was refused as a second writer (1 of 200 parallel runs).
+/// The product never spawns a process; this is the harness's own race.
+static FORK: Mutex<()> = Mutex::new(());
+
+fn fork_guard() -> MutexGuard<'static, ()> {
+    FORK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// `Command::output` under the fork guard.
+fn run(c: &mut Command) -> Output {
+    let _g = fork_guard();
+    c.output().unwrap()
+}
 
 fn graphite() -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_graphite"));
@@ -75,12 +93,10 @@ fn rec(i: usize) -> AuditRecord {
 }
 
 fn verify(dir: &Path, extra: &[&str]) -> (i32, String) {
-    let out = graphite()
+    let out = run(graphite()
         .args(["audit", "verify", "--data-dir"])
         .arg(dir)
-        .args(extra)
-        .output()
-        .unwrap();
+        .args(extra));
     (
         out.status.code().unwrap(),
         String::from_utf8_lossy(&out.stdout).into_owned(),
@@ -90,11 +106,13 @@ fn verify(dir: &Path, extra: &[&str]) -> (i32, String) {
 #[test]
 fn an_unkeyed_trail_exits_4_under_a_key_until_it_is_adopted() {
     let dir = temp_dir("adopt");
+    let guard = fork_guard();
     let log = AuditLog::open(audit_path(&dir)).unwrap();
     for i in 0..3 {
         assert!(log.append(&rec(i)));
     }
     drop(log);
+    drop(guard);
     let (key_path, key) = key_file("adopt", 41);
     let key_arg = key_path.to_str().unwrap();
 
@@ -106,6 +124,7 @@ fn an_unkeyed_trail_exits_4_under_a_key_until_it_is_adopted() {
     assert!(out.contains("UNKEYED"), "{out}");
 
     // A keyed server refuses to resume onto the unkeyed head.
+    let guard = fork_guard();
     let refused = AuditLog::open_with_options(
         audit_path(&dir),
         AuditOptions {
@@ -114,14 +133,14 @@ fn an_unkeyed_trail_exits_4_under_a_key_until_it_is_adopted() {
         },
     );
     assert!(refused.is_err());
+    drop(refused);
+    drop(guard);
 
     // The operator adopts the key.
-    let out = graphite()
+    let out = run(graphite()
         .args(["audit", "adopt-key", "--data-dir"])
         .arg(&dir)
-        .args(["--key-file", key_arg])
-        .output()
-        .unwrap();
+        .args(["--key-file", key_arg]));
     assert_eq!(
         out.status.code(),
         Some(0),
@@ -135,16 +154,15 @@ fn an_unkeyed_trail_exits_4_under_a_key_until_it_is_adopted() {
     assert!(out.contains(key.id()), "{out}");
 
     // A second adoption has nothing to do.
-    let again = graphite()
+    let again = run(graphite()
         .args(["audit", "adopt-key", "--data-dir"])
         .arg(&dir)
-        .args(["--key-file", key_arg])
-        .output()
-        .unwrap();
+        .args(["--key-file", key_arg]));
     assert_eq!(again.status.code(), Some(0));
     assert!(String::from_utf8_lossy(&again.stdout).contains("nothing to adopt"));
 
     // The server now resumes under the key.
+    let guard = fork_guard();
     let log = AuditLog::open_with_options(
         audit_path(&dir),
         AuditOptions {
@@ -155,6 +173,7 @@ fn an_unkeyed_trail_exits_4_under_a_key_until_it_is_adopted() {
     .unwrap();
     assert!(log.append(&rec(3)));
     drop(log);
+    drop(guard);
     assert_eq!(verify(&dir, &["--key-file", key_arg]).0, 0);
 }
 
@@ -162,6 +181,9 @@ fn an_unkeyed_trail_exits_4_under_a_key_until_it_is_adopted() {
 fn adopt_key_refuses_a_broken_trail_and_a_running_writer() {
     let dir = temp_dir("broken");
     let (key_path, _) = key_file("broken", 42);
+    // One guard over the writer and its own child: the child must see this
+    // writer's lock, and no other test's.
+    let guard = fork_guard();
     let log = AuditLog::open(audit_path(&dir)).unwrap();
     for i in 0..3 {
         assert!(log.append(&rec(i)));
@@ -176,6 +198,7 @@ fn adopt_key_refuses_a_broken_trail_and_a_running_writer() {
         .unwrap();
     assert_ne!(out.status.code(), Some(0));
     drop(log);
+    drop(guard);
 
     let path = audit_path(&dir);
     let text = std::fs::read_to_string(&path).unwrap();
@@ -184,13 +207,11 @@ fn adopt_key_refuses_a_broken_trail_and_a_running_writer() {
         text.replacen("\"approved\":true", "\"approved\":false", 1),
     )
     .unwrap();
-    let out = graphite()
+    let out = run(graphite()
         .args(["audit", "adopt-key", "--data-dir"])
         .arg(&dir)
         .arg("--key-file")
-        .arg(&key_path)
-        .output()
-        .unwrap();
+        .arg(&key_path));
     assert_eq!(out.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&out.stderr).contains("broken"));
     // Nothing was written.
@@ -205,6 +226,7 @@ fn acknowledge_tear_clears_exactly_the_tear_it_names() {
     let dir = temp_dir("tear");
     let (key_path, key) = key_file("tear", 43);
     let key_arg = key_path.to_str().unwrap();
+    let guard = fork_guard();
     let log = AuditLog::open_with_options(
         audit_path(&dir),
         AuditOptions {
@@ -218,6 +240,7 @@ fn acknowledge_tear_clears_exactly_the_tear_it_names() {
         assert!(log.append(&rec(i)));
     }
     drop(log);
+    drop(guard);
     let path = audit_path(&dir);
     let text = std::fs::read_to_string(&path).unwrap();
     let mut lines: Vec<&str> = text.lines().collect();
@@ -231,13 +254,11 @@ fn acknowledge_tear_clears_exactly_the_tear_it_names() {
     assert!(out.contains("TEAR"), "{out}");
 
     let ack = |off: usize| {
-        graphite()
+        run(graphite()
             .args(["audit", "acknowledge-tear", "--data-dir"])
             .arg(&dir)
             .args(["--file", "audit.jsonl", "--offset", &off.to_string()])
-            .args(["--key-file", key_arg])
-            .output()
-            .unwrap()
+            .args(["--key-file", key_arg]))
     };
     // Not the tear: the first record.
     let wrong = ack(0);
