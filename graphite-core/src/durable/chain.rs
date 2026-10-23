@@ -716,6 +716,7 @@ impl std::fmt::Debug for GateContext {
 
 impl GateContext {
     /// No key, and the chain began before the file or not.
+    #[cfg(test)]
     pub(crate) fn keyless(chain_began: bool) -> Self {
         Self {
             chain_began,
