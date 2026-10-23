@@ -266,14 +266,18 @@ FALLBACK_CANONICAL = {
 INTENT_KEYWORDS = {
     "transfer": ("transfer", "send"),
     "swap": ("swap", "route", "trade", "exchange", "buy", "sell"),
-    "stake": ("stake", "delegate", "withdraw", "deactivate"),
+    "stake": ("stake", "delegate", "deactivate"),
     "close": ("close",),
     "create": ("create", "initialize", "allocate", "assign", "open"),
     "approve": ("approve",),
     "revoke": ("revoke",),
     # Round 30: the names of the granted instructions (intent_grants.rs), not
     # every instruction named "withdraw" — the Core refuses the rest.
-    "withdraw": ("remove_liquidity", "remove_all_liquidity", "decrease_liquidity_v2"),
+    # Round 34 (R33-1): staking withdrawals too — a `stake` intent no longer
+    # declares a withdrawal; the Core grants Stake Withdraw, Stake Pool
+    # WithdrawSol/WithdrawStake and Marinade liquidUnstake under `withdraw`.
+    "withdraw": ("remove_liquidity", "remove_all_liquidity", "decrease_liquidity_v2",
+                 "withdraw", "liquid_unstake"),
     "claim": ("claim_fee",),
     "burn": ("burn",),
     "configure": ("update_offer",),
@@ -647,7 +651,7 @@ _KIND_TO_INTENT = {
     "transfer": "transfer",
     "buy": "swap",
     "swap": "swap",
-    "withdraw": "stake",
+    "withdraw": "withdraw",
     "stake": "stake",
     "close": "close",
     "create": "create",
@@ -777,8 +781,10 @@ def parse_intent(natural_language: str) -> Dict[str, Any]:
         if _token(m, "output_token"):
             params["output_token"] = _token(m, "output_token")
     elif matched_kind == "withdraw":
-        # Unstake / withdraw <amount> <token> is classified under the stake
-        # class (the Core's stake keywords include withdraw). Claiming, and
+        # Unstake / withdraw <amount> <token> is `withdraw` since Round 34
+        # (R33-1): a `stake` intent no longer declares a withdrawal, which the
+        # Core grants only under `withdraw`, paid to the instruction's own
+        # signer. Claiming, and
         # withdrawing liquidity, rewards, fees or collateral, are not stake
         # withdrawals (Round 29, PY3: "claim rewards" and "withdraw liquidity
         # from Orca" were labelled stake). Since Round 30 the Core has the
@@ -792,7 +798,7 @@ def parse_intent(natural_language: str) -> Dict[str, Any]:
             intent = "claim"
         elif obj in _UNMODELED_WITHDRAWAL_OBJECTS:
             intent = "withdraw"
-        if intent != "stake" and obj:
+        if obj and (verb == "claim" or obj in _CLAIMED_OBJECTS or obj in _UNMODELED_WITHDRAWAL_OBJECTS):
             params["account_type"] = obj
         if m.group("amount"):
             params["amount"] = m.group("amount")

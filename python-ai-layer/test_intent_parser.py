@@ -107,14 +107,17 @@ def test_stake_intent():
     print("✓ test_stake_intent passed")
 
 
-def test_withdraw_classified_as_stake():
-    # Unstake/withdraw maps to the stake class (the Core's stake keywords
-    # include withdraw) so it never trips the unknown-intent fail-closed path.
+def test_unstake_and_withdraw_are_the_withdraw_intent():
+    # Re-pinned in Round 34 (R33-1). This test used to pin "unstake" and
+    # "withdraw" to `stake`, because the Core's stake row declared the
+    # withdraw class — the door a withdrawal to any account went through.
+    # A `stake` intent declares no withdrawal now; the Core grants staking
+    # withdrawals only under `withdraw`, paid to the instruction's signer.
     result = parse_intent("Unstake 3 SOL")
-    assert result["intent_type"] == "stake"
+    assert result["intent_type"] == "withdraw"
     result = parse_intent("Withdraw 1 jitoSOL")
-    assert result["intent_type"] == "stake"
-    print("✓ test_withdraw_classified_as_stake passed")
+    assert result["intent_type"] == "withdraw"
+    print("✓ test_unstake_and_withdraw_are_the_withdraw_intent passed")
 
 
 def test_close_create_approve_revoke():
@@ -832,7 +835,8 @@ def test_two_actions_in_one_text_are_not_one_label():
         assert r["intent_type"] == "unknown", text
         assert "MULTIPLE_INTENTS" in _codes(r), text
     # One action that happens to contain a second verb is still one action.
-    assert parse_intent("Withdraw stake from the validator")["intent_type"] == "stake"
+    # Round 34 (R33-1): a withdrawal is `withdraw`, never `stake`.
+    assert parse_intent("Withdraw stake from the validator")["intent_type"] == "withdraw"
     assert parse_intent(f"Transfer 1 SOL to {_DEST} and set authority to me")["intent_type"] == "transfer"
     print("✓ test_two_actions_in_one_text_are_not_one_label passed")
 
@@ -861,9 +865,9 @@ def test_claims_and_liquidity_withdrawals_are_not_stake():
         assert r["intent_type"] == intent, (text, r["intent_type"])
         if intent != "unknown":
             assert "GRANT_SCOPED_INTENT" in _codes(r), text
-    # A stake withdrawal is still one.
-    assert parse_intent("Withdraw 1 jitoSOL")["intent_type"] == "stake"
-    assert parse_intent("Unstake 3 SOL")["intent_type"] == "stake"
+    # A stake withdrawal is a withdrawal (Round 34, R33-1: no longer `stake`).
+    assert parse_intent("Withdraw 1 jitoSOL")["intent_type"] == "withdraw"
+    assert parse_intent("Unstake 3 SOL")["intent_type"] == "withdraw"
     # Two actions are still not one label.
     assert parse_intent("claim fees then send 2 SOL to " + _FULL_ADDRESS)["intent_type"] == "unknown"
     # Negated is still not the action.
