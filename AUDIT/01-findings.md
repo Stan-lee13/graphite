@@ -674,6 +674,27 @@ numbered break log below).
 | R32-P4-1…5 | No release pipeline, deployment kit or hand-off pack; a ci.yml shellcheck finding | **Fixed**: `release.yml`, `deploy/` (tested in CI), `docs/ops/production-checklist.md`, `docs/audit-handoff/` | `deploy/tests/run.sh` |
 | R32-L-1 | An executed transfer refused for a static key no instruction references | **Fixed** | `tests/round32_unreferenced_static_keys.rs` |
 
+## The Round 33 deep audit of `b473a31` (Round 34, 2026-10-23)
+
+An internal deep audit of the Round 31–32 merge found 1 P0, 9 P1, 13 P2 and about 30 P3. Round 34
+answered every one with five workstreams; each finding, its state, its test and its pinned-output
+effect are in [`../docs/round34-the-deep-audit-remediated-2026-10-23.md`](../docs/round34-the-deep-audit-remediated-2026-10-23.md).
+The breaks are B128 onward below.
+
+| ID | Finding | Status | Test |
+|---|---|---|---|
+| R33-1 (P0) | A stake intent executed a withdrawal of the user's stake to any account | **Fixed** | `tests/staking_withdrawal_destination.rs` |
+| R33-2 / R33-3 | The trail's verifier and readers accepted different lines (unterminated, unparseable, duplicate-key) | **Fixed** | `durable::chain_trail_tests` |
+| R33-4 / R33-12 / R33-13 | MAC stripping, unsigned checkpoints and invented key ids verified | **Fixed** (exit 4, adoption records) | `durable::chain_trail_tests`, `tests/round34_audit_adopt_key.rs` |
+| R33-5 (P0 by test) | A debit line naming no account excused a signer's loss | **Fixed** | `tests/signer_value_netting.rs` |
+| R33-6 / R33-7 / R33-10 | Foreign-owned rent, a co-signer's gain and a vault's payout offset a user's loss | **Fixed**: per-signer netting | `tests/signer_value_netting.rs`, `state_diff::w19_scope_tests` |
+| R33-8 | `main`'s CI timed out | **Fixed in code**; green on `main` to be measured after the push | `.github/scripts/ci-scripts.test.sh` |
+| R33-9 | A tag could publish a release | **Fixed in code**; rulesets and environment are owner steps | `.github/scripts/release-gate.test.sh` |
+| R33-11, R33-14, R33-15 | Dust minimums; created native authorities; amounts above a System transfer's own | **Fixed** (token amounts unbound: limitation) | `round30_grounded_intents`, `tests/signer_value_netting.rs` |
+| R33-16 … R33-20 | Guard lock directory and race; attestation commands; rotation ownership; Dependabot coverage | **Fixed** | guard tests, `deploy/tests/run.sh`, `.github/scripts/*` |
+| R33-21, DOC-5 … DOC-19 | Stale operator and audit documents | **Fixed**; the docs tests now scan `docs/ops/`, the hand-off pack and the grant proposal | `tests/docs_paths_resolve.rs`, `tests/docs_numbers_match_the_code.rs` |
+| P3 (S-3, S-5, A-6, A-7, G-3…G-7, C-4…C-6, K-7, D-6…D-9) | See the round report | **Fixed**, except C-6 (decision), A-7 Windows ACLs and K-7's 75 ambiguous mismatches (documented) | round report §B |
+
 ## Break log
 
 Every fix was reverted once, alone, with the tree otherwise unchanged, and its named test re-run; the fix was then restored and the tree checked clean. The harness is `graphite-audit-work/audit_breaks.py` (outside the repository): each break is an exact text edit validated against the current sources before it runs, and a break whose test still passes is reported MISSED.

@@ -83,6 +83,16 @@ Each has named tests; see the audit table.
 | R-M6 (part) | Deployment and release | **Built, not deployed.** `.github/workflows/release.yml`, `deploy/`, `docs/ops/production-checklist.md`, `docs/audit-handoff/` | `deploy/tests/run.sh` (CI `deploy` job) |
 | R-P11/12/15 | Fuzzing, mutation, coverage measured | **Fuzzing and coverage measured** on hosted run 39798389463 (six targets × 30 minutes, 0 crashes; coverage floor held); mutation scores still unmeasured | `.github/workflows/assurance.yml` |
 
+## Round 34 (2026-10-23): the Round 33 deep audit of `b473a31`
+
+| # | Goal | Status after Round 34 | Evidence |
+|---|---|---|---|
+| R-M14 (part) | Honest staking withdrawals | **Done, grounded**: Stake, Stake Pool and Marinade withdrawals under `withdraw`, paid to the instruction's own signer; a `stake` label declares none (R33-1) | `tests/staking_withdrawal_destination.rs` |
+| G-07 (hardening) | A tamper-evident trail the readers agree with | **Done**: one line grammar; keyed readers check MACs; no silent downgrade | `durable::chain_trail_tests` |
+| R-M5 / R-M6 (part) | Release integrity | **Gated in code** (signed tag on `main`, push-event CI gate); the rulesets and `release` environment are OWNER | `.github/scripts/release-gate.test.sh` |
+| — | CI green on `main` | **Split** (`rust-lint`, `rust-test` matrix, `ci-test` profile); green on `main` to be measured after the owner's push | `.github/workflows/ci.yml` |
+| — | Declarations of 18 withdrawal grants name no account | **Open**: rewrite from IDLs (owner sign-off) | `tests/r30_declared_effects_census.rs` |
+
 Not closed by Round 29, and still in the tables below: R-P7, R-P10, R-P11/12/15, R-P16/17,
 R-P18, A2-08, R-M4, R-M5, R-M6, R-M7/8, R-M9, R-M10, R-M12, R-M13, R-M14, R-M15.
 

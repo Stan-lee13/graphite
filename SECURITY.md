@@ -226,6 +226,41 @@ applies to decompressed chunks — 65 KB inflating to 64 MiB is refused at 32 Mi
 the rate limiter at its million-bucket bound (452 ns per check, measured); `audit_trail_id`
 spoofing (a fabricated id resolves to nothing and is never rescued by a coarser key).
 
+## The Round 33 Deep Audit, Remediated (2026-10-23; Round 34)
+
+Internal engineering work, not an independent audit. Report:
+`docs/round34-the-deep-audit-remediated-2026-10-23.md`.
+
+- **A stake intent executed a withdrawal of the user's stake to any account (R33-1, P0).**
+  Reproduced as `executable_approved` for Stake Withdraw and Marinade `liquidUnstake` paying a
+  stranger. A `stake` intent no longer declares a withdrawal. Staking withdrawals are grounded
+  `withdraw` grants, paid to the instruction's own signing key.
+- **A debit line that names no account switched off W19 and the signer debit checks for about half
+  the registry (R33-5, P0 by end-to-end test).** A granted CLMM withdrawal plus a sibling draining
+  the signer passed L4, L5 and L7. Such a line is now unreadable for the signer's judgement.
+  Signer netting is per signer: no co-signer's gain, foreign-owned rent or vault payout offsets a
+  user's loss (R33-6/7/10).
+- **The audit trail's verifier and readers accepted different lines (R33-2, R33-3).** A forged
+  approval appended without a newline, or with `1e400` or a duplicate key, was read by L8 while
+  `audit verify` exited 0. There is now one line grammar, used everywhere, and keyed readers check
+  MACs.
+- **A keyed trail could be downgraded by stripping its MACs (R33-4); an unsigned checkpoint was
+  Confirmed (R33-12); an invented key id read as a rotation (R33-13).** Each is now a non-zero
+  exit, with an explicit operator command for the legitimate case.
+- **A tag pushed from a branch could publish a release (R33-9).** The gate now requires an
+  SSH-signed tag on `main` and a CI gate from a push run on `main`. Applying the rulesets and the
+  protected environment is the owner's.
+- Also fixed:
+  - created native accounts with foreign authorities (R33-14);
+  - System transfers above their stated amount (R33-15);
+  - dust withdrawal minimums (R33-11);
+  - the guard's lock directory and takeover race (R33-16/17);
+  - attestation-verify commands (R33-18);
+  - rotation ownership (R33-19);
+  - Dependabot coverage (R33-20);
+  - stale operator documents (R33-21);
+  - the P3 items.
+
 ## Production Readiness (2026-10-22; Rounds 31–32)
 
 Internal engineering work, not an independent audit. Report:

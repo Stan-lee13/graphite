@@ -48,7 +48,7 @@ What exists today, all in the repository:
   reproducible builds and signed provenance, a deployment kit tested in CI, and workflows that
   replay live mainnet traffic and run the whole signing path on a validator. A deep internal
   audit (Round 33) found one critical issue and nine high ones; Round 34 fixed them
-  ([`round34-…`](CURRENT.md#report-index-newest-first)).
+  ([`round34-the-deep-audit-remediated-2026-10-23.md`](round34-the-deep-audit-remediated-2026-10-23.md)).
 
 ## 2. The problem
 
