@@ -147,7 +147,45 @@ L21: the fetch top-up removed). Both were caught.
 
 ## H. What could not be proven here
 
-- **The live run on the Round 35 head.** It is dispatched after the push; its numbers belong to
-  the PR, and to `CURRENT.md` once read.
+- **Approval on live traffic.** The live runs on the Round 35 head (`1b04945`) were read; §I has
+  their numbers. Every replayed transaction was still refused, for reasons that are designs or
+  owner decisions, not defects. So the approval path itself is proven only on the local validator
+  (live devnet) and in the end-to-end tests, not on mainnet traffic.
 - **The CI wall time on `main`** is owed after the merge (the PR's runs are above).
 - **Independence.** This is internal work. None of it is an independent audit or a certification.
+
+## I. The live runs on the Round 35 head (`1b04945`)
+
+| Run | Sample | Replayed | Defects | `callee report unreadable` | Decisions |
+|---|---:|---:|---|---:|---|
+| Live mainnet, seeded ([39950918074](https://github.com/Stan-lee13/graphite/actions/runs/39950918074)) | 1,737 | 200 | none | **0** (25 on `6d9d296`) | 200 `blocked` |
+| Live mainnet, unseeded ([39950924519](https://github.com/Stan-lee13/graphite/actions/runs/39950924519)) | 1,240 | 200 | none | **0** (26 on `9ad4dfc`) | 200 `blocked` |
+| Live devnet ([39950921567](https://github.com/Stan-lee13/graphite/actions/runs/39950921567)) | — | — | none | — | the gated transfer `executable_approved`, signed, submitted, reconciled; `audit verify` exit 0 |
+
+No verdict is `inconclusive` any more. Before, every verdict whose callee report was unreadable
+was. One row in 200 reports "CPI tree not rebuilt": a parsed CPI outside the rebuilt set, refused
+as designed. What still refuses the 200:
+
+- **Simulation failed** (134–139 rows per run). These are minutes-old transactions replayed against
+  today's state, which no longer let them succeed (custom program errors). That is not a Graphite
+  judgement.
+- **No mature baseline** (56–62). A fresh Core has learned no evidence for the program, and L3
+  refuses until it has, by design. The run seeds only System and SPL Token.
+- **R33-5** on every honest swap that simulated: Pump AMM `sell`, Raydium CLMM `swap_v2`, Raydium
+  AMM `SwapBaseIn`, DFlow `swap`/`swap_with_destination`, Meteora DLMM
+  `add_liquidity_by_strategy2`, and Jupiter-routed swaps. Each declaration's debit names no
+  account, so the signer's token debit is refused (`a declaration Graphite cannot read`). Each of
+  these rows is also refused for its missing baseline. Both would have to be resolved before such
+  a swap is approved.
+- **The seeded System and SPL Token transfers** were flagged as diverging from the program
+  baseline. The runner seeds a synthetic baseline of 150 CU, and a real wallet's transfer carries
+  ComputeBudget instructions (450–600 CU for the whole transaction, against which the program
+  baseline is compared; A2-08). That is an artifact of the measurement's seed, not a verdict on
+  the transfers.
+- **W19 / undeclared signer lamport debits** (8–18 per run) on unmanifested programs, as in
+  Round 32.
+
+**The decision this leaves to the owner.** Should the declarations of the highest-traffic swap
+instructions be rewritten from their IDLs, to name the accounts they debit and credit? Each
+rewrite decides what Graphite approves for that instruction and needs its own test. Graphite
+approves none of these swaps on a fresh Core until it is done.

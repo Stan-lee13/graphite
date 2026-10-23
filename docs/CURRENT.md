@@ -359,7 +359,9 @@ Live measurement:                `.github/workflows/live-mainnet.yml` replays re
                                  validator. Both run on a `live-measure` label or a manual dispatch (Round 32).
                                  Round 35 ran both on Round 34's code: devnet (local-validator fallback) passes end to
                                  end; mainnet found no defect, but every replayed transaction with a CPI was refused
-                                 as unreadable (fixed, R35-3), and honest swaps are refused by R33-5 under
+                                 as unreadable (fixed, R35-3: 0 of 200 on the fixed head, from 23–26). On the fixed
+                                 head all 200 are still refused: failed simulation of stale transactions (~135), no
+                                 learned baseline on a fresh Core (~60, by design), and honest swaps by R33-5 under
                                  declarations that name no account (an owner decision, see "Not yet done")
 Independent third-party audit:   NOT PERFORMED — every campaign report is internal engineering work; the hand-off
                                  pack for one is ready (docs/audit-handoff/, Round 32)
