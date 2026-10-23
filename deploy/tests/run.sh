@@ -432,7 +432,13 @@ expect_rc 2 "rotate-keys.sh verify with the new key only -> unprovable" "$deploy
 # An unkeyed trail verified under a key: not covered (exit 4).
 mkdir -p "$T/unkeyed"
 env -u GRAPHITE_AUDIT_KEY_FILE "$G" quarantine add --data-dir "$T/unkeyed" --program 11111111111111111111111111111111 --reason "deploy test" >/dev/null 2>&1
-expect_rc 4 "rotate-keys.sh verify of an unkeyed trail under a key -> not covered" "$deploy/scripts/rotate-keys.sh" verify "$T/unkeyed" "$newkey"
+rc4=0
+out4="$("$deploy/scripts/rotate-keys.sh" verify "$T/unkeyed" "$newkey" 2>&1)" || rc4=$?
+if [ "$rc4" = 4 ] && grep -q "do not cover the trail" <<<"$out4"; then
+  ok "rotate-keys.sh verify of an unkeyed trail under a key -> not covered (exit 4)"
+else
+  bad "rotate-keys.sh verify of an unkeyed trail under a key (exit $rc4): $out4"
+fi
 
 printf 'A=1\nGRAPHITE_API_KEY=old\n# c\nGRAPHITE_READ_API_KEY=r\n' >"$T/test.env"
 check "rotate-keys.sh env" "$deploy/scripts/rotate-keys.sh" env "$T/test.env" GRAPHITE_API_KEY
