@@ -430,29 +430,34 @@ fn a_stake_label_does_not_declare_a_stake_withdrawal() {
             .iter()
             .find(|l| l.layer == "L5_SemanticVerification")
             .expect("L5 present");
-        assert_eq!(l5.status, LayerStatus::Failed, "Withdraw declared '{intent}'");
+        assert_eq!(
+            l5.status,
+            LayerStatus::Failed,
+            "Withdraw declared '{intent}'"
+        );
         assert!(
             l5.reason.contains("cannot declare Withdraw") && l5.reason.contains("'withdraw'"),
             "Withdraw declared '{intent}': {}",
             l5.reason
         );
         // The Risk Engine's own class gate, on the same inputs.
-        let risk = graphite_core::risk_engine::assess(&graphite_core::risk_engine::RiskAssessmentInput {
-            verified_self_refund_close: false,
-            writable_extra_accounts: None,
-            program_id: program.to_string(),
-            accounts: vec![],
-            cpi_targets: vec![],
-            expected_state_changes: vec![],
-            allowed_cpis: vec![],
-            instruction_discriminator: disc.clone(),
-            expected_account_count: None,
-            variable_accounts: false,
-            proposed_intent_type: intent.to_string(),
-            extracted_output_token: None,
-            manifest_risk_class: class.clone(),
-        })
-        .unwrap();
+        let risk =
+            graphite_core::risk_engine::assess(&graphite_core::risk_engine::RiskAssessmentInput {
+                verified_self_refund_close: false,
+                writable_extra_accounts: None,
+                program_id: program.to_string(),
+                accounts: vec![],
+                cpi_targets: vec![],
+                expected_state_changes: vec![],
+                allowed_cpis: vec![],
+                instruction_discriminator: disc.clone(),
+                expected_account_count: None,
+                variable_accounts: false,
+                proposed_intent_type: intent.to_string(),
+                extracted_output_token: None,
+                manifest_risk_class: class.clone(),
+            })
+            .unwrap();
         assert!(
             matches!(&risk, graphite_core::risk_engine::RiskVerdict::Blocked { reason, .. }
                 if reason.contains("Intent-class mismatch")),

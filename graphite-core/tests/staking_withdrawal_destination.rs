@@ -108,12 +108,26 @@ fn acct(key: &str, signer: bool, writable: bool, owner: &str, pre: u64, post: u6
 fn program(key: &str) -> Acct {
     Acct {
         executable: true,
-        ..acct(key, false, false, "BPFLoaderUpgradeab1e11111111111111111111111", 1, 1)
+        ..acct(
+            key,
+            false,
+            false,
+            "BPFLoaderUpgradeab1e11111111111111111111111",
+            1,
+            1,
+        )
     }
 }
 
 fn sysvar(key: &str) -> Acct {
-    acct(key, false, false, "Sysvar1111111111111111111111111111111111111", 1, 1)
+    acct(
+        key,
+        false,
+        false,
+        "Sysvar1111111111111111111111111111111111111",
+        1,
+        1,
+    )
 }
 
 /// A stake account in the Initialized state whose staker and withdrawer are
@@ -504,7 +518,14 @@ fn stake_withdraw(to: Option<String>, intent: &'static str, raw: &'static str) -
     let stake = key(10);
     let user = user();
     let mut accounts = vec![
-        acct(&user, true, true, SYSTEM, SOL, SOL - FEE + if to.is_none() { amount } else { 0 }),
+        acct(
+            &user,
+            true,
+            true,
+            SYSTEM,
+            SOL,
+            SOL - FEE + if to.is_none() { amount } else { 0 },
+        ),
         stake_account(&stake, &user, amount + STAKE_RENT, STAKE_RENT),
     ];
     let to_index = match &to {
@@ -534,7 +555,10 @@ async fn a_stake_intent_cannot_withdraw_the_users_stake_to_another_account() {
     let r = stake_withdraw(Some(to.clone()), "stake", "stake my SOL")
         .verify()
         .await;
-    assert_refused(&r, "a Stake Withdraw of the user's stake to a stranger, labelled stake");
+    assert_refused(
+        &r,
+        "a Stake Withdraw of the user's stake to a stranger, labelled stake",
+    );
     let s = said(&r);
     assert!(
         s.contains("cannot declare") && s.contains("withdraw"),
@@ -594,7 +618,11 @@ fn the_stake_intent_declares_exactly_these_instructions() {
             }
         }
     }
-    println!("admitted:\n{}\nwithdrawals:\n{}", admitted.join("\n"), withdrawals.join("\n"));
+    println!(
+        "admitted:\n{}\nwithdrawals:\n{}",
+        admitted.join("\n"),
+        withdrawals.join("\n")
+    );
     let expected: &[&str] = &[
         // Stake: the delegation lifecycle. Split, Merge, MoveStake and
         // MoveLamports keep (or require matching) authorities, so none hands
@@ -662,8 +690,10 @@ fn the_stake_intent_declares_exactly_these_instructions() {
     for w in &withdrawals {
         let (_, name) = w.split_once(' ').unwrap();
         assert!(
-            !admitted.iter().any(|a| a.ends_with(&format!(" {name}"))
-                && a.starts_with(w.split(' ').next().unwrap())),
+            !admitted
+                .iter()
+                .any(|a| a.ends_with(&format!(" {name}"))
+                    && a.starts_with(w.split(' ').next().unwrap())),
             "{w} is declared by a stake intent"
         );
     }
@@ -718,7 +748,7 @@ fn assert_grounded(r: &VerificationResult, what: &str) {
         r.layers
             .iter()
             .find(|l| l.layer.starts_with(prefix))
-            .map(|l| l.status.clone())
+            .map(|l| l.status)
     };
     assert_eq!(
         status("L5"),
@@ -727,7 +757,8 @@ fn assert_grounded(r: &VerificationResult, what: &str) {
         layers(r)
     );
     assert_eq!(
-        r.risk_verdict.status, "Clear",
+        r.risk_verdict.status,
+        "Clear",
         "{what}: the Risk Engine refused it:\n{}",
         said(r)
     );
@@ -751,11 +782,7 @@ fn assert_names_destination(r: &VerificationResult, destination: &str, what: &st
 const MSOL_MINT: &str = "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So";
 
 /// The user swaps 10 mSOL for 11 SOL, paid to `to` (the user when `None`).
-fn marinade_liquid_unstake(
-    to: Option<String>,
-    intent: &'static str,
-    raw: &'static str,
-) -> Fixture {
+fn marinade_liquid_unstake(to: Option<String>, intent: &'static str, raw: &'static str) -> Fixture {
     let (msol, sol) = (10 * SOL, 11 * SOL);
     let user = user();
     let to_user = to.is_none();
@@ -793,7 +820,10 @@ async fn a_stake_intent_cannot_liquid_unstake_marinade_to_another_account() {
     let r = marinade_liquid_unstake(Some(to.clone()), "stake", "unstake my mSOL")
         .verify()
         .await;
-    assert_refused(&r, "a Marinade liquidUnstake paying a stranger, labelled stake");
+    assert_refused(
+        &r,
+        "a Marinade liquidUnstake paying a stranger, labelled stake",
+    );
     assert_names_destination(&r, &to, "liquidUnstake labelled stake");
 }
 
@@ -803,7 +833,10 @@ async fn a_withdraw_intent_cannot_liquid_unstake_marinade_to_another_account() {
     let r = marinade_liquid_unstake(Some(to.clone()), "withdraw", "unstake my mSOL")
         .verify()
         .await;
-    assert_refused(&r, "a Marinade liquidUnstake paying a stranger, labelled withdraw");
+    assert_refused(
+        &r,
+        "a Marinade liquidUnstake paying a stranger, labelled withdraw",
+    );
     assert_names_destination(&r, &to, "liquidUnstake labelled withdraw");
 }
 
@@ -822,11 +855,7 @@ async fn a_marinade_liquid_unstake_to_the_signer_is_approved_as_a_withdrawal() {
 // token_program]; args pool_tokens
 // ---------------------------------------------------------------------------
 
-fn stake_pool_withdraw_sol(
-    to: Option<String>,
-    intent: &'static str,
-    raw: &'static str,
-) -> Fixture {
+fn stake_pool_withdraw_sol(to: Option<String>, intent: &'static str, raw: &'static str) -> Fixture {
     let (tokens, sol) = (20 * SOL, 21 * SOL);
     let user = user();
     let to_user = to.is_none();
@@ -855,7 +884,12 @@ fn stake_pool_withdraw_sol(
             None => acct(&user, false, true, SYSTEM, SOL, SOL),
         },
         token_account(&key(35), &pool_mint, &key(36), 0, 0),
-        mint_account(&pool_mint, &withdraw_authority, 800 * SOL, 800 * SOL - tokens),
+        mint_account(
+            &pool_mint,
+            &withdraw_authority,
+            800 * SOL,
+            800 * SOL - tokens,
+        ),
         sysvar(CLOCK),
         sysvar(STAKE_HISTORY),
         program(STAKE),
@@ -870,7 +904,10 @@ async fn a_stake_intent_cannot_withdraw_stake_pool_sol_to_another_account() {
     let r = stake_pool_withdraw_sol(Some(to.clone()), "stake", "stake my SOL")
         .verify()
         .await;
-    assert_refused(&r, "a Stake Pool WithdrawSol paying a stranger, labelled stake");
+    assert_refused(
+        &r,
+        "a Stake Pool WithdrawSol paying a stranger, labelled stake",
+    );
     assert_names_destination(&r, &to, "WithdrawSol labelled stake");
 }
 
@@ -926,7 +963,12 @@ fn stake_pool_withdraw_stake(
         acct(&user, true, false, SYSTEM, SOL, SOL),
         token_account(&key(46), &pool_mint, &user, tokens, 0),
         token_account(&key(47), &pool_mint, &key(48), 0, 0),
-        mint_account(&pool_mint, &withdraw_authority, 800 * SOL, 800 * SOL - tokens),
+        mint_account(
+            &pool_mint,
+            &withdraw_authority,
+            800 * SOL,
+            800 * SOL - tokens,
+        ),
         sysvar(CLOCK),
         program(TOKEN),
         program(STAKE),

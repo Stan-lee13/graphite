@@ -53,16 +53,7 @@ use std::sync::Arc;
 /// Ordered by declaration, which is the pipeline order (L1 first): the
 /// orchestrator keys its plugins by layer in that order (Round 34, C-5).
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
 )]
 pub enum LayerId {
     /// L1: Account Resolution

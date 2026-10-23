@@ -502,6 +502,7 @@ dependencies = [
  "tokio",
  "tracing",
  "webpki-root-certs",
+ "zeroize",
 ]
 
 [[package]]

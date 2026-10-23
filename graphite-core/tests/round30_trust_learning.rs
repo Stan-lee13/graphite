@@ -788,7 +788,12 @@ async fn a_shape_bootstrapped_at_the_program_edge_escapes_the_program_anchor() {
             .await
             .unwrap();
         let l3 = layer(&r, "L3");
-        assert_eq!(l3.status, LayerStatus::Passed, "bootstrap {i}: {}", l3.reason);
+        assert_eq!(
+            l3.status,
+            LayerStatus::Passed,
+            "bootstrap {i}: {}",
+            l3.reason
+        );
     }
     let shapes = core.shape_baselines(SYSTEM);
     assert_eq!(shapes.len(), 1, "{shapes:?}");
@@ -798,7 +803,12 @@ async fn a_shape_bootstrapped_at_the_program_edge_escapes_the_program_anchor() {
         .verify_async(&describe(9_100_000, WalletProfile::Gaming))
         .await
         .unwrap();
-    assert_eq!(layer(&r, "L3").status, LayerStatus::Passed, "{}", layer(&r, "L3").reason);
+    assert_eq!(
+        layer(&r, "L3").status,
+        LayerStatus::Passed,
+        "{}",
+        layer(&r, "L3").reason
+    );
     // 200,000 CU: 4σ from the program's centre, 1.4σ from the shape's.
     knobs.lock().unwrap().units = 200_000;
     let r = core

@@ -391,10 +391,11 @@ fn every_instruction_with_an_onchain_idl_has_the_idls_slot_count() {
             continue;
         };
         for ix in &m.instructions {
-            let Some(on_chain) = ixs
-                .iter()
-                .find(|i| i["name"].as_str().is_some_and(|n| norm(n) == norm(&ix.name)))
-            else {
+            let Some(on_chain) = ixs.iter().find(|i| {
+                i["name"]
+                    .as_str()
+                    .is_some_and(|n| norm(n) == norm(&ix.name))
+            }) else {
                 continue;
             };
             compared += 1;
@@ -519,7 +520,13 @@ fn debit_lines_that_name_no_account_are_counted() {
             grants_with_unscoped.len(),
             GRANTS.len()
         ),
-        (3541, 1820, 1802, 1802, 13, 21),
+        // 13 of the 21 Round 30 grants, plus 5 of the 6 staking grants
+        // Round 34 added for R33-1 (Stake Pool WithdrawSol, WithdrawSolWithSlippage,
+        // WithdrawStake, WithdrawStakeWithSlippage, Marinade liquidUnstake;
+        // Stake Withdraw names its accounts). Under the R33-5 rule a signer's
+        // loss beneath these lines is refused until their declarations name
+        // the accounts they debit.
+        (3541, 1820, 1802, 1802, 18, 27),
         "(instructions, unscoped debit lines, instructions with one, of them with no named debit, grants with one, grants)"
     );
 }

@@ -744,7 +744,11 @@ fn a_withdrawal_with_a_dust_minimum_is_not_bounded() {
                 "{what}: {}",
                 risk(&r)
             );
-            assert!(risk(&r).contains(zero), "{what}: names {zero}: {}", risk(&r));
+            assert!(
+                risk(&r).contains(zero),
+                "{what}: names {zero}: {}",
+                risk(&r)
+            );
         }
     }
 }

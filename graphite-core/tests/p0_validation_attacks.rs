@@ -508,14 +508,16 @@ fn attack_check10_stake_withdraw_with_declared_intent_not_check10_blocked() {
         "declared intent must not trip the Check 10 empty-intent gate: {:?}",
         result.risk_verdict.findings
     );
-    assert!(!result.approved, "a stake-labelled Stake Withdraw was approved");
+    assert!(
+        !result.approved,
+        "a stake-labelled Stake Withdraw was approved"
+    );
     assert!(
         result
             .risk_verdict
             .findings
             .iter()
-            .any(|f| f.reason.contains("Intent-class mismatch")
-                && f.reason.contains("'withdraw'")),
+            .any(|f| f.reason.contains("Intent-class mismatch") && f.reason.contains("'withdraw'")),
         "the refusal is not the class gate's: {:?}",
         result.risk_verdict.findings
     );
