@@ -11,7 +11,7 @@ list is [`docs/ops/production-checklist.md`](../docs/ops/production-checklist.md
 | `systemd/graphite.service` | The Core as a hardened systemd service (`systemd-analyze security`: 1.1) behind Caddy on the same host | `systemd-analyze verify` |
 | `systemd/graphite-anchor.{service,timer}` | Hourly checkpoint export and off-host anchoring | `systemd-analyze verify` |
 | `systemd/graphite.env.example` | The service's `/etc/graphite/graphite.env` | — |
-| `caddy/Caddyfile` | TLS, HSTS, a 1 MiB body limit (the Core's), and only `/verify`, `/verify/execution`, `/audit/event` (POST), `/manifests`, `/api/*` (GET) reachable; `/health`, `/metrics`, `/admin/*` answer 404 at the edge | `caddy validate`, `caddy fmt` |
+| `caddy/Caddyfile` | TLS, HSTS, a 1 MiB body limit (the Core's; since Round 34 a declared `Content-Length` over it is answered 413 at the edge, before anything is proxied), and only `/verify`, `/verify/execution`, `/audit/event` (POST), `/manifests`, `/api/*` (GET) reachable; `/health`, `/metrics`, `/admin/*` answer 404 at the edge | `caddy validate`, `caddy fmt` |
 | `prometheus/graphite-alerts.yml` | 19 alerts on the series the server exports and on `/health`'s degraded reasons | `promtool check rules`, `promtool test rules` (`graphite-alerts.test.yml`) |
 | `prometheus/prometheus.example.yml` | Scrape config with the read key | `promtool check config --syntax-only` |
 | `grafana/graphite-dashboard.json` | Verdicts, refusals, L8, audit trail | every query parsed by promtool; every series exists in `server.rs` |

@@ -343,7 +343,8 @@ Release and deployment:          a release workflow (Round 32, .github/workflows
                                  routes, a hardened systemd unit, a production compose file, Prometheus alerts with
                                  unit tests, a Grafana dashboard, backup / restore / checkpoint-anchoring /
                                  key-rotation scripts (since Round 34 backups carry a MAC that restore requires, and
-                                 rotation keeps the secrets' owner) — checked by its own tools and run against a live Core and
+                                 rotation keeps the secrets' owner, and the edge answers 413 itself to a declared body over 1 MiB, where it
+                                 had returned 502 to 62 of 200 such requests) — checked by its own tools and run against a live Core and
                                  Caddy in CI's `deploy` job. Not deployed anywhere: real TLS, monitoring and on-call
                                  are the owner's (docs/ops/production-checklist.md)
 Live measurement:                `.github/workflows/live-mainnet.yml` replays real mainnet blocks through a Core with

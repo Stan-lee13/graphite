@@ -693,6 +693,7 @@ The breaks are B128 onward below.
 | R33-11, R33-14, R33-15 | Dust minimums; created native authorities; amounts above a System transfer's own | **Fixed** (token amounts unbound: limitation) | `round30_grounded_intents`, `tests/signer_value_netting.rs` |
 | R33-16 … R33-20 | Guard lock directory and race; attestation commands; rotation ownership; Dependabot coverage | **Fixed** | guard tests, `deploy/tests/run.sh`, `.github/scripts/*` |
 | R33-21, DOC-5 … DOC-19 | Stale operator and audit documents | **Fixed**; the docs tests now scan `docs/ops/`, the hand-off pack and the grant proposal | `tests/docs_paths_resolve.rs`, `tests/docs_numbers_match_the_code.rs` |
+| R34-I-1 (found at integration) | The deploy kit's Caddy edge answered 502, not 413, to an oversized body (62 of 200), racing the Core's early 413 and close | **Fixed**: a declared `Content-Length` over 1 MiB is answered 413 at the edge | `deploy/tests/run.sh` (30 of 30 must be 413) |
 | P3 (S-3, S-5, A-6, A-7, G-3…G-7, C-4…C-6, K-7, D-6…D-9) | See the round report | **Fixed**, except C-6 (decision), A-7 Windows ACLs and K-7's 75 ambiguous mismatches (documented) | round report §B |
 
 ## Break log

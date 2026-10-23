@@ -152,6 +152,10 @@ and here), or a **documented limitation** with its reason.
   - `a_verdict_count_the_active_file_contradicts_is_recounted`;
   - the census pin (13 → 18 of 21 → 27 grants carry an unscoped debit line once the staking grants
     exist);
+  - `staking_withdrawal_destination`'s Marinade `liquidUnstake` control, now
+    `a_marinade_liquid_unstake_to_the_signer_is_granted_but_l4_refuses_until_its_declaration_names_its_accounts`:
+    the grant holds (L5 passes) and L4 refuses with `SignerTokenDebitUnderUnscopedDebit` (an
+    interaction of R33-1 and R33-5, §E);
   - in TypeScript: `guard-round30` "a server that predates `decision`…" (pinned the G-5 gap) and the
     `guard-round32` lock-content assertion;
   - in Python: three AI-layer tests that labelled "unstake" `stake`.
@@ -199,17 +203,26 @@ All runs below are on the integrated tree, on one fresh build target, in this en
 | TypeScript | agent guard, SDK, Vercel AI, MCP, SAK, as CI runs them | 301 / 62 (+4 live) / 11 / 9 / 9; no corpus drift |
 | Python | AI layer `pytest` | 50 passed |
 | CI scripts | `ci-scripts.test.sh`, `release-gate.test.sh`, actionlint with ShellCheck 0.11 and 0.9 | 25/25, 30/30, clean |
-| Deploy kit | `deploy/tests/run.sh` (as root, owner checks included) | 109 checks (workstream run; see §H) |
+| Deploy kit | `deploy/tests/run.sh` (as root, owner checks included), with the edge fix below | **109 of 109**, three runs in a row |
 
 The CI floors move to the measured counts: Rust 2,322 / 505 / 1,928, agent guard 301,
 TypeScript SDK 62, deploy 109.
 
-**Integration found two interactions the workstreams could not see alone:**
+**Integration found three things the workstreams could not see alone:**
 - R33-5's rule refuses the honest Marinade `liquidUnstake` control from R33-1. Its declaration
   names no account, so the user's mSOL debit is refused. The control was re-pinned and the
   limitation documented.
 - With the staking grants added, the R33-5 census counts 18 of 27 grants carrying such a line,
   where it had counted 13 of 21.
+- **R34-I-1, a deploy-kit flake.** The check "edge: 1.1 MB body → 413" failed once with 502. Sent
+  200 times, 62 oversized POSTs came back 502. The Core answers 413 early and closes; when it closed
+  before Caddy finished streaming the body, Caddy's write broke and it answered 502. Raising
+  Caddy's request buffer did not help (still 62 of 200). The fix: a declared `Content-Length` over
+  1,048,576 is answered 413 at the edge, before anything is proxied (`deploy/caddy/Caddyfile`).
+  Measured: 200 of 200 oversized → 413; exactly 1 MiB passes the edge (the Core answers 422);
+  1 MiB + 1 → 413; a valid request → 200. A chunked body that declares no length is still cut off
+  by `request_body`. The check now sends the body 30 times and needs 413 every time. Break L19
+  (the `@oversize` handle removed): caught, 2 of 30 came back 502.
 
 **Not measured here:**
 - **CI wall time on GitHub's runners after the R33-8 split.** Locally, the default leg took
@@ -265,6 +278,7 @@ strengthened:
 - the release gate: L1–L6 and L18 (L1 missed first);
 - the deploy kit: L8–L12 (L10 missed first);
 - D-9: L13;
+- the edge fix found at integration (R34-I-1): L19;
 - the pinned tools: L14;
 - the CI split: L15–L17;
 - the audit-trail follow-ups: F1–F10.
@@ -312,4 +326,28 @@ strengthened:
 
 ## H. What could not be proven here
 
-{UNPROVEN}
+Each item below is unproven, not known to be broken.
+
+- **CI on GitHub after the R33-8 split.** Nothing was pushed, so the new `rust-lint` /
+  `rust-test` matrix has not run on GitHub's runners. Its wall time and whether `main` goes green
+  are owed after the owner pushes (§E has the local timings).
+- **The new L4 defaults on real traffic.** The live-mainnet workflow was not run (it needs the
+  owner's permission). The committed corpus carries no state diffs, so the false-refusal cost of
+  R33-5/6/7/10/14/15 on honest transactions is unmeasured.
+- **The release pipeline end to end.** No tag was pushed, so the signed-tag gate (R33-9), the
+  rebuild-and-compare and the image's binary check (D-8) ran only in `release-gate.test.sh` and
+  locally, never in `release.yml` on GitHub. `.github/allowed_signers` is empty, so a real release
+  fails closed until the owner adds a key.
+- **Dependabot's new entries** (docker-compose, the web3.js major ignore) are validated by GitHub
+  only after a push.
+- **The guard's lock on Windows and macOS.** The dev/ino re-check and the rename-based takeover were
+  run on Linux; the other platforms' paths are exercised only through the test's simulation.
+- **The guard's lock race test is probabilistic.** It races two processes many times and has passed
+  every run here; a pass does not prove the absence of a narrower window.
+- **The audit key file's permissions on Windows (A-7).** Zeroizing is tested; Windows ACLs on the
+  key file are not checked by the Core and are the operator's.
+- **K-7.** 75 IDL slot-count mismatches are pinned as known, not each proven harmless.
+- **Mutation scores.** Not re-measured this round; the floors (each at 0.60) are unchanged.
+- **The reader MAC check's cost on a large archive.** Its 64 MiB benchmark is `#[ignore]`d and was
+  not run as part of the legs above.
+- **Independence.** This is internal work. None of it is an independent audit or a certification.
