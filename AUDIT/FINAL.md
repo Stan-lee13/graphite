@@ -1,4 +1,4 @@
-# AUDIT FINAL — verdict (2026-10-23, after Round 34)
+# AUDIT FINAL — verdict (2026-10-23, after Round 35)
 
 **Scope:** the whole repository, audited in six areas at `3327fcf` ([`00-map.md`](00-map.md)) and
 fixed in Round 23. An external review of the result followed (R1–R26 with W1–W26); its items were
@@ -82,7 +82,7 @@ that alone (a documented limitation; the agent guard refuses it).
   Clippy `-D warnings` is clean on all three feature legs, and fmt is clean. The runtime oracle is
   never looser than the runtime on both CI seeds. Every fixed finding has a named test
   (`01-findings.md`); through Round 28 each was shown to fail before the fix.
-- **Deliberate breaks:** 152 of 152 numbered Rust breaks caught. B128–B152 are Round 34's: one per Rust fix of the Round 33 findings, run in a clean integrated build, with B150 caught once its mis-aimed first run was re-pointed (`01-findings.md`). The earlier ones: B01–B59 from Round 23, B60–B103 from
+- **Deliberate breaks:** 156 of 156 numbered Rust breaks caught. B153–B156 are Round 35's (the rebuild of Agave's parsed inner instructions). B128–B152 are Round 34's: one per Rust fix of the Round 33 findings, run in a clean integrated build, with B150 caught once its mis-aimed first run was re-pointed (`01-findings.md`). The earlier ones: B01–B59 from Round 23, B60–B103 from
   Round 24 (R2, R3, R3-b and W11–W25), B104–B107 from Round 25 (E3, E3b, E8), B108 from Round 26
   (the committed mainnet blocks catch a verdict change), B109–B111 from Round 27 (upgrade detection), B112–B125 from Round 28 (the archive index, the
   emission table, the contract gate). Round 29 adds B126 (the RPC-client and state-diff fixes
@@ -154,11 +154,16 @@ Recorded, not hidden. Each is in `01-findings.md` or `02-roadmap-gap.md` with it
   that names no account (R33-5: 1,802 instructions, 18 of the 27 withdrawal grants), or beyond a
   System transfer's stated amount is refused by default. An honest withdrawal under one of those 18
   grants is refused until its declaration is rewritten from its IDL. The cost on live traffic is
-  measured by the live-mainnet workflow only: W19 refused 1 of 200 in Round 32, and Round 34's L4
-  defaults are unmeasured until it runs again.
+  measured by the live-mainnet workflow only: W19 refused 1 of 200 in Round 32. Round 35 ran it on
+  Round 34's code: no defect, and honest swaps (Jupiter `route_v2`, Pump AMM `sell`, Meteora DBC
+  `swap2`) are refused by R33-5 because their declarations name no account (an owner decision).
 - **Withdrawal minimums.** Three grants carry a readable minimum (an unbounded or zero one is
   refused); the seven Meteora DLMM grants carry none; a non-zero dust minimum is not judged.
 - **The agent guard's lock** reaches guards for one wallet under one OS user on one host.
+- **Parsed inner instructions not rebuilt (Round 35).** Agave reports inner instructions only in
+  parsed form; Memo, Token-2022 extension, `batch`, Stake, Vote, loader, lookup-table,
+  `allocateWithSeed` and `assignWithSeed` CPIs are not rebuilt to their bytes, and a simulation
+  reporting one is refused as incomplete.
 
 **Open engineering:**
 

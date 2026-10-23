@@ -5,6 +5,11 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 
 ## [0.3.0-beta] — unreleased (the contract since v0.2.0-beta)
 
+Round 35 (2026-10-23) — Round 34 on real mainnet traffic ([report](../docs/round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md)):
+
+- **Behaviour (no contract field changes):** the simulator's inner instructions are read in the forms Agave sends. Agave's `simulateTransaction` reports them only parsed (`{program, programId, parsed, stackHeight}`) or partially decoded (`{programId, accounts: [<address>…], data}`), never with `programIdIndex`, so on a real RPC every transaction that made a CPI was `VerificationIncomplete`. New `parsed_inner` module: System, SPL Token / Token-2022 and ATA instructions are rebuilt to their accounts and bytes; anything else parsed leaves the CPI tree unknown, as before. `rpc_client::SimulationResult` gains `inner_reported` and `resolve_reported_inner`; `InnerAccountRef` and `ReportedInnerInstruction` are new public types.
+- **Tooling:** `tools/inner-instruction-oracle` checks every rebuild against Agave's `solana-transaction-status` 4.3.2 parser (CI job `inner-instruction-oracle`). The live runners seed evidence under the server's audit key and fetch blocks until the sample holds 1,000 transactions.
+
 Round 34 (2026-10-23) — the Round 33 deep audit remediated ([report](../docs/round34-the-deep-audit-remediated-2026-10-23.md)):
 
 - **Behaviour (stricter; no contract field changes):**

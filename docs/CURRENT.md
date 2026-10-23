@@ -5,7 +5,7 @@ other file in `docs/` is a dated record of what was true when it was written;
 each carries a banner pointing here. When this file and a report disagree,
 this file is current and the report is history.
 
-Updated: 2026-10-23, after Round 34 — the Round 33 deep audit of `b473a31` (1 P0, 9 P1, 13 P2, ~30 P3) remediated: a `stake` intent declares no withdrawal and staking withdrawals are grounded under `withdraw` (R33-1); a debit line naming no account no longer excuses a signer's loss, and signer netting is per signer (R33-5/6/7/10); the audit trail has one line grammar shared by verify and every reader, keyed readers check MACs, and a keyed trail cannot be downgraded (R33-2/3/4); releases need a signed tag on `main`; the CI Rust job is split (report: [`round34-the-deep-audit-remediated-2026-10-23.md`](round34-the-deep-audit-remediated-2026-10-23.md)). Round 32 — production readiness: a signer's loss under a declaration Graphite cannot read, the W19 lamport debit and a granted withdrawal with no minimum output are refused by default (each with an operator opt-out); one guard per wallet; a release pipeline, a deployment kit and live mainnet/devnet measurement workflows; an audit hand-off pack (report: [`round32-production-readiness-2026-10-22.md`](round32-production-readiness-2026-10-22.md)). Round 31 updated every dependency. Before that, Round 30 — the forensic whole-repository audit of `29e4356` remediated: every verdict says whether it permits signing (`decision`, `executable`); evidence trains only at the built-in floor; baselines are per shape and anchored; an upgrade withdraws evidence; the audit trail is hash-chained and, keyed, tamper-evident; L8 says what its answer rests on; honest intents for 21 grounded withdraw/claim/close/burn/configure instructions (see `git log -1 -- docs/CURRENT.md`). Round 30 report: [`round30-forensic-audit-and-remediation-2026-10-22.md`](round30-forensic-audit-and-remediation-2026-10-22.md).
+Updated: 2026-10-23, after Round 35 — Round 34 run on real mainnet traffic: a transaction that makes a CPI is approvable on a real RPC again (Agave reports inner instructions only in parsed form, and Graphite read only the compiled one, so every CPI was refused as incomplete; `parsed_inner` now rebuilds them, checked against Agave's own parser by `tools/inner-instruction-oracle`); the live runners seed under the audit key and fetch enough blocks (report: [`round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md`](round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md)). Round 34 — the Round 33 deep audit of `b473a31` (1 P0, 9 P1, 13 P2, ~30 P3) remediated: a `stake` intent declares no withdrawal and staking withdrawals are grounded under `withdraw` (R33-1); a debit line naming no account no longer excuses a signer's loss, and signer netting is per signer (R33-5/6/7/10); the audit trail has one line grammar shared by verify and every reader, keyed readers check MACs, and a keyed trail cannot be downgraded (R33-2/3/4); releases need a signed tag on `main`; the CI Rust job is split (report: [`round34-the-deep-audit-remediated-2026-10-23.md`](round34-the-deep-audit-remediated-2026-10-23.md)). Round 32 — production readiness: a signer's loss under a declaration Graphite cannot read, the W19 lamport debit and a granted withdrawal with no minimum output are refused by default (each with an operator opt-out); one guard per wallet; a release pipeline, a deployment kit and live mainnet/devnet measurement workflows; an audit hand-off pack (report: [`round32-production-readiness-2026-10-22.md`](round32-production-readiness-2026-10-22.md)). Round 31 updated every dependency. Before that, Round 30 — the forensic whole-repository audit of `29e4356` remediated: every verdict says whether it permits signing (`decision`, `executable`); evidence trains only at the built-in floor; baselines are per shape and anchored; an upgrade withdraws evidence; the audit trail is hash-chained and, keyed, tamper-evident; L8 says what its answer rests on; honest intents for 21 grounded withdraw/claim/close/burn/configure instructions (see `git log -1 -- docs/CURRENT.md`). Round 30 report: [`round30-forensic-audit-and-remediation-2026-10-22.md`](round30-forensic-audit-and-remediation-2026-10-22.md).
 If that commit is not HEAD, later commits may have moved things;
 `git log --oneline -- docs/CURRENT.md` shows when this page last changed.
 
@@ -187,7 +187,12 @@ What trains the baseline:        only a sound, risk-clear, successfully simulate
 Observed CPI targets:            read from the simulation's innerInstructions and judged by the same rules as a
                                  declaration; declaring nothing switches nothing off (Round 17). Since Round 19 the
                                  whole observed call TREE (by stackHeight, with accounts and data) is judged by the
-                                 CPI-trace rules — re-entry, sweep fan-out, impersonation — not only a declared one
+                                 CPI-trace rules — re-entry, sweep fan-out, impersonation — not only a declared one.
+                                 Since Round 35 in the forms a real RPC sends: Agave reports every inner instruction
+                                 parsed or partially decoded, never compiled; System, SPL Token / Token-2022 and ATA
+                                 instructions are rebuilt to their bytes (src/parsed_inner.rs, checked against
+                                 Agave's parser by tools/inner-instruction-oracle in CI); anything else parsed leaves
+                                 the tree unknown and the verdict incomplete
 Lookup-table resolution:         approval is conditioned on it — an unresolved position fails L2 (Round 17)
 Audit trail durability:          fdatasync per record; whole-trail reads across rotated archives; indexed L8 join
 L8 execution attribution:        joined on the chain's bytes (signature slots zeroed → scope.transaction_sha256),
@@ -351,7 +356,11 @@ Live measurement:                `.github/workflows/live-mainnet.yml` replays re
                                  a real RPC (decisions, failure reasons, a fresh-blockhash pass, L8, latency);
                                  `live-devnet.yml` runs the whole gated path — verify, sign, submit, L8, a keyed audit
                                  trail verified — on devnet or, when the faucet refuses, a pinned local Agave
-                                 validator. Both run on a `live-measure` label or a manual dispatch (Round 32)
+                                 validator. Both run on a `live-measure` label or a manual dispatch (Round 32).
+                                 Round 35 ran both on Round 34's code: devnet (local-validator fallback) passes end to
+                                 end; mainnet found no defect, but every replayed transaction with a CPI was refused
+                                 as unreadable (fixed, R35-3), and honest swaps are refused by R33-5 under
+                                 declarations that name no account (an owner decision, see "Not yet done")
 Independent third-party audit:   NOT PERFORMED — every campaign report is internal engineering work; the hand-off
                                  pack for one is ready (docs/audit-handoff/, Round 32)
 Branch protection on main:       ABSENT — rulesets, CODEOWNERS and the `CI gate` job are prepared (Round 30,
@@ -434,6 +443,7 @@ transaction under the stated threat model, and no external party has yet tried.
 | A swap program is one whose manifest says so | Round 18: `is_swap_program` reads `"category": "swap"` from the loaded manifests instead of a second hand-kept list; the trusted-CPI list stays hand-curated, because it RELAXES checks | `manifest::tests::manifest_category_aligns_with_swap_set` |
 
 | One observation is one distinct execution | Round 19 (F-19-01/02/03): `tx_artifact::simulation_identity` keys the baseline (signatures and blockhash zeroed); only the artifact is simulated and recorded, and only when the described instruction was located; `ObservationMemory` remembers identities exactly | `tests/round19_what_one_observation_is.rs`; live: the `a1db51f` binary approved a refused transfer on its third ask with only the blockhash changed, this round's binary never did |
+| A real RPC's CPI report is read | Round 35 (R35-3): `parsed_inner::rebuild` (System 12 types, SPL Token / Token-2022 31 each, ATA 3), the partially decoded form read as sent, `SimulationResult::resolve_reported_inner` before anything reads the report; what is not rebuilt stays unknown | `tests/round35_parsed_inner_instructions.rs` (231 Agave fixtures; a sweep reported in Agave's forms is refused; a parsed report is approved, an unrebuildable one incomplete); **`tools/inner-instruction-oracle`** against Agave's `parse_ui_instruction` (job `inner-instruction-oracle`) |
 | The CPI-trace rules judge what executed | Round 19 (F-19-22): `rpc_client` parses `innerInstructions` with accounts, data and `stackHeight`; `observed_cpi_tree_of` → `analyze_observed_cpi_trace` | `tests/round19_observed_execution.rs` (a twelve-way sweep reported by the simulator, no trace declared, is refused) |
 | An undescribed instruction is diffed and promises nothing | Round 19 (F-19-04/05): privileges from the artifact, every writable account observed; `state_diff::UNDESCRIBED_INSTRUCTION_EFFECTS` | `round19_observed_execution::an_undescribed_instruction_has_every_writable_account_diffed`, `round19_binding_and_ownership` |
 | The verify key is not the operator key | Round 19 (F-19-13/15): `GRAPHITE_ADMIN_API_KEY`, `/admin/*` disabled without it; quarantine input validated, idempotent, `persisted` real | `server::tests::{the_verify_key_cannot_lift_or_add_a_quarantine, without_an_operator_key_the_admin_surface_is_disabled, quarantine_input_is_validated_and_idempotent}` |
@@ -525,6 +535,13 @@ transaction under the stated threat model, and no external party has yet tried.
   and unwrapping are not supported (the Risk Engine refuses `CloseAccount`).
 - **A lookup table's freshness and a registry record's signatures are not
   checked** (Round 24, W17-c, W11-c); see `SECURITY.md`.
+- **Some parsed inner instructions are not rebuilt (Round 35).** A simulation
+  that reports a Memo CPI (Agave's JSON drops its signer accounts), a
+  Token-2022 extension instruction (`transferCheckedWithFee` among them),
+  `batch`, a token-group or metadata instruction, a Stake, Vote, loader or
+  lookup-table instruction, or `allocateWithSeed`/`assignWithSeed` leaves the
+  executed CPI tree unknown, and the verdict is `VerificationIncomplete` (its
+  callees are known). Each can be added with an oracle case.
 - **The Token-2022 model replays what the simulator reports it executed.**
   With no `innerInstructions` in the simulation, or an index Graphite cannot
   place, the Round 20 diff-only rule decides and says it is arithmetic rather
@@ -792,16 +809,16 @@ transaction under the stated threat model, and no external party has yet tried.
 document links here, and `tests/docs_numbers_match_the_code.rs` fails if a live
 document states one elsewhere.
 
-Rust, from the integrated runs of Round 34 on 2026-10-23 (the `ci-test` profile CI
+Rust, from the integrated runs of Round 35 on 2026-10-23 (the `ci-test` profile CI
 uses — release semantics with LTO off and 16 codegen units — on one fresh build
 target; logs kept outside the repository):
 
-- the default features CI runs: **2,322 Rust tests pass**, 0 failed,
+- the default features CI runs: **2,331 Rust tests pass**, 0 failed,
   14 ignored (network- or sample-dependent, plus three benchmarks, each named in
-  `.github/test-allowlists/rust-ignored.txt`), across 166 test targets;
-- the featureless library (`--no-default-features --lib`): **505 passed, 3 ignored**;
-- the cli-only build (`--no-default-features --features cli`): **1,928 passed, 5 ignored**,
-  across 166 test targets.
+  `.github/test-allowlists/rust-ignored.txt`), across 167 test targets;
+- the featureless library (`--no-default-features --lib`): **509 passed, 3 ignored**;
+- the cli-only build (`--no-default-features --features cli`): **1,933 passed, 5 ignored**,
+  across 167 test targets.
 
 CI's test-count gate holds each leg at these floors (`rust-test` matrix in
 `.github/workflows/ci.yml`).
@@ -833,6 +850,7 @@ SHA — the runs endpoint, not the combined-status endpoint.
 
 | Date | Report | What it records |
 |---|---|---|
+| 2026-10-23 | [`round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md`](round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md) (Round 34 on real traffic) | The live-mainnet and live-devnet workflows run on Round 34's code, every suite run: a keyed Core refused a runner's unkeyed evidence seeding (runner fixed; operators told to seed with the key), a two-block sample was too small (fetch tops up), and — the real finding — every transaction with a CPI was unapprovable on a real RPC, because Agave reports inner instructions only in parsed form; `parsed_inner` rebuilds them, proven against Agave's own parser by a new CI oracle. Honest swaps remain refused by R33-5 until their declarations name the accounts they debit (owner decision) |
 | 2026-10-23 | [`round34-the-deep-audit-remediated-2026-10-23.md`](round34-the-deep-audit-remediated-2026-10-23.md) (Round 33's deep audit, remediated) | An internal deep audit of `b473a31` (1 P0, 9 P1, 13 P2, ~30 P3) answered in one round by five workstreams: a `stake` intent could withdraw a user's stake to any account (R33-1, P0) and a debit line naming no account excused a signer's drain for about half the registry (R33-5, P0 by test), both fixed; per-signer netting; one audit-trail line grammar for verify and every reader, keyed readers, no silent downgrade; releases need a signed tag on `main`; the CI Rust job split; the guard's lock hardened; operator documents corrected. Pinned outputs moved on 3 corpus rows and 1 mainnet row, none refused → approved. Release still blocked on owner items (rulesets, release environment, independent audit, deployment) |
 | 2026-10-22 | [`round32-production-readiness-2026-10-22.md`](round32-production-readiness-2026-10-22.md) (Rounds 31–32) | Everything code and CI can do toward production: a signer's loss under an unreadable declaration, the W19 lamport debit and a granted withdrawal with no minimum output refused by default, each with a logged opt-out; 16 declarations rewritten from IDLs and a wrong Pump.fun account name fixed; one agent guard per wallet and the fee in its cap; `instruction_bind_key` in lifecycle requests; a dashboard browser smoke, the deployment kit and its tests, a release workflow, and live mainnet/devnet workflows in CI (first results: 0 defects; the gated path end to end on a real validator); an auditor hand-off pack. Release still blocked on the owner and external items it lists |
 | 2026-10-22 | Round 31 (no report; see the CHANGELOG's Round 31 entry) | Every dependency at its latest stable release: Rust 1.99.1 in CI and the builder image; sha2 0.11, curve25519-dalek 5, ed25519-dalek 3, base64 0.23, tower-http 0.7, reqwest 0.13 (the RPC client trusts exactly the bundled Mozilla roots, as before); TypeScript 7 in all six packages; React 19; Go 1.26.10 / 1.27.3 in CI; current action pins. Held back with reasons: the oracle's solana-transaction/solana-message 6 (it changes the v1 limits Graphite is judged against) and bincode 3; `@solana/web3.js` stays on 1.x; `@types/node` on 22.x. No pinned output changed |

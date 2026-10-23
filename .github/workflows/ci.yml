@@ -144,7 +144,7 @@ jobs:
           # leg would compile the same thing twice.
           - leg: default
             flags: ""
-            floor: 2322
+            floor: 2331
             timeout: 90
           # `--lib` deliberately. Without a feature there is no async runtime
           # to drive the synchronous `verify()`, so it refuses with an error
@@ -160,11 +160,11 @@ jobs:
           # `cargo test --no-default-features` had 28 failures.
           - leg: lib
             flags: "--no-default-features --lib"
-            floor: 505
+            floor: 509
             timeout: 20
           - leg: cli
             flags: "--no-default-features --features cli"
-            floor: 1928
+            floor: 1933
             timeout: 45
     defaults:
       run:
@@ -201,7 +201,7 @@ jobs:
         # Round 30: the log is read back, so the gate is "at least the floor
         # passed and none failed", not just "cargo exited 0" — which it also
         # does when no test binary ran at all. The floors are the counts at
-        # Round 34 (2,322 / 505 / 1,928); a change that deletes tests below one
+        # Round 35 (2,331 / 509 / 1,933); a change that deletes tests below one
         # lowers it in the same reviewed diff. The log lives outside the tree
         # so the clean-tree check below still sees only what the tests wrote.
         env:
@@ -276,6 +276,13 @@ jobs:
       # as the validator does. Any other warning or any vulnerability fails.
       - name: Audit the runtime oracle's dependencies
         working-directory: tools/runtime-oracle
+        run: cargo audit --deny warnings --ignore RUSTSEC-2025-0141
+      # The inner-instruction oracle (Round 35) has its own lockfile too, with
+      # Agave's `solana-transaction-status`; same auditor, same one exception
+      # (that crate decodes System instructions with bincode 1, as the program
+      # does).
+      - name: Audit the inner-instruction oracle's dependencies
+        working-directory: tools/inner-instruction-oracle
         run: cargo audit --deny warnings --ignore RUSTSEC-2025-0141
       # The six npm lockfiles (A6-05): the agent guard (the signing path),
       # the AI SDK tools, the MCP server, the SAK adapter, the TypeScript SDK
@@ -364,6 +371,43 @@ jobs:
       # A second seed, so the property is not a fact about one sequence.
       - name: Run the oracle under a second seed
         run: cargo run --release --locked -- --iterations 300000 --seed 20260916
+
+  # Round 35: Agave's `simulateTransaction` reports inner instructions only in
+  # parsed form, and `graphite_core::parsed_inner` rebuilds their bytes. This
+  # checks every rebuild against Agave's own parser: random System, SPL Token,
+  # Token-2022 and ATA instructions, packed by the programs' interface crates,
+  # parsed by `solana-transaction-status` (the version mainnet RPCs run),
+  # rebuilt, parsed again; the JSON must round-trip, every canonical
+  # instruction must come back byte for byte, and every supported type must
+  # be rebuilt. Its own workspace and lockfile, like the runtime oracle.
+  inner-instruction-oracle:
+    name: Parsed inner instructions vs Agave's parser
+    runs-on: ubuntu-24.04
+    # ~2 min cold for the agave crates; each run is ~20 s per million.
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: tools/inner-instruction-oracle
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, 2026-09-12
+        with:
+          toolchain: 1.99.1
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: tools/inner-instruction-oracle
+      - name: Format
+        run: cargo fmt -- --check
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Run the oracle (1,000,000 instructions, 30% with random data or extra accounts)
+        run: cargo run --release --locked -- --iterations 1000000
+      - name: Run the oracle under a second seed, mostly random
+        run: cargo run --release --locked -- --iterations 500000 --seed 20260916 --fuzz-percent 90
 
   container:
     name: Container — build + live smoke test
@@ -1122,7 +1166,7 @@ jobs:
   ci-gate:
     name: CI gate
     if: always()
-    needs: [rust-lint, rust-test, ci-scripts, msrv, supply-chain, runtime-oracle, container, typescript, go, dashboard, dashboard-e2e, deploy, python]
+    needs: [rust-lint, rust-test, ci-scripts, msrv, supply-chain, runtime-oracle, inner-instruction-oracle, container, typescript, go, dashboard, dashboard-e2e, deploy, python]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

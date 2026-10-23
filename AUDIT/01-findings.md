@@ -696,11 +696,25 @@ The breaks are B128 onward below.
 | R34-I-1 (found at integration) | The deploy kit's Caddy edge answered 502, not 413, to an oversized body (62 of 200), racing the Core's early 413 and close | **Fixed**: a declared `Content-Length` over 1 MiB is answered 413 at the edge | `deploy/tests/run.sh` (30 of 30 must be 413) |
 | P3 (S-3, S-5, A-6, A-7, G-3…G-7, C-4…C-6, K-7, D-6…D-9) | See the round report | **Fixed**, except C-6 (decision), A-7 Windows ACLs and K-7's 75 ambiguous mismatches (documented) | round report §B |
 
+## Round 35: Round 34 on real mainnet traffic (2026-10-23)
+
+The live-mainnet and live-devnet workflows ran on Round 34's code at the owner's request; every
+suite was run. Report:
+[`../docs/round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md`](../docs/round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md).
+The breaks are B153 onward below.
+
+| ID | Finding | Status | Test |
+|---|---|---|---|
+| R35-1 | `live-devnet` seeded evidence without the audit key; the keyed Core refused the unkeyed trail | **Fixed** (runner; `keys.md`) | `tools/live-measure/test_live_measure.py` |
+| R35-2 | `live-mainnet`'s two-block sample (493) was below the harness's 500 | **Fixed** (fetch tops up to 1,000) | `tools/live-measure/test_live_measure.py` |
+| R35-4 | Two audit-trail CLI tests raced their own subprocesses (a child holds a sibling's writer-lock descriptor until exec): 6/200 and 1/200 parallel failures | **Fixed** (forks and writer lifetimes serialized in the two test files; the product spawns no process) | `tests/round30_audit_chain.rs`, `tests/round34_audit_adopt_key.rs` |
+| R35-3 | Every transaction with a CPI was unapprovable on a real RPC: Agave reports inner instructions only in parsed form, Graphite read only the compiled form | **Fixed** (`src/parsed_inner.rs`; what is not rebuilt stays unknown) | `tests/round35_parsed_inner_instructions.rs`; `tools/inner-instruction-oracle` |
+
 ## Break log
 
 Every fix was reverted once, alone, with the tree otherwise unchanged, and its named test re-run; the fix was then restored and the tree checked clean. The harness is `graphite-audit-work/audit_breaks.py` (outside the repository): each break is an exact text edit validated against the current sources before it runs, and a break whose test still passes is reported MISSED.
 
-**152 numbered breaks, 152 caught** (B128–B152 in Round 34, recorded at the end of the table; B01–B59 in Round 23, B60–B103 in Round 24, B104–B107 in Round 25, B108 in Round 26: the committed mainnet blocks catch a verdict change, B109–B111 in Round 27: upgrade detection, B112–B125 in Round 28: the archive index, the emission table and the contract gate). Round 29 adds B126 and B127, run outside that harness and recorded below; the other areas' own revert runs are listed in the Round 29 report §5 (all caught where run; the risk engine, registry, protocol data and attack suites were not break-tested) and are not counted here, plus the TypeScript breaks TSB1–TSB11 (11 of 11 caught; TSB6–TSB11 are Round 25's swap grounding, negation, wallet-owner filter, response bound and exact lamports). One test was vacuous on its first run and is recorded as such: B54 (A4-11) still passed with the lock removed, because the audit log's own file mutex makes the race need microsecond timing. The test now holds the window between the history read and the append open for one dedicated trail id (`cfg(test)` only), and fails without the lock. In Round 24, B62 and B99 were missed on their first run, because each test did not exercise the reverted rule; B62's test was re-pointed to one that does and B99's was strengthened with cases only the reverted step decides, and both were then caught. B15 is caught by the test process aborting (a stack overflow prints no FAILED line), which the harness counts only when the test was running.
+**156 numbered breaks, 156 caught** (B153–B156 in Round 35 and B128–B152 in Round 34, recorded at the end of the table; B01–B59 in Round 23, B60–B103 in Round 24, B104–B107 in Round 25, B108 in Round 26: the committed mainnet blocks catch a verdict change, B109–B111 in Round 27: upgrade detection, B112–B125 in Round 28: the archive index, the emission table and the contract gate). Round 29 adds B126 and B127, run outside that harness and recorded below; the other areas' own revert runs are listed in the Round 29 report §5 (all caught where run; the risk engine, registry, protocol data and attack suites were not break-tested) and are not counted here, plus the TypeScript breaks TSB1–TSB11 (11 of 11 caught; TSB6–TSB11 are Round 25's swap grounding, negation, wallet-owner filter, response bound and exact lamports). One test was vacuous on its first run and is recorded as such: B54 (A4-11) still passed with the lock removed, because the audit log's own file mutex makes the race need microsecond timing. The test now holds the window between the history read and the append open for one dedicated trail id (`cfg(test)` only), and fails without the lock. In Round 24, B62 and B99 were missed on their first run, because each test did not exercise the reverted rule; B62's test was re-pointed to one that does and B99's was strengthened with cases only the reverted step decides, and both were then caught. B15 is caught by the test process aborting (a stack overflow prints no FAILED line), which the harness counts only when the test was running.
 
 | Break | Finding | What was reverted | Test | Result |
 |---|---|---|---|---|
@@ -866,3 +880,15 @@ build directory, which can link another worktree's library into a test; they wer
 | B150 | C-4 | `canonical_intent` reads the raw word again (no trim, no lowercase). The first run reverted Check 9's match alone, which does not decide this test (Check 9b does), and was not caught; the break was re-pointed (`src/risk_engine.rs`) | `staking_withdrawal_destination::intent_case_is_judged_identically_in_every_layer` | caught (re-pointed; the first, mis-aimed break was missed) |
 | B151 | C-5 | PluginOrchestrator.plugins: back to a HashMap (per-map random layer order) (`src/plugin_orchestrator.rs`) | `lib::protocol_rules_come_in_one_order_in_every_orchestrator` | caught |
 | B152 | K-7 | increaseLiquidityByTokenAmountsV2: the 16th slot (whirlpool_program) removed (`protocols/orca-whirlpools.json`) | `r30_declared_effects_census::every_instruction_with_an_onchain_idl_has_the_idls_slot_count` | caught |
+
+**Round 35 (B153–B156).** R35-3's rebuild of Agave's parsed inner instructions. B153–B155 were
+run against `tools/inner-instruction-oracle` (the core's fixture test reads the same bytes); B156
+against the end-to-end tests. Each fix was restored and the file checked byte for byte.
+**4 of 4 caught.**
+
+| # | Finding | What was reverted | Caught by | Result |
+|---|---|---|---|---|
+| B153 | R35-3 | `parsed_inner`: a Token amount written big-endian (`src/parsed_inner.rs`) | `tools/inner-instruction-oracle` (`mintTo`: round trip differs) | caught |
+| B154 | R35-3 | `parsed_inner`: a multisig authority's signers dropped from the account list (`src/parsed_inner.rs`) | `tools/inner-instruction-oracle` (`closeAccount`, `setAuthority`: round trip differs) | caught |
+| B155 | R35-3 | `parsed_inner`: ATA `createIdempotent` rebuilt as `create` (`src/parsed_inner.rs`) | `tools/inner-instruction-oracle` (`createIdempotent`: round trip differs) | caught |
+| B156 | R35-3 | `verify_async`: the reported inner instructions not resolved before they are read (`src/verification.rs`) | `round35_parsed_inner_instructions::a_sweep_reported_in_agave_forms_is_seen_by_the_cpi_trace_rules`, `::the_simulation_gate_reads_a_parsed_report_and_still_refuses_one_it_cannot_rebuild` | caught |
