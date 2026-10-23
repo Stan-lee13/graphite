@@ -127,12 +127,14 @@ cport="$(port)"
 
 # The Core is started and stopped through two small scripts, so backup.sh's
 # STOP_CMD/START_CMD can drive the same server the test does.
-mk_start() { # mk_start AUDIT_KEY_FILE -> $T/start.sh
+mk_start() { # mk_start AUDIT_KEY_FILE [PREVIOUS_AUDIT_KEY_FILE] -> $T/start.sh
+  local prev=""
+  [ -n "${2:-}" ] && prev="GRAPHITE_AUDIT_PREVIOUS_KEY_FILE='$2' "
   cat >"$T/start.sh" <<EOF
 #!/usr/bin/env bash
 GRAPHITE_API_KEY='$key' GRAPHITE_READ_API_KEY='$rkey' GRAPHITE_DATA_DIR='$T/data' \\
   GRAPHITE_REGISTRY_STATE='$T/data/registry_state.json' \\
-  GRAPHITE_AUDIT_KEY_FILE='$1' GRAPHITE_AUDIT_ANCHOR_DIR='$T/anchors' \\
+  GRAPHITE_AUDIT_KEY_FILE='$1' ${prev}GRAPHITE_AUDIT_ANCHOR_DIR='$T/anchors' \\
   GRAPHITE_AUDIT_ROTATE_BYTES=4096 GRAPHITE_TRUST_PROXY=1 GRAPHITE_RATE_LIMIT=5 \\
   GRAPHITE_WALLET_PROFILE=treasury RUST_LOG=warn \\
   '$G' server --host 127.0.0.1 --port $gport >>'$T/core.log' 2>&1 &
@@ -155,8 +157,8 @@ for _ in \$(seq 1 300); do kill -0 "\$p" 2>/dev/null || exit 0; sleep 0.1; done
 exit 1
 EOF
 chmod +x "$T/stop.sh"
-start_core() { # start_core AUDIT_KEY_FILE
-  mk_start "$1"
+start_core() { # start_core AUDIT_KEY_FILE [PREVIOUS_AUDIT_KEY_FILE]
+  mk_start "$1" "${2:-}"
   "$T/start.sh" || return 1
   pids+=("$(cat "$T/core.pid")")
 }
@@ -413,14 +415,30 @@ expect_rc 1 "the restored (older) trail fails the newer checkpoint, as it should
 check "server starts on the restored directory" start_core "$T/keys/audit-1.key"
 
 echo "== key rotation"
-check "rotate-keys.sh audit-key" "$deploy/scripts/rotate-keys.sh" audit-key "$T/keys"
+rotate_out="$("$deploy/scripts/rotate-keys.sh" audit-key "$T/keys" 2>&1)" && ok "rotate-keys.sh audit-key" || bad "rotate-keys.sh audit-key"
+grep -q GRAPHITE_AUDIT_PREVIOUS_KEY_FILE <<<"$rotate_out" && ok "rotate-keys.sh audit-key says to set the previous key" || bad "rotate-keys.sh audit-key does not mention GRAPHITE_AUDIT_PREVIOUS_KEY_FILE"
 newkey="$(find "$T/keys" -name 'audit-2*.key' | head -n 1)"
 [ "$(stat -c %a "$newkey")" = 600 ] && ok "new audit key is mode 600" || bad "new audit key mode $(stat -c %a "$newkey")"
 check "stop for the key switch" stop_core
-check "server starts under the new audit key" start_core "$newkey"
+# Round 34 (R33-13): the new key alone does not continue a trail whose head
+# is MAC'd under another key; with the previous key the server checks the
+# head under it and writes a key-adoption record.
+expect_rc 1 "server refuses the new audit key without the previous key" start_core "$newkey"
+grep -q GRAPHITE_AUDIT_PREVIOUS_KEY_FILE "$T/core.log" && ok "the refusal names GRAPHITE_AUDIT_PREVIOUS_KEY_FILE" || bad "the refusal does not name the previous-key variable"
+check "server starts under the new audit key with the previous key" start_core "$newkey" "$T/keys/audit-1.key"
 check "verdicts under the new key" verify_n 2
 expect_rc 0 "rotate-keys.sh verify with old + new keys" "$deploy/scripts/rotate-keys.sh" verify "$T/data" "$T/keys/audit-1.key" "$newkey"
 expect_rc 2 "rotate-keys.sh verify with the new key only -> unprovable" "$deploy/scripts/rotate-keys.sh" verify "$T/data" "$newkey"
+# An unkeyed trail verified under a key: not covered (exit 4).
+mkdir -p "$T/unkeyed"
+env -u GRAPHITE_AUDIT_KEY_FILE "$G" quarantine add --data-dir "$T/unkeyed" --program 11111111111111111111111111111111 --reason "deploy test" >/dev/null 2>&1
+rc4=0
+out4="$("$deploy/scripts/rotate-keys.sh" verify "$T/unkeyed" "$newkey" 2>&1)" || rc4=$?
+if [ "$rc4" = 4 ] && grep -q "do not cover the trail" <<<"$out4"; then
+  ok "rotate-keys.sh verify of an unkeyed trail under a key -> not covered (exit 4)"
+else
+  bad "rotate-keys.sh verify of an unkeyed trail under a key (exit $rc4): $out4"
+fi
 
 printf 'A=1\nGRAPHITE_API_KEY=old\n# c\nGRAPHITE_READ_API_KEY=r\n' >"$T/test.env"
 check "rotate-keys.sh env" "$deploy/scripts/rotate-keys.sh" env "$T/test.env" GRAPHITE_API_KEY

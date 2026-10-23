@@ -426,7 +426,10 @@ pub enum AuditAction {
     /// nothing failed, 1 on a break or a checkpoint that does not hold, 2
     /// when the walk could not prove what it was asked to (MACs under a key
     /// not supplied, a trail with no chained record, a checkpoint whose
-    /// records were pruned), 3 when the trail could not be read.
+    /// records were pruned), 3 when the trail could not be read, 4 when
+    /// keys were supplied and something is not covered by them (unkeyed
+    /// records no key-adoption record covers, a checkpoint with no MAC or
+    /// under a key not supplied). docs/ops/keys.md has the table.
     Verify {
         data_dir: Option<PathBuf>,
         /// Key files whose MACs to check; `GRAPHITE_AUDIT_KEY_FILE` is
@@ -442,6 +445,32 @@ pub enum AuditAction {
         data_dir: Option<PathBuf>,
         key_file: Option<PathBuf>,
         out: Option<PathBuf>,
+    },
+    /// Write a key-adoption record under `key_file` (Round 34), with the
+    /// server stopped: the operator's explicit decision to continue the
+    /// trail under a key when its head cannot be checked under it — a trail
+    /// that was never keyed, one keyed before key-adoption records existed,
+    /// or one whose previous key is lost (`previous_key_file` checks the
+    /// head under the previous key instead). Walks the trail first and
+    /// refuses a broken one.
+    AdoptKey {
+        data_dir: Option<PathBuf>,
+        key_file: PathBuf,
+        previous_key_file: Option<PathBuf>,
+    },
+    /// Acknowledge a torn write (Round 34), with the server stopped: a line
+    /// that is not JSON, at byte `offset` of the trail file named `file`,
+    /// that no record names — a crash a pre-Round-34 writer resumed past.
+    /// Walks the trail first; refuses a trail broken by anything but
+    /// unacknowledged tears, and any line that is not one of them (a JSON
+    /// line is never a tear). Appends a chained record naming the tear —
+    /// MAC'd under `key_file` (else `GRAPHITE_AUDIT_KEY_FILE`) when the
+    /// trail is keyed — after which the walk tolerates exactly that line.
+    AcknowledgeTear {
+        data_dir: Option<PathBuf>,
+        file: String,
+        offset: u64,
+        key_file: Option<PathBuf>,
     },
 }
 
@@ -502,12 +531,44 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                     report.chained_records, report.legacy_unchained_records
                 );
                 println!(
-                    "MACs             {} verified, {} under a key not supplied, {} records unkeyed",
-                    report.macs_verified, report.macs_unverified, report.unkeyed_records
+                    "MACs             {} verified, {} under a key not supplied, {} records unkeyed ({} covered by a key-adoption record)",
+                    report.macs_verified,
+                    report.macs_unverified,
+                    report.unkeyed_records,
+                    report.unkeyed_adopted
                 );
+                // Every key, with the records it covers (Round 34): a key id
+                // the operator never held is an incident, not a missing file.
+                for r in &report.key_ranges {
+                    println!(
+                        "key              {}  seq {}-{} ({} records)  {}  [{}]",
+                        r.key_id,
+                        r.first_seq,
+                        r.last_seq,
+                        r.records,
+                        if r.supplied {
+                            "supplied, MACs checked"
+                        } else {
+                            "NOT SUPPLIED, MACs not checked"
+                        },
+                        r.introduced_by
+                    );
+                }
+                for t in &report.unacknowledged_tears {
+                    println!(
+                        "TEAR             {} line {} (byte {}, {} bytes): not JSON, and no record names it — a crash a pre-Round-34 writer resumed past, or bytes someone added. Inspect it; `graphite audit acknowledge-tear --file {} --offset {}` accepts it",
+                        t.file, t.line, t.offset, t.length, t.file, t.offset
+                    );
+                }
+                if report.keys_supplied && report.unkeyed_not_adopted() > 0 {
+                    println!(
+                        "UNKEYED          {} chained record(s) carry no MAC and no key-adoption record covers them: a trail keyed later, or one rewritten with its MACs stripped (docs/ops/keys.md, `graphite audit adopt-key`)",
+                        report.unkeyed_not_adopted()
+                    );
+                }
                 if report.unparseable_lines > 0 {
                     println!(
-                        "unparseable      {} line(s) (torn writes; a removed record would break the chain)",
+                        "unparseable      {} line(s): torn writes the writer named when it resumed, or the active file's unterminated last line — never read; any other line that is not a record is a break",
                         report.unparseable_lines
                     );
                 }
@@ -581,6 +642,151 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                 }
                 None => println!("{text}"),
             }
+            Ok(0)
+        }
+        AuditAction::AdoptKey {
+            data_dir,
+            key_file,
+            previous_key_file,
+        } => {
+            let dir = data_dir_path(data_dir);
+            let key = crate::durable::AuditKey::load(&key_file, Some(&dir))?;
+            let previous = previous_key_file
+                .map(|p| crate::durable::AuditKey::load(&p, Some(&dir)))
+                .transpose()?;
+            let path = crate::durable::audit_path(&dir);
+            let mut keys = vec![key.clone()];
+            keys.extend(previous.iter().cloned());
+            let report = match crate::durable::verify_audit_trail(&path, &keys, None) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("audit trail {} could not be read: {e}", dir.display());
+                    return Ok(3);
+                }
+            };
+            if let Some(b) = &report.first_break {
+                eprintln!(
+                    "the trail is broken at {} line {}: {} — a key adoption would vouch for it; nothing written",
+                    b.file, b.line, b.reason
+                );
+                return Ok(1);
+            }
+            if report.chained_records == 0 {
+                println!(
+                    "nothing to adopt: the trail holds no chained record, and a server with key {} starts its chain under it",
+                    key.id()
+                );
+                return Ok(0);
+            }
+            if report.head_key_id.as_deref() == Some(key.id()) && report.unkeyed_not_adopted() == 0
+            {
+                println!(
+                    "nothing to adopt: the trail is under key {} and no unkeyed record is uncovered",
+                    key.id()
+                );
+                return Ok(0);
+            }
+            let options = crate::durable::AuditOptions {
+                rotate_bytes: 0,
+                key: Some(key.clone()),
+                previous_key: previous,
+                adopt_key: true,
+                ..Default::default()
+            };
+            let log = crate::durable::AuditLog::open_with_options(&path, options).map_err(|e| {
+                format!(
+                    "the audit trail {} cannot be opened to write the adoption ({e}); stop the server first",
+                    path.display()
+                )
+            })?;
+            let head = log.health().chain_head_seq;
+            drop(log);
+            println!(
+                "key {} adopted at seq {}: the {} unkeyed record(s) before it{} are now covered by its MAC. Run `graphite audit verify --key-file {}`",
+                key.id(),
+                head.map(|s| s.to_string()).unwrap_or_else(|| "?".into()),
+                report.unkeyed_not_adopted(),
+                match &report.head_key_id {
+                    Some(id) if id != key.id() => format!(", and the switch from key {id},"),
+                    _ => String::new(),
+                },
+                key_file.display()
+            );
+            Ok(0)
+        }
+        AuditAction::AcknowledgeTear {
+            data_dir,
+            file,
+            offset,
+            key_file,
+        } => {
+            let dir = data_dir_path(data_dir);
+            let keys = audit_keys(key_file.as_slice(), &dir)?;
+            let path = crate::durable::audit_path(&dir);
+            let report = match crate::durable::verify_audit_trail(&path, &keys, None) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("audit trail {} could not be read: {e}", dir.display());
+                    return Ok(3);
+                }
+            };
+            if let Some(b) = report.other_break.as_ref().or(report
+                .first_break
+                .as_ref()
+                .filter(|_| report.unacknowledged_tears.is_empty()))
+            {
+                eprintln!(
+                    "the trail is broken at {} line {} by more than a torn write: {} — nothing written",
+                    b.file, b.line, b.reason
+                );
+                return Ok(1);
+            }
+            let Some(tear) = report
+                .unacknowledged_tears
+                .iter()
+                .find(|t| t.file == file && t.offset == offset)
+            else {
+                eprintln!(
+                    "no unacknowledged torn write at byte {offset} of {file}: only a line that is not JSON and that no record names can be acknowledged{}",
+                    if report.unacknowledged_tears.is_empty() {
+                        String::new()
+                    } else {
+                        format!(
+                            " (unacknowledged: {})",
+                            report
+                                .unacknowledged_tears
+                                .iter()
+                                .map(|t| format!("{} byte {}", t.file, t.offset))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
+                    }
+                );
+                return Ok(1);
+            };
+            let options = crate::durable::AuditOptions {
+                rotate_bytes: 0,
+                key: keys.first().cloned(),
+                ..Default::default()
+            }
+            .with_previous_key_value(
+                std::env::var(crate::durable::AUDIT_PREVIOUS_KEY_ENV)
+                    .ok()
+                    .as_deref(),
+                &dir,
+            )?;
+            let log = crate::durable::AuditLog::open_with_options(&path, options).map_err(|e| {
+                format!(
+                    "the audit trail {} cannot be opened to write the acknowledgement ({e}); stop the server first",
+                    path.display()
+                )
+            })?;
+            log.acknowledge_tear(tear)?;
+            drop(log);
+            println!(
+                "acknowledged the torn write at byte {} of {} ({} bytes, sha256 {}); run `graphite audit verify`",
+                tear.offset, tear.file, tear.length, tear.sha256
+            );
             Ok(0)
         }
     }
@@ -1927,7 +2133,8 @@ impl OperatorTrail {
             get(crate::durable::AUDIT_KEY_ENV).as_deref(),
             get(crate::durable::AUDIT_ANCHOR_ENV).as_deref(),
             dir,
-        )?;
+        )?
+        .with_previous_key_value(get(crate::durable::AUDIT_PREVIOUS_KEY_ENV).as_deref(), dir)?;
         crate::durable::AuditLog::open_with_options(&path, options)
             .map(|log| Self { log })
             .map_err(|e| {

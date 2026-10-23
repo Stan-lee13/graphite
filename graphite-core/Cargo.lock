@@ -721,6 +721,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "webpki-root-certs",
+ "zeroize",
 ]
 
 [[package]]

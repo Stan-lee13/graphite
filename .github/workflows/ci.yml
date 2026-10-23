@@ -1069,10 +1069,12 @@ jobs:
           passed="$(sed -n 's/^deploy tests: \([0-9]*\) passed, 0 failed$/\1/p' "$RUNNER_TEMP/deploy.log")"
           # 87 at Round 32; 105 at Round 34 (the archive MAC, --anchor-dir,
           # the .sha256 naming check and owner preservation across a key
-          # rotation, R33-19 / D-6). The owner checks need root or
-          # passwordless sudo, which the hosted runner has.
-          if [ -z "$passed" ] || [ "$passed" -lt 105 ]; then
-            echo "::error::deploy tests: ${passed:-no summary} passed, floor 105"; exit 1
+          # rotation, R33-19 / D-6); 109 with the audit-key rotation under
+          # GRAPHITE_AUDIT_PREVIOUS_KEY_FILE and rotate-keys.sh's exit 4
+          # (R33-13 / R33-4). The owner checks need root or passwordless
+          # sudo, which the hosted runner has.
+          if [ -z "$passed" ] || [ "$passed" -lt 109 ]; then
+            echo "::error::deploy tests: ${passed:-no summary} passed, floor 109"; exit 1
           fi
 
   # Round 34: the scripts the release and the live workflows run, tested

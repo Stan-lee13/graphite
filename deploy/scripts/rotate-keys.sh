@@ -19,7 +19,7 @@
 #                                         after an audit-key rotation: every
 #                                         link and every MAC, under all keys
 #                                         (graphite audit verify; exit 0 = all
-#                                         checked, 2 = a key is missing)
+#                                         checked, 2 = a key is missing, 4 = not covered)
 #
 # A secret is 32 random bytes as 64 hex characters (the server requires 32+
 # characters and refuses equal keys). Restart the server afterwards: keys are
@@ -99,7 +99,10 @@ case "$cmd" in
     chmod 0600 "$key"
     [ -n "$owner" ] && chown -- "$owner" "$key"
     echo "rotate: new audit key $key"
-    echo "        Point GRAPHITE_AUDIT_KEY_FILE (or the credential/secret that feeds it) at it, restart, then:"
+    echo "        Point GRAPHITE_AUDIT_KEY_FILE (or the credential/secret that feeds it) at it AND"
+    echo "        GRAPHITE_AUDIT_PREVIOUS_KEY_FILE at the key file it replaces, then restart: the server checks"
+    echo "        the newest record under the previous key and writes a key-adoption record (without the"
+    echo "        previous key it refuses to start; docs/ops/keys.md). Then:"
     echo "        rotate-keys.sh verify <data dir> <every old key file> $key"
     ;;
   verify)
@@ -113,6 +116,7 @@ case "$cmd" in
     case "$rc" in
       0) echo "rotate: every link and every MAC verified under the keys given" ;;
       2) echo "rotate: some MACs are under a key not given — pass every key file the trail was written under" >&2 ;;
+      4) echo "rotate: keys were given but do not cover the trail — records with no MAC and no key-adoption record (graphite audit adopt-key), or an unsigned checkpoint: docs/ops/keys.md" >&2 ;;
       *) echo "rotate: the trail does not verify (exit $rc): docs/ops/incidents.md, \"Audit-integrity alert\"" >&2 ;;
     esac
     exit "$rc"
