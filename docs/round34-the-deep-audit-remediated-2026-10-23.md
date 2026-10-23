@@ -228,7 +228,35 @@ restored byte for byte. During the round the workstreams' own breaks ran in work
 build directory. That can link another worktree's library into a test (found by workstream A). So
 those local results were not relied on, and the breaks were re-run here.
 
-{BREAKS}
+**25 of 25 caught.** B150 was missed on its first, mis-aimed run and caught once re-pointed.
+
+| # | Finding | What was reverted | Caught by | Result |
+|---|---|---|---|---|
+| B128 | R33-1 | INTENT_DECLARES: the stake intent declares the `withdraw` class again (`src/manifest.rs`) | `staking_withdrawal_destination::a_stake_intent_cannot_withdraw_the_users_stake_to_another_account` | caught |
+| B129 | R33-1 grant | Stake Withdraw grant: the `to == withdrawer` grounding dropped (any destination grounded) (`src/intent_grants.rs`) | `staking_withdrawal_destination::a_withdraw_intent_cannot_withdraw_the_users_stake_to_another_account` | caught |
+| B130 | R33-2 | verify_trail: an unterminated final line in an ARCHIVE is tolerated like the active file's (`src/durable/chain.rs`) | `lib::a_forged_unterminated_line_in_an_archive_breaks_the_chain_and_is_never_read` | caught |
+| B131 | R33-2/3 | classify_line: the canonical-bytes check is off (`src/durable/chain.rs`) | `lib::a_duplicate_key_breaks_the_chain_and_the_record_stays_visible_or_is_named, verify_and_every_reader_agree_on_every_mutated_line` | caught |
+| B132 | R33-2 readers | read_admitted_line_at: ungated (an indexed offset's line is read without the record gate) (`src/durable.rs`) | `lib::a_forged_index_pointing_at_a_forged_line_is_never_an_answer` | caught |
+| B133 | R33-2 keyed readers | RecordGate::authentic: a MAC under a held key is not verified (`src/durable/chain.rs`) | `lib::a_self_hashed_forgery_in_a_keyed_trail_is_never_read_by_a_reader_with_the_key` | caught |
+| B134 | R33-4 | TrailReport::exit_code: the exit-4 rule (unkeyed records not adopted, keys supplied) removed (`src/durable/chain.rs`) | `lib::a_trail_rewritten_without_macs_does_not_verify_under_its_key` | caught |
+| B135 | R33-4 | resume_head: a keyed writer resumes onto an unkeyed head (the refusal removed) (`src/durable/chain.rs`) | `lib::a_keyed_writer_refuses_to_resume_onto_an_unkeyed_head` | caught |
+| B136 | R33-12 | verify_trail: an unsigned checkpoint (or one under an unknown key) is Confirmed again (`src/durable/chain.rs`) | `lib::an_unsigned_checkpoint_or_one_under_an_unknown_key_is_not_confirmed` | caught |
+| B137 | R33-13 | verify_trail: a key-id switch with no key-adoption record is accepted whatever keys are held (`src/durable/chain.rs`) | `lib::an_invented_key_id_is_a_break_not_a_rotation` | caught |
+| B138 | A-6 | verify_audit_trail_with: the archive re-list after the walk removed (first walk always returned) (`src/durable.rs`) | `lib::a_rotation_during_the_walk_is_walked_again` | caught |
+| B139 | A-7 | AuditKey::drop: the key bytes are not zeroized (`src/durable/chain.rs`) | `lib::a_dropped_key_is_wiped` | caught |
+| B140 | tears | TearAcknowledgement::names: any acknowledgement matches any tear (`src/durable/chain.rs`) | `lib::a_historic_tear_is_a_break_until_the_operator_acknowledges_it, only_a_tear_can_be_acknowledged_and_only_the_one_named` | caught |
+| B141 | R33-5 | signer wallet judgement: a debit line naming no account (`anywhere`) excuses the signer's loss again (`src/state_diff.rs`) | `signer_value_netting::a_signers_wallet_drained_beside_a_withdrawal_that_names_no_account_is_refused` | caught |
+| B142 | R33-6 | signer_lamport_losses: the rent of ANY created account is credited (declared + owner check off) (`src/state_diff.rs`) | `signer_value_netting::rent_paid_into_an_account_another_program_owns_is_the_signers_loss` | caught |
+| B143 | R33-7 | no-debit rule: the signers' loss is netted across signers (a co-signer's gain offsets the user's loss) (`src/state_diff.rs`) | `signer_value_netting::a_fresh_cosigners_gain_does_not_offset_the_users_loss, a_relayers_gain_does_not_offset_the_users_loss` | caught |
+| B144 | R33-10 | signer_lamport_losses: outflows from accounts no signer keeps are not subtracted from the kept pool (`src/state_diff.rs`) | `lib::a_vaults_payout_into_the_signers_account_does_not_offset_a_wallet_drain` | caught |
+| B145 | R33-14 | check_state_diff_with: the created/initialized native-account authority check is off (`src/state_diff.rs`) | `signer_value_netting::a_created_stake_account_authorised_to_a_non_signer_is_refused` | caught |
+| B146 | R33-15 | verify: the `graphite:` lamport-amount line is not pushed into the declared effects (`src/verification.rs`) | `signer_value_netting::a_declared_wallet_debit_does_not_excuse_more_than_its_stated_amount` | caught |
+| B147 | R33-11 | unbounded(): only an ALL-zero minimum set is unbounded again (a single zero minimum passes) (`src/intent_grants.rs`) | `round30_grounded_intents::a_withdrawal_with_a_dust_minimum_is_not_bounded` | caught |
+| B148 | S-3 | L3: the program-baseline anchor is skipped when the shape's baseline judges (`src/verification.rs`) | `round30_trust_learning::a_shape_bootstrapped_at_the_program_edge_escapes_the_program_anchor` | caught |
+| B149 | S-5 | L3: the RPC's loadedAddresses are not compared with the self-resolved lookup accounts (`src/verification.rs`) | `simulator_loaded_addresses::a_simulator_that_reorders_the_loaded_addresses_is_not_believed` | caught |
+| B150 | C-4 | `canonical_intent` reads the raw word again (no trim, no lowercase). The first run reverted Check 9's match alone, which does not decide this test (Check 9b does), and was not caught; the break was re-pointed (`src/risk_engine.rs`) | `staking_withdrawal_destination::intent_case_is_judged_identically_in_every_layer` | caught (re-pointed; the first, mis-aimed break was missed) |
+| B151 | C-5 | PluginOrchestrator.plugins: back to a HashMap (per-map random layer order) (`src/plugin_orchestrator.rs`) | `lib::protocol_rules_come_in_one_order_in_every_orchestrator` | caught |
+| B152 | K-7 | increaseLiquidityByTokenAmountsV2: the 16th slot (whirlpool_program) removed (`protocols/orca-whirlpools.json`) | `r30_declared_effects_census::every_instruction_with_an_onchain_idl_has_the_idls_slot_count` | caught |
 
 The TypeScript, CI-script and deploy breaks ran in their workstreams. They are not affected by the
 shared Rust target. All were caught; four first missed and were caught after their tests were

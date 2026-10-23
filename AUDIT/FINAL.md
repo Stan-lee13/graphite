@@ -82,7 +82,7 @@ that alone (a documented limitation; the agent guard refuses it).
   Clippy `-D warnings` is clean on all three feature legs, and fmt is clean. The runtime oracle is
   never looser than the runtime on both CI seeds. Every fixed finding has a named test
   (`01-findings.md`); through Round 28 each was shown to fail before the fix.
-- **Deliberate breaks:** 125 of 125 Rust breaks caught: B01–B59 from Round 23, B60–B103 from
+- **Deliberate breaks:** 152 of 152 numbered Rust breaks caught. B128–B152 are Round 34's: one per Rust fix of the Round 33 findings, run in a clean integrated build, with B150 caught once its mis-aimed first run was re-pointed (`01-findings.md`). The earlier ones: B01–B59 from Round 23, B60–B103 from
   Round 24 (R2, R3, R3-b and W11–W25), B104–B107 from Round 25 (E3, E3b, E8), B108 from Round 26
   (the committed mainnet blocks catch a verdict change), B109–B111 from Round 27 (upgrade detection), B112–B125 from Round 28 (the archive index, the
   emission table, the contract gate). Round 29 adds B126 (the RPC-client and state-diff fixes
