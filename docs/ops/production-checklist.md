@@ -49,7 +49,7 @@ and `gh` authenticated as a repository admin.
   corresponding Dependabot PRs to match.
 - [ ] **7. Assurance budgets.** After the first scheduled run of the weekly mutation and coverage jobs on
   the hosted runners: Actions → the run → read the measured scores; replace the three provisional
-  0.60 mutation floors with measured ones in a PR.
+  mutation-score floors (each at 0.60) with measured ones in a PR.
 - [ ] **8. Benchmark review before any public claim.** `cargo run --release --locked --features cli -- benchmark --json`
   (in `graphite-core/`): the holdout is 38 rows and every offline approval is `analysis_only`; say so
   next to any number quoted.
