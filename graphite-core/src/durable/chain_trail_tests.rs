@@ -1903,3 +1903,69 @@ fn only_a_tear_can_be_acknowledged_and_only_the_one_named() {
         "{r:?}"
     );
 }
+
+/// What checking every chained line's MAC costs a reader: a full scan of a
+/// 64 MiB keyed archive (the dashboard's first read, an index build, a count
+/// with no index), with and without the key. Prints the numbers and asserts
+/// only that both readers count the same records.
+#[test]
+#[ignore = "benchmark: writes a 64 MiB archive"]
+fn reader_mac_check_cost_on_a_64_mib_archive() {
+    use std::time::Instant;
+    let (_, key) = key_file("mac-cost", 70);
+    let mut body = String::with_capacity(DEFAULT_ROTATE_BYTES as usize + 4096);
+    let mut head = chain::ChainHead::genesis();
+    let mut n = 0usize;
+    while (body.len() as u64) < DEFAULT_ROTATE_BYTES {
+        let mut r = rec(&format!("gr-{n:08}"), n % 3 != 0);
+        r.transaction_sha256 = Some(format!("{n:064x}"));
+        let (line, next) = chain::seal(map_of(&r), &head, Some(&key));
+        body.push_str(&line);
+        body.push('\n');
+        head = next;
+        n += 1;
+    }
+    let mut runs = Vec::new();
+    for keyed_reader in [false, true] {
+        let dir = temp_dir(&format!("mac-cost-{keyed_reader}"));
+        std::fs::write(dir.join("audit.jsonl.1700000000000-000000"), &body).unwrap();
+        // No index can be written: every count scans the archive.
+        std::fs::write(dir.join("audit.jsonl-index"), b"x").unwrap();
+        let path = audit_path(&dir);
+        if keyed_reader {
+            // The active file continues the archive's chain.
+            let (line, _) = chain::seal(map_of(&rec("gr-active", true)), &head, Some(&key));
+            std::fs::write(&path, format!("{line}\n")).unwrap();
+        }
+        let log = if keyed_reader {
+            keyed(&path, &key, 0)
+        } else {
+            std::fs::write(&path, b"").unwrap();
+            AuditLog::open_read_only(&path).unwrap()
+        };
+        let t = Instant::now();
+        let total = log.read_tail_filtered(10, AuditSelector::All).2;
+        let scan = t.elapsed().as_secs_f64() * 1000.0;
+        let mut counts = Vec::new();
+        for _ in 0..3 {
+            let t = Instant::now();
+            let c = log.count_verifications(VerificationKey::TransactionSha256(&format!(
+                "{:064x}",
+                n / 2
+            )));
+            assert_eq!(c.0 + c.1, 1);
+            counts.push(t.elapsed().as_secs_f64() * 1000.0);
+        }
+        counts.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        runs.push((keyed_reader, total, scan, counts[1]));
+        log.wait_for_index_jobs();
+    }
+    assert_eq!(runs[0].1 + 1, runs[1].1, "both readers count every record");
+    eprintln!("reader MAC check over a 64 MiB keyed archive ({n} records):");
+    for (keyed_reader, total, scan, count) in runs {
+        eprintln!(
+            "  {}: full scan (read_tail_filtered) {scan:.0} ms over {total} records; count_verifications with no index {count:.0} ms (median of 3)",
+            if keyed_reader { "with the key   " } else { "without a key  " }
+        );
+    }
+}

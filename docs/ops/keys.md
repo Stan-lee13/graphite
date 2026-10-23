@@ -118,10 +118,28 @@ until `adopt-key` is run once.
 | Exit | Meaning |
 |---|---|
 | 0 | Nothing failed: every chained record links to the one before it; every MAC under a supplied key verified; when keys are supplied, every chained record is MAC'd under one of them or covered by a key-adoption record; a `--checkpoint` is confirmed (and, when keys are supplied, MAC'd under one of them). |
-| 1 | A break (an edited, inserted, deleted, reordered or non-canonical line; a line that is not a record; an archive that ends without its newline; a MAC that does not verify; a key id that appears with no adoption record), or a checkpoint that does not hold (rewritten, truncated, forged). |
+| 1 | A break (an edited, inserted, deleted, reordered or non-canonical line; a line that is not a record, including a torn write nothing names — `TEAR`, see incidents.md; an archive that ends without its newline; a MAC that does not verify; a key id that appears with no adoption record), or a checkpoint that does not hold (rewritten, truncated, forged). |
 | 2 | The walk could not prove what it was asked to: MACs under a key not supplied, a trail with no chained record, a checkpoint whose records were pruned. |
 | 3 | The trail could not be read (or kept rotating under the walk on every retry). |
 | 4 | Keys were supplied, but something is not covered by them: chained records with no MAC and no key-adoption record, or a checkpoint with no MAC or under a key not supplied. |
+
+**What the server reads.** The server checks the MAC of every record it reads
+under its own key and `GRAPHITE_AUDIT_PREVIOUS_KEY_FILE` (L8, `/audit/event`,
+the dashboard, the indexes): once the trail is keyed, a record whose MAC does
+not verify, or that carries none, is not read — a line someone forged with a
+recomputed hash is not a verdict to it, even before anyone runs `verify`.
+Records under an older key it does not hold are read when a key-adoption record
+MAC'd under a key it holds names that key (they cannot be checked; keep the
+previous key configured to have them checked). Unkeyed records before a key
+adoption are read as they are. A reader without a key (`graphite execution`)
+checks no MAC: to it the trail is corruption-evident only. The cost is one
+HMAC per line read (see the delta report / `reader_mac_check_cost_on_a_64_mib_archive`).
+
+**Compose and systemd.** The previous key reaches the server the way the key
+does: in the production compose stack, add a second secret for the old key file
+and set `GRAPHITE_AUDIT_PREVIOUS_KEY_FILE: /run/secrets/audit_key_previous` for
+the restart; under systemd, a second credential (`LoadCredential=audit.key.previous:…`,
+`Environment=GRAPHITE_AUDIT_PREVIOUS_KEY_FILE=%d/audit.key.previous`).
 
 Records written before Round 30 carry no chain at all ("legacy"). They are
 counted and printed, never covered by a MAC, and accepted only before the

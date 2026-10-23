@@ -918,7 +918,6 @@ pub(crate) fn newest_chained(path: &Path) -> std::io::Result<Option<Newest>> {
     }
 }
 
-
 /// A key-adoption record the writer must append before anything else.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AdoptionPlan {

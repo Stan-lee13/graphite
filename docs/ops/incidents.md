@@ -47,6 +47,28 @@ can rewrite a file and its index consistently.
 3. If it is disk corruption, restore the archive from backup; the index is
    rebuilt on the next read.
 
+### `graphite audit verify` reports a `TEAR`
+
+A line that is not JSON, that no record after it names, is a break (exit 1)
+(Round 34). A writer from Round 34 on names the partial line a crash left when
+it resumes past it, so this is either a crash a pre-Round-34 writer resumed
+past, or bytes someone added. `verify` lists each one (`TEAR  <file> line L
+(byte N, …)`) and still walks every record after it.
+
+1. Inspect the line (`tail -c +$((N+1)) <file> | head -c 200`). A crash leaves
+   the first part of a record, cut anywhere; anything else is an incident.
+2. Compare with your last backup taken after that write: the same bytes in the
+   same place.
+3. With the server stopped, accept it:
+   `graphite audit acknowledge-tear --data-dir <dir> --file <file> --offset N`
+   (with `--key-file`, or `GRAPHITE_AUDIT_KEY_FILE`, on a keyed trail). It
+   walks the trail first and refuses a trail broken by anything else; it
+   appends a chained record (MAC'd when keyed) naming exactly those bytes at
+   that place. A line that is JSON is never a tear and cannot be acknowledged.
+4. `graphite audit verify` then counts it under `unparseable` and exits 0 if
+   nothing else is wrong. Changing the acknowledged bytes makes it a break
+   again.
+
 ## RPC degraded or down
 
 **Signal:** verdicts with `not_simulated`, L3 `inconclusive`, refusals naming
