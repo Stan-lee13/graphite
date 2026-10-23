@@ -808,15 +808,11 @@ async fn a_withdraw_intent_cannot_liquid_unstake_marinade_to_another_account() {
 }
 
 #[tokio::test]
-async fn a_marinade_liquid_unstake_to_the_signer_is_grounded_as_a_withdrawal() {
-    // Not executable-approved, before or after Round 34: L4 refuses the
-    // signer's mSOL debit because the Marinade manifest's declaration ("modifies
-    // writable accounts: …") names no account it can read
-    // (SignerTokenDebitUnderUnscopedDebit). The intent layers now ground it.
+async fn a_marinade_liquid_unstake_to_the_signer_is_approved_as_a_withdrawal() {
     let r = marinade_liquid_unstake(None, "withdraw", "unstake my mSOL")
         .verify()
         .await;
-    assert_grounded(&r, "a Marinade liquidUnstake paying the signer");
+    assert_executable(&r, "a Marinade liquidUnstake paying the signer");
 }
 
 // ---------------------------------------------------------------------------
@@ -881,9 +877,9 @@ async fn a_stake_intent_cannot_withdraw_stake_pool_sol_to_another_account() {
 #[tokio::test]
 async fn a_stake_pool_sol_withdrawal_to_the_signer_is_grounded_as_a_withdrawal() {
     // Not executable-approved, before or after Round 34: L4 refuses the pool
-    // token burn and the signer's token debit, which the Stake Pool manifest's
-    // prose declaration does not name (UndeclaredBurn,
-    // SignerTokenDebitUnderUnscopedDebit). The intent layers now ground it.
+    // token burn, which the Stake Pool manifest's prose declaration does not
+    // name (UndeclaredBurn). The intent layers now ground it; a declaration
+    // rewrite would let it reach approval (reported as a residual).
     let r = stake_pool_withdraw_sol(None, "withdraw", "withdraw my pooled SOL")
         .verify()
         .await;
@@ -967,10 +963,10 @@ async fn a_withdraw_intent_cannot_withdraw_a_stake_pool_stake_account_to_another
 #[tokio::test]
 async fn a_stake_pool_stake_withdrawal_to_the_signer_is_grounded_as_a_withdrawal() {
     // Not executable-approved, before or after Round 34: L4 refuses the new
-    // stake account's authorities appearing, the pool token burn and the
-    // signer's token debit, none of which the manifest's prose declares
-    // (UndeclaredNativeAuthorityChange, UndeclaredBurn, …). The intent layers
-    // now ground it.
+    // stake account's authorities appearing and the pool token burn, which
+    // the manifest's prose does not declare (UndeclaredNativeAuthorityChange,
+    // UndeclaredBurn). The intent layers now ground it; a declaration
+    // rewrite would let it reach approval (reported as a residual).
     let r = stake_pool_withdraw_stake(None, "withdraw", "withdraw my stake")
         .verify()
         .await;
