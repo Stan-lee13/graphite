@@ -39,7 +39,7 @@
 //! `GraphiteCore::new()`.
 
 use crate::verification::{LayerStatus, PipelineLayerResult, ProposedIntent, RiskFinding};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::sync::Arc;
@@ -49,7 +49,21 @@ use std::sync::Arc;
 /// Serde form is the canonical pipeline layer name (e.g. "L7_RiskVerification")
 /// — the same string emitted in `VerificationResult.layers` — so manifest
 /// files, reports, and plugin manifests share one spelling.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+///
+/// Ordered by declaration, which is the pipeline order (L1 first): the
+/// orchestrator keys its plugins by layer in that order (Round 34, C-5).
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 pub enum LayerId {
     /// L1: Account Resolution
     #[serde(rename = "L1_AccountResolution")]
@@ -350,8 +364,12 @@ pub struct RegistrationSummary {
 /// cloning, so every clone sees the same set.
 #[derive(Clone, Default)]
 pub struct PluginOrchestrator {
-    /// Layer-scoped verdict plugins, in registration order per layer.
-    plugins: HashMap<LayerId, Vec<PluginKind>>,
+    /// Layer-scoped verdict plugins, in registration order per layer, the
+    /// layers in pipeline order. Round 34 (C-5): a `HashMap` here iterated
+    /// its layers in a per-process random order, so `protocol_rules` — which
+    /// walks every layer — returned two Protocol plugins' rules in a different
+    /// order from one run to the next (P2: same input, same output).
+    plugins: BTreeMap<LayerId, Vec<PluginKind>>,
     /// Read-only analytics observers (not layer-scoped).
     analytics: Vec<Arc<dyn AnalyticsPlugin>>,
 }
@@ -1149,6 +1167,58 @@ mod tests {
             let c = orch.fold_verifier(LayerId::L4StateVerification, base_l4.clone(), &ctx());
             let d = orch.fold_verifier(LayerId::L4StateVerification, base_l4.clone(), &ctx());
             assert_eq!(c, d);
+        }
+    }
+
+    /// A Protocol plugin that contributes one rule, named for itself.
+    struct RuleProtocol {
+        manifest: PluginManifest,
+    }
+    impl ProtocolPlugin for RuleProtocol {
+        fn manifest(&self) -> &PluginManifest {
+            &self.manifest
+        }
+        fn protocol_id(&self) -> &str {
+            "RuLeProtoco1111111111111111111111111111111"
+        }
+        fn semantic_rules(&self, _d: &str) -> Vec<String> {
+            vec![format!("rule of {}", self.manifest.name)]
+        }
+        fn allowed_cpis(&self, _d: &str) -> Vec<String> {
+            vec![self.manifest.name.clone()]
+        }
+    }
+
+    /// Round 34 (C-5): two Protocol plugins for one program, on different
+    /// layers, give their rules in one order — the pipeline's — in every
+    /// orchestrator, whatever order they were registered in. The plugins sat
+    /// in a `HashMap` keyed by layer, whose iteration order is randomised per
+    /// map: built 64 times, the order differed between builds.
+    #[test]
+    fn protocol_rules_come_in_one_order_in_every_orchestrator() {
+        let program = "RuLeProtoco1111111111111111111111111111111";
+        for round in 0..64 {
+            let mut orch = PluginOrchestrator::new();
+            let l5 = PluginKind::Protocol(Arc::new(RuleProtocol {
+                manifest: manifest("on-l5", LayerId::L5SemanticVerification),
+            }));
+            let l4 = PluginKind::Protocol(Arc::new(RuleProtocol {
+                manifest: manifest("on-l4", LayerId::L4StateVerification),
+            }));
+            if round % 2 == 0 {
+                orch.register_plugin(l5);
+                orch.register_plugin(l4);
+            } else {
+                orch.register_plugin(l4);
+                orch.register_plugin(l5);
+            }
+            let (rules, cpis) = orch.protocol_rules(program, "00");
+            assert_eq!(
+                rules,
+                vec!["rule of on-l4".to_string(), "rule of on-l5".to_string()],
+                "round {round}"
+            );
+            assert_eq!(cpis, vec!["on-l4".to_string(), "on-l5".to_string()]);
         }
     }
 

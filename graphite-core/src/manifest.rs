@@ -213,7 +213,17 @@ pub const HIGH_RISK_CLASSES: &[&str] = &[
 pub const INTENT_DECLARES: &[(&str, &[&str])] = &[
     ("transfer", &["transfer"]),
     ("swap", &["transfer", ""]),
-    ("stake", &["stake", "withdraw", "transfer", "create"]),
+    // Round 34 (R33-1): a stake intent declares no withdrawal. It declared
+    // the `withdraw` class, which re-opened for the three staking programs
+    // Check 9 admits the door Round 30 closed: a Stake `Withdraw` of the
+    // user's whole stake account to any address the caller named, labelled
+    // "stake my SOL", was executable-approved (L4 does not see the loss; the
+    // stake account is neither a System wallet nor a signer-held token
+    // account). Withdrawing stake is declared by `withdraw`, and only when
+    // `intent_grants` finds the funds go to the key that signs for them.
+    // `transfer` stays: it is what classes the deposits (Marinade `deposit`,
+    // `depositStakeAccount`; Stake Pool `DepositSol`, `DepositStake`).
+    ("stake", &["stake", "transfer", "create"]),
     ("close", &["close", crate::intent_grants::CLOSE_TO_OWNER]),
     ("create", &["create"]),
     ("approve", &[]),

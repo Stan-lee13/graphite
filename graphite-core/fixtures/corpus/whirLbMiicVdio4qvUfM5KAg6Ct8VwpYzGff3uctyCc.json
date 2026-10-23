@@ -2274,7 +2274,7 @@
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "6dd3d3ac8e17c95a225fadac359f37617a7a06140dcf3d3d20bab7cb1d152357",
+    "content_hash": "3a02e39ee73fc90da6236810aeda663dc1fe464fb9d6f1587b357c5bcd1b7fd1",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2303,7 +2303,8 @@
         "DTbUaYkJosHCbp3SraHuq5uiz1cb5wNqCXraoNqBwhth",
         "8dxTho3FqH7RwVhzePyb4PD1852MjKSbjSmxi8Nd2tdE",
         "7P8HsvoE62WXdKsi79rdCg1mKYjPkmsJnmjPJFeGezdL",
-        "GSj2YE4i2nkPJowMy19spwqAeWy9uiq2V6j8EkLb2SYU"
+        "GSj2YE4i2nkPJowMy19spwqAeWy9uiq2V6j8EkLb2SYU",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
       ],
       "instruction_data": [
         239,
@@ -2350,12 +2351,12 @@
       "lookup_table_count": 0,
       "state_diff": null
     },
-    "integrity_hash": "5848eb7c6951c5df9dae13a99b3f8e5557b0753a3a5123334d33bdeb46643986"
+    "integrity_hash": "f4461d292f3a86e8d2529e57f5328a948ebbaee8232d413ed85e8b0f2bb9274b"
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "90870ff8aad531dc7438c0c75c55037458511484fe3361c53449b1d57832050d",
+    "content_hash": "d8f640b81a3ab2aa6eb52d8e5ae3b722d78757d6e4d619cce5038b460b4b566c",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2384,7 +2385,8 @@
         "DTbUaYkJosHCbp3SraHuq5uiz1cb5wNqCXraoNqBwhth",
         "8dxTho3FqH7RwVhzePyb4PD1852MjKSbjSmxi8Nd2tdE",
         "7P8HsvoE62WXdKsi79rdCg1mKYjPkmsJnmjPJFeGezdL",
-        "GSj2YE4i2nkPJowMy19spwqAeWy9uiq2V6j8EkLb2SYU"
+        "GSj2YE4i2nkPJowMy19spwqAeWy9uiq2V6j8EkLb2SYU",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
       ],
       "instruction_data": [
         239,
@@ -2431,7 +2433,7 @@
       "lookup_table_count": 0,
       "state_diff": null
     },
-    "integrity_hash": "32fdee3eb2ed8b519b7ab3799eb1f0c497caf750df9501a1219d3564fac31999"
+    "integrity_hash": "f73719f629e9b3943057973e1d1a62f559b795ef29caf7b3590d3a355dc04d92"
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",

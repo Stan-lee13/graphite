@@ -386,11 +386,10 @@ fn honest_labels_pass_the_class_gate() {
             "DelegateStake",
             "stake",
         ),
-        (
-            "Stake11111111111111111111111111111111111111",
-            "Withdraw",
-            "stake",
-        ),
+        // Round 34 (R33-1) re-pin: (Stake, Withdraw, "stake") was listed here
+        // as an honest label. A stake intent declaring the `withdraw` class
+        // let "stake my SOL" withdraw the user's stake to any account; it is
+        // refused now (`a_stake_label_does_not_declare_a_stake_withdrawal`).
     ] {
         let (disc, n, class) = ix(program, name);
         let r = core.verify(&request(program, &disc, n, intent)).unwrap();
@@ -409,6 +408,55 @@ fn honest_labels_pass_the_class_gate() {
                 .all(|f| !f.reason.contains("Intent-class mismatch")),
             "{name} declared '{intent}': {:?}",
             r.risk_verdict
+        );
+    }
+}
+
+/// Round 34 (R33-1): a stake label does not declare a Stake Withdraw — L5 and
+/// Check 9b both refuse it, naming the class. (Withdrawing stake is declared
+/// by `withdraw`, and granted only when `to` is the withdrawer.)
+#[test]
+fn a_stake_label_does_not_declare_a_stake_withdrawal() {
+    let core = GraphiteCore::new();
+    let program = "Stake11111111111111111111111111111111111111";
+    let (disc, n, class) = ix(program, "Withdraw");
+    assert_eq!(class, "withdraw");
+    assert_eq!(intent_declares_class("stake", &class), Some(false));
+    for intent in ["stake", "delegate"] {
+        let r = core.verify(&request(program, &disc, n, intent)).unwrap();
+        assert!(!r.approved, "Withdraw declared '{intent}' was approved");
+        let l5 = r
+            .layers
+            .iter()
+            .find(|l| l.layer == "L5_SemanticVerification")
+            .expect("L5 present");
+        assert_eq!(l5.status, LayerStatus::Failed, "Withdraw declared '{intent}'");
+        assert!(
+            l5.reason.contains("cannot declare Withdraw") && l5.reason.contains("'withdraw'"),
+            "Withdraw declared '{intent}': {}",
+            l5.reason
+        );
+        // The Risk Engine's own class gate, on the same inputs.
+        let risk = graphite_core::risk_engine::assess(&graphite_core::risk_engine::RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
+            program_id: program.to_string(),
+            accounts: vec![],
+            cpi_targets: vec![],
+            expected_state_changes: vec![],
+            allowed_cpis: vec![],
+            instruction_discriminator: disc.clone(),
+            expected_account_count: None,
+            variable_accounts: false,
+            proposed_intent_type: intent.to_string(),
+            extracted_output_token: None,
+            manifest_risk_class: class.clone(),
+        })
+        .unwrap();
+        assert!(
+            matches!(&risk, graphite_core::risk_engine::RiskVerdict::Blocked { reason, .. }
+                if reason.contains("Intent-class mismatch")),
+            "Check 9b, '{intent}': {risk:?}"
         );
     }
 }
@@ -537,9 +585,13 @@ fn the_measurement_labels_an_instruction_by_its_name_then_its_class() {
         Some("swap")
     );
     assert_eq!(label(TOKEN, "CloseAccount"), Some("close"));
+    // Round 34 (R33-1) re-pin: this was `Some("stake")`. A stake intent
+    // declares no withdrawal, and `withdraw` declares a Stake Withdraw only
+    // when its accounts show `to` is the withdrawer — which the class alone
+    // cannot say (`honest_intent_with_accounts` finds it from the accounts).
     assert_eq!(
         label("Stake11111111111111111111111111111111111111", "Withdraw"),
-        Some("stake")
+        None
     );
     // A hand-over has no honest label.
     assert_eq!(label(SQUADS, "multisigSetConfigAuthority"), None);

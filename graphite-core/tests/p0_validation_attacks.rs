@@ -454,8 +454,14 @@ fn attack_check10_stake_withdraw_no_intent_is_blocked() {
 
 #[test]
 fn attack_check10_stake_withdraw_with_declared_intent_not_check10_blocked() {
-    // Declared "stake" intent takes it out of Check 10; the block (if any)
-    // must NOT be the Check 10 MaliciousAccountChange reason.
+    // Declared "stake" intent takes it out of Check 10; the block must NOT be
+    // the Check 10 MaliciousAccountChange reason.
+    //
+    // Round 34 (R33-1) re-pin: this test said "the block (if any)", and a
+    // "stake" Withdraw was in fact approved by the rest of the pipeline — a
+    // stake intent declared the `withdraw` class, so the user's stake could be
+    // withdrawn to any `to`. It is refused now, by the class gate (Check 9b:
+    // a stake intent declares no withdrawal), and still not by Check 10.
     use graphite_core::policy_engine::WalletProfile;
     use graphite_core::verification::{ProposedIntent, VerificationInput};
     use graphite_core::GraphiteCore;
@@ -500,6 +506,17 @@ fn attack_check10_stake_withdraw_with_declared_intent_not_check10_blocked() {
             .iter()
             .any(|f| f.reason.contains("no intent was declared")),
         "declared intent must not trip the Check 10 empty-intent gate: {:?}",
+        result.risk_verdict.findings
+    );
+    assert!(!result.approved, "a stake-labelled Stake Withdraw was approved");
+    assert!(
+        result
+            .risk_verdict
+            .findings
+            .iter()
+            .any(|f| f.reason.contains("Intent-class mismatch")
+                && f.reason.contains("'withdraw'")),
+        "the refusal is not the class gate's: {:?}",
         result.risk_verdict.findings
     );
 }
