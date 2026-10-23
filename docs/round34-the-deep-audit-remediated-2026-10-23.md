@@ -183,7 +183,41 @@ and here), or a **documented limitation** with its reason.
 
 ## E. Test and build evidence
 
-{EVIDENCE}
+All runs below are on the integrated tree, on one fresh build target, in this environment: Linux,
+4 cores, 15 GB RAM. The owner's Windows build machine was not used.
+
+| Leg | Command | Result |
+|---|---|---|
+| fmt | `cargo fmt --all -- --check` | clean (after one rustfmt pass at integration) |
+| check | `--no-default-features`; `--no-default-features --features cli` | pass |
+| clippy | `--all-targets --all-features`; `--no-default-features --lib`; `--all-targets --no-default-features --features cli`, each `-D warnings` | clean (one `clone_on_copy` fixed at integration) |
+| default tests | `cargo test --locked --profile ci-test` | **2,322 passed, 0 failed, 14 ignored**, 166 targets; the tree unchanged afterwards |
+| lib tests | `--no-default-features --lib` | **505 passed, 3 ignored** |
+| cli tests | `--no-default-features --features cli` | **1,928 passed, 5 ignored** |
+| release build | `cargo build --locked --release --features server,cli --bin graphite` | pass |
+| runtime oracle | `--iterations 300000`, both CI seeds | pass |
+| TypeScript | agent guard, SDK, Vercel AI, MCP, SAK, as CI runs them | 301 / 62 (+4 live) / 11 / 9 / 9; no corpus drift |
+| Python | AI layer `pytest` | 50 passed |
+| CI scripts | `ci-scripts.test.sh`, `release-gate.test.sh`, actionlint with ShellCheck 0.11 and 0.9 | 25/25, 30/30, clean |
+| Deploy kit | `deploy/tests/run.sh` (as root, owner checks included) | 109 checks (workstream run; see §H) |
+
+The CI floors move to the measured counts: Rust 2,322 / 505 / 1,928, agent guard 301,
+TypeScript SDK 62, deploy 109.
+
+**Integration found two interactions the workstreams could not see alone:**
+- R33-5's rule refuses the honest Marinade `liquidUnstake` control from R33-1. Its declaration
+  names no account, so the user's mSOL debit is refused. The control was re-pinned and the
+  limitation documented.
+- With the staking grants added, the R33-5 census counts 18 of 27 grants carrying such a line,
+  where it had counted 13 of 21.
+
+**Not measured here:**
+- **CI wall time on GitHub's runners after the R33-8 split.** Locally, the default leg took
+  1,078 s cold, with 2 jobs, under `ci-test`. On `b473a31` the same leg took 2,557 s on CI under
+  `--release`. The measured wall time of a push to `main` is owed after the owner pushes.
+- **The live-mainnet workflow against Round 34's L4 defaults.** It runs only with the owner's
+  permission (label `live-measure` or a dispatch). Until it runs, the new defaults' false-refusal
+  rate on real traffic is unknown.
 
 ## F. Deliberate breaks (B128 onward)
 

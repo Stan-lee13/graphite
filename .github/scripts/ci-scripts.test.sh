@@ -123,7 +123,7 @@ expect 0 "the rust-test legs keep their flags, floors and the ignored-test allow
 import sys, yaml
 job = yaml.safe_load(open(sys.argv[1]))["jobs"]["rust-test"]
 legs = {l["leg"]: l for l in job["strategy"]["matrix"]["include"]}
-want = {"default": ("", 2251), "lib": ("--no-default-features --lib", 470), "cli": ("--no-default-features --features cli", 1886)}
+want = {"default": ("", 2322), "lib": ("--no-default-features --lib", 505), "cli": ("--no-default-features --features cli", 1928)}
 for leg, (flags, floor) in want.items():
     l = legs.get(leg) or sys.exit(f"leg {leg} is missing")
     if l["flags"] != flags or int(l["floor"]) < floor:

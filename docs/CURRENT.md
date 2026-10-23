@@ -791,35 +791,41 @@ transaction under the stated threat model, and no external party has yet tried.
 document links here, and `tests/docs_numbers_match_the_code.rs` fails if a live
 document states one elsewhere.
 
-Rust, from the integrated runs of Round 32 (production readiness) on 2026-10-22
-thin LTO off to fit the shared machine; logs kept outside the repository):
+Rust, from the integrated runs of Round 34 on 2026-10-23 (the `ci-test` profile CI
+uses — release semantics with LTO off and 16 codegen units — on one fresh build
+target; logs kept outside the repository):
 
-- the default features CI runs: **2,251 Rust tests pass**, 0 failed,
-  13 ignored (network- or sample-dependent, plus two soak benchmarks, each named in
-  `.github/test-allowlists/rust-ignored.txt`), across 161 test targets;
-- the featureless library (`--no-default-features --lib`): **470 passed, 2 ignored**;
-- the cli-only build (`--no-default-features --features cli`): **1,886 passed, 4 ignored**,
-  across 161 test targets.
+- the default features CI runs: **2,322 Rust tests pass**, 0 failed,
+  14 ignored (network- or sample-dependent, plus three benchmarks, each named in
+  `.github/test-allowlists/rust-ignored.txt`), across 166 test targets;
+- the featureless library (`--no-default-features --lib`): **505 passed, 3 ignored**;
+- the cli-only build (`--no-default-features --features cli`): **1,928 passed, 5 ignored**,
+  across 166 test targets.
 
-CI's test-count gate holds each leg at these floors.
+CI's test-count gate holds each leg at these floors (`rust-test` matrix in
+`.github/workflows/ci.yml`).
 
-Clippy `-D warnings` (all three feature legs) and fmt clean on the integrated tree.
+Clippy `-D warnings` (all three feature legs) and fmt clean on the integrated tree;
+the release build (`--features server,cli`, thin LTO) builds.
 
-TypeScript: agent guard 277; SolanaAgentKit adapter 9; MCP server 9; Vercel AI
-adapter 11; TypeScript SDK 59 (55 hermetic, 4 against a live server — run in
-CI's container job); dashboard 31, production build OK. Go SDK: 59 top-level
-test functions pass (0 skipped), plus 5 behind the `liveserver` tag; `gofmt` and
-`go vet` clean. Python: AI layer 50; `tools/mainnet-sample` 7 (at `29e4356`).
-The runtime oracle: ~628,500 frames per CI seed, bincode and wincode, legacy,
-v0 and v1, never looser than the runtime. The hosted CI run for the reference
-commit `29e4356` (run 39610913297) passed all 10 jobs.
+TypeScript (Round 34, run as CI runs them): agent guard 301; SolanaAgentKit adapter 9;
+MCP server 9; Vercel AI adapter 11; TypeScript SDK 66 (62 hermetic, 4 against a live
+server — run in CI's container job); `emit:corpus` and `emit:artifact-fixture` with no
+drift. Not touched in Round 34 and not re-run: dashboard 31, production build OK; Go
+SDK 59 top-level test functions (0 skipped), plus 5 behind the `liveserver` tag.
+Python: AI layer 50 (Round 34); `tools/mainnet-sample` 7; `tools/live-measure` 55.
+Deploy kit: 109 checks (`deploy/tests/run.sh`). The runtime oracle: ~628,500 frames
+per CI seed, bincode and wincode, legacy, v0 and v1, never looser than the runtime
+(both seeds, Round 34). The last hosted CI run that passed every job was on the PR
+head `e34a42d` (Round 32); `main` at `b473a31` failed the CI gate on the Rust job's
+time limit (R33-8), and Round 34's split has not yet run on GitHub.
 
 The holdout (`tests/regression_corpus.rs`): n = 38, 37 true positives, 1 false
 positive, 0 false negatives — precision 0.974, recall 1.000. The committed
 corpus: 13,013 fixtures (12,943 dev, 32 regression, 38 holdout).
 
 Reproduced from `cargo test` / `npm test` / `go test` / `pytest` output on
-2026-10-21/22, not estimated. CI for the commit is the GitHub Actions run for that
+2026-10-21/23, not estimated. CI for the commit is the GitHub Actions run for that
 SHA — the runs endpoint, not the combined-status endpoint.
 
 ## Report index (newest first)
