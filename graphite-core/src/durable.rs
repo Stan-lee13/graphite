@@ -236,7 +236,7 @@ pub struct AuditLog {
     /// chain began, and archives are immutable, so this is computed once
     /// per archive.
     /// … and whether its newest one carries a MAC (keyed by its end).
-    chained_archives: Arc<Mutex<HashMap<PathBuf, (u64, bool, bool)>>>,
+    chained_archives: Arc<Mutex<ChainStateCache>>,
     /// The keys this log's readers check MACs under (Round 34 follow-up):
     /// the writer's key and the previous key of a rotation. Empty for a log
     /// opened without one — its readers are corruption-evident only.
@@ -249,6 +249,10 @@ pub struct AuditLog {
     #[cfg(test)]
     faults: Arc<std::sync::atomic::AtomicU32>,
 }
+
+/// Per archive, at the length it had: whether it holds a chained line, and
+/// whether its newest one carries a MAC.
+type ChainStateCache = HashMap<PathBuf, (u64, bool, bool)>;
 
 /// How a writable audit log is opened.
 #[derive(Debug, Clone)]

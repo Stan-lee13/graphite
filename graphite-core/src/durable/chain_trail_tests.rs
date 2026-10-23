@@ -1917,7 +1917,7 @@ fn reader_mac_check_cost_on_a_64_mib_archive() {
     let mut head = chain::ChainHead::genesis();
     let mut n = 0usize;
     while (body.len() as u64) < DEFAULT_ROTATE_BYTES {
-        let mut r = rec(&format!("gr-{n:08}"), n % 3 != 0);
+        let mut r = rec(&format!("gr-{n:08}"), !n.is_multiple_of(3));
         r.transaction_sha256 = Some(format!("{n:064x}"));
         let (line, next) = chain::seal(map_of(&r), &head, Some(&key));
         body.push_str(&line);
