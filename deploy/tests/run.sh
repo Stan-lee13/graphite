@@ -196,8 +196,14 @@ c="$(code -H "Authorization: Bearer $rkey" "$E/api/graph")"
 c="$(code -H "Authorization: Bearer $rkey" "$E/manifests")"
 [ "$c" = 200 ] && ok "edge: GET /manifests with the read key -> 200" || bad "edge: GET /manifests -> $c"
 head -c 1100000 /dev/zero | tr '\0' 'a' >"$T/big.json"
-c="$(code -X POST -H "Authorization: Bearer $key" -H 'Content-Type: application/json' --data-binary @"$T/big.json" "$E/verify")"
-[ "$c" = 413 ] && ok "edge: 1.1 MB body -> 413" || bad "edge: 1.1 MB body -> $c"
+# Thirty times, not once: when Caddy streamed the body, the Core's early 413
+# and close raced its writes and about a third came back 502 (Round 34). The
+# edge refuses a declared oversized body before proxying, so every one is 413.
+codes=""
+for _ in $(seq 1 30); do
+  codes="$codes $(code -X POST -H "Authorization: Bearer $key" -H 'Content-Type: application/json' --data-binary @"$T/big.json" "$E/verify")"
+done
+! tr ' ' '\n' <<<"$codes" | grep -v '^$' | grep -qvx 413 && ok "edge: 1.1 MB body -> 413 (30 of 30)" || bad "edge: 1.1 MB body ->$codes"
 # Caddy's own limit, measured against an upstream that accepts any body: the
 # Core enforces 1 MiB too, so only this shows the edge does.
 cat >"$T/sink.py" <<'EOF'
