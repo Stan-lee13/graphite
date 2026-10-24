@@ -2,7 +2,7 @@
 # Restore a Graphite data directory from an archive made by backup.sh, and
 # prove the restored trail before the server sees it.
 #
-#   restore.sh [--key-file F]... [--lost-key KEY_ID]... --anchor-dir D [--owner UID:GID] ARCHIVE DATA_DIR
+#   restore.sh [--key-file F]... [--current-key-file F] [--lost-key KEY_ID]... --anchor-dir D [--owner UID:GID] ARCHIVE DATA_DIR
 #
 # 1. Refuses while a server holds DATA_DIR/graphite.lock (stop it first).
 #    Refuses without --anchor-dir (exit 64) unless ALLOW_NO_ANCHOR=1: without
@@ -14,13 +14,26 @@
 #    Then ARCHIVE.mac (backup.sh): an HMAC-SHA256 of the archive's name and
 #    bytes under the audit key, so the graph snapshot and registry_state.json
 #    are authenticated too, not only the trail `audit verify` walks. It must
-#    verify under one of the --key-file keys (or GRAPHITE_AUDIT_KEY_FILE).
+#    verify under the CURRENT key (Round 39, R37-11): --current-key-file, else
+#    GRAPHITE_AUDIT_KEY_FILE, else the --key-file when exactly one is given;
+#    with several keys and none named current the restore refuses (exit 64).
+#    A .mac under any other key given — a retired one — is refused: whoever
+#    still holds a retired key can MAC any bytes under it, so it could forge
+#    registry_state.json or the graph snapshot (it used to be accepted under
+#    ANY key given). backup.sh MACs under the key the trail's head is under.
+#    A backup taken before a key rotation is therefore refused after it; take
+#    a fresh backup after every rotation. Restoring such a backup anyway is
+#    naming its key with --current-key-file, your explicit decision (record it
+#    in the incident log).
 #    An archive with no .mac (an unkeyed trail) needs ALLOW_UNKEYED_ARCHIVE=1.
 # 3. Unpacks into a staging directory beside DATA_DIR and runs
 #    `graphite audit verify` on it: exit 0 is required (every link, and every
 #    MAC under the keys given). Nothing is touched if it fails.
-# 4. With --anchor-dir, also verifies against the newest anchored checkpoint.
-#    A restore from a backup older than that checkpoint FAILS this check —
+# 4. With --anchor-dir, also verifies against the newest anchored checkpoint:
+#    the one with the highest seq by its CONTENT (Round 39, T-9), never by
+#    its file name, which nothing authenticates (an old checkpoint copied
+#    under a name that sorts last made a stale archive pass). A checkpoint
+#    file that cannot be read refuses the restore. A restore from a backup older than that checkpoint FAILS this check —
 #    that is the checkpoint doing its job: the verdicts recorded after the
 #    backup are gone. The script then stops unless ACCEPT_STALE_RESTORE=1,
 #    which you set only after recording the loss in the incident log.
@@ -44,9 +57,11 @@ keyfiles=()
 lost=()
 anchors=""
 owner=""
+current=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --key-file) keys+=(--key-file "$2"); keyfiles+=("$2"); shift 2 ;;
+    --current-key-file) current="$2"; keys+=(--key-file "$2"); shift 2 ;;
     --lost-key)
       [[ "${2:-}" =~ ^[0-9a-f]{16}$ ]] || { echo "restore: --lost-key takes a key id (16 hex digits)" >&2; exit 64; }
       lost+=("$2")
@@ -90,9 +105,16 @@ fi
   exit 1
 }
 
-# The archive's MAC under the audit key (backup.sh writes it).
-mackeys=("${keyfiles[@]+"${keyfiles[@]}"}")
-if [ -n "${GRAPHITE_AUDIT_KEY_FILE:-}" ]; then mackeys+=("$GRAPHITE_AUDIT_KEY_FILE"); fi
+# The archive's MAC under the current audit key (backup.sh writes it).
+if [ -z "$current" ]; then
+  if [ -n "${GRAPHITE_AUDIT_KEY_FILE:-}" ]; then
+    current="$GRAPHITE_AUDIT_KEY_FILE"
+  elif [ "${#keyfiles[@]}" -eq 1 ]; then
+    current="${keyfiles[0]}"
+  fi
+fi
+mackeys=()
+[ -n "$current" ] && mackeys=("$current")
 if [ ! -f "$archive.mac" ]; then
   if [ "${ALLOW_UNKEYED_ARCHIVE:-0}" = 1 ]; then
     echo "restore: ALLOW_UNKEYED_ARCHIVE=1 — $archive has no .mac; only its trail is checked" >&2
@@ -101,6 +123,10 @@ if [ ! -f "$archive.mac" ]; then
     echo "         (an unkeyed deployment's backup: ALLOW_UNKEYED_ARCHIVE=1)" >&2
     exit 66
   fi
+elif [ "${#mackeys[@]}" -eq 0 ] && [ "${#keyfiles[@]}" -gt 1 ]; then
+  echo "restore: several keys given and none named current: the .mac is accepted only under the key the" >&2
+  echo "         server writes under now. Pass it with --current-key-file (or set GRAPHITE_AUDIT_KEY_FILE)" >&2
+  exit 64
 elif [ "${#mackeys[@]}" -eq 0 ]; then
   echo "restore: $archive.mac cannot be checked without the audit key; pass --key-file" >&2
   exit 1
@@ -122,7 +148,8 @@ with open(archive, "rb") as f:
 sys.exit(0 if any(hmac.compare_digest(m.hexdigest(), fields[1]) for m in macs) else 1)
 PY
 then
-  echo "restore: $archive does not match its MAC under any key given; refusing it" >&2
+  echo "restore: $archive does not match its MAC under the current key ($current); refusing it" >&2
+  echo "         (a .mac under a retired key is never accepted: docs/ops/backup-restore.md)" >&2
   exit 1
 fi
 
@@ -184,23 +211,53 @@ if ! verify "$stage"; then
 fi
 
 if [ -n "$anchors" ]; then
-  # Checkpoint files are named audit.jsonl-checkpoint-<20-digit seq>[-scheduled].json
-  # (the server's and anchor-checkpoints.sh's), so the lexically last one is
-  # the newest.
-  newest="$(find "$anchors" -maxdepth 1 -type f -name 'audit.jsonl-checkpoint-*.json' | LC_ALL=C sort | tail -n 1)"
-  if [ -z "$newest" ]; then
+  # The newest checkpoint is the one whose CONTENT has the highest seq (Round
+  # 39, T-9): a file name is not authenticated, and the checkpoint's own MAC
+  # is checked by `audit verify --checkpoint` below. Every checkpoint with that
+  # seq is checked. A checkpoint file that cannot be read refuses the restore:
+  # it could be the newest.
+  if ! newest_list="$(python3 -I - "$anchors" <<'PY'
+import json, os, sys
+d = sys.argv[1]
+found = []
+for name in sorted(os.listdir(d)):
+    if not (name.startswith("audit.jsonl-checkpoint-") and name.endswith(".json")):
+        continue
+    path = os.path.join(d, name)
+    if not os.path.isfile(path):
+        continue
+    try:
+        with open(path, "rb") as f:
+            cp = json.loads(f.read(1 << 16))
+        seq = cp["seq"]
+        if cp.get("kind") != "graphite-audit-checkpoint" or not isinstance(seq, int) or isinstance(seq, bool) or seq < 0:
+            raise ValueError("not a checkpoint")
+    except Exception as e:
+        sys.exit(f"restore: anchored checkpoint {name} cannot be read ({e}); refusing: it could be the newest")
+    found.append((seq, path))
+if found:
+    top = max(s for s, _ in found)
+    print("\n".join(p for s, p in found if s == top))
+PY
+)"; then
+    exit 1
+  fi
+  if [ -z "$newest_list" ]; then
     echo "restore: no checkpoint in $anchors; a stale restore cannot be detected" >&2
   else
-    echo "restore: verifying against the newest anchored checkpoint ${newest##*/}"
-    if ! verify "$stage" --checkpoint "$newest"; then
-      if [ "${ACCEPT_STALE_RESTORE:-0}" = 1 ]; then
-        echo "restore: ACCEPT_STALE_RESTORE=1 — restoring a trail that ends before ${newest##*/}" >&2
-      else
-        echo "restore: this archive ends before the anchored checkpoint ${newest##*/}: records after the backup are lost." >&2
-        echo "         Record that in the incident log, then re-run with ACCEPT_STALE_RESTORE=1." >&2
-        exit 1
+    while IFS= read -r newest; do
+      echo "restore: verifying against the newest anchored checkpoint ${newest##*/}"
+      if ! verify "$stage" --checkpoint "$newest"; then
+        if [ "${ACCEPT_STALE_RESTORE:-0}" = 1 ]; then
+          echo "restore: ACCEPT_STALE_RESTORE=1 — restoring a trail that does not hold against ${newest##*/}" >&2
+        else
+          echo "restore: this archive does not hold against the anchored checkpoint ${newest##*/} (it ends before it:" >&2
+          echo "         records after the backup are lost; or the checkpoint is not genuine). Record that in the" >&2
+          echo "         incident log, then re-run with ACCEPT_STALE_RESTORE=1." >&2
+          exit 1
+        fi
       fi
-    fi
+    done <<<"$newest_list"
   fi
 fi
 

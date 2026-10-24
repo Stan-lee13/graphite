@@ -17,7 +17,7 @@ list is [`docs/ops/production-checklist.md`](../docs/ops/production-checklist.md
 | `grafana/graphite-dashboard.json` | Verdicts, refusals, L8, audit trail | every query parsed by promtool; every series exists in `server.rs` |
 | `scripts/health-textfile.sh` | `/health` `degraded_reasons` → `graphite_health_degraded{reason=…}` for node_exporter | `deploy/tests/run.sh` |
 | `scripts/backup.sh` | Cold (stop/copy/start) or `--hot` backup; kept only if `graphite audit verify` passes on the copy; `.sha256` and a `.mac` (HMAC-SHA256 of the archive under the audit key) beside it; `--lost-key` after a lost audit key | same |
-| `scripts/restore.sh` | `--anchor-dir` required; a `.sha256` naming the archive itself, then its `.mac` under a given key; verify the unpacked trail and against the newest anchored checkpoint, then swap it in, keeping the old directory; `--lost-key` | same |
+| `scripts/restore.sh` | `--anchor-dir` required; a `.sha256` naming the archive itself, then its `.mac` under the current key (`--current-key-file`); verify the unpacked trail and against the newest anchored checkpoint (by content), then swap it in, keeping the old directory; `--lost-key` | same |
 | `scripts/anchor-checkpoints.sh` | `graphite audit checkpoint` into the anchor directory; optional upload to an S3 Object-Lock bucket | same (the S3 upload is not exercised: see below) |
 | `scripts/rotate-keys.sh` | New API key in an env file or secret file (keeping the file's owner, or an explicit `UID:GID`), new audit MAC key, verify the trail under every key | same |
 | `tests/run.sh` | All of the above, against a real Core and Caddy on loopback; plus a second Core on a live data directory, SIGTERM with a verdict in flight, a lost audit key, and a full data directory | — |
@@ -67,9 +67,15 @@ everything when it exits. Exit 0 only when every check passed.
   `.sha256`, which anyone who can write the archive can recompute, and
   `sha256sum -c` checked whatever file the list named. `backup.sh` now writes
   `<archive>.mac`, HMAC-SHA256 under the audit key of the archive's name and
-  bytes (the last `--key-file`, else `GRAPHITE_AUDIT_KEY_FILE`); `restore.sh`
-  requires the `.sha256` to name the archive itself and the `.mac` to verify
-  under one of the keys it is given. An unkeyed deployment's backup has no
+  bytes; `restore.sh` requires the `.sha256` to name the archive itself and
+  the `.mac` to verify. Round 39 (R37-11): the `.mac` is under the current key
+  only — `backup.sh` uses the key the copied trail's head is MAC'd under, and
+  `restore.sh` accepts it only under `--current-key-file`, else
+  `GRAPHITE_AUDIT_KEY_FILE`, else the single `--key-file` given (several keys
+  and none named current: exit 64). A MAC under a retired key is refused:
+  whoever still holds one could MAC a forged archive under it. The newest
+  anchored checkpoint is chosen by its content's `seq`, not its file name
+  (T-9). `deploy/tests/backup-keys.test.sh` checks both. An unkeyed deployment's backup has no
   `.mac` and restores only with `ALLOW_UNKEYED_ARCHIVE=1`. `restore.sh` also
   requires `--anchor-dir` (`ALLOW_NO_ANCHOR=1` for a deployment that has
   never anchored a checkpoint).

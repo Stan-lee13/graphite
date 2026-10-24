@@ -105,6 +105,8 @@ case "$cmd" in
     echo "        previous key it refuses to start; docs/ops/keys.md). Unset GRAPHITE_AUDIT_PREVIOUS_KEY_FILE"
     echo "        after that first start: it is needed only once, and the server warns while it stays set. Then:"
     echo "        rotate-keys.sh verify <data dir> <every old key file> $key"
+    echo "        Then take a fresh backup (backup.sh): restore.sh accepts an archive's .mac under the current"
+    echo "        key only, so backups made under the old key are refused from now on (docs/ops/backup-restore.md)."
     ;;
   verify)
     [ $# -ge 2 ] || usage
