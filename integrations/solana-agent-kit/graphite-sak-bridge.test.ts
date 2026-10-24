@@ -226,13 +226,16 @@ test("Round 36 (F-001): importing the adapter loads no SolanaAgentKit and no Zod
   // a resolve hook. Before Round 36 it held solana-agent-kit, LangChain, the
   // OpenAI agents SDK and Zod (`zod/v3` included), all in the process that
   // holds the wallet key.
+  //
+  // `registerHooks`, not `register`: an off-thread `register` hook sees only
+  // ESM `import`s, so when tsx loaded the adapter through `require` (CI run
+  // 40120795450) the hook saw tsx's own files and nothing of the adapter's
+  // tree — a SAK `require` would have been missed the same way. A
+  // `registerHooks` hook runs in-thread for `import` and `require` alike, and
+  // writes synchronously.
   const here = fileURLToPath(new URL(".", import.meta.url));
-  const hook =
-    "data:text/javascript," +
-    encodeURIComponent(
-      'export async function resolve(s, c, n) { const r = await n(s, c); if (r.url.includes("/node_modules/")) process.stderr.write("LOADED " + r.url.split("/node_modules/").pop() + "\\n"); return r; }',
-    );
-  const register = `import { register } from "node:module"; register(${JSON.stringify(hook)});`;
+  const register =
+    'import { registerHooks } from "node:module"; import { writeSync } from "node:fs"; registerHooks({ resolve(s, c, n) { const r = n(s, c); if (r.url && r.url.includes("/node_modules/")) writeSync(2, "LOADED " + r.url.split("/node_modules/").pop() + "\\n"); return r; } });';
   const run = spawnSync(
     process.execPath,
     ["--import", "data:text/javascript," + encodeURIComponent(register), "--import", "tsx", "-e", 'await import("./graphite-sak-bridge.ts")'],
@@ -243,7 +246,7 @@ test("Round 36 (F-001): importing the adapter loads no SolanaAgentKit and no Zod
     .split("\n")
     .filter((l) => l.startsWith("LOADED "))
     .map((l) => l.slice(7));
-  assert.ok(loaded.some((m) => m.startsWith("@solana/web3.js/")), `the hook saw the adapter's own imports: ${loaded.slice(0, 5)}`);
+  assert.ok(loaded.some((m) => m.startsWith("@solana/web3.js/")), `the hook saw the adapter's own imports (${loaded.length} resolutions): ${loaded.slice(0, 5)}`);
   const forbidden = loaded.filter((m) => /^(solana-agent-kit|zod|@openai\/zod|@langchain|@openai\/agents|ai|@ai-sdk)\//.test(m));
   assert.deepEqual(forbidden, [], "the key-holding process loads SAK's tree");
 });
