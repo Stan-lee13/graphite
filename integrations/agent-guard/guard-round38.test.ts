@@ -356,3 +356,58 @@ test("R37-17: the default lock directory is derived from this user's account (it
     });
   }
 });
+
+// ---------------------------------------------------------------------------
+// G2-2: the repeat of an outcome-unknown swap, whatever its route.
+
+test("G2-2 (repro): after an outcome-unknown swap, the same swap through another route is refused as a repeat", async () => {
+  const wallet = Keypair.generate();
+  const f = swapFixture(wallet);
+  const h = await harness({ wallet, rpc: () => ({ ...f.state, sendFails: "lost" }), parse: f.parse });
+  try {
+    await assert.rejects(h.agent.executeSwap(SWAP, f.jupiter), SubmissionOutcomeUnknown);
+    h.rpc.behaviour.sendFails = false;
+    // Same wallet, same mints, same amount; Raydium AMM v4 instead of Jupiter.
+    await assert.rejects(h.agent.executeSwap(SWAP, f.raydium), (e: unknown) => {
+      assert.ok(e instanceof PriorSubmissionUnresolved, String(e));
+      assert.match((e as Error).message, /can still land until block height 1000/);
+      return true;
+    });
+    await assert.rejects(h.agent.executeSwap(SWAP, f.jupiter), PriorSubmissionUnresolved);
+    assert.equal(coreAsked(h), 1, "no second verification");
+    assert.equal(sent(h), 1, "one send");
+    // Once the first cannot land, the swap may be built again, on either route.
+    h.rpc.behaviour.blockHeight = 5_000;
+    assert.equal((await h.agent.executeSwap(SWAP, f.raydium)).executed, true);
+  } finally {
+    await h.close();
+  }
+});
+
+test("G2-2: an unresolved swap recorded under an earlier version's route-specific key still holds back that swap on any route", async () => {
+  const dir = privateTmp();
+  const stateFile = join(dir, "guard.state");
+  const wallet = Keypair.generate();
+  const f = swapFixture(wallet);
+  const signature = bs58.encode(randomBytes(64));
+  writeFileSync(
+    stateFile,
+    `${JSON.stringify({ v: 1, t: "unresolved", key: `swap:${JUPITER_V6}:${WSOL}:${USDC}:${SOL}`, signature, lvbh: 1_000, at: Date.now() })}\n`,
+    { mode: 0o600 },
+  );
+  const h = await harness({ wallet, rpc: () => f.state, parse: f.parse, config: { stateFile, walletLockDir: dir } });
+  try {
+    for (const payload of [f.raydium, f.jupiter]) {
+      await assert.rejects(h.agent.executeSwap(SWAP, payload), (e: unknown) => {
+        assert.ok(e instanceof PriorSubmissionUnresolved, String(e));
+        assert.equal((e as PriorSubmissionUnresolved).signature, signature);
+        return true;
+      });
+    }
+    assert.equal(coreAsked(h), 0);
+    h.rpc.behaviour.blockHeight = 5_000;
+    assert.equal((await h.agent.executeSwap(SWAP, f.raydium)).executed, true, "and it resolves once it cannot land");
+  } finally {
+    await h.close();
+  }
+});

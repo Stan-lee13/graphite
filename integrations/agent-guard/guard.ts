@@ -625,6 +625,29 @@ function effectForSummary(effect: WalletEffect): ConfirmationSummary["walletEffe
 }
 
 /**
+ * What makes two swaps the same request (Round 38, G2-2): the wallet, the
+ * input mint, the output mint and the amount in. Not the route: the same
+ * swap through Jupiter and through Raydium is one request, and after one of
+ * them failed ambiguously the other is a repeat until the first cannot land.
+ * The `v2` names this form; a key without it is the route-specific form of
+ * Rounds 30-37 (`legacySwapKeyMatcher`).
+ */
+export function swapRequestKey(wallet: string, inputMint: string, outputMint: string, amountIn: bigint): string {
+  return `swap:v2:${wallet}:${inputMint}:${outputMint}:${amountIn}`;
+}
+
+/**
+ * The Round 30-37 key for a swap was `swap:<route program>:<in>:<out>:<amount>`.
+ * A state file written then may hold an unresolved swap under it; it holds
+ * back the same swap on any route (it names no wallet, so on any wallet that
+ * reads the file: the stricter reading).
+ */
+function legacySwapKeyMatcher(inputMint: string, outputMint: string, amountIn: bigint): (key: string) => boolean {
+  const tail = `:${inputMint}:${outputMint}:${amountIn}`;
+  return (key) => key.endsWith(tail) && /^swap:[1-9A-HJ-NP-Za-km-z]{32,44}:/.test(key) && key.split(":").length === 5;
+}
+
+/**
  * The guard. One instance holds one wallet key and signs only through the
  * verified path.
  *
@@ -1116,8 +1139,15 @@ export class GraphiteGuard {
    * request. A submission that was sent but not seen confirmed is unresolved
    * too, and the record survives a restart when a state file is configured.
    */
-  async #assertNoUnresolvedSubmission(key: string): Promise<void> {
-    const prior = this.#state.unresolved(key);
+  async #assertNoUnresolvedSubmission(requestKey: string, alsoMatches?: (key: string) => boolean): Promise<void> {
+    // Round 38 (G2-2): a record under another key that names the same request
+    // (a swap's key before Round 38 named its route) holds it back too.
+    let key = requestKey;
+    let prior = this.#state.unresolved(key);
+    if (!prior && alsoMatches) {
+      const found = this.#state.unresolvedEntries().find(([k]) => alsoMatches(k));
+      if (found) [key, prior] = found;
+    }
     if (!prior) return;
     const status = (await this.#connection.getSignatureStatuses([prior.signature], { searchTransactionHistory: true })).value[0];
     if (status) {
@@ -1565,9 +1595,12 @@ export class GraphiteGuard {
       Uint8Array.from(payload.instructionData ?? []),
       payload.discriminator,
     );
-    // Round 30: the request is its effect — this route program spending this
-    // amount of this mint for that one — not its wording.
-    const key = `swap:${payload.programId}:${groundedSwap.input.mint}:${groundedSwap.output.mint}:${decoded.amountIn}`;
+    // Round 30: the request is its effect, not its wording. Round 38 (G2-2):
+    // and not its route — this wallet spending this amount of this mint for
+    // that one. The key named the route program, so after an outcome-unknown
+    // swap the same swap through another route was not a repeat, and both
+    // could land.
+    const key = swapRequestKey(this.#walletPublicKey, groundedSwap.input.mint, groundedSwap.output.mint, decoded.amountIn);
     const releaseClaim = this.#claim(key);
     try {
       return await this.#executeSwapClaimed(naturalLanguage, payload, options, proposedIntent, intentType, groundedSwap, decoded, key);
@@ -1586,7 +1619,10 @@ export class GraphiteGuard {
     decoded: ReturnType<typeof decodeSwapInstruction>,
     key: string,
   ): Promise<ExecutionOutcome> {
-    await this.#assertNoUnresolvedSubmission(key);
+    await this.#assertNoUnresolvedSubmission(
+      key,
+      legacySwapKeyMatcher(groundedSwap.input.mint, groundedSwap.output.mint, decoded.amountIn),
+    );
     const swapIntent: ProposedIntent = {
       intent_type: intentType,
       raw_natural_language: naturalLanguage,

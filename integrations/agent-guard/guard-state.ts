@@ -717,6 +717,11 @@ export class GuardState {
     return this.#unresolved.get(key);
   }
 
+  /** Every unresolved submission, by key (a copy). */
+  unresolvedEntries(): [string, UnresolvedSubmission][] {
+    return [...this.#unresolved].map(([key, u]) => [key, { ...u }]);
+  }
+
   /** Record, durably, that `key`'s submission is in flight or of unknown outcome. Throws if it cannot. */
   markUnresolved(key: string, signature: string, lastValidBlockHeight: number, at: number = Date.now()): void {
     this.#append({ v: 1, t: "unresolved", key, signature, lvbh: lastValidBlockHeight, at });
