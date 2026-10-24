@@ -258,7 +258,13 @@ export function App() {
         <main id="main" className="content" tabIndex={-1}>
           {core === "unauthorized" && route.view !== "connect" && (
             <div className="banner warn" role="status">
-              <span>The Core rejected the key stored in this browser. Every panel below will stay empty until it is fixed.</span>
+              {/* Round 36: after "Forget key" there is no stored key to blame. */}
+              <span>
+                {conn.key
+                  ? "The Core rejected the key stored in this browser."
+                  : "This Core requires a key, and none is stored in this browser."}{" "}
+                Every panel below will stay empty until it is fixed.
+              </span>
               <a className="btn small" href={hrefFor("connect")}>
                 Fix the key
               </a>

@@ -15,7 +15,7 @@ export function BlockedView() {
   const layout = useLayout();
   const polled = usePolling(() => api.policyViolations(), 5000);
   const fault = pollFault(polled);
-  if (fault) return <Fault error={fault} />;
+  if (fault) return <Fault error={fault} title="Blocked" />;
   const data = polled.data;
   const loading = !data;
 

@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { ChevronDown, ExternalLink, Search } from "lucide-react";
 import { api, type GraphNode, type Manifest, type ManifestInstruction } from "../api";
 import { hrefFor, navigate } from "../router";
+import { MANIFESTS_POLL_MS } from "../poll-state";
 import { useLayout, usePolling } from "../usePolling";
 import { CopyId, Detail, Empty, Fault, Figure, Freshness, PageHead, Section, Skeleton, State, TierBadge, fmt, pollFault, tierRank } from "../ui";
 
@@ -17,11 +18,11 @@ export function ProgramsView({ selected }: { selected?: string }) {
   // Round 30: `/manifests` is every manifest in full (about 4.6 MB for the
   // shipped set) and changes only on a registry update or restart; it was
   // refetched every 30 s for as long as this view was open.
-  const manifests = usePolling(() => api.manifests(), 300_000);
+  const manifests = usePolling(() => api.manifests(), MANIFESTS_POLL_MS);
   const [q, setQ] = useState("");
 
   const fault = pollFault(top, graph);
-  if (fault) return <Fault error={fault} />;
+  if (fault) return <Fault error={fault} title="Programs" />;
   const loading = !top.data || !graph.data;
 
   // Round 29 (audit 2026-10-20, D10): a program `/api/protocols/top` did not

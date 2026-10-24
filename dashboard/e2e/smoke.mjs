@@ -39,8 +39,11 @@ async function loadPlaywright() {
 const { chromium } = await loadPlaywright();
 const axe = process.env.AXE_CORE_PATH ? readFileSync(process.env.AXE_CORE_PATH, "utf8") : null;
 const VIEWS = ["overview", "programs", "graph", "verifications", "blocked", "registry", "system", "connect"];
+// Round 36: tablet too. At 768–1099px the sidebar is an icon rail, its own
+// anatomy, and its Search button had no accessible name — never drawn here.
 const SIZES = {
   desktop: { viewport: { width: 1440, height: 900 } },
+  tablet: { viewport: { width: 820, height: 1180 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
   phone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
 };
 const failures = [];
@@ -53,7 +56,8 @@ const executableIds = new Set(
   history.series.filter((p) => p.decision === "executable_approved" && p.executable === true && p.transaction_sha256).map((p) => p.audit_trail_id),
 );
 
-const browser = await chromium.launch();
+// CHROMIUM_PATH names a Chromium to use instead of Playwright's own.
+const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 try {
   for (const [size, opts] of Object.entries(SIZES)) {
     // CSP enforced except for the axe pass, which injects a script.

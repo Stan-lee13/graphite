@@ -447,8 +447,18 @@ kbd {
   justify-content: center;
   padding: 4px 0;
 }
+/* Round 36: the Search button's word is its only name. display:none took
+   it out of the accessibility tree too, and on the rail the button had no
+   name at all (axe button-name); it is hidden from the eye only. */
+.app.tablet .search-btn span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
 .app.tablet .brand-text,
-.app.tablet .search-btn span,
 .app.tablet .search-btn kbd,
 .app.tablet .nav-group-label,
 .app.tablet .nav-label,

@@ -101,3 +101,10 @@ wait_for "the console preview" "$preview/"
 AXE_CORE_PATH="$axe" node "$root/dashboard/e2e/smoke.mjs" "$preview/" "$core" "$key" | tee "$work/smoke.log"
 # A green exit is necessary, not sufficient: the summary must say axe ran.
 grep -q "clean, axe included$" "$work/smoke.log"
+
+# 5. (Round 36) the same console when the Core does not answer well: 401,
+#    500, not JSON, down, a /metrics a proxy answers, a Core that stops
+#    mid-session, hostile strings, a change of Core, the connection test
+#    (dashboard/e2e/states.mjs puts its own fault proxy in front of the Core).
+AXE_CORE_PATH="$axe" node "$root/dashboard/e2e/states.mjs" "$preview/" "$core" "$key" | tee "$work/states.log"
+grep -q "clean, axe included$" "$work/states.log"
