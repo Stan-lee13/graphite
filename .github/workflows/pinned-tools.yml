@@ -8,7 +8,10 @@ name: Pinned tools
 # releases, crates.io) once a week and goes red, with a table in the run
 # summary, when a newer release exists or a pin is older than the list's
 # max_age_days. CI (ci-scripts job) already fails when a workflow's pin and
-# the list disagree. Reads only; no secret.
+# the list disagree. Reads only; no secret. Round 38: the Debian snapshot the
+# runtime image's apt layer is pinned to is in the list (age only), and the
+# dependency holds' review-by dates (.github/dependency-holds.json) are
+# checked here too.
 
 on:
   schedule:
@@ -34,7 +37,13 @@ jobs:
           persist-credentials: false
       - name: The list matches the workflows
         run: python3 .github/scripts/pinned-tools.py check-pins
+      # Round 38 (D2-7): a Dependabot ignore or an npm override past its
+      # review-by date goes red here even in a week with no pull request.
+      - name: Dependency holds are not past their review-by dates
+        if: always()
+        run: python3 -I .github/scripts/dependency-holds.py check
       - name: Upstream releases and review age
+        if: always()
         env:
           # Only for the API's rate limit; the token can read, nothing more.
           GH_TOKEN: ${{ github.token }}

@@ -2,7 +2,7 @@
 # Reads a test run's log and fails unless it shows at least MIN passing tests
 # and nothing failed, cancelled or left as todo (Round 30).
 #
-#   test-count.sh cargo  <log> <min> <ignored-allowlist-file>
+#   test-count.sh cargo  <log> <min> <ignored-allowlist-file> [per-binary-floors]
 #   test-count.sh tap    <log> <min> [max-skipped]      (default 0)
 #   test-count.sh go     <log> <min>                    (any skip fails)
 #   test-count.sh pytest <log> <min> [max-skipped]      (default 0)
@@ -18,6 +18,16 @@
 # being picked up turned a gate into a no-op with a green tick. MIN is a floor,
 # not an exact count: adding tests never needs an edit here; removing tests
 # below the floor does, in a reviewed diff that says why.
+#
+# cargo, per test binary (Round 38, D2-8). MIN is a sum over every test
+# binary, so a binary that stopped running (a file whose tests were cfg'd
+# out, a target dropped from the build) is hidden by growth in another. The
+# count of each binary is always printed; given a floors file (lines
+# `<floor> <binary>`, the binary as cargo names it: `unittests src/lib.rs`,
+# `tests/foo.rs`, `doc-tests graphite_core`), every listed binary must be in
+# the log with at least its floor. A floors file that is missing or lists
+# nothing fails: an empty list is not "no floor". A binary not listed is
+# reported, not failed (adding a test file needs no edit here).
 set -euo pipefail
 
 format=${1:?format}; log=${2:?log}; min=${3:?min}; max_skipped=${4:-0}
@@ -42,6 +52,35 @@ case "$format" in
     unlisted=$(sed -n -E 's/^test (\S+) \.\.\. ignored.*/\1/p' "$log" | sort -u \
       | comm -23 - <(sed -e 's/#.*//' -e 's/[[:space:]]*$//' "$allow" | grep -v '^$' | sort -u))
     [ -z "$unlisted" ] || fail "ignored tests not in $allow: $(echo $unlisted)"
+    # Each `test result:` belongs to the `Running X (path)` / `Doc-tests X`
+    # line before it.
+    per_binary=$(awk '
+      /^ *Running / { b = $0; sub(/^ *Running /, "", b); sub(/ \(.*\)$/, "", b); next }
+      /^ *Doc-tests / { b = $0; sub(/^ *Doc-tests /, "doc-tests ", b); next }
+      /^test result: / { n = $0; sub(/^test result: [A-Za-z]+\. /, "", n); sub(/ passed.*/, "", n); print n "\t" (b == "" ? "?" : b); b = "" }
+    ' "$log")
+    echo "per test binary:"
+    printf '%s\n' "$per_binary" | awk -F'\t' '{ printf "  %6d passed  %s\n", $1, $2 }'
+    floors=${5:-}
+    if [ -n "$floors" ]; then
+      [ -f "$floors" ] || fail "per-binary floors $floors is missing"
+      listed=0
+      while IFS= read -r line; do
+        line="${line%%#*}"
+        [ -n "${line//[[:space:]]/}" ] || continue
+        f_min="${line%% *}" f_bin="${line#* }"
+        [[ "$f_min" =~ ^[0-9]+$ ]] && [ -n "$f_bin" ] && [ "$f_bin" != "$line" ] || fail "per-binary floors $floors: bad line '$line'"
+        listed=$((listed + 1))
+        got=$(printf '%s\n' "$per_binary" | awk -F'\t' -v b="$f_bin" '$2 == b { print $1; n++ } END { if (n != 1) print "x" n }' | tail -n 1)
+        case "$got" in
+          x0) fail "test binary '$f_bin' (floor $f_min) did not run" ;;
+          x*) fail "test binary '$f_bin' ran more than once" ;;
+        esac
+        [ "$got" -ge "$f_min" ] || fail "test binary '$f_bin': $got passed, below its floor of $f_min"
+      done <"$floors"
+      [ "$listed" -ge 1 ] || fail "per-binary floors $floors lists no binary"
+      echo "per-binary floors ok: $listed binaries at or above their floors"
+    fi
     ;;
   tap)
     # node:test's TAP summary; the last one is the run's total.

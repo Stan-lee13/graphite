@@ -1,0 +1,65 @@
+name: Ruleset drift
+
+# Round 38 (R37-8): the release is only as safe as four repository settings —
+# the `main` ruleset, the two `v*` tag rulesets and the protected `release`
+# environment — and none of them is code: an admin can turn any of them off,
+# and until the owner applies them they do not exist (the Round 37 audit read
+# `GET /rulesets` = [] and no `release` environment). Once a week this reads
+# them back, read-only, and goes red when one is absent or differs from the
+# committed file (.github/rulesets/main.json, release-tags.json,
+# release-tags-create.json; .github/environments/release.json). Red is the
+# expected state until the owner's steps R1–R2 are done
+# (docs/ops/production-checklist.md).
+#
+# GITHUB_TOKEN only, with read permissions; no secret. One limit, reported in
+# the run summary instead of assumed: GitHub shows a ruleset's bypass list
+# only to a caller that may edit it, so with this token the check proves the
+# workflow token itself cannot bypass (current_user_can_bypass = never) but
+# cannot read who else may. The owner reads that once by hand (R5).
+
+on:
+  schedule:
+    # Mondays 07:23 UTC, off the hour, after the pinned-tools report.
+    - cron: "23 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read # environments and their deployment policies
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  drift:
+    name: Rulesets and the release environment match the committed files
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the live settings (GET only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        # Any error reading a ruleset fails the step. The environment is
+        # allowed to be missing (404 is the answer for "not created"); its
+        # file is then absent and the comparison reports it as absent.
+        run: |
+          live="$RUNNER_TEMP/live"
+          mkdir -p "$live"
+          gh api "repos/${REPO}/rulesets?includes_parents=false&per_page=100" > "$live/rulesets.json"
+          for id in $(python3 -I -c 'import json,sys; print(" ".join(str(r["id"]) for r in json.load(open(sys.argv[1]))))' "$live/rulesets.json"); do
+            [[ "$id" =~ ^[0-9]+$ ]] || { echo "::error::ruleset id '$id'"; exit 2; }
+            gh api "repos/${REPO}/rulesets/${id}" > "$live/ruleset-${id}.json"
+          done
+          if ! gh api "repos/${REPO}/environments/release" > "$live/environment-release.json"; then
+            rm -f "$live/environment-release.json"
+          fi
+          if ! gh api "repos/${REPO}/environments/release/deployment-branch-policies?per_page=100" > "$live/environment-release-policies.json"; then
+            rm -f "$live/environment-release-policies.json"
+          fi
+      - name: Compare with the committed files
+        run: python3 -I .github/scripts/ruleset-drift.py --live "$RUNNER_TEMP/live"

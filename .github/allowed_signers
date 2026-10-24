@@ -11,3 +11,15 @@
 #   <your git email> namespaces="git" ssh-ed25519 AAAA...
 #
 # and change this file only through a reviewed pull request to main.
+#
+# Validity windows (Round 38, D2-5): a line may bound when its key may sign a
+# release, in ssh-keygen's allowed_signers options, judged at release time
+# (never by the tag's own, signer-chosen date):
+#
+#   <email> namespaces="git",valid-after="20261101",valid-before="20271101" ssh-ed25519 AAAA...
+#
+# Revocation: add the key's public line to .github/revoked_signers (a revoked
+# key is refused even while it is listed here and inside its window), and in
+# the same pull request delete its line here or end it with valid-before.
+# release-guard.yml applies main's copy of both files to every release run,
+# tags on older commits included.

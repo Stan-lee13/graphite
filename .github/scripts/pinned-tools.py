@@ -6,6 +6,13 @@
       Offline. Every tool's `pinned_in` text occurs verbatim in its file, and
       every entry is well formed. Exit 1 otherwise. Runs in CI on every change,
       so a bump in a workflow without the list (or the reverse) fails.
+      Round 38 (D2-6): and the pin is the SAME everywhere. Each tool names, in
+      `consistent`, the patterns its pin is written under (one capture group)
+      and the files to search (globs); every match must capture the expected
+      value (the tool's version unless `expect` says otherwise), each pattern
+      must match at least once, and the only other values allowed are the
+      exact `except` texts, each with a `why`, each still present. A second,
+      different pin of the same tool anywhere in those files fails.
 
   pinned-tools.py report [--list F] [--today YYYY-MM-DD] [--latest F]
       Asks upstream (GitHub releases/latest, crates.io max_stable_version) for
@@ -17,6 +24,7 @@
 """
 import argparse
 import datetime as dt
+import glob
 import json
 import os
 import re
@@ -70,12 +78,62 @@ def check_pins(args):
                 continue
             if p.get("text", "") not in text:
                 problems.append(f"{name}: {p.get('file')} no longer contains {p.get('text')!r} (update the pin and this list together)")
+        problems += check_consistent(t, args.root)
     for p in problems:
         print(f"::error::pinned-tools: {p}")
     if problems:
         return 1
     print(f"pinned-tools: all {len(data['tools'])} pins are where the list says")
     return 0
+
+
+def check_consistent(t, root):
+    """D2-6: every occurrence of the tool's pin, in every file named, is one value."""
+    name = t.get("name", "?")
+    rules = t.get("consistent")
+    if not isinstance(rules, list) or not rules:
+        return [f"{name}: no `consistent` rule: name the patterns its pin is written under"]
+    problems = []
+    for n, r in enumerate(rules):
+        where = f"{name}: consistent[{n}]"
+        files = r.get("files") or []
+        try:
+            pat = re.compile(r.get("pattern", ""))
+        except re.error as e:
+            problems.append(f"{where}: bad pattern: {e}")
+            continue
+        if pat.groups != 1:
+            problems.append(f"{where}: the pattern needs exactly one capture group")
+            continue
+        want = r.get("expect", t.get("version"))
+        excepts = r.get("except") or []
+        for x in excepts:
+            if not x.get("why") or not x.get("file") or not x.get("text"):
+                problems.append(f"{where}: an `except` needs file, text and why")
+        paths = sorted({q for g in files for q in glob.glob(os.path.join(root, g))})
+        if not files or not paths:
+            problems.append(f"{where}: {files} names no file")
+            continue
+        matches, used = 0, set()
+        for path in paths:
+            rel = os.path.relpath(path, root)
+            text = open(path).read()
+            for m in pat.finditer(text):
+                matches += 1
+                if m.group(1) == want:
+                    continue
+                ok = [i for i, x in enumerate(excepts) if x.get("file") == rel and x.get("text") == m.group(0)]
+                if ok:
+                    used.update(ok)
+                    continue
+                line = text.count("\n", 0, m.start()) + 1
+                problems.append(f"{where}: {rel}:{line} pins {m.group(1)!r}, not {want!r} ({m.group(0)!r}): one tool, one pin")
+        if matches == 0:
+            problems.append(f"{where}: {r.get('pattern')!r} matches nothing in {files}: the rule checks nothing")
+        for i, x in enumerate(excepts):
+            if i not in used:
+                problems.append(f"{where}: the exception {x.get('text')!r} in {x.get('file')} no longer occurs (remove it)")
+    return problems
 
 
 def fetch_json(url, headers):

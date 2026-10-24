@@ -215,6 +215,13 @@ jobs:
           # $FLAGS is split on purpose: "" adds nothing, the others add flags.
           # shellcheck disable=SC2086
           cargo test --locked --profile ci-test $FLAGS 2>&1 | tee "$RUNNER_TEMP/cargo-test-$LEG.log"
+          # The floor is a sum over every test binary (D2-8, Round 38): the
+          # count prints per binary too, but no per-binary floor is enforced
+          # yet. Its numbers must come from a run of each leg at a reviewed
+          # commit, and Round 38 had neither a Rust build nor the CI logs to
+          # read them from. Limitation, and the follow-up: write this table
+          # into .github/test-floors/rust-$LEG.txt and pass it as the 5th
+          # argument (test-count.sh then fails a binary that stops running).
           bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test-$LEG.log" "$FLOOR" ../.github/test-allowlists/rust-ignored.txt
       # `corpus_persists_and_reloads_identically` (tests/regression_corpus.rs)
       # writes the regression corpus back into fixtures/corpus, which is
@@ -1134,9 +1141,12 @@ jobs:
   # here because those workflows run only on a tag, a dispatch or a schedule.
   # release-gate.sh (R33-9: which CI run, which commit and which signature a
   # release accepts), set-rpc-env.sh (D-9), pinned-tools.py (R33-20: every
-  # hand-pinned tool is where .github/pinned-tools.json says) and
-  # check-attestation-commands.py (R33-18: every published verify command
-  # pins the signer workflow).
+  # hand-pinned tool is where .github/pinned-tools.json says, and the same
+  # pin everywhere, D2-6) and check-attestation-commands.py (R33-18: every
+  # published verify command pins the signer workflow). Round 38: the
+  # dependency holds' review-by dates (D2-7), the ruleset drift comparison
+  # (R37-8), the release guard (R37-8) and the per-binary test counter (D2-8)
+  # are tested here too.
   ci-scripts:
     name: Release gate and CI scripts — their own tests
     runs-on: ubuntu-24.04
@@ -1146,23 +1156,33 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The whole history: the release gate's tests check GATE_INTRODUCED
+          # against `git log --diff-filter=A` and refuse 99948c6 (R37-8); in a
+          # shallow clone they fail, they do not skip.
+          fetch-depth: 0
       - name: Release gate decisions (PR-event vs push-to-main CI, ancestry, tag signatures)
         run: |
           bash .github/scripts/release-gate.test.sh 2>&1 | tee "$RUNNER_TEMP/release-gate.log"
           passed="$(sed -n 's/^release-gate tests: \([0-9]*\) passed, 0 failed$/\1/p' "$RUNNER_TEMP/release-gate.log")"
-          if [ -z "$passed" ] || [ "$passed" -lt 30 ]; then
-            echo "::error::release-gate tests: ${passed:-no summary} passed, floor 30"; exit 1
+          # 30 at Round 34; 52 at Round 38 (R37-8 pre-gate commits, D2-5
+          # revocation and validity windows, D2-3 same-tag).
+          if [ -z "$passed" ] || [ "$passed" -lt 52 ]; then
+            echo "::error::release-gate tests: ${passed:-no summary} passed, floor 52"; exit 1
           fi
-      - name: Hand-pinned tools are where the list says
+      - name: Hand-pinned tools are where the list says, and the same everywhere
         run: python3 .github/scripts/pinned-tools.py check-pins
+      - name: Every dependency hold is listed with a review-by date not yet past
+        run: python3 -I .github/scripts/dependency-holds.py check
       - name: Every published attestation command pins the signer
         run: python3 .github/scripts/check-attestation-commands.py
       - name: The CI scripts' own tests
         run: |
           bash .github/scripts/ci-scripts.test.sh 2>&1 | tee "$RUNNER_TEMP/ci-scripts.log"
           passed="$(sed -n 's/^ci-scripts tests: \([0-9]*\) passed, 0 failed$/\1/p' "$RUNNER_TEMP/ci-scripts.log")"
-          if [ -z "$passed" ] || [ "$passed" -lt 33 ]; then
-            echo "::error::ci-scripts tests: ${passed:-no summary} passed, floor 33"; exit 1
+          # 33 at Round 36; 77 at Round 38 (D2-4, D2-6, D2-7, D2-8, D-8,
+          # R37-8 drift and guard, D2-3 publish structure).
+          if [ -z "$passed" ] || [ "$passed" -lt 77 ]; then
+            echo "::error::ci-scripts tests: ${passed:-no summary} passed, floor 77"; exit 1
           fi
 
   # Round 30 (G-11): the one check the `main` ruleset requires

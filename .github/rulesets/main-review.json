@@ -1,5 +1,5 @@
 {
-  "name": "main — independent review (Round 30, G-11; enable once a second maintainer exists)",
+  "name": "main — independent review (Round 30, G-11; admin bypass by PR only, D2-4)",
   "target": "branch",
   "enforcement": "active",
   "conditions": {
@@ -8,7 +8,9 @@
       "exclude": []
     }
   },
-  "bypass_actors": [],
+  "bypass_actors": [
+    { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "pull_request" }
+  ],
   "rules": [
     {
       "type": "pull_request",

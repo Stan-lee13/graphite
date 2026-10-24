@@ -18,21 +18,44 @@
 #     created under the same name, and a run of any other workflow file are
 #     all ignored, and each one ignored is named in the output.
 #
-#   release-gate.sh ancestor SHA MAIN_REF
-#       exit 0 when SHA is MAIN_REF or an ancestor of it (git, in the cwd)
+#   release-gate.sh ancestor SHA MAIN_REF [SINCE]
+#       exit 0 when SHA is MAIN_REF or an ancestor of it, AND SHA is SINCE or
+#       a descendant of it (git, in the cwd). SINCE defaults to
+#       GATE_INTRODUCED below, the commit that added this script (Round 38,
+#       R37-8): a commit older than the gate carries a release.yml without
+#       it, so a tag on it is never a release, however signed. Limit: a tag
+#       on such a commit runs THAT commit's release.yml, which never calls
+#       this; release-guard.yml (main's copy, on every Release run) and the
+#       owner's tag ruleset and `release` environment are what stop it.
 #
-#   release-gate.sh tag-signature RAW_TAG TAG SHA ALLOWED_SIGNERS
+#   release-gate.sh tag-signature RAW_TAG TAG SHA ALLOWED_SIGNERS REVOKED
 #       exit 0 when RAW_TAG (the output of `git cat-file tag TAG`) is an
 #       annotated tag named TAG, of the commit SHA, carrying an SSH signature
-#       (namespace `git`) by a key in ALLOWED_SIGNERS. FAILS CLOSED when
-#       ALLOWED_SIGNERS names no key: an empty list is "nobody may release",
-#       never "anybody may".
+#       (namespace `git`) by a key in ALLOWED_SIGNERS that is not in REVOKED
+#       and is inside its valid-after / valid-before window at the time of
+#       the check (the release, never the tag's own tagger date, which the
+#       signer chooses). FAILS CLOSED when ALLOWED_SIGNERS names no key: an
+#       empty list is "nobody may release", never "anybody may"; and when
+#       REVOKED is missing (an empty list, comments only, revokes nothing).
+#
+#   release-gate.sh same-tag REF_JSON TAG_JSON TAG TAG_OBJECT SHA
+#       exit 0 when REF_JSON (GET repos/{repo}/git/ref/tags/TAG) still names
+#       the annotated tag object TAG_OBJECT the gate verified, and TAG_JSON
+#       (GET repos/{repo}/git/tags/TAG_OBJECT) is that object, named TAG, of
+#       the commit SHA (Round 38, D2-3: publish re-reads this right before
+#       it pushes, attests and creates the release, and once after).
 #
 # Every other exit is a usage or input error and stops the release.
 set -euo pipefail
 
 die() { echo "::error::$*" >&2; exit 1; }
-usage() { sed -n '2,32p' "$0" >&2; exit 64; }
+usage() { sed -n '2,48p' "$0" >&2; exit 64; }
+
+# The commit that introduced this gate on main (Round 34, R33-9), found with
+# `git log --diff-filter=A --format=%H -- .github/scripts/release-gate.sh`;
+# release-gate.test.sh checks the two still agree. Every main commit before
+# it carries a release.yml with no signature, ancestry or push-run check.
+GATE_INTRODUCED=ad3f7ad9e41e932869a1f68322396b1ef86254f4
 
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
@@ -118,21 +141,25 @@ PY
     ;;
 
   ancestor)
-    [ $# -eq 2 ] || usage
-    sha="$1" main="$2"
+    [ $# -eq 2 ] || [ $# -eq 3 ] || usage
+    sha="$1" main="$2" since="${3:-$GATE_INTRODUCED}"
+    [ -n "$since" ] || usage
     git rev-parse --verify --quiet "$main^{commit}" >/dev/null || die "$main is not a commit here (fetch-depth: 0 is required)"
     git rev-parse --verify --quiet "$sha^{commit}" >/dev/null || die "$sha is not a commit here"
-    if git merge-base --is-ancestor "$sha" "$main"; then
-      echo "$sha is on $main"
+    git rev-parse --verify --quiet "$since^{commit}" >/dev/null || die "the gate's introduction $since is not a commit here (fetch-depth: 0 is required)"
+    git merge-base --is-ancestor "$sha" "$main" || die "$sha is not on $main: only a commit merged to main is released"
+    if git merge-base --is-ancestor "$since" "$sha"; then
+      echo "$sha is on $main and descends from the gate's introduction ($since)"
     else
-      die "$sha is not on $main: only a commit merged to main is released"
+      die "$sha predates the release gate (it does not descend from $since, the commit that introduced it): its release.yml has no gate, so it is never released"
     fi
     ;;
 
   tag-signature)
-    [ $# -eq 4 ] || usage
-    raw="$1" tag="$2" sha="$3" signers="$4"
+    [ $# -eq 5 ] || usage
+    raw="$1" tag="$2" sha="$3" signers="$4" revoked="$5"
     [ -f "$signers" ] || die "$signers is missing"
+    [ -f "$revoked" ] || die "the revocation list $revoked is missing (an empty one, comments only, revokes nothing; a missing one stops the release)"
     if ! grep -qvE '^[[:space:]]*(#|$)' "$signers"; then
       die "$signers names no signer, so no tag can be verified and nothing is released. The owner adds the release signing key (docs/ops/production-checklist.md, \"Release integrity\")."
     fi
@@ -154,15 +181,72 @@ PY
     awk -v b="$begin" '$0 == b {exit} {print}' "$raw" >"$work/payload"
     awk -v b="$begin" -v e="$end" '$0 == b {on=1} on {print} $0 == e {exit}' "$raw" >"$work/sig"
     grep -qxF -- "$end" "$work/sig" || die "tag $tag has a truncated SSH signature"
-    principals="$(ssh-keygen -Y find-principals -s "$work/sig" -f "$signers" 2>/dev/null || true)"
-    [ -n "$principals" ] || die "tag $tag is signed by a key that is not in $signers"
+    # find-principals and verify both judge valid-after / valid-before at
+    # the time they run (now), so an expired key matches no principal.
+    principals="$(ssh-keygen -Y find-principals -s "$work/sig" -f "$signers" 2>"$work/fp.err" || true)"
+    if [ -z "$principals" ]; then
+      if grep -q 'key has expired\|not yet valid' "$work/fp.err"; then
+        die "tag $tag is signed by a key of $signers outside its validity window ($(grep -m1 'expired\|not yet valid' "$work/fp.err" | sed 's/^[^:]*:[0-9]*: //'))"
+      fi
+      die "tag $tag is signed by a key that is not in $signers"
+    fi
     while IFS= read -r p; do
-      if ssh-keygen -Y verify -f "$signers" -I "$p" -n git -s "$work/sig" <"$work/payload" >/dev/null 2>&1; then
-        echo "tag $tag ($sha) has a good signature by $p"
+      if ssh-keygen -Y verify -f "$signers" -I "$p" -n git -s "$work/sig" -r "$revoked" <"$work/payload" >"$work/verify.out" 2>&1; then
+        echo "tag $tag ($sha) has a good signature by $p (not revoked, inside its validity window)"
         exit 0
+      fi
+      # ssh-keygen says only "Could not verify signature" for a revoked key:
+      # a signature that verifies without the list and not with it is one.
+      if ssh-keygen -Y verify -f "$signers" -I "$p" -n git -s "$work/sig" <"$work/payload" >/dev/null 2>&1; then
+        die "tag $tag is signed by $p with a key listed in the revocation list $revoked"
       fi
     done <<<"$principals"
     die "the signature on tag $tag does not verify"
+    ;;
+
+  same-tag)
+    [ $# -eq 5 ] || usage
+    [ -n "$4" ] && [ -n "$5" ] || usage
+    rc=0
+    python3 -I - "$@" <<'PY' || rc=$?
+import json, sys
+
+ref_file, tag_file, tag, want_obj, want_sha = sys.argv[1:6]
+
+def load(path, keys):
+    try:
+        data = json.load(open(path))
+    except (OSError, ValueError) as e:
+        print(f"::error::cannot read {path}: {e}")
+        sys.exit(2)
+    if not isinstance(data, dict) or any(k not in data for k in keys):
+        print(f"::error::{path} is not an API answer with {keys}")
+        sys.exit(2)
+    return data
+
+ref = load(ref_file, ("ref", "object"))
+obj = load(tag_file, ("sha", "tag", "object"))
+problems = []
+if ref.get("ref") != f"refs/tags/{tag}":
+    problems.append(f"the ref is {ref.get('ref')!r}, not refs/tags/{tag}")
+if (ref.get("object") or {}).get("type") != "tag":
+    problems.append(f"refs/tags/{tag} now names a {(ref.get('object') or {}).get('type')!r}, not an annotated tag")
+if (ref.get("object") or {}).get("sha") != want_obj:
+    problems.append(f"refs/tags/{tag} now names {(ref.get('object') or {}).get('sha')}, not the tag object the gate verified ({want_obj})")
+if obj.get("sha") != want_obj:
+    problems.append(f"the tag object read is {obj.get('sha')}, not {want_obj}")
+if obj.get("tag") != tag:
+    problems.append(f"the tag object is named {obj.get('tag')!r}, not {tag}")
+if (obj.get("object") or {}).get("type") != "commit" or (obj.get("object") or {}).get("sha") != want_sha:
+    problems.append(f"the tag object names {(obj.get('object') or {}).get('sha')}, not the gated commit {want_sha}")
+if problems:
+    for p in problems:
+        print(f"::error::{p}")
+    print("::error::the tag is not the one the gate verified; not publishing")
+    sys.exit(1)
+print(f"tag {tag} is still {want_obj}, of {want_sha}: the one the gate verified")
+PY
+    case "$rc" in 0 | 1) exit "$rc" ;; *) exit 2 ;; esac
     ;;
 
   *) usage ;;

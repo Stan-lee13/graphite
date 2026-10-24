@@ -98,22 +98,57 @@ g() { git -C "$T/repo" -c user.name=t -c user.email=t@example.invalid -c commit.
 git init -q -b main "$T/repo"
 g commit -q --allow-empty -m one
 first="$(g rev-parse HEAD)"
+# The fixture's own introduction of the gate: the commit that adds
+# .github/scripts/release-gate.sh, found the way the real constant was found.
+mkdir -p "$T/repo/.github/scripts"
+echo gate >"$T/repo/.github/scripts/release-gate.sh"
+g add .github/scripts/release-gate.sh
+g commit -q -m "the release gate"
+since="$(g log --diff-filter=A --format=%H -- .github/scripts/release-gate.sh | tail -n 1)"
 g commit -q --allow-empty -m two
 on_main="$(g rev-parse HEAD)"
 g checkout -q -b feature
 g commit -q --allow-empty -m side
 side="$(g rev-parse HEAD)"
 g checkout -q main
-anc() { (cd "$T/repo" && "$gate" ancestor "$1" main); }
+anc() { (cd "$T/repo" && "$gate" ancestor "$1" main "${2:-$since}"); }
 expect 0 "the head of main is releasable" anc "$on_main"
-expect 0 "an older commit of main is releasable" anc "$first"
+expect 0 "the commit that introduced the gate is releasable" anc "$since"
+# Re-pinned in Round 38 (R37-8). This case expected 0 ("an older commit of
+# main is releasable"): any commit on main counted, so a signed tag on
+# 99948c6 (on main at 0.3.0-beta, before the gate existed) was a release
+# candidate. The gate now also requires the tagged commit to descend from
+# the commit that introduced it. Limit: a tag on such a commit runs THAT
+# commit's release.yml, which has no gate at all; this pins the check for
+# every tag on a later commit, and release-guard.yml (main's copy) plus the
+# owner's tag ruleset and `release` environment are what stop the old one.
+expect 1 "an older main commit from before the gate was introduced is refused (R37-8)" anc "$first"
+out="$(anc "$first" 2>&1)"
+grep -q 'predates the release gate' <<<"$out" && ok "the refusal names the gate's introduction" || bad "the pre-gate refusal did not say why: $out"
 expect 1 "a branch commit not merged to main is refused" anc "$side"
+expect 1 "a gate-introduction commit this repository does not have fails closed" anc "$on_main" 2222222222222222222222222222222222222222
+# The committed constant, against this repository's own history (ci-scripts
+# checks out with fetch-depth: 0; a shallow clone fails here, it never skips).
+real_root="$(cd "$here/../.." && pwd)"
+const="$(sed -n 's/^GATE_INTRODUCED=\([0-9a-f]\{40\}\)$/\1/p' "$gate")"
+found="$(git -C "$real_root" log --diff-filter=A --format=%H -- .github/scripts/release-gate.sh 2>/dev/null | tail -n 1)"
+[ -n "$const" ] && [ "$const" = "$found" ] && ok "GATE_INTRODUCED ($const) is the commit that added release-gate.sh" \
+  || bad "GATE_INTRODUCED '${const:-unset}' is not the commit that added release-gate.sh ('${found:-not found: shallow clone?}')"
+real() { (cd "$real_root" && "$gate" ancestor "$1" HEAD); }
+expect 1 "99948c6 (Round 32's ungated release.yml, on main) is refused by the committed constant" real 99948c6
+expect 0 "this checkout's HEAD is releasable under the committed constant" real HEAD
 
 echo "== tag-signature"
 ssh-keygen -q -t ed25519 -N '' -C release -f "$T/release" >/dev/null
 ssh-keygen -q -t ed25519 -N '' -C other -f "$T/other" >/dev/null
 printf 'release@example.invalid namespaces="git" %s\n' "$(cut -d' ' -f1,2 "$T/release.pub")" >"$T/allowed"
 printf '# the release signing key goes here\n\n' >"$T/allowed-empty"
+printf '# no key revoked\n\n' >"$T/revoked"
+printf '# revoked 2026-10-24\n%s\n' "$(cat "$T/release.pub")" >"$T/revoked-release"
+rk="$(cut -d' ' -f1,2 "$T/release.pub")"
+printf 'release@example.invalid namespaces="git",valid-before="20200101" %s\n' "$rk" >"$T/allowed-expired"
+printf 'release@example.invalid namespaces="git",valid-after="20990101" %s\n' "$rk" >"$T/allowed-future"
+printf 'release@example.invalid namespaces="git",valid-after="20200101",valid-before="20990101" %s\n' "$rk" >"$T/allowed-window"
 stag() { # stag NAME KEY COMMIT
   g -c gpg.format=ssh -c user.signingkey="$2" tag -s "$1" -m "graphite $1" "$3"
   g cat-file tag "$1" >"$T/$1.raw"
@@ -123,27 +158,67 @@ stag v1.0.1 "$T/other" "$on_main"
 g tag -a v1.0.2 -m "unsigned" "$on_main"
 g cat-file tag v1.0.2 >"$T/v1.0.2.raw"
 : >"$T/lightweight.raw"
-sig() { "$gate" tag-signature "$T/$1.raw" "$1" "${3:-$on_main}" "${2:-$T/allowed}"; }
+sig() { "$gate" tag-signature "$T/$1.raw" "$1" "${3:-$on_main}" "${2:-$T/allowed}" "${4:-$T/revoked}"; }
 expect 0 "a tag signed by the allowed release key passes" sig v1.0.0
 expect 1 "a tag signed by any other key is refused" sig v1.0.1
 expect 1 "an annotated tag without a signature is refused" sig v1.0.2
-expect 1 "a lightweight tag (no tag object) is refused" "$gate" tag-signature "$T/lightweight.raw" v1.0.3 "$on_main" "$T/allowed"
+expect 1 "a lightweight tag (no tag object) is refused" "$gate" tag-signature "$T/lightweight.raw" v1.0.3 "$on_main" "$T/allowed" "$T/revoked"
 expect 1 "a signed tag of another commit is refused" sig v1.0.0 "$T/allowed" "$first"
-expect 1 "a signed tag object presented under another tag name is refused" "$gate" tag-signature "$T/v1.0.0.raw" v9.9.9 "$on_main" "$T/allowed"
+expect 1 "a signed tag object presented under another tag name is refused" "$gate" tag-signature "$T/v1.0.0.raw" v9.9.9 "$on_main" "$T/allowed" "$T/revoked"
 expect 1 "an empty allowed-signers list fails closed" sig v1.0.0 "$T/allowed-empty"
-out="$("$gate" tag-signature "$T/v1.0.0.raw" v1.0.0 "$on_main" "$T/allowed-empty" 2>&1)"
+out="$("$gate" tag-signature "$T/v1.0.0.raw" v1.0.0 "$on_main" "$T/allowed-empty" "$T/revoked" 2>&1)"
 grep -q 'names no signer' <<<"$out" && ok "the empty list is named as the reason" || bad "the empty-list refusal did not say why"
 # One byte of the signed payload changed (the message), signature kept.
 sed 's/^graphite v1.0.0$/graphite v1.0.0!/' "$T/v1.0.0.raw" >"$T/v1.0.0x.raw"
 cmp -s "$T/v1.0.0.raw" "$T/v1.0.0x.raw" && bad "the tamper fixture did not change the payload"
-expect 1 "a signed tag whose message was altered is refused" "$gate" tag-signature "$T/v1.0.0x.raw" v1.0.0 "$on_main" "$T/allowed"
+expect 1 "a signed tag whose message was altered is refused" "$gate" tag-signature "$T/v1.0.0x.raw" v1.0.0 "$on_main" "$T/allowed" "$T/revoked"
+# D2-5 (Round 38): a signer can be revoked, and a key can carry a validity
+# window (ssh-keygen's valid-after / valid-before, judged at release time,
+# never at the tag's own, signer-chosen tagger date).
+expect 1 "a listed key that is also in the revocation list is refused" sig v1.0.0 "$T/allowed" "$on_main" "$T/revoked-release"
+out="$(sig v1.0.0 "$T/allowed" "$on_main" "$T/revoked-release" 2>&1)"
+grep -q 'revoked' <<<"$out" && ok "the revocation is named as the reason" || bad "the revoked-key refusal did not say why: $out"
+expect 1 "a key whose valid-before date has passed is refused" sig v1.0.0 "$T/allowed-expired"
+out="$(sig v1.0.0 "$T/allowed-expired" 2>&1)"
+grep -q 'expired' <<<"$out" && ok "the expiry is named as the reason" || bad "the expired-key refusal did not say why: $out"
+expect 1 "a key whose valid-after date is still ahead is refused" sig v1.0.0 "$T/allowed-future"
+expect 0 "a key inside its validity window passes" sig v1.0.0 "$T/allowed-window"
+expect 1 "a missing revocation list fails closed" sig v1.0.0 "$T/allowed" "$on_main" "$T/no-such-revoked"
+expect 64 "the revocation list cannot be left out (four arguments are a usage error)" "$gate" tag-signature "$T/v1.0.0.raw" v1.0.0 "$on_main" "$T/allowed"
 # The committed list: until the owner fills it, every release fails closed.
 committed="$here/../allowed_signers"
+committed_revoked="$here/../revoked_signers"
+[ -f "$committed_revoked" ] && ok "the committed revocation list exists" || bad "$committed_revoked is missing"
 if grep -qvE '^[[:space:]]*(#|$)' "$committed"; then
-  expect 1 "the committed allowed_signers does not accept a throwaway key" sig v1.0.0 "$committed"
+  expect 1 "the committed allowed_signers does not accept a throwaway key" sig v1.0.0 "$committed" "$on_main" "$committed_revoked"
 else
-  expect 1 "the committed (still empty) allowed_signers refuses every tag" sig v1.0.0 "$committed"
+  expect 1 "the committed (still empty) allowed_signers refuses every tag" sig v1.0.0 "$committed" "$on_main" "$committed_revoked"
 fi
+
+echo "== same-tag (D2-3)"
+# What publish re-reads right before it pushes, attests and creates the
+# release: the tag ref still names the tag object the gate verified, and
+# that object still names the gated commit. GET git/ref/tags/TAG and
+# GET git/tags/OBJECT, as recorded answers.
+TO=3333333333333333333333333333333333333333
+ref() { printf '{"ref":"refs/tags/%s","object":{"type":"%s","sha":"%s"}}' "$1" "$2" "$3" >"$T/ref.json"; }
+tobj() { printf '{"sha":"%s","tag":"%s","object":{"type":"%s","sha":"%s"}}' "$1" "$2" "$3" "$4" >"$T/tagobj.json"; }
+same() { "$gate" same-tag "$T/ref.json" "$T/tagobj.json" v1.0.0 "$TO" "$SHA"; }
+ref v1.0.0 tag "$TO"; tobj "$TO" v1.0.0 commit "$SHA"
+expect 0 "the tag the gate verified, unchanged, publishes" same
+# publish reads the tag object by the hash the gate output, so that object
+# is always the verified one; only the ref shows a re-created tag.
+ref v1.0.0 tag 4444444444444444444444444444444444444444; tobj "$TO" v1.0.0 commit "$SHA"
+expect 1 "a tag re-created after the gate (the ref names another tag object) is refused" same
+ref v1.0.0 commit "$SHA"; tobj "$TO" v1.0.0 commit "$SHA"
+expect 1 "a tag replaced by a lightweight tag is refused" same
+ref v1.0.0 tag "$TO"; tobj "$TO" v1.0.0 commit 2222222222222222222222222222222222222222
+expect 1 "a tag object that names another commit is refused" same
+ref v1.0.0 tag "$TO"; tobj "$TO" v9.9.9 commit "$SHA"
+expect 1 "a tag object under another name is refused" same
+ref v1.0.0 tag "$TO"; printf '{"message":"Not Found"}' >"$T/tagobj.json"
+expect 2 "an API error instead of the tag object stops the publish" same
+expect 64 "an empty expected tag object is a usage error, never a match" "$gate" same-tag "$T/ref.json" "$T/tagobj.json" v1.0.0 "" "$SHA"
 
 echo
 echo "release-gate tests: $pass passed, $fail failed"
