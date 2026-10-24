@@ -512,31 +512,64 @@ transaction under the stated threat model, and no external party has yet tried.
   Every other withdrawal, claim, protocol close, mint and admin setter is still
   refused whatever label it carries (Round 24 measured 219 of 48,855 executed
   transactions; not re-measured, the sample is not in the repository); MMM
-  `updatePool` stays refused (no IDL to ground it). **The Core judges a
-  withdrawal's minimum outputs only where the IDL carries them** (Raydium CLMM
-  `decrease_liquidity_v2`, Raydium CPMM `withdraw`, Pump AMM `withdraw`): a
-  granted one with an unbounded minimum is `UnboundedWithdrawal` by default
-  (Round 32; `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS=1` keeps the grant). The
-  Meteora DLMM remove and claim grants carry no minimum-output argument, so the
-  Core cannot judge them; a direct `/verify` caller carries that sandwich risk,
-  and the agent guard builds no withdrawals.
-- **The Core does not bind amounts; the agent guard does.** `ExtractedParameters.amount`
-  is carried, not compared, by the Core. Lamports leaving the signer's wallet under a
-  debit declared only for other accounts are refused by default
-  (`SignerLamportsOutsideDeclaredDebit`, W19, Round 32; measured on live mainnet at 1 of
-  200 replayed transactions, 0.5%; `GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT=1`
-  restores the warning), and a signer's loss under a manifest that declares NO debit is
-  Critical since Round 29. The
-  agent guard binds a transfer to the amount and destination in the user's text, and a
-  swap to the amount and both tokens in it, checked against a simulation of the exact
-  bytes (Round 25); since Round 29 it also decodes the route's own minimum output and
-  holds it to the simulated delivery, a slippage bound and a price floor; its spend cap
-  bounds both. A direct `/verify` caller binds them itself. **Correction:** the Round 25
-  report says the Core reads a route's minimum for the protocols it models. It reads
-  none; the guard does. Swaps run only on six decoded programs, exact-in; wSOL wrapping
-  and unwrapping are not supported (the Risk Engine refuses `CloseAccount`).
-- **A lookup table's freshness and a registry record's signatures are not
-  checked** (Round 24, W17-c, W11-c); see `SECURITY.md`.
+  `updatePool` stays refused (no IDL to ground it). **A granted withdrawal's
+  minimum outputs are held to what the simulation delivered** (Round 36,
+  F-004): where the IDL carries them (Raydium CLMM `decrease_liquidity_v2`,
+  Raydium CPMM `withdraw`, Pump AMM `withdraw`) each must be within the
+  request's `slippage_bps` (at most 500; default 100) of the token credit the
+  simulation measured on the account it bounds, so a non-zero dust minimum is
+  `WithdrawalUnderbounded`, and a zero one is still `UnboundedWithdrawal`
+  (Round 32). The Meteora DLMM removes carry no minimum-output argument, and a
+  swap through the bins first changes what they pay: those verdicts carry the
+  `intent_parameters` residual and are never executable. Marinade
+  `liquidUnstake` (fee bounded by the pool's configured maximum), Stake
+  `Withdraw` and the Stake Pool withdrawals (rate moves only at the epoch
+  update) and the claims are not held to a minimum. `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS=1`
+  (operator-only) waives both checks. The agent guard builds no withdrawals.
+- **The Core binds the request's parameters to the bytes it can decode, and
+  nothing else is executable (Round 36, F-003).** `intent_binding`: a transfer's
+  amount, asset and recipient are compared with every top-level System
+  `Transfer`/`TransferWithSeed`/`CreateAccount(WithSeed)`/`WithdrawNonceAccount`
+  and SPL Token / Token-2022 `Transfer`/`TransferChecked`/`TransferCheckedWithFee`
+  (the recipient may be the destination or its associated token account under
+  the instruction's own token program), an approve's delegate and allowance, a
+  burn's amount and mint, and a swap's amount in, spend, delivery and minimum
+  output for the six exact-in programs the guard decodes (default slippage
+  100 bps, ceiling 500). A disagreement is Blocked (`IntentMismatch`,
+  `SwapUnderbounded`). What the Core cannot tie to the bytes — no
+  `extracted_parameters`, an asset named by symbol (`input_token` must be "SOL"
+  or a mint), a stake, an unchecked token `Transfer` whose mint the simulation
+  did not show, a swap route it does not decode, no simulated state diff — is
+  the non-inherent residual `intent_parameters`: approved for analysis, never
+  `executable_approved`. The Core judges no price: a swap's minimum is held to
+  the simulation, not to a fair rate (the guard's `GRAPHITE_SWAP_MIN_RATES` and
+  the request's "for at least …" do that). Inner (CPI) transfers are judged by
+  the state diff and risk layers, not by the binding. The agent guard grounds
+  the same parameters in the user's text and now sends mints, not symbols.
+  Lamports leaving the signer's wallet under a debit declared only for other
+  accounts are still refused by default (`SignerLamportsOutsideDeclaredDebit`,
+  W19, Round 32). Swaps run only on six decoded programs, exact-in; wSOL
+  wrapping and unwrapping are not supported (the Risk Engine refuses
+  `CloseAccount`).
+- **A lookup table's freshness is the simulator's (Round 36, F-007,
+  disposition).** A table's entries are append-only and cannot change while it
+  exists, and its address cannot be re-created after a close (the derivation
+  needs a recent slot; a close needs the deactivation cooldown). A deactivating
+  table is refused (`TableDeactivating`); entries extended in the current slot
+  are inactive to the runtime, and Graphite's own resolution must equal the
+  simulator's `loadedAddresses` or the simulation is set aside (S-5). What a
+  table becomes after verification can make the transaction fail to land, never
+  load different accounts. Graphite does not apply Agave's last-extended-slot
+  rule itself.
+- **A registry record carries its own evidence (Round 36, F-008).** Accepted
+  records retain the counted signature, every counted attestation and the
+  signing domain; `RegistryRecord::verify_offline` re-hashes the manifest and
+  checks every signature without the registry. Whether those keys had standing
+  is the reviewer list at acceptance, which an auditor is given separately.
+  Records written before Round 36 carry no signatures and say so. A first
+  manifest is still replayed against the fixture its submitter chose: replay
+  proves the candidate is self-consistent, not that it describes the program
+  (the reviewer's signature is that claim); see `SECURITY.md`.
 - **Some parsed inner instructions are not rebuilt (Round 35).** A simulation
   that reports a Memo CPI (Agave's JSON drops its signer accounts), a
   Token-2022 extension instruction (`transferCheckedWithFee` among them),
@@ -664,7 +697,8 @@ transaction under the stated threat model, and no external party has yet tried.
   operator re-seeds it — a de facto quarantine whether or not
   `GRAPHITE_QUARANTINE_ON_UPGRADE` is set. An RPC that lies about deployments can
   therefore reset evidence (an availability risk inside the RPC trust boundary).
-  Loader-v4 programs are flagged `ProgramUpgradeUntracked`, not read.
+  Loader-v4 deployments are read too (Round 36, F-009: `LoaderV4State`'s slot
+  and authority; a redeploy withdraws evidence; a retracted program says so).
 - **Without a witness, the primary RPC decides L8.** Without
   `GRAPHITE_RPC_WITNESS_URL` a hostile or broken primary can turn
   `BlockedButExecuted` into `BlockedAndNotExecuted`, `NotFound` or `Unavailable`;
@@ -781,7 +815,7 @@ transaction under the stated threat model, and no external party has yet tried.
 | Independent third-party audit | Not performed | Owner |
 | External review R2/R3 (a declared intent clearing a dangerous instruction) | **Closed in Round 24**: reproduced on `eb17aa5`, fixed by one intent-to-class table read by L5 and the Risk Engine, and by the control-change rules; one more case (R3-b) found by the round's own mainnet re-measurement and fixed | — |
 | Honest intents for withdrawals, claims and protocol closes | **Partly done (Round 30, R-M14/R-M13)**: 21 grounded grants (`src/intent_grants.rs`); the rest stays refused; the 219 / 9 measured costs not re-measured (sample not in the repository); MMM `updatePool` needs its IDL | Engineering |
-| Protocol upgrade detection (ProgramData slot / upgrade authority watch) | **Done (Round 27; evidence reset Round 30)**: with an RPC, a manifested program redeployed or handed to a new upgrade authority since last seen is reported on the verdict (`program_upgrades`), on `/health` and in the metrics; `GRAPHITE_QUARANTINE_ON_UPGRADE=1` also quarantines it. Since Round 30 the upgrade withdraws the program's evidence and a first sighting whose deployment is newer than the evidence withdraws it too. Loader-v4 deployments are not read | — |
+| Protocol upgrade detection (ProgramData slot / upgrade authority watch) | **Done (Round 27; evidence reset Round 30)**: with an RPC, a manifested program redeployed or handed to a new upgrade authority since last seen is reported on the verdict (`program_upgrades`), on `/health` and in the metrics; `GRAPHITE_QUARANTINE_ON_UPGRADE=1` also quarantines it. Since Round 30 the upgrade withdraws the program's evidence and a first sighting whose deployment is newer than the evidence withdraws it too. Loader-v4 deployments are read since Round 36 | — |
 | Execution decision (approved ≠ permission to sign) | **Done (Round 30, G-01)**: `decision` / `executable` on every verdict, recomputed by every client | — |
 | Tamper-evident audit trail | **Done when keyed (Round 30, G-07)**: hash chain + HMAC, `graphite audit verify` / `checkpoint`, anchor directory. Making the anchor storage immutable (WORM / object lock) and scheduling checkpoints is the operator's | Owner (deployment) |
 | The 155 unreadable value-moving declarations that only warn (R30-F-1), and the W19 rule | **Tightened (Round 32)**: both refuse by default, each with a logged operator opt-out; 16 declarations rewritten from IDLs; the false-refusal rate on real traffic with state diffs is measured by the live mainnet workflow, not by the committed blocks | Owner (keep or opt out after measuring) |

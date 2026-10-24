@@ -5,6 +5,17 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 
 ## [0.3.0-beta] — unreleased (the contract since v0.2.0-beta)
 
+Round 36 (2026-10-24) — the whole-repository forensic audit remediated ([report](../docs/round36-the-request-is-bound-to-the-bytes-2026-10-24.md)):
+
+- **Contract:** `scope.unobserved_codes` gains `intent_parameters` (both scope kinds): the request states an amount, recipient or asset the Core could not tie to the bytes. It is never inherent, so a verdict carrying it is `analysis_only`. The TS and Go SDKs know it; a client that predates it refuses the verdict as an unknown code, which is the fail-closed reading.
+- **Behaviour (stricter):**
+  - `intent_binding` (F-003): `ExtractedParameters` is compared with the bytes. Transfers, approves and burns are bound to the top-level System and SPL Token / Token-2022 instructions that carry them; swaps to the six exact-in routes the agent guard decodes (amount in, simulated spend and delivery, minimum within `slippage_bps`, default 100, ceiling 500). A disagreement is Blocked: `IntentMismatch` or `SwapUnderbounded`. `input_token`/`output_token` are "SOL" or a mint; a symbol is unbound.
+  - Granted withdrawals (F-004): each minimum output is held to the simulated credit of the account it bounds (`WithdrawalUnderbounded`). Meteora DLMM removes, which carry no minimum, are unbound. `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS` waives both.
+  - Loader-v4 deployments are read (F-009). A redeploy withdraws evidence like a loader-v3 upgrade, and `ProgramUpgradeUntracked` is gone.
+  - The server refuses to start on a near-miss of a `GRAPHITE_*` variable it reads (F-020).
+- **Registry:** a `RegistryRecord` keeps `signature_hex`, `attestation_signatures` and `signing_domain`, and `RegistryRecord::verify_offline` checks it alone (F-008). Older records deserialize unchanged.
+- **Manifests:** 35 declarations rewritten from their IDLs, so no withdrawal grant's debit line names no account (F-005, `docs/audit-r36/declaration-rewrites.json`).
+
 Round 35 (2026-10-23) — Round 34 on real mainnet traffic ([report](../docs/round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md)):
 
 - **Behaviour (no contract field changes):** the simulator's inner instructions are read in the forms Agave sends. Agave's `simulateTransaction` reports them only parsed (`{program, programId, parsed, stackHeight}`) or partially decoded (`{programId, accounts: [<address>…], data}`), never with `programIdIndex`, so on a real RPC every transaction that made a CPI was `VerificationIncomplete`. New `parsed_inner` module: System, SPL Token / Token-2022 and ATA instructions are rebuilt to their accounts and bytes; anything else parsed leaves the CPI tree unknown, as before. `rpc_client::SimulationResult` gains `inner_reported` and `resolve_reported_inner`; `InnerAccountRef` and `ReportedInnerInstruction` are new public types.
