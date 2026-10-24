@@ -892,3 +892,25 @@ against the end-to-end tests. Each fix was restored and the file checked byte fo
 | B154 | R35-3 | `parsed_inner`: a multisig authority's signers dropped from the account list (`src/parsed_inner.rs`) | `tools/inner-instruction-oracle` (`closeAccount`, `setAuthority`: round trip differs) | caught |
 | B155 | R35-3 | `parsed_inner`: ATA `createIdempotent` rebuilt as `create` (`src/parsed_inner.rs`) | `tools/inner-instruction-oracle` (`createIdempotent`: round trip differs) | caught |
 | B156 | R35-3 | `verify_async`: the reported inner instructions not resolved before they are read (`src/verification.rs`) | `round35_parsed_inner_instructions::a_sweep_reported_in_agave_forms_is_seen_by_the_cpi_trace_rules`, `::the_simulation_gate_reads_a_parsed_report_and_still_refuses_one_it_cannot_rebuild` | caught |
+
+**Round 38 (B157–B168).** The Round 37 re-audit of `8b3d8a4` (R37-1..R37-7) and the F-015 /
+F-001 follow-ups of PR #54. Each break was built in a worktree outside the working tree with its
+own `CARGO_TARGET_DIR` (a first R37-1 run shared the main build directory and one result in it
+was stale, so every break was re-run in isolation). Each fix was restored. **11 of 12 caught; the
+one miss (B163) is covered by a second rule, shown by B164.** Details:
+[`docs/round38-the-round-37-re-audit-answered-2026-10-24.md`](../docs/round38-the-round-37-re-audit-answered-2026-10-24.md) §C.
+
+| # | Finding | What was reverted | Caught by | Result |
+|---|---|---|---|---|
+| B157 | R37-1 | `intent_binding::keeps_value` returns `Ok(())` (`src/intent_binding.rs`) | `round38_sibling_skims`: output skim, withdrawal skim, approval/CPI skim | caught (3 of 8 fail; controls pass) |
+| B158 | R37-1 | B157 plus a swap's SOL spend held to the request instead of the route's `amount_in` | `round38_sibling_skims::a_swap_input_skimmed_by_a_sibling_is_not_bound` | caught |
+| B159 | R37-6 | `src/state_diff.rs` without `signer_holds` (as at `f5a17a4`) | `round38_unscoped_authority`: delegate, owner/close-authority/closure, close line, between-owners takeover | caught (5 fail; controls pass) |
+| B160 | R37-7 | `"create" => Binding::NotApplicable` (`src/intent_binding.rs`) | `round38_create_funding`: 5 SOL creation, transfer beside a creation, 5 SOL against a stated 1 | caught (3 of 4 fail; the rent control passes) |
+| B161 | R37-2 | the reader-side legacy check (`src/durable/chain.rs`) | `chain_trail_tests::a_forged_legacy_line_in_a_keyed_trail_is_neither_read_nor_verified` | caught |
+| B162 | R37-3 | the keyed gate's unkeyed-line rule (`src/durable/chain.rs`) | `chain_trail_tests::an_unkeyed_forgery_is_never_admitted_after_the_trail_is_keyed` | caught |
+| B163 | R37-4 | the retired-key check alone (`src/durable/chain.rs`) | `chain_trail_tests::a_retired_key_cannot_extend_the_trail_after_rotation` | missed: the switch-after-adoption rule blocks the same record |
+| B164 | R37-4 | the retired-key check and the switch-after-adoption rule | the same test | caught `(1, 0)` |
+| B165 | R37-5 | the continuity check (next `seq`, `prev` = last hash) | `chain_trail_tests::a_copied_record_is_not_the_newest_verdict` | caught `(2, 1)` |
+| B166 | R37-5 | the readers' trail-id pin | the same test, cross-trail top-insertion step | caught |
+| B167 | F-015 | `scripts/mutation_floor.py` counting the shard from `outcomes.json`'s `total_mutants` (as merged in PR #53) | `.github/scripts/ci-scripts.test.sh` (`mutation_floor.py` section) | caught (5 of 8 new cases fail) |
+| B168 | F-001 | the module-graph test's `registerHooks` hook back to an off-thread `register` hook | `graphite-sak-bridge.test.ts` with `require("zod")` added to the adapter in an isolated checkout | caught (the old hook passed it) |
