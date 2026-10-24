@@ -46,10 +46,11 @@
  * guard for the wallet then started with a full allowance while the first
  * kept spending. Now:
  *
- *   - the default directory is one no temp cleaner sweeps:
- *     `$XDG_RUNTIME_DIR/graphite-guard`, else `/run/graphite-guard` where this
- *     user can write, else `$XDG_STATE_HOME` (or `~/.local/state`)
- *     `/graphite-guard`; on Windows `%LOCALAPPDATA%\graphite-guard`;
+ *   - the default directory is one no temp cleaner sweeps (since Round 38,
+ *     R37-17, one per user, from the account alone; see
+ *     `defaultWalletLockDir`): `~/.local/state/graphite-guard`, `~` being
+ *     the home directory of this user's account entry, not `$HOME`; on
+ *     Windows `<profile>\AppData\Local\graphite-guard`;
  *   - the lock file holds the owner's pid AND a random token, and the guard
  *     remembers its inode. Before every reservation and every submission it
  *     re-reads it (`assertHeld`): a lock that is gone, is another file, or
@@ -64,11 +65,27 @@
  *   - the directory must be a real directory (not a symbolic link) owned by
  *     this user with mode 0700 — an existing one is checked, not assumed —
  *     and every file this code creates is opened O_EXCL|O_NOFOLLOW under a
- *     random name. On Windows the owner and mode are not checked: it has
- *     neither, and %LOCALAPPDATA% is the user's own.
+ *     random name. On Windows the owner and mode are NOT checked (Round 38,
+ *     G2-6: a documented limitation). Windows has no uid or mode bits;
+ *     its owner and access live in an ACL, which Node cannot read without a
+ *     native addon, and the guard loads none. The default directory sits in
+ *     the user's own profile, whose ACL admits the user, SYSTEM and the
+ *     Administrators only; a `GRAPHITE_GUARD_LOCK_DIR` named on Windows is
+ *     the operator's to keep private. The startup log says so.
  *
  * A directory each OS user owns means one guard per wallet per user: guards
  * for one wallet under two users are not seen by each other.
+ *
+ * Round 38 (R37-17): the default used to follow the session's environment —
+ * `$XDG_RUNTIME_DIR`, else `/run`, else `$XDG_STATE_HOME`. An SSH login has
+ * `XDG_RUNTIME_DIR` (pam_systemd sets it) and cron has not, so two guards for
+ * one wallet and one user, one started from each, took locks in two
+ * directories and each spent the whole aggregate allowance. The default is
+ * now derived from the account (its home directory as the user database
+ * holds it), never from a variable a session sets: every guard of one user
+ * on one host finds the same directory. A directory the operator names
+ * (`walletLockDir`, `GRAPHITE_GUARD_LOCK_DIR`) still overrides it, and is
+ * then the operator's to name the same way for every guard.
  *
  * Without the variable, the same state is kept in memory, as before, and the
  * startup log says a restart forgets it.
@@ -88,11 +105,10 @@ import {
   renameSync,
   unlinkSync,
   writeSync,
-  accessSync,
 } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { homedir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { userInfo } from "node:os";
+import { join, posix, win32 } from "node:path";
 
 /** Opened with this, a path that is a symbolic link fails (ELOOP) instead of being followed. */
 const O_NOFOLLOW = fsConstants.O_NOFOLLOW ?? 0;
@@ -452,7 +468,10 @@ export class WalletLock {
     return this.#path === null
       ? `[Graphite] wallet lock: NONE — ${GUARD_ALLOW_SHARED_WALLET_ENV}=1: other guards may sign for ${this.#wallet}, ` +
           "and the spend limits hold per guard, not per wallet"
-      : `[Graphite] wallet lock: ${this.#path} — one guard per wallet on this host, re-checked before every spend`;
+      : `[Graphite] wallet lock: ${this.#path} — one guard per wallet on this host, re-checked before every spend` +
+          (process.platform === "win32"
+            ? " (on Windows the directory's owner and access are not checked: keep it private to this user)"
+            : "");
   }
 
   /**
@@ -480,68 +499,51 @@ Object.freeze(WalletLock);
 /** Where a guard's wallet lock lives, or that the operator waived it. */
 export type WalletLockPlan = { shared: true } | { shared: false; dir: string };
 
-/** Whether this process may create entries in `dir` (it exists and is writable). */
-function writableDir(dir: string): boolean {
-  try {
-    accessSync(dir, fsConstants.W_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * The wallet-lock directory when neither the configuration nor
- * `GRAPHITE_GUARD_LOCK_DIR` names one (Round 34): a directory no temp
- * cleaner sweeps, never the system temp directory.
+ * `GRAPHITE_GUARD_LOCK_DIR` names one: one per user, derived from the
+ * account alone (Round 38, R37-17), never from the session's environment.
  *
- *   1. Windows: `%LOCALAPPDATA%\graphite-guard` (none set refuses to start).
- *   2. `$XDG_RUNTIME_DIR/graphite-guard` (a per-user runtime tmpfs that
- *      systemd-tmpfiles does not age; it is emptied at reboot, when no guard
- *      runs, and when the user's last session ends — which the re-check
- *      before every spend catches).
- *   3. `/run/graphite-guard`, where this user can create or write it.
- *   4. `$XDG_STATE_HOME/graphite-guard`, else `~/.local/state/graphite-guard`
- *      (macOS included). Not emptied at reboot: a lock left by a crash names
- *      a pid that may later be some other process's, and then a guard
- *      refuses to start naming the file, until it is removed.
+ *   - Linux, macOS and the other Unixes: `<home>/.local/state/graphite-guard`.
+ *   - Windows: `<profile>\AppData\Local\graphite-guard`.
  *
- * Relative XDG values are ignored, as the XDG specification says.
+ * `<home>` is the home directory of this process's effective user as the
+ * user database holds it (`os.userInfo()`: getpwuid_r on Unix, the token's
+ * profile directory on Windows), NOT `$HOME`, `$XDG_RUNTIME_DIR`,
+ * `$XDG_STATE_HOME` or `%LOCALAPPDATA%`: an SSH session, cron, systemd,
+ * `sudo -E` and a container set those differently for the same user, and
+ * two guards for one wallet that found two directories each kept a full
+ * allowance. It is never the system temp directory (Round 34: temp cleaners
+ * delete what is in it), and it is not emptied at reboot: a lock left by a
+ * crash names a pid that may later be some other process's, and then a guard
+ * refuses to start naming the file, until it is removed. An account with no
+ * home directory, or a relative one, refuses to start: name a directory.
+ *
+ * The directory is created owner-only (0700) and an existing one is checked
+ * (`assertPrivateDirectory`) before any lock is taken in it.
  */
 export function defaultWalletLockDir(
-  env: Record<string, string | undefined> = process.env,
-  o: { platform?: NodeJS.Platform; canWrite?: (dir: string) => boolean; homedir?: () => string } = {},
+  o: { platform?: NodeJS.Platform; userInfo?: () => { homedir: string } } = {},
 ): string {
   const platform = o.platform ?? process.platform;
-  const canWrite = o.canWrite ?? writableDir;
-  const home = o.homedir ?? homedir;
-  const absolute = (v: string | undefined) => (v !== undefined && v !== "" && isAbsolute(v) ? v : undefined);
-  if (platform === "win32") {
-    const local = env.LOCALAPPDATA;
-    if (local !== undefined && local !== "") return join(local, "graphite-guard");
-    throw new GuardStateError(
-      `%LOCALAPPDATA% is not set, so there is no default wallet-lock directory. Set ${GUARD_LOCK_DIR_ENV} to a ` +
-        "directory of this user's that nothing cleans. REFUSING TO START.",
-    );
-  }
-  const runtime = absolute(env.XDG_RUNTIME_DIR);
-  if (runtime !== undefined) return join(runtime, "graphite-guard");
-  if (canWrite("/run/graphite-guard") || canWrite("/run")) return "/run/graphite-guard";
-  const state = absolute(env.XDG_STATE_HOME);
-  if (state !== undefined) return join(state, "graphite-guard");
-  let h: string;
+  const path = platform === "win32" ? win32 : posix;
+  let home: unknown;
+  let why = "";
   try {
-    h = home();
-  } catch {
-    h = "";
+    home = (o.userInfo ?? (() => userInfo()))().homedir;
+  } catch (e) {
+    why = ` (${(e as Error).message})`;
   }
-  if (!isAbsolute(h)) {
+  if (typeof home !== "string" || home === "" || !path.isAbsolute(home)) {
     throw new GuardStateError(
-      `there is no runtime, /run or home directory for the wallet lock. Set ${GUARD_LOCK_DIR_ENV} to a directory ` +
-        "of this user's that nothing cleans. REFUSING TO START.",
+      `this user's account has no absolute home directory${why}, so there is no default wallet-lock directory. ` +
+        `Set ${GUARD_LOCK_DIR_ENV} to a directory of this user's that nothing cleans, the same for every guard of ` +
+        "this user. REFUSING TO START.",
     );
   }
-  return join(h, ".local", "state", "graphite-guard");
+  return platform === "win32"
+    ? path.join(home, "AppData", "Local", "graphite-guard")
+    : path.join(home, ".local", "state", "graphite-guard");
 }
 
 /**
@@ -563,7 +565,8 @@ export function walletLockPlan(
     shared = raw === "1";
   }
   if (shared) return { shared: true };
-  return { shared: false, dir: config.lockDir ?? env[GUARD_LOCK_DIR_ENV] ?? defaultWalletLockDir(env) };
+  // Round 38 (R37-17): the default reads no variable of the session.
+  return { shared: false, dir: config.lockDir ?? env[GUARD_LOCK_DIR_ENV] ?? defaultWalletLockDir() };
 }
 
 /** Take the lock `plan` names for `wallet` (none, when the operator waived it). */
