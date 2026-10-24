@@ -186,9 +186,9 @@ From Round 30 §H:
 8. **Fuzzing, mutation, coverage.** Six fuzz targets run 30 minutes each on GitHub's runners (hosted
    run 39798389463: 0 crashes); no differential fuzzing against agave. The mutation floors for the
    state diff, artifact parser and simulation integrity are still provisional (0.60): no module has
-   a complete mutation run yet (run 40083338181: 22 of 44 shards finished), and five finished
-   shards are below their floor, four of them in the state diff's Token-2022, transfer-hook and
-   authority checks (`docs/audit-r36/mutation-run-40083338181.md`). The line-coverage floor (78%)
+   a complete mutation run yet (run 40083338181: 23 of 44 shards finished), and six finished
+   shards are below their floor: four in the state diff's Token-2022, transfer-hook and authority
+   checks, one in the shape baseline's update (`docs/audit-r36/mutation-run-40083338181.md`). The line-coverage floor (78%)
    held on the hosted run.
 9. **The release evaluation** holdout is 38 rows; its false-refusal rate means almost nothing.
 10. **Single replica**: the rate limiter and caps are per process.

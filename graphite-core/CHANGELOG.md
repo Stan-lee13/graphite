@@ -15,7 +15,7 @@ Round 36 (2026-10-24) — the whole-repository forensic audit remediated ([repor
   - The server refuses to start on a near-miss of a `GRAPHITE_*` variable it reads (F-020).
 - **Registry:** a `RegistryRecord` keeps `signature_hex`, `attestation_signatures` and `signing_domain`, and `RegistryRecord::verify_offline` checks it alone (F-008). Older records deserialize unchanged.
 - **Manifests:** 35 declarations rewritten from their IDLs, so no withdrawal grant's debit line names no account (F-005, `docs/audit-r36/declaration-rewrites.json`).
-- **Assurance (follow-up, F-015):** `scripts/mutation_floor.py` counts a shard's mutants from `mutants.json` and requires `end_time`. cargo-mutants' `total_mutants` counts only the outcomes recorded, so it had scored 15 shards killed by the step timeout as complete. Run 40083338181 is recorded in `docs/audit-r36/mutation-run-40083338181.md`: no module is complete yet, and five finished shards are below their floor.
+- **Assurance (follow-up, F-015):** `scripts/mutation_floor.py` counts a shard's mutants from `mutants.json` and requires `end_time`. cargo-mutants' `total_mutants` counts only the outcomes recorded, so it had scored 15 shards killed by the step timeout as complete. Run 40083338181 is recorded in `docs/audit-r36/mutation-run-40083338181.md`: no module is complete yet, and six finished shards are below their floor.
 
 Round 35 (2026-10-23) — Round 34 on real mainnet traffic ([report](../docs/round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md)):
 
