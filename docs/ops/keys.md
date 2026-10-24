@@ -79,21 +79,34 @@ what a rewrite under an invented key id looks like.
    key-adoption record, and MACs everything after it under the new key. Without
    `GRAPHITE_AUDIT_PREVIOUS_KEY_FILE` it refuses to start ("MAC'd under key …,
    not under the configured key"): it will not continue a trail whose head it
-   cannot check. The variable may stay set; it is read only when the newest
-   record is under that key. (`graphite quarantine` and the other writing CLI
-   commands read the same two variables.)
-3. Verify the whole trail with both keys:
+   cannot check. (`graphite quarantine` and the other writing CLI commands
+   read the same two variables.)
+3. **Unset `GRAPHITE_AUDIT_PREVIOUS_KEY_FILE` after that first start**
+   (Round 38). It is needed for exactly one start: the one that writes the
+   key-adoption record. A server started with it set while the newest record
+   is not under that key logs a warning ("… is needed only for the first start
+   after a key rotation"). Rotation is one-way: once the adoption record has
+   moved the trail from the old key to the new one, a record under the old key
+   is a break (`verify` exits 1 even with both keys), no reader reads it, and
+   the server refuses to start onto one ("… which this trail retired …").
+   Before Round 38 a leaked old key could keep extending the trail after the
+   rotation meant to retire it, while `verify` with both keys exited 0.
+4. Verify the whole trail with both keys:
    `graphite audit verify --key-file audit-2026q3.key --key-file audit-2026q4.key`.
    Exit 0 means every link and every MAC checked; with only the new key the
    older MACs cannot be checked and the walk exits 2. The text output lists
    every key id with the sequence range it covers and whether it was supplied:
    an id you never held is an incident, not a missing key file.
-4. Keep retired keys for as long as you keep the records they cover, off the
-   server (an attacker holding a key can rewrite what it covers).
+5. Keep retired keys for as long as you keep the records they cover, off the
+   server (an attacker holding a key can rewrite what it covers; since Round 38
+   it cannot add to the trail after the rotation).
 
 Trails rotated before Round 34 switch keys with no adoption record. They verify
 (exit 0) when every key is passed; with only the new key the switch is reported
 as a break (exit 1), because it cannot be told apart from an invented key id.
+Since Round 38 such a switch is accepted only before the trail's first
+key-adoption record (every key change since Round 34 writes one), and it
+retires the key it switched away from just as an adoption does.
 
 A lost key cannot be replaced silently: the server refuses to continue a keyed
 trail without a key ("no key is configured"). With the server stopped, run
@@ -126,6 +139,30 @@ hash chain) and verify; an unkeyed record after it is a break. A trail that a
 pre-Round-34 server keyed without an adoption record exits 4 under its key
 until `adopt-key` is run once.
 
+**Legacy records (no chain link, written before Round 30).** Round 38 (R37-2):
+a key-adoption record now lists the legacy records on disk when it is written
+(a count and a SHA-256 per file). Under a key, a legacy record is covered — and
+read by a server that holds the key — only when a checked adoption record
+lists it; a legacy line inserted among them breaks the digest (exit 1). The
+rules for `graphite audit verify` with keys:
+
+- legacy records no checked adoption record lists: **exit 4** (not covered).
+  This includes trails whose adoption was written before Round 38: run
+  `graphite audit adopt-key` once more (with the same key) to list them;
+- legacy records before a chain whose first record (seq 0) is MAC'd, and no
+  adoption record lists them: **exit 1** — a trail keyed from genesis has no
+  legacy records, so they were inserted. If you know where they came from (a
+  pre-Round-30 trail a Round 30–37 server keyed at genesis), inspect them and
+  run `adopt-key`, which lists them;
+- a keyed server refuses to start on a trail that holds only legacy records
+  ("… records without a chain link …"); `adopt-key` writes the adoption record
+  at genesis that lists them.
+
+A server that holds a key never reads a legacy record no adoption lists, so a
+chain-less forgery at the top of a trail, or at the top of the oldest archive
+left after a prune, is not a verdict to L8. A reader without a key reads legacy
+records before the first chained record, as before.
+
 **Run the writing CLI commands with the server's key.** `graphite evidence
 seed` / `baseline`, `graphite quarantine` and the other commands that write the
 trail MAC their records under `GRAPHITE_AUDIT_KEY_FILE` when it is set, and
@@ -139,22 +176,49 @@ the same `GRAPHITE_AUDIT_KEY_FILE` for those commands as the server uses.
 | Exit | Meaning |
 |---|---|
 | 0 | Nothing failed: every chained record links to the one before it; every MAC under a supplied key verified; when keys are supplied, every chained record is MAC'd under one of them or covered by a key-adoption record; a `--checkpoint` is confirmed (and, when keys are supplied, MAC'd under one of them). |
-| 1 | A break (an edited, inserted, deleted, reordered or non-canonical line; a line that is not a record, including a torn write nothing names — `TEAR`, see incidents.md; an archive that ends without its newline; a MAC that does not verify; a key id that appears with no adoption record), or a checkpoint that does not hold (rewritten, truncated, forged). |
+| 1 | A break (an edited, inserted, deleted, reordered, copied or non-canonical line; a line that is not a record, including a torn write nothing names — `TEAR`, see incidents.md; an archive that ends without its newline; a MAC that does not verify; a key id that appears with no adoption record, or with none after the trail's first adoption record; a record under a key the chain retired at a rotation; a record of another trail (`trail` id); legacy records before a chain keyed from seq 0 that no adoption record lists, or legacy records that do not match the list an adoption record carries), or a checkpoint that does not hold (rewritten, truncated, forged). |
 | 2 | The walk could not prove what it was asked to: MACs under a key not supplied, a trail with no chained record, a checkpoint whose records were pruned. |
 | 3 | The trail could not be read (or kept rotating under the walk on every retry). |
-| 4 | Keys were supplied, but something is not covered by them: chained records with no MAC and no key-adoption record, or a checkpoint with no MAC or under a key not supplied. |
+| 4 | Keys were supplied, but something is not covered by them: chained records with no MAC and no key-adoption record, legacy records no checked key-adoption record lists (Round 38), or a checkpoint with no MAC or under a key not supplied. |
 
-**What the server reads.** The server checks the MAC of every record it reads
-under its own key and `GRAPHITE_AUDIT_PREVIOUS_KEY_FILE` (L8, `/audit/event`,
-the dashboard, the indexes): once the trail is keyed, a record whose MAC does
-not verify, or that carries none, is not read — a line someone forged with a
-recomputed hash is not a verdict to it, even before anyone runs `verify`.
+**What the server reads.** Since Round 38 every reader (L8, `/audit/event`,
+the dashboard, the indexes and every index read-back) walks the trail the way
+`verify` does, oldest archive first, and reads a chained record only where it
+continues the last record it read: the next `seq`, and `prev` that record's
+hash. A genuine record copied to the end of the trail, or from another trail
+under the same key, is therefore never the newest verdict and is never
+counted. The server checks the MAC of every record under its own key and
+`GRAPHITE_AUDIT_PREVIOUS_KEY_FILE`: once the trail is keyed, a record whose MAC
+does not verify, or that carries none, is not read — a line someone forged with
+a recomputed hash is not a verdict to it, even before anyone runs `verify`.
 Records under an older key it does not hold are read when a key-adoption record
-MAC'd under a key it holds names that key (they cannot be checked; keep the
-previous key configured to have them checked). Unkeyed records before a key
-adoption are read as they are. A reader without a key (`graphite execution`)
-checks no MAC: to it the trail is corruption-evident only. The cost is one
-HMAC per line read (see the delta report / `reader_mac_check_cost_on_a_64_mib_archive`).
+MAC'd under a key it holds names that key (they cannot be checked). Unkeyed
+records are read only when a checked key-adoption record covers them through
+the hash chain — an unkeyed line at the top of a trail keyed from genesis is
+covered by nothing. A record under a key the chain retired is never read. A
+reader without a key (`graphite execution`) checks no MAC: to it the trail is
+corruption-evident only. The cost is one HMAC per line read (see the delta
+report / `reader_mac_check_cost_on_a_64_mib_archive`), and, once per process,
+one walk of every archive: the server walks the whole trail at start, so a
+start reads every archive once.
+
+A server also refuses to start onto a newest record its readers' walk does not
+reach ("… does not continue the chain the readers walk …"): a copied or
+transplanted record at the end of the trail. Continuing after it would fork
+the chain. Run `graphite audit verify` and move the line aside.
+
+**Trail id (chain link version 2, Round 38).** Every record now carries
+`chain.v = 2` and `chain.trail`, a random 16-byte id drawn when the chain
+starts (at genesis, or at the first record a Round 38 writer appends to a
+trail whose newest record is version 1) and repeated in every record after
+it. It is hashed with the record, so the MAC binds it: a record copied from
+another trail under the same key (staging and production, an HA pair) does
+not fit. Version-1 records (Rounds 30–37) stay readable and verify; a
+version-1 link after a version-2 one is a break. A Round 30–37 binary cannot
+read version-2 records (it reports "unknown chain version 2"): upgrade every
+verifier before the server. `graphite audit verify` prints the trail id. Two
+data directories copied from one another share their trail id up to the copy;
+give each its own key.
 
 **Compose and systemd.** The previous key reaches the server the way the key
 does: in the production compose stack, add a second secret for the old key file
@@ -163,8 +227,9 @@ the restart; under systemd, a second credential (`LoadCredential=audit.key.previ
 `Environment=GRAPHITE_AUDIT_PREVIOUS_KEY_FILE=%d/audit.key.previous`).
 
 Records written before Round 30 carry no chain at all ("legacy"). They are
-counted and printed, never covered by a MAC, and accepted only before the
-first chained record.
+counted and printed, accepted only before the first chained record, and, under
+a key, covered only by a key-adoption record that lists them (see "Legacy
+records" above).
 
 `graphite audit verify` is safe beside a running server: a rotation or prune
 during the walk is detected (the archive list changed) and the walk is

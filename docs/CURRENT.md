@@ -311,8 +311,12 @@ Audit trail integrity:           hash-chained since Round 30: every record carri
                                  never returned as a verdict; a keyed trail cannot be silently downgraded (exit 4;
                                  `graphite audit adopt-key`), an unsigned checkpoint is not Confirmed, a key change is
                                  a chained adoption record (GRAPHITE_AUDIT_PREVIOUS_KEY_FILE for the rotation
-                                 restart), a historic crash tear is acknowledged by `graphite audit acknowledge-tear`
-                                 (docs/ops/keys.md)
+                                 restart only), a historic crash tear is acknowledged by `graphite audit acknowledge-tear`
+                                 (docs/ops/keys.md). Since Round 38 (R37-2..5): every reader walks the chain as
+                                 verify does, so a copied or transplanted record is never read; a rotation is
+                                 one-way (a record under the retired key is a break and never read); unkeyed and
+                                 legacy records are read under a key only when a checked adoption record covers
+                                 them; links are version 2 with a trail id bound into the MAC
 Request objects:                 every nested request object refuses unknown fields, not only the top level (Round 29)
 Agent guard (the signing side):  a transfer must match one grammar ([please] send|transfer|pay <amount> SOL to
                                  <address>); a swap runs only on six decoded programs, exact-in, its route's own
@@ -757,9 +761,18 @@ transaction under the stated threat model, and no external party has yet tried.
   `GRAPHITE_AUDIT_KEY_FILE` the server's readers refuse a line without a valid MAC;
   `graphite execution` opens the trail read-only without a key and stays
   corruption-evident. A reader holding only the new key after a rotation admits
-  records under the old key on the adoption record's word (keep the previous key
-  configured to have them checked). Records written before Round 30 stay readable,
-  unauthenticated.
+  records under the old key, up to the adoption record, on that record's word
+  (their MACs are not checked; a forgery among them takes the place of the
+  record it displaces, and the server then refuses to start). Records written
+  before Round 30 stay readable without a key; under a key, only those a
+  checked adoption record lists (Round 38). A genuine record of the same trail
+  copied to the very top of the oldest file on disk starts the readers' walk
+  there, as a pruned trail does: the readers then see a shorter trail (records
+  hidden, never one read out of its place in the chain), which is what
+  truncation looks like, caught only by `verify` and an anchored checkpoint. A
+  record of another trail is refused there by the trail id the readers pin
+  (the newest record's); a whole trail replaced by another one under the same
+  key is caught only by a checkpoint, as before.
 - **Manifest account counts (K-7).** 75 instructions whose account count differs
   from their on-chain IDL (64 Orca instructions without a trailing
   `whirlpool_program`, 10 Kamino admin instructions without

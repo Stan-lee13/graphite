@@ -102,7 +102,8 @@ case "$cmd" in
     echo "        Point GRAPHITE_AUDIT_KEY_FILE (or the credential/secret that feeds it) at it AND"
     echo "        GRAPHITE_AUDIT_PREVIOUS_KEY_FILE at the key file it replaces, then restart: the server checks"
     echo "        the newest record under the previous key and writes a key-adoption record (without the"
-    echo "        previous key it refuses to start; docs/ops/keys.md). Then:"
+    echo "        previous key it refuses to start; docs/ops/keys.md). Unset GRAPHITE_AUDIT_PREVIOUS_KEY_FILE"
+    echo "        after that first start: it is needed only once, and the server warns while it stays set. Then:"
     echo "        rotate-keys.sh verify <data dir> <every old key file> $key"
     ;;
   verify)
