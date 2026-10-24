@@ -259,6 +259,63 @@ export class SubmissionOutcomeUnknown extends Error {
   }
 }
 
+/**
+ * `sendRawTransaction` failed before its request reached the RPC (Round 38,
+ * G2-4): the connection was refused, or the RPC's name did not resolve, so
+ * not one byte of the request was written. The bytes were signed and exist
+ * only in this process; they are dropped. Nothing was sent, nothing can land,
+ * and the caller may return what it reserved for it. Any other send failure
+ * is `SubmissionOutcomeUnknown`.
+ */
+export class SubmissionNotSent extends Error {
+  readonly signature: string;
+  /** The system error that proves it: ECONNREFUSED, ENOTFOUND or EAI_AGAIN. */
+  readonly code: string;
+  constructor(label: string, signature: string, code: string, cause: string) {
+    super(
+      `[Graphite] ${label}: the submission of ${signature} never reached the RPC (${code}: ${cause}); nothing was ` +
+        "sent and nothing can land. The signed bytes were dropped. Retry once the RPC is reachable.",
+    );
+    this.name = "SubmissionNotSent";
+    this.signature = signature;
+    this.code = code;
+  }
+}
+
+/**
+ * The system errors that mean a request was never written to the network
+ * (Round 38, G2-4): the TCP connection was refused, or the host name did not
+ * resolve. Nothing else qualifies. A reset, a broken pipe, a timeout, an
+ * HTTP or JSON-RPC error and an RPC that says "preflight failed" can all
+ * follow bytes the RPC received and may have forwarded, so they stay
+ * outcome-unknown. (ETIMEDOUT is out too: it is also what a socket that was
+ * written to reports when its peer stops answering.)
+ */
+const NEVER_CONNECTED: ReadonlySet<string> = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"]);
+
+/**
+ * The code that proves `e` never reached the RPC, or null. Read from the
+ * error's own `code`, down its `cause` chain (fetch throws
+ * `TypeError("fetch failed", { cause })`, and web3.js passes it through); an
+ * `AggregateError` (one connection attempt per address) qualifies only when
+ * every attempt in it does. A message that merely mentions a code is not one.
+ */
+function neverConnectedCode(e: unknown, depth = 0): string | null {
+  if (depth > 8 || !(e instanceof Error)) return null;
+  if (e instanceof AggregateError) {
+    const codes = e.errors.map((x) => neverConnectedCode(x, depth + 1));
+    return codes.length > 0 && codes.every((c) => c !== null) ? (codes[0] as string) : null;
+  }
+  const code = (e as { code?: unknown }).code;
+  if (typeof code === "string") return NEVER_CONNECTED.has(code) ? code : null;
+  return neverConnectedCode((e as { cause?: unknown }).cause, depth + 1);
+}
+
+/** Whether a send failure provably means nothing reached the RPC (Round 38, G2-4). */
+export function neverReachedTheRpc(e: unknown): boolean {
+  return neverConnectedCode(e) !== null;
+}
+
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
@@ -413,6 +470,14 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
   try {
     reported = await p.connection.sendRawTransaction(raw);
   } catch (e) {
+    // Round 38 (G2-4): a connection refused before the request was written
+    // is the one failure that proves nothing left. It is not a submission,
+    // so the trail gets no submission event for it.
+    const neverConnected = neverConnectedCode(e);
+    if (neverConnected !== null) {
+      log(`[Graphite] ${label}: ${signature} was not sent: the RPC was unreachable (${neverConnected}); the signed bytes are dropped`);
+      throw new SubmissionNotSent(label, signature, neverConnected, message(e));
+    }
     let attemptRecorded = false;
     try {
       await p.graphite.recordLifecycleEvent({

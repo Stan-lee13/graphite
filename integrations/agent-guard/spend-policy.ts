@@ -183,6 +183,13 @@ export function describeSpendPolicy(policy: SpendPolicy): string {
 
 /** A claim on the aggregate limit, made before signing and kept once sent. */
 export interface SpendReservation {
+  /**
+   * Round 38 (G2-4): the reservation's id in the guard's state, recorded with
+   * the submission it pays for so that it can be returned once the chain says
+   * that submission did not land and cannot. None when no aggregate limit is
+   * set (nothing is reserved).
+   */
+  readonly id?: string;
   /** Keep it: the transaction left the process (or may have). */
   commit(): void;
   /** Return it: nothing was sent. Idempotent; a no-op after `commit`. */
@@ -240,6 +247,7 @@ export class SpendLedger {
     const id = state.reserve(lamports, this.#now());
     let settled = false;
     return {
+      id,
       commit() {
         settled = true;
       },

@@ -32,7 +32,14 @@
 // transaction it is given, including fetching a blockhash when one is missing,
 // and a mutation after approval is a mutation however benign. Signing goes
 // through `signSubmitAndConfirm`, which submits bytes that are already final.
-import { AddressLookupTableAccount, Connection, SystemProgram, PublicKey, TransactionInstruction } from "@solana/web3.js";
+import {
+  AddressLookupTableAccount,
+  Connection,
+  SystemProgram,
+  PublicKey,
+  TransactionInstruction,
+  type SignatureStatus,
+} from "@solana/web3.js";
 import { createKeyPairFromBytes, getAddressFromPublicKey } from "@solana/kit";
 import bs58 from "bs58";
 
@@ -69,6 +76,7 @@ import {
   GUARD_ALLOW_SHARED_WALLET_ENV,
   GUARD_LOCK_DIR_ENV,
   GUARD_STATE_FILE_ENV,
+  type UnresolvedSubmission,
 } from "./guard-state.js";
 export { GuardState, GuardStateError, WalletLock, GUARD_ALLOW_SHARED_WALLET_ENV, GUARD_LOCK_DIR_ENV, GUARD_STATE_FILE_ENV };
 export { RpcSimulator, assertEverySignatureSlotEmpty };
@@ -146,6 +154,7 @@ import {
   DEFAULT_MAX_VERDICT_AGE_MS,
   MAX_MAX_VERDICT_AGE_MS,
   StaleVerdict,
+  SubmissionNotSent,
   SubmissionOutcomeUnknown,
 } from "./execution-lifecycle.js";
 export {
@@ -154,6 +163,7 @@ export {
   DEFAULT_MAX_VERDICT_AGE_MS,
   MAX_MAX_VERDICT_AGE_MS,
   StaleVerdict,
+  SubmissionNotSent,
   SubmissionOutcomeUnknown,
 };
 
@@ -1149,8 +1159,7 @@ export class GraphiteGuard {
       if (found) [key, prior] = found;
     }
     if (!prior) return;
-    const status = (await this.#connection.getSignatureStatuses([prior.signature], { searchTransactionHistory: true })).value[0];
-    if (status) {
+    const landed = (status: SignatureStatus) => {
       this.#state.markResolved(key);
       if (status.err === null) {
         throw new PriorSubmissionUnresolved(
@@ -1159,8 +1168,11 @@ export class GraphiteGuard {
           prior.signature,
         );
       }
-      return; // it landed and failed: nothing moved but its fee
-    }
+      // It landed and failed: nothing moved but its fee. Its reservation is
+      // kept (the fee was paid; the window returns the rest).
+    };
+    const status = await this.#signatureStatus(prior.signature);
+    if (status) return landed(status);
     const height = await this.#connection.getBlockHeight("confirmed");
     if (height <= prior.lastValidBlockHeight) {
       throw new PriorSubmissionUnresolved(
@@ -1170,7 +1182,78 @@ export class GraphiteGuard {
         prior.signature,
       );
     }
+    // Round 38 (G2-4): asked again now that the height has passed (see
+    // `#cannotLand`), and only then settled.
+    const again = await this.#signatureStatus(prior.signature);
+    if (again) return landed(again);
+    this.#returnReservationOf(key, prior);
+  }
+
+  /** The RPC's status for `signature`, searching its history; null when it knows none. */
+  async #signatureStatus(signature: string): Promise<SignatureStatus | null> {
+    return (await this.#connection.getSignatureStatuses([signature], { searchTransactionHistory: true })).value[0];
+  }
+
+  /**
+   * Whether `prior` provably did not land and cannot (Round 38, G2-4): the
+   * RPC knows no status for it, the confirmed block height is past its last
+   * valid height, and — asked again AFTER that height was read — it still
+   * knows none. A transaction that landed is in a block at or below its last
+   * valid height, which is confirmed by the time the height is read past it,
+   * so the second "none" cannot be a landing the RPC had not caught up with.
+   * Throws when the RPC cannot answer; the caller then keeps it counted.
+   */
+  async #cannotLand(prior: UnresolvedSubmission): Promise<boolean> {
+    if (await this.#signatureStatus(prior.signature)) return false;
+    const height = await this.#connection.getBlockHeight("confirmed");
+    if (height <= prior.lastValidBlockHeight) return false;
+    return (await this.#signatureStatus(prior.signature)) === null;
+  }
+
+  /**
+   * `key`'s submission did not land and cannot: it is settled, and the
+   * aggregate reservation recorded with it is returned (Round 38, G2-4).
+   * Before Round 38 an outcome-unknown reservation was kept for the whole
+   * spend window whatever the chain said. A record written before Round 38
+   * names no reservation; its spend counts until the window ends.
+   */
+  #returnReservationOf(key: string, prior: UnresolvedSubmission): void {
+    if (prior.reservation !== undefined) this.#state.release(prior.reservation);
     this.#state.markResolved(key);
+  }
+
+  /**
+   * Reserve `lamports` of the aggregate allowance (Round 29, M6). Round 38
+   * (G2-4): when the allowance would refuse, the submissions whose outcome
+   * was unknown are asked about first — each that provably did not land and
+   * cannot (`#cannotLand`) returns its reservation — and the reservation is
+   * tried once more. An RPC that cannot answer leaves them counted, and the
+   * refusal stands. A request in flight is not asked about: its own call
+   * settles it.
+   */
+  async #reserve(lamports: bigint): Promise<SpendReservation> {
+    this.#assertMaySpend();
+    try {
+      return this.#ledger.reserve(lamports);
+    } catch (refusal) {
+      if (!(refusal instanceof SpendPolicyRefusal)) throw refusal;
+      let returned = 0;
+      for (const [key, prior] of this.#state.unresolvedEntries()) {
+        if (prior.reservation === undefined || this.#inFlight.has(key)) continue;
+        try {
+          if (await this.#cannotLand(prior)) {
+            this.#returnReservationOf(key, prior);
+            returned += 1;
+          }
+        } catch {
+          // The RPC could not say: it stays counted.
+        }
+      }
+      if (returned === 0) throw refusal;
+      // Checked and claimed synchronously again, as the first attempt was.
+      this.#assertMaySpend();
+      return this.#ledger.reserve(lamports);
+    }
   }
 
   /**
@@ -1244,9 +1327,11 @@ export class GraphiteGuard {
         beforeSign: () => this.#assertMaySpend(),
         // And as the last step before the bytes leave (the signing is
         // recorded on the trail in between). A refusal here sends nothing.
+        // Round 38 (G2-4): with the reservation that pays for it, so that it
+        // can be returned once the chain says this submission cannot land.
         beforeSubmit: (signature) => {
           this.#assertMaySpend();
-          this.#state.markUnresolved(key, signature, bound.lastValidBlockHeight);
+          this.#state.markUnresolved(key, signature, bound.lastValidBlockHeight, Date.now(), reservation.id);
         },
       });
       reservation.commit();
@@ -1258,6 +1343,9 @@ export class GraphiteGuard {
         reservation.commit();
       } else {
         reservation.release();
+        // Round 38 (G2-4): the RPC was never reached, so the submission
+        // `beforeSubmit` recorded never happened.
+        if (e instanceof SubmissionNotSent) this.#state.markResolved(key);
       }
       throw e;
     }
@@ -1431,8 +1519,7 @@ export class GraphiteGuard {
     assertOutflowAllowed(this.#spendPolicy, outflow, "transfer");
     // Round 29 (M6): the aggregate limit, claimed now and returned unless
     // the bytes leave the process.
-    this.#assertMaySpend();
-    const reservation = this.#ledger.reserve(outflow.lamports);
+    const reservation = await this.#reserve(outflow.lamports);
     let handedOff = false;
     try {
       // Round 35 (F-017): the verdict's age is counted from before it was
@@ -1709,8 +1796,7 @@ export class GraphiteGuard {
           `minimum of ${economics.minOut} is held only to the simulated ${economics.simulatedOut}.`,
       );
     }
-    this.#assertMaySpend();
-    const reservation = this.#ledger.reserve(outflowLamports);
+    const reservation = await this.#reserve(outflowLamports);
     let handedOff = false;
     try {
       // Round 35 (F-017): the verdict's age is counted from before it was

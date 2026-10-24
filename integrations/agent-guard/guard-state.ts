@@ -138,6 +138,11 @@ export interface UnresolvedSubmission {
   lastValidBlockHeight: number;
   /** Milliseconds since the epoch, when it was recorded. */
   at: number;
+  /**
+   * Round 38 (G2-4): the reservation that pays for it, returned once the
+   * chain says it did not land and cannot. Absent in records written before.
+   */
+  reservation?: string;
 }
 
 /** A claim on the aggregate limit that was not released. */
@@ -156,7 +161,7 @@ export class GuardStateError extends Error {
 }
 
 type Line =
-  | { v: 1; t: "unresolved"; key: string; signature: string; lvbh: number; at: number }
+  | { v: 1; t: "unresolved"; key: string; signature: string; lvbh: number; at: number; rid?: string }
   | { v: 1; t: "resolved"; key: string; at: number }
   | { v: 1; t: "reserve"; id: string; lamports: string; at: number }
   | { v: 1; t: "release"; id: string; at: number };
@@ -179,7 +184,12 @@ function parseLine(text: string, where: string): Line {
   if (!isPositiveSafeInteger(r.at)) throw bad("has no valid `at`");
   switch (r.t) {
     case "unresolved":
-      if (typeof r.key !== "string" || typeof r.signature !== "string" || !isPositiveSafeInteger(r.lvbh)) {
+      if (
+        typeof r.key !== "string" ||
+        typeof r.signature !== "string" ||
+        !isPositiveSafeInteger(r.lvbh) ||
+        (r.rid !== undefined && typeof r.rid !== "string")
+      ) {
         throw bad("is not a complete `unresolved` record");
       }
       return r as Line;
@@ -651,7 +661,12 @@ export class GuardState {
       const line = parseLine(raw, `${this.#path}, line ${i + 1},`);
       switch (line.t) {
         case "unresolved":
-          this.#unresolved.set(line.key, { signature: line.signature, lastValidBlockHeight: line.lvbh, at: line.at });
+          this.#unresolved.set(line.key, {
+            signature: line.signature,
+            lastValidBlockHeight: line.lvbh,
+            at: line.at,
+            ...(line.rid !== undefined ? { reservation: line.rid } : {}),
+          });
           break;
         case "resolved":
           this.#unresolved.delete(line.key);
@@ -672,6 +687,7 @@ export class GuardState {
     const lines: Line[] = [
       ...[...this.#unresolved].map(([key, u]) => ({
         v: 1 as const, t: "unresolved" as const, key, signature: u.signature, lvbh: u.lastValidBlockHeight, at: u.at,
+        ...(u.reservation !== undefined ? { rid: u.reservation } : {}),
       })),
       ...[...this.#reserved.values()].map((r) => ({
         v: 1 as const, t: "reserve" as const, id: r.id, lamports: r.lamports.toString(), at: r.at,
@@ -722,10 +738,22 @@ export class GuardState {
     return [...this.#unresolved].map(([key, u]) => [key, { ...u }]);
   }
 
-  /** Record, durably, that `key`'s submission is in flight or of unknown outcome. Throws if it cannot. */
-  markUnresolved(key: string, signature: string, lastValidBlockHeight: number, at: number = Date.now()): void {
-    this.#append({ v: 1, t: "unresolved", key, signature, lvbh: lastValidBlockHeight, at });
-    this.#unresolved.set(key, { signature, lastValidBlockHeight, at });
+  /**
+   * Record, durably, that `key`'s submission is in flight or of unknown
+   * outcome, and which reservation pays for it. Throws if it cannot.
+   */
+  markUnresolved(
+    key: string,
+    signature: string,
+    lastValidBlockHeight: number,
+    at: number = Date.now(),
+    reservation?: string,
+  ): void {
+    this.#append({
+      v: 1, t: "unresolved", key, signature, lvbh: lastValidBlockHeight, at,
+      ...(reservation !== undefined ? { rid: reservation } : {}),
+    });
+    this.#unresolved.set(key, { signature, lastValidBlockHeight, at, ...(reservation !== undefined ? { reservation } : {}) });
   }
 
   /** The submission is settled (confirmed, landed and failed, or expired). */

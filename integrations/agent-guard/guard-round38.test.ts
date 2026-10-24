@@ -486,3 +486,175 @@ test("G2-3: through the guard — a slow signing record ages the verdict past th
     await h.close();
   }
 });
+
+// ---------------------------------------------------------------------------
+// G2-4: what counts as outcome-unknown, and returning its reservation.
+
+test("G2-4: only a send that provably never reached the RPC is 'not sent'", async () => {
+  const { createServer } = await import("node:net");
+  const s = createServer();
+  await new Promise<void>((resolve) => s.listen(0, "127.0.0.1", () => resolve()));
+  const port = (s.address() as { port: number }).port;
+  await new Promise<void>((resolve) => s.close(() => resolve()));
+  // What fetch throws when nothing listens: the connection was refused before a byte was written.
+  const refused = await fetch(`http://127.0.0.1:${port}/`, { method: "POST", body: "{}" }).then(
+    () => null,
+    (e: unknown) => e,
+  );
+  assert.ok(refused, "the closed port refused the connection");
+  assert.equal(neverReachedTheRpc(refused), true);
+  const coded = (code: string) => Object.assign(new Error(code), { code });
+  assert.equal(neverReachedTheRpc(new TypeError("fetch failed", { cause: coded("ENOTFOUND") })), true);
+  // Everything else may have reached it.
+  for (const e of [
+    new TypeError("fetch failed", { cause: coded("ECONNRESET") }),
+    new TypeError("fetch failed", { cause: coded("UND_ERR_SOCKET") }),
+    new TypeError("fetch failed", { cause: coded("EPIPE") }),
+    new RpcTransportRefusal("the RPC answer to sendTransaction did not complete within 1000 ms"),
+    new Error("failed to send transaction: Transaction simulation failed: Blockhash not found"),
+    new Error("502 Bad Gateway: bad gateway"),
+    new Error("ECONNREFUSED"), // the word in a message is not the error
+    new TypeError("fetch failed", { cause: new AggregateError([coded("ECONNREFUSED"), coded("ETIMEDOUT")]) }),
+    null,
+    "ECONNREFUSED",
+  ]) {
+    assert.equal(neverReachedTheRpc(e), false, String((e as Error)?.message ?? e));
+  }
+  // Every attempt refused (happy eyeballs over two addresses): never reached.
+  assert.equal(
+    neverReachedTheRpc(new TypeError("fetch failed", { cause: new AggregateError([coded("ECONNREFUSED"), coded("ECONNREFUSED")]) })),
+    true,
+  );
+});
+
+test("G2-4 (repro): a send the RPC refused at connect is 'not sent' — its reservation is returned and nothing is left unresolved", async () => {
+  const dir = privateTmp();
+  const stateFile = join(dir, "guard.state");
+  const h = await harness({ spendPolicy: TWO_SOL, config: { stateFile, walletLockDir: dir } });
+  let refusal: unknown;
+  try {
+    await assert.rejects(
+      h.agent.executeTransfer(REQUEST, {
+        // The RPC goes away after everything was measured and before the send.
+        confirm: async () => (await h.front.close(), true),
+      }),
+      (e: unknown) => {
+        refusal = e;
+        assert.ok(e instanceof SubmissionNotSent, String(e));
+        assert.ok(!(e instanceof SubmissionOutcomeUnknown));
+        assert.match((e as Error).message, /ECONNREFUSED/);
+        assert.match((e as Error).message, /never reached the RPC.*nothing was sent/);
+        return true;
+      },
+    );
+    assert.equal(h.front.counts.get("sendTransaction") ?? 0, 0, "the RPC never received it");
+    assert.equal(toolRefusalOf(refusal).refusedBy, "error");
+    assert.equal(toolRefusalOf(refusal).signature, undefined, "no signature to check: it was never sent");
+  } finally {
+    await h.close();
+  }
+  // What the state file says once the guard is gone: nothing in flight, nothing reserved.
+  const replay = GuardState.open(stateFile);
+  try {
+    assert.match(replay.describe(), /\(0 unresolved submission\(s\), 0 reserved spend\(s\) replayed\)/);
+  } finally {
+    replay.close();
+  }
+});
+
+test("G2-4 (repro): an outcome-unknown reservation is returned once the chain says it did not land and cannot", async () => {
+  const h = await harness({
+    spendPolicy: TWO_SOL,
+    rpc: (w) => ({
+      ledger: { [w.publicKey.toBase58()]: { lamports: 10 * SOL, owner: SYSTEM } },
+      afterSimulation: { [w.publicKey.toBase58()]: { lamports: 10 * SOL - FEE, owner: SYSTEM } },
+      sendFails: "lost",
+    }),
+  });
+  try {
+    await assert.rejects(h.agent.executeTransfer(REQUEST), SubmissionOutcomeUnknown);
+    h.rpc.behaviour.sendFails = false;
+    // While it can still land, its 1.5 SOL counts.
+    await assert.rejects(h.agent.executeTransfer(`Transfer 0.5 SOL to ${OTHER}`), SpendPolicyRefusal);
+    // An RPC that cannot say keeps it counted.
+    h.rpc.behaviour.blockHeight = 5_000;
+    h.rpc.behaviour.statusesFail = true;
+    await assert.rejects(h.agent.executeTransfer(`Transfer 0.5 SOL to ${OTHER}`), SpendPolicyRefusal);
+    // Not landed, and its blockhash expired: the allowance comes back.
+    h.rpc.behaviour.statusesFail = false;
+    assert.equal((await h.agent.executeTransfer(`Transfer 0.5 SOL to ${OTHER}`)).executed, true);
+    // And the repeat of the first request is a new transaction, counted once:
+    // 0.5 + 1.5 SOL and two fees are over the 2 SOL allowance.
+    await assert.rejects(h.agent.executeTransfer(REQUEST), SpendPolicyRefusal);
+    assert.equal(sent(h), 2);
+  } finally {
+    await h.close();
+  }
+});
+
+test("G2-4: a repeat of the same request returns the expired submission's reservation before it reserves its own", async () => {
+  const h = await harness({
+    spendPolicy: TWO_SOL,
+    rpc: (w) => ({
+      ledger: { [w.publicKey.toBase58()]: { lamports: 10 * SOL, owner: SYSTEM } },
+      afterSimulation: { [w.publicKey.toBase58()]: { lamports: 10 * SOL - FEE, owner: SYSTEM } },
+      sendFails: "lost",
+    }),
+  });
+  try {
+    await assert.rejects(h.agent.executeTransfer(REQUEST), SubmissionOutcomeUnknown);
+    h.rpc.behaviour.sendFails = false;
+    h.rpc.behaviour.blockHeight = 5_000;
+    // 1.5 SOL twice does not fit in 2 SOL: this executes only because the
+    // first, which did not land and cannot, no longer counts.
+    assert.equal((await h.agent.executeTransfer(REQUEST)).executed, true);
+  } finally {
+    await h.close();
+  }
+});
+
+test("G2-4: a submission that landed keeps its reservation", async () => {
+  const h = await harness({
+    spendPolicy: TWO_SOL,
+    rpc: (w) => ({
+      ledger: { [w.publicKey.toBase58()]: { lamports: 10 * SOL, owner: SYSTEM } },
+      afterSimulation: { [w.publicKey.toBase58()]: { lamports: 10 * SOL - FEE, owner: SYSTEM } },
+      sendFails: "landed",
+    }),
+  });
+  try {
+    await assert.rejects(h.agent.executeTransfer(REQUEST), SubmissionOutcomeUnknown);
+    h.rpc.behaviour.sendFails = false;
+    h.rpc.behaviour.blockHeight = 5_000;
+    await assert.rejects(h.agent.executeTransfer(`Transfer 0.5 SOL to ${OTHER}`), SpendPolicyRefusal);
+    await assert.rejects(h.agent.executeTransfer(REQUEST), /LANDED/);
+    await assert.rejects(h.agent.executeTransfer(`Transfer 0.5 SOL to ${OTHER}`), SpendPolicyRefusal);
+  } finally {
+    await h.close();
+  }
+});
+
+test("G2-4: the reservation an unresolved submission names survives a restart; a record without one (before Round 38) still reads", () => {
+  const dir = privateTmp();
+  const path = join(dir, "guard.state");
+  const old = { v: 1, t: "unresolved", key: "transfer:old", signature: "s1", lvbh: 10, at: 1 };
+  writeFileSync(path, `${JSON.stringify(old)}\n`, { mode: 0o600 });
+  const a = GuardState.open(path);
+  const id = a.reserve(7n, Date.now());
+  a.markUnresolved("transfer:new", "s2", 20, Date.now(), id);
+  a.close();
+  const b = GuardState.open(path);
+  try {
+    const entries = new Map(b.unresolvedEntries());
+    assert.equal(entries.get("transfer:old")?.reservation, undefined);
+    assert.equal(entries.get("transfer:new")?.reservation, id);
+    assert.equal(b.reservedSince(0).length, 1);
+    b.release(id);
+    assert.equal(b.reservedSince(0).length, 0);
+  } finally {
+    b.close();
+  }
+  // A reservation id that is not a string is a record this guard cannot read: refuse to start.
+  writeFileSync(path, `${JSON.stringify({ ...old, rid: 5 })}\n`);
+  assert.throws(() => GuardState.open(path), /not a complete `unresolved` record.*REFUSING TO START/);
+});
