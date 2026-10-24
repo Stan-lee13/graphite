@@ -348,8 +348,12 @@ Agent guard (the signing side):  a transfer must match one grammar ([please] sen
 Release and deployment:          a release workflow (Round 32, .github/workflows/release.yml): a v* tag matching the
                                  crate version, an SSH-signed tag on a commit of `main` whose key is in
                                  .github/allowed_signers, and a passed `CI gate` from a push run on `main` (Round 34,
-                                 R33-9: .github/scripts/release-gate.sh; it fails closed while allowed_signers is
-                                 empty); the binary built twice and compared
+                                 R33-9: .github/scripts/release-gate.sh; the gated copies of release.yml fail closed
+                                 while allowed_signers is empty; since Round 38 (R37-8) the commit must also descend
+                                 from the gate's own, revoked and expired signers are refused, and the tag is
+                                 re-checked right before `gh release create`; a tag on a pre-gate commit runs that
+                                 commit's ungated release.yml, which only the owner's tag ruleset and the `release`
+                                 environment stop); the binary built twice and compared
                                  byte for byte; CycloneDX and SPDX SBOMs; the image smoke-tested, pushed to GHCR by
                                  digest, with SLSA provenance and SBOM attestations (verify with --signer-workflow,
                                  --source-ref and --deny-self-hosted-runners, R33-18); the image carries build a's
@@ -769,28 +773,38 @@ transaction under the stated threat model, and no external party has yet tried.
   accepts the trade.
 - **Round 34's L4 defaults refuse more, and their live cost is not yet measured.**
   A signer's loss under a debit line that names no account is refused (R33-5):
-  1,802 of 3,541 instructions carry such a line, and so do 18 of the 27 withdrawal
-  grants — including the new Stake Pool and Marinade staking grants, whose pool-token
-  or mSOL burn is a signer token debit — so an honest withdrawal under one of those
-  grants is refused until its declaration is rewritten from its IDL to name the
-  accounts it debits (a manifest change awaiting the owner's sign-off). Rent paid
+  1,767 of 3,541 instructions carry such a line (1,802 before Round 36). None of
+  the 27 withdrawal grants does since Round 36 (F-005: 35 declarations rewritten
+  from their IDLs, the 18 withdrawal grants among them); the 9 medium-confidence
+  rewrites (Stake Pool, Raydium AMM v4: no IDL file in the repository) await the
+  owner's sign-off. Rent paid
   into a recipient's associated token account (~0.002 SOL) or a Metaplex metadata
   account is no longer credited to the signer. No committed corpus row carries a
   state diff, so the committed data cannot show the rate; the live mainnet workflow
   can, and has not run against Round 34. Opt-out:
   `GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS=1` (value classes only).
-- **Amounts are bound for System transfers only.** Since Round 34 a System
-  `Transfer`/`CreateAccount` binds its stated lamports (R33-15); token amounts
-  (`TransferChecked`) and `TransferWithSeed` are not bound by the Core.
+- **What binds an amount.** L4 binds a System `Transfer`/`CreateAccount`'s stated
+  lamports (Round 34, R33-15). The request's own amount, recipient and asset are
+  bound by `intent_binding` (Round 36, F-003): System and SPL Token / Token-2022
+  movements (`Transfer`, `TransferWithSeed`, `TransferChecked`,
+  `TransferCheckedWithFee`, `Approve`, `Burn`), the decoded swap routes, the
+  withdrawal minimums, a native Stake `Withdraw`'s lamports (Round 38, B-6) and a
+  creation's rent (Round 38, R37-7). Anything else is the `intent_parameters`
+  residual, never executable. Since Round 38 (R37-10) a transfer, approve or burn
+  beside a top-level instruction of any other program (compute budget, memo and
+  ATA creation aside) is unbound too.
 - **Netting residuals (Round 34).** A named created account owned by the located
   program is credited up to its full rent; created lookup tables and loader
   buffers are not judged.
 - **Only three withdrawals carry a minimum output to judge.** `UnboundedWithdrawal`
   reads Raydium CLMM, Raydium CPMM and Pump AMM withdrawals and refuses any zero
-  minimum (Round 34); a non-zero dust minimum is not judged (the expected output is
-  not in the bytes); Meteora DLMM's five remove and two claim grants have no
-  minimum-output argument, so an unbounded one is not detectable from its bytes.
-  Marinade `liquidUnstake` has no minimum in its IDL either.
+  minimum (Round 34); since Round 36 (F-004) a non-zero dust minimum is
+  `WithdrawalUnderbounded` when it sits more than the request's slippage below what
+  the simulation delivered (above). Meteora DLMM's five remove and two claim grants
+  have no minimum-output argument: those verdicts carry `intent_parameters` and are
+  never executable. Marinade `liquidUnstake` has no minimum in its IDL either, and
+  the pool and Marinade withdrawals' amounts (pool tokens, mSOL) are not compared
+  with the SOL a request names (Round 38, a documented limitation of B-6).
 - **Staking residuals (Round 34, R33-1).** Stake `Initialize` under `stake` takes the
   new account's authorities from its data (judged by R33-14 when the account is
   created in the same transaction); Marinade `claim`, `removeLiquidity`,
@@ -866,14 +880,14 @@ transaction under the stated threat model, and no external party has yet tried.
 |---|---|---|
 | Independent third-party audit | Not performed | Owner |
 | External review R2/R3 (a declared intent clearing a dangerous instruction) | **Closed in Round 24**: reproduced on `eb17aa5`, fixed by one intent-to-class table read by L5 and the Risk Engine, and by the control-change rules; one more case (R3-b) found by the round's own mainnet re-measurement and fixed | — |
-| Honest intents for withdrawals, claims and protocol closes | **Partly done (Round 30, R-M14/R-M13)**: 21 grounded grants (`src/intent_grants.rs`); the rest stays refused; the 219 / 9 measured costs not re-measured (sample not in the repository); MMM `updatePool` needs its IDL | Engineering |
+| Honest intents for withdrawals, claims and protocol closes | **Partly done (Round 30, R-M14/R-M13; Round 34)**: 27 grounded grants (`src/intent_grants.rs`: 21 in Round 30, the 6 staking withdrawals in Round 34); the rest stays refused; the 219 / 9 measured costs not re-measured (sample not in the repository); MMM `updatePool` needs its IDL | Engineering |
 | Protocol upgrade detection (ProgramData slot / upgrade authority watch) | **Done (Round 27; evidence reset Round 30)**: with an RPC, a manifested program redeployed or handed to a new upgrade authority since last seen is reported on the verdict (`program_upgrades`), on `/health` and in the metrics; `GRAPHITE_QUARANTINE_ON_UPGRADE=1` also quarantines it. Since Round 30 the upgrade withdraws the program's evidence and a first sighting whose deployment is newer than the evidence withdraws it too. Loader-v4 deployments are read since Round 36 | — |
 | Execution decision (approved ≠ permission to sign) | **Done (Round 30, G-01)**: `decision` / `executable` on every verdict, recomputed by every client | — |
 | Tamper-evident audit trail | **Done when keyed (Round 30, G-07)**: hash chain + HMAC, `graphite audit verify` / `checkpoint`, anchor directory. Making the anchor storage immutable (WORM / object lock) and scheduling checkpoints is the operator's | Owner (deployment) |
 | The 155 unreadable value-moving declarations that only warn (R30-F-1), and the W19 rule | **Tightened (Round 32)**: both refuse by default, each with a logged operator opt-out; 16 declarations rewritten from IDLs; the false-refusal rate on real traffic with state diffs is measured by the live mainnet workflow, not by the committed blocks | Owner (keep or opt out after measuring) |
-| A release pipeline | **Built (Round 32), gated (Round 34, R33-9)**: `.github/workflows/release.yml` publishes only a signed tag on `main` with a passed push-event CI gate; it fails closed until the owner applies the three rulesets, creates the protected `release` environment and adds a key to `.github/allowed_signers` (R1–R4 in `docs/ops/production-checklist.md`); never run against a real tag | Owner (R1–R4, then tag) |
+| A release pipeline | **Built (Round 32), gated (Round 34, R33-9; Round 38, R37-8)**: `.github/workflows/release.yml` publishes only a signed tag on `main`, on a commit no older than the gate, with a passed push-event CI gate. That holds only for the copies of `release.yml` that contain the gate: until the owner applies the three rulesets and creates the protected `release` environment (R1–R2 in `docs/ops/production-checklist.md`), anyone with write access can still publish a release with genuine provenance, by tagging a branch commit (its own `release.yml` runs) or a `main` commit older than the gate (`99948c6`, whose `release.yml` has no gate). `release-guard.yml` cancels such a run from `main` and deletes its release; it is a second line, not the stop. `ruleset-drift.yml` checks weekly that the rulesets and the environment are applied, and stays red until they are. The empty `.github/allowed_signers` stops only the gated copies; never run against a real tag | Owner (R1–R5, then tag) |
 | The Round 34 L4 defaults' cost on live traffic | Unmeasured: run `.github/workflows/live-mainnet.yml` (label `live-measure` or a dispatch) | Owner (permission to run) |
-| Declarations of the 18 withdrawal grants with a debit line naming no account | Rewrite them from their IDLs to name the debited accounts and declare the LP or receipt burns, so honest withdrawals stop being refused under R33-5 | Owner (manifest sign-off) / Engineering |
+| Declarations of the 18 withdrawal grants with a debit line naming no account | **Rewritten (Round 36, F-005)** from their IDLs, with 17 other high-traffic declarations (35 in all, `docs/audit-r36/declaration-rewrites.json`); 9 are medium-confidence (Stake Pool, Raydium AMM v4: no IDL file in the repository) | Owner (sign-off of the 9) |
 | A production deployment (TLS, monitoring, on-call, backups) | **Kit built and CI-tested (Round 32)**: `deploy/`, `docs/ops/production-checklist.md`; nothing deployed | Owner (infrastructure) |
 | Repository rulesets for `main` and release tags | **Prepared (Round 30)**: `.github/rulesets/main.json`, `main-review.json`, `release-tags.json`, `.github/CODEOWNERS`, steps in `docs/ops/branch-protection.md`; not applied | Owner |
 | Dependabot majors deferred in Round 30 | #41 (graphite-core group: 13 new crates incl. a compression backend), #12 (sha2 0.11 in the oracle), TypeScript 7 in six packages (#14, #18, #21, #23, #27, #28), #22 (React 19), #26 (rust 1.99 image, with the CI toolchain) | Owner / Engineering |

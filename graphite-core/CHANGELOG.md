@@ -5,7 +5,19 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 
 ## [0.3.0-beta] — unreleased (the contract since v0.2.0-beta)
 
-Round 38 (2026-10-24) — the first seven P1s of the Round 37 re-audit of `8b3d8a4` ([report](../docs/round38-the-round-37-re-audit-answered-2026-10-24.md)):
+Round 38 (2026-10-24) — the Round 37 re-audit of `8b3d8a4` answered: its P1s, P2s and P3s ([report](../docs/round38-the-round-37-re-audit-answered-2026-10-24.md)):
+
+- **Contract:** `scope.unobserved_codes` gains `program_deployments` (both scope kinds): the deployment of a manifested program the transaction invokes could not be read (the read failed, ran out of budget, or the account does not decode as its loader's), so whether its evidence describes the code now on chain is unknown (R37-16). Never inherent. The TS and Go SDKs know it; the guard refuses it by default.
+- **Behaviour (stricter), from the P2/P3 pass:**
+  - L4 (R37-7 residual): a declared creation's rent is no longer netted out of the wallet's loss before the comparison with the located instruction's stated lamports, which already pay it.
+  - `intent_binding` (R37-9): a swap's effect is measured on the one signer whose token accounts change, not on `signers.first()`; tokens changing for two signers, or a co-signer gaining lamports, is a mismatch.
+  - `intent_binding` (R37-10): a transfer, approve or burn beside a top-level instruction of a program other than System, the token programs, compute budget, memo or ATA `Create`/`CreateIdempotent` is unbound.
+  - `intent_binding` (B-6): a native Stake `Withdraw` is held to the lamports the request states.
+  - `intent_binding` (B-7): `le_u64`/`le_u32` check their end offset; a `CreateAccountWithSeed` seed length near `usize::MAX` panicked in a debug build.
+  - Startup (R37-15, V-2): any `GRAPHITE_*` name no Graphite component reads refuses to start, and so does a name within two edits of a Core name outside the prefix; the CLI checks too. `operator_boundary::check_env_names` returns `Result<(), String>`.
+  - `graphite execution` honours `GRAPHITE_L8_HIGH_ASSURANCE` and refuses to run without a witness (V-3).
+  - `rpc_client::ProgramDeployment::Unreadable`: one undecodable entry no longer fails the batch (R37-16).
+- **Registry (V-5):** `RegistryRecord::verify_offline` also checks the record's `source`, its tier against its distinct attesters, and duplicate attesters; `graphite registry verify-records` runs it over the acceptance log (exit 0 verified, 1 failed, 2 unproven).
 
 - **Behaviour (stricter):**
   - `intent_binding::keeps_value` (R37-1): beside a swap or a withdrawal, every top-level System or token movement under a signer's authority goes to a signer's own account, `Approve` / `SetAuthority` / `Burn` by a signer is a mismatch, and no account outside the signers' and the route's gains lamports or a swapped mint. A swap's spend is held to the route's decoded `amount_in`. A swap into SOL counts every lamport that reached the signer's own accounts, so the owner's own unwrap is bound. `bind_withdrawal` takes a `WithdrawalContext` (the instructions, signers and program).
