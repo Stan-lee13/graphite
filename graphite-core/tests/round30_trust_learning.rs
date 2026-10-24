@@ -11,8 +11,9 @@
 //!   once it is mature, and migrated without minting shape evidence.
 //! - G-04: an upgrade withdraws the program's evidence; a deployment newer
 //!   than the evidence at the first sighting withdraws it too; a simulation
-//!   of replaced code is not recorded; loader-v4 programs say they are not
-//!   tracked.
+//!   of replaced code is not recorded. Round 36 (F-009): loader-v4
+//!   deployments are read like loader-v3's, and a redeployment withdraws
+//!   evidence the same way.
 #![cfg(feature = "rpc")]
 
 use graphite_core::confidence_engine::TrustTier;
@@ -136,8 +137,8 @@ enum Deployment {
     Native,
     /// Owned by the upgradeable loader, deployed at this slot.
     Upgradeable(u64),
-    /// Owned by loader-v4.
-    LoaderV4,
+    /// Owned by loader-v4: `LoaderV4State { slot, authority, status }`.
+    LoaderV4 { slot: u64, status: u64 },
     /// The read fails.
     Unreadable,
 }
@@ -184,7 +185,7 @@ fn cluster(knobs: Shared) -> String {
             let slice = body_json["params"][1]["dataSlice"]["length"].as_u64();
             let body = match method.as_str() {
                 // The program-account read of a deployment check.
-                "getMultipleAccounts" if slice == Some(36) => {
+                "getMultipleAccounts" if slice == Some(48) => {
                     let addrs = body_json["params"][0]
                         .as_array()
                         .cloned()
@@ -204,7 +205,12 @@ fn cluster(knobs: Shared) -> String {
                                         d.extend_from_slice(&PROGRAMDATA);
                                         account(1, UPGRADEABLE_LOADER, &d)
                                     }
-                                    Deployment::LoaderV4 => account(1, LOADER_V4, &[0u8; 36]),
+                                    Deployment::LoaderV4 { slot, status } => {
+                                        let mut d = slot.to_le_bytes().to_vec();
+                                        d.extend_from_slice(&[9u8; 32]);
+                                        d.extend_from_slice(&status.to_le_bytes());
+                                        account(1, LOADER_V4, &d)
+                                    }
                                     _ => account(1, NATIVE_LOADER, &[0u8; 36]),
                                 }
                             })
@@ -978,21 +984,95 @@ async fn a_simulation_of_replaced_code_is_not_recorded() {
     }
 }
 
-/// A program whose code is final (a builtin) says nothing; a loader-v4
-/// program — redeployable, and not read — says it is not tracked.
+/// A program whose code is final (a builtin) says nothing and withdraws
+/// nothing. Round 36 (F-009): a loader-v4 program is no longer
+/// `ProgramUpgradeUntracked`. Its header is read, and redeploying it
+/// withdraws its evidence exactly as a loader-v3 upgrade does (Round 35
+/// code: the redeploy below went unnoticed and the evidence stood).
 #[tokio::test]
-async fn untracked_deployments_say_so() {
-    for (deployment, note) in [(Deployment::Native, false), (Deployment::LoaderV4, true)] {
-        let knobs: Shared = Arc::new(Mutex::new(Knobs {
-            deployment,
-            ..Default::default()
-        }));
-        let core = core_at(&cluster(knobs));
-        let r = core
-            .verify_async(&describe(9_700_000, official_floor()))
-            .await
-            .unwrap();
-        assert_eq!(warned(&r, "ProgramUpgradeUntracked"), note, "{}", r.summary);
-        assert!(core.retired_evidence().is_empty());
-    }
+async fn loader_v4_redeployments_withdraw_evidence() {
+    let knobs: Shared = Arc::new(Mutex::new(Knobs::default()));
+    let core = core_at(&cluster(Arc::clone(&knobs)));
+    let r = core
+        .verify_async(&describe(9_700_000, official_floor()))
+        .await
+        .unwrap();
+    assert!(!warned(&r, "ProgramUpgradeUntracked"), "{}", r.summary);
+    assert!(core.retired_evidence().is_empty());
+
+    let knobs: Shared = Arc::new(Mutex::new(Knobs {
+        deployment: Deployment::LoaderV4 {
+            slot: 500,
+            status: 1,
+        },
+        ..Default::default()
+    }));
+    let mut core = core_at(&cluster(Arc::clone(&knobs)));
+    seed_reviewed(&mut core);
+    let first = core
+        .verify_async(&describe(8_000_001, WalletProfile::Gaming))
+        .await
+        .unwrap();
+    assert!(first.approved, "{}", first.summary);
+    assert!(
+        !warned(&first, "ProgramUpgradeUntracked"),
+        "{}",
+        first.summary
+    );
+    assert!(
+        warned(&first, "ProgramDeploymentEnrolled"),
+        "{}",
+        first.summary
+    );
+    assert!(core.retired_evidence().is_empty());
+
+    knobs.lock().unwrap().deployment = Deployment::LoaderV4 {
+        slot: 2_000,
+        status: 1,
+    };
+    let redeployed = core
+        .verify_async(&describe(8_000_002, WalletProfile::Gaming))
+        .await
+        .unwrap();
+    assert_eq!(
+        redeployed.program_upgrades.len(),
+        1,
+        "{}",
+        redeployed.summary
+    );
+    assert!(
+        warned(&redeployed, "its evidence was withdrawn"),
+        "{}",
+        redeployed.summary
+    );
+    assert_eq!(core.retired_evidence().len(), 1);
+
+    // Retracted: said so. A status the loader does not define is not read
+    // as any of the three.
+    knobs.lock().unwrap().deployment = Deployment::LoaderV4 {
+        slot: 2_000,
+        status: 0,
+    };
+    let retracted = core
+        .verify_async(&describe(8_000_003, WalletProfile::Gaming))
+        .await
+        .unwrap();
+    assert!(
+        warned(&retracted, "ProgramRetracted"),
+        "{}",
+        retracted.summary
+    );
+    knobs.lock().unwrap().deployment = Deployment::LoaderV4 {
+        slot: 3_000,
+        status: 7,
+    };
+    let _ = core
+        .verify_async(&describe(8_000_004, WalletProfile::Gaming))
+        .await
+        .unwrap();
+    assert_eq!(
+        core.retired_evidence().len(),
+        1,
+        "an unreadable header changes nothing"
+    );
 }

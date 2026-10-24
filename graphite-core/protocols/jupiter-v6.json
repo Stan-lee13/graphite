@@ -89,7 +89,7 @@
     }
    ],
    "expected_state_changes": [
-    "transfers data.in_amount from accounts.user_source_token_account through the routed venues",
+    "debits accounts.user_source_token_account by data.in_amount, swapped through the routed venues",
     "credits accounts.user_destination_token_account with the routed output",
     "credits accounts.destination_token_account with the routed output when it is passed",
     "credits accounts.platform_fee_account with the platform's share when it is passed"
@@ -215,6 +215,7 @@
     }
    ],
    "expected_state_changes": [
+    "debits accounts.source_token_account by data.in_amount",
     "transfers data.in_amount from accounts.source_token_account to accounts.program_source_token_account",
     "swaps through the routed venues from accounts.program_source_token_account to accounts.program_destination_token_account",
     "transfers the routed output from accounts.program_destination_token_account to accounts.destination_token_account",
@@ -1384,7 +1385,7 @@
     }
    ],
    "expected_state_changes": [
-    "transfers data.in_amount from accounts.user_source_token_account through the routed venues",
+    "debits accounts.user_source_token_account by data.in_amount, swapped through the routed venues",
     "credits accounts.user_destination_token_account with the routed output",
     "credits accounts.destination_token_account with the routed output when it is passed"
    ],
@@ -1502,6 +1503,7 @@
     }
    ],
    "expected_state_changes": [
+    "debits accounts.source_token_account by data.in_amount",
     "transfers data.in_amount from accounts.source_token_account to accounts.program_source_token_account",
     "swaps through the routed venues from accounts.program_source_token_account to accounts.program_destination_token_account",
     "transfers the routed output from accounts.program_destination_token_account to accounts.destination_token_account"

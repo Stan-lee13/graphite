@@ -1283,7 +1283,7 @@
         "credits user destination token account"
       ],
       "new_lines": [
-        "transfers data.in_amount from accounts.user_source_token_account through the routed venues",
+        "debits accounts.user_source_token_account by data.in_amount, swapped through the routed venues",
         "credits accounts.user_destination_token_account with the routed output",
         "credits accounts.destination_token_account with the routed output when it is passed",
         "credits accounts.platform_fee_account with the platform's share when it is passed"
@@ -1294,7 +1294,7 @@
         "credits user destination token account"
       ],
       "added": [
-        "transfers data.in_amount from accounts.user_source_token_account through the routed venues",
+        "debits accounts.user_source_token_account by data.in_amount, swapped through the routed venues",
         "credits accounts.user_destination_token_account with the routed output",
         "credits accounts.destination_token_account with the routed output when it is passed",
         "credits accounts.platform_fee_account with the platform's share when it is passed"
@@ -1313,7 +1313,8 @@
       },
       "confidence": "high",
       "notes": "",
-      "meets_census_REWRITTEN_constraints": true
+      "meets_census_REWRITTEN_constraints": true,
+      "integration_note": "Round 36 integration: the user's input is stated as a named debit ('debits accounts.<source> by data.in_amount') rather than only 'transfers ... from'. Both parse as a debit of that account; the word keeps the opt-in fake-rewards-drainer plugin, which reads 'debit'/'deduct', seeing the outflow (tests/extreme_adversarial.rs t19)."
     },
     {
       "program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
@@ -1327,7 +1328,7 @@
         "credits user destination token account"
       ],
       "new_lines": [
-        "transfers data.in_amount from accounts.user_source_token_account through the routed venues",
+        "debits accounts.user_source_token_account by data.in_amount, swapped through the routed venues",
         "credits accounts.user_destination_token_account with the routed output",
         "credits accounts.destination_token_account with the routed output when it is passed"
       ],
@@ -1337,7 +1338,7 @@
         "credits user destination token account"
       ],
       "added": [
-        "transfers data.in_amount from accounts.user_source_token_account through the routed venues",
+        "debits accounts.user_source_token_account by data.in_amount, swapped through the routed venues",
         "credits accounts.user_destination_token_account with the routed output",
         "credits accounts.destination_token_account with the routed output when it is passed"
       ],
@@ -1354,7 +1355,8 @@
       },
       "confidence": "high",
       "notes": "",
-      "meets_census_REWRITTEN_constraints": true
+      "meets_census_REWRITTEN_constraints": true,
+      "integration_note": "Round 36 integration: the user's input is stated as a named debit ('debits accounts.<source> by data.in_amount') rather than only 'transfers ... from'. Both parse as a debit of that account; the word keeps the opt-in fake-rewards-drainer plugin, which reads 'debit'/'deduct', seeing the outflow (tests/extreme_adversarial.rs t19)."
     },
     {
       "program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
@@ -1368,6 +1370,7 @@
         "credits user destination token account"
       ],
       "new_lines": [
+        "debits accounts.source_token_account by data.in_amount",
         "transfers data.in_amount from accounts.source_token_account to accounts.program_source_token_account",
         "swaps through the routed venues from accounts.program_source_token_account to accounts.program_destination_token_account",
         "transfers the routed output from accounts.program_destination_token_account to accounts.destination_token_account",
@@ -1379,6 +1382,7 @@
         "credits user destination token account"
       ],
       "added": [
+        "debits accounts.source_token_account by data.in_amount",
         "transfers data.in_amount from accounts.source_token_account to accounts.program_source_token_account",
         "swaps through the routed venues from accounts.program_source_token_account to accounts.program_destination_token_account",
         "transfers the routed output from accounts.program_destination_token_account to accounts.destination_token_account",
@@ -1397,7 +1401,8 @@
       },
       "confidence": "high",
       "notes": "",
-      "meets_census_REWRITTEN_constraints": true
+      "meets_census_REWRITTEN_constraints": true,
+      "integration_note": "Round 36 integration: the user's input is stated as a named debit ('debits accounts.<source> by data.in_amount') rather than only 'transfers ... from'. Both parse as a debit of that account; the word keeps the opt-in fake-rewards-drainer plugin, which reads 'debit'/'deduct', seeing the outflow (tests/extreme_adversarial.rs t19)."
     },
     {
       "program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
@@ -1411,6 +1416,7 @@
         "credits user destination token account"
       ],
       "new_lines": [
+        "debits accounts.source_token_account by data.in_amount",
         "transfers data.in_amount from accounts.source_token_account to accounts.program_source_token_account",
         "swaps through the routed venues from accounts.program_source_token_account to accounts.program_destination_token_account",
         "transfers the routed output from accounts.program_destination_token_account to accounts.destination_token_account"
@@ -1421,6 +1427,7 @@
         "credits user destination token account"
       ],
       "added": [
+        "debits accounts.source_token_account by data.in_amount",
         "transfers data.in_amount from accounts.source_token_account to accounts.program_source_token_account",
         "swaps through the routed venues from accounts.program_source_token_account to accounts.program_destination_token_account",
         "transfers the routed output from accounts.program_destination_token_account to accounts.destination_token_account"
@@ -1437,7 +1444,8 @@
       },
       "confidence": "high",
       "notes": "",
-      "meets_census_REWRITTEN_constraints": true
+      "meets_census_REWRITTEN_constraints": true,
+      "integration_note": "Round 36 integration: the user's input is stated as a named debit ('debits accounts.<source> by data.in_amount') rather than only 'transfers ... from'. Both parse as a debit of that account; the word keeps the opt-in fake-rewards-drainer plugin, which reads 'debit'/'deduct', seeing the outflow (tests/extreme_adversarial.rs t19)."
     },
     {
       "program_id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",

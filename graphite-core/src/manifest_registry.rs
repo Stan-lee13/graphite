@@ -283,6 +283,109 @@ pub struct RegistryRecord {
     /// The independent reviewers whose attestations counted (MR-6).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attesters: Vec<String>,
+    /// Round 36 (F-008): the signer's signature that counted, kept so a third
+    /// party holding only this record can check it ([`RegistryRecord::verify_offline`]).
+    /// Absent on records written before Round 36.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature_hex: Option<String>,
+    /// Round 36 (F-008): every attestation that counted, signature included.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attestation_signatures: Vec<ReviewerAttestation>,
+    /// Round 36 (F-008): the domain tag the signatures were made under
+    /// ([`SIGNING_DOMAIN`] without its NUL), so a verifier rebuilds exactly
+    /// the message they cover.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signing_domain: Option<String>,
+}
+
+impl RegistryRecord {
+    /// Check this record from its own contents, without the registry
+    /// (Round 36, F-008): the retained manifest hashes to `content_hash`, and
+    /// every retained signature verifies over [`signing_message`] for this
+    /// program and hash, under the domain the record names. It says the named
+    /// keys signed this content; whether those keys were reviewers with
+    /// standing is the registry's state at acceptance, which the auditor
+    /// checks against the reviewer list it was given. A record written
+    /// before Round 36 retains no signatures and is reported as such, never
+    /// as verified.
+    pub fn verify_offline(&self) -> Result<(), String> {
+        let manifest = self
+            .manifest
+            .as_ref()
+            .ok_or("the record retains no manifest, so its content cannot be rehashed")?;
+        let rehashed = ManifestSubmission::content_hash_of(manifest);
+        if rehashed != self.content_hash {
+            return Err(format!(
+                "the retained manifest hashes to {rehashed}, not the recorded {}",
+                self.content_hash
+            ));
+        }
+        if manifest.protocol.program_id != self.program_id {
+            return Err("the retained manifest is for another program".to_string());
+        }
+        let domain =
+            String::from_utf8_lossy(SIGNING_DOMAIN.strip_suffix(b"\0").unwrap_or(SIGNING_DOMAIN))
+                .into_owned();
+        match &self.signing_domain {
+            Some(d) if *d == domain => {}
+            Some(d) => return Err(format!("the record was signed under domain {d:?}, not {domain:?}")),
+            None => {
+                return Err(
+                    "the record predates retained signatures (Round 36): nothing in it can be checked offline"
+                        .to_string(),
+                )
+            }
+        }
+        if self.signer.is_none() && self.attesters.is_empty() {
+            return Err("the record names no signer and no attester".to_string());
+        }
+        if let Some(signer) = &self.signer {
+            let sig = self
+                .signature_hex
+                .as_deref()
+                .ok_or("the record names a signer and retains no signature")?;
+            if !ManifestRegistryEngine::verify_signature(
+                signer,
+                sig,
+                &self.program_id,
+                &self.content_hash,
+            ) {
+                return Err(format!(
+                    "{signer}'s signature does not verify over this record"
+                ));
+            }
+        }
+        let retained: Vec<&str> = self
+            .attestation_signatures
+            .iter()
+            .map(|a| a.reviewer_pubkey.as_str())
+            .collect();
+        if retained
+            != self
+                .attesters
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+        {
+            return Err(
+                "the retained attestations are not the attesters the record names".to_string(),
+            );
+        }
+        for a in &self.attestation_signatures {
+            if !ManifestRegistryEngine::verify_signature(
+                &a.reviewer_pubkey,
+                &a.signature_hex,
+                &self.program_id,
+                &self.content_hash,
+            ) {
+                return Err(format!(
+                    "{}'s attestation does not verify over this record",
+                    a.reviewer_pubkey
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// A version the replay gate refused (MR-2): its label and content are never
@@ -630,8 +733,12 @@ impl ManifestRegistryEngine {
         }
 
         // Evidence from the submission — P7: tier derived, never asserted.
-        let (evidence, signer, attesters) =
+        let (evidence, signer, counted_attestations) =
             self.evidence_from_submission(&submission, &content_hash)?;
+        let attesters: Vec<String> = counted_attestations
+            .iter()
+            .map(|a| a.reviewer_pubkey.clone())
+            .collect();
         if !evidence.has_signed_manifest && evidence.community_verified_count == 0 {
             return Err(RegistryError::NoEvidence);
         }
@@ -762,8 +869,16 @@ impl ManifestRegistryEngine {
                 "community".to_string()
             },
             manifest: Some(submission.manifest.clone()),
+            signature_hex: signer.as_ref().and(submission.signature_hex.clone()),
             signer,
             attesters,
+            attestation_signatures: counted_attestations,
+            signing_domain: Some(
+                String::from_utf8_lossy(
+                    SIGNING_DOMAIN.strip_suffix(b"\0").unwrap_or(SIGNING_DOMAIN),
+                )
+                .into_owned(),
+            ),
         });
 
         Ok(RegistryDecision::Accepted {
@@ -867,11 +982,11 @@ impl ManifestRegistryEngine {
         &self,
         submission: &ManifestSubmission,
         content_hash: &str,
-    ) -> Result<(BehaviorEvidence, Option<String>, Vec<String>), RegistryError> {
+    ) -> Result<(BehaviorEvidence, Option<String>, Vec<ReviewerAttestation>), RegistryError> {
         let mut evidence = BehaviorEvidence::default();
         let program_id = submission.manifest.protocol.program_id.as_str();
         let mut counted_signer: Option<String> = None;
-        let mut counted_attesters: Vec<String> = Vec::new();
+        let mut counted_attesters: Vec<ReviewerAttestation> = Vec::new();
 
         // signer_pubkey and signature_hex must be provided together — a
         // partial pair is a malformed submission, not a silent no-op.
@@ -938,7 +1053,7 @@ impl ManifestRegistryEngine {
                 continue;
             }
             evidence.community_verified_count += 1;
-            counted_attesters.push(attestation.reviewer_pubkey.clone());
+            counted_attesters.push(attestation.clone());
         }
 
         Ok((evidence, counted_signer, counted_attesters))
@@ -1178,6 +1293,61 @@ mod tests {
             .unwrap();
         assert_eq!(record.trust_tier, TrustTier::OfficialManifest);
         assert!(record.evidence.has_signed_manifest);
+    }
+
+    /// Round 36 (F-008): an accepted record carries what a third party needs
+    /// to check it without the registry: the manifest, the signature that
+    /// counted and the domain it was made under. Round 35's record kept the
+    /// signer's key and no signature, so nothing in it could be checked.
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
+    #[test]
+    fn an_accepted_record_verifies_offline_and_a_tampered_one_does_not() {
+        let mut engine = ManifestRegistryEngine::new();
+        let mut store = SemanticGraphStore::new();
+        let signer = key(1);
+        engine
+            .register_reviewer(&pubkey_b58(&signer), 1000)
+            .unwrap();
+        let submission = signed_submission(
+            "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+            "v1.0",
+            &signer,
+        );
+        let core = GraphiteCore::new();
+        let corpus = onboarding_corpus(&core, &submission);
+        engine
+            .submit(&mut store, submission, Some((&corpus, &core)))
+            .unwrap();
+        let record = engine.records().last().unwrap().clone();
+        assert_eq!(record.verify_offline(), Ok(()));
+        // It survives the persisted form.
+        let back: RegistryRecord =
+            serde_json::from_str(&serde_json::to_string(&record).unwrap()).unwrap();
+        assert_eq!(back.verify_offline(), Ok(()));
+
+        let mut content = record.clone();
+        content.manifest.as_mut().unwrap().instructions[0].name = "Other".to_string();
+        assert!(content.verify_offline().unwrap_err().contains("hashes to"));
+        let mut sig = record.clone();
+        sig.signature_hex = Some(sign(
+            &key(9),
+            &signing_message(&record.program_id, &record.content_hash),
+        ));
+        assert!(sig
+            .verify_offline()
+            .unwrap_err()
+            .contains("does not verify"));
+        let mut gone = record.clone();
+        gone.signature_hex = None;
+        assert!(gone.verify_offline().is_err());
+        let mut domain = record.clone();
+        domain.signing_domain = Some("graphite-manifest-registry-v0".to_string());
+        assert!(domain.verify_offline().is_err());
+        // A record from before Round 36 is unverifiable, and says so.
+        let mut old = record;
+        old.signing_domain = None;
+        old.signature_hex = None;
+        assert!(old.verify_offline().unwrap_err().contains("predates"));
     }
 
     #[test]

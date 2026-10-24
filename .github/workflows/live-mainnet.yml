@@ -170,7 +170,13 @@ jobs:
           set +e
           python3 tools/live-measure/live_mainnet.py seed --graphite graphite-core/target/release/graphite \
             --data-dir "$RUNNER_TEMP/data" --out "$REPORT_DIR/seed.json"
-          echo "exit=$?" >> "$GITHUB_OUTPUT"
+          code=$?
+          set -e
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          # Round 36: a seeding that was asked for and failed fails the run.
+          # It used to end on the echo above, so the step read as success and
+          # the replay reported a fresh Core's verdicts as the seeded ones.
+          if [ "$code" -ne 0 ]; then echo "::error::seeding operator evidence failed (exit $code)"; exit "$code"; fi
 
       - name: Start the Core with the RPC attached
         if: steps.fetch.outputs.skip == 'false'
@@ -197,7 +203,7 @@ jobs:
           L8: ${{ inputs.l8_checks || '10' }}
           HARNESS_EXIT: ${{ steps.harness.outputs.exit }}
           FRESH: ${{ inputs.fresh_transactions || '40' }}
-          SEEDED: ${{ steps.seed.outcome == 'success' }}
+          SEEDED: ${{ steps.seed.outputs.exit == '0' }}
         run: |
           seeded=()
           if [ "$SEEDED" = "true" ]; then seeded=(--seeded "$REPORT_DIR/seed.json"); fi

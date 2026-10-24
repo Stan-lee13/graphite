@@ -163,7 +163,20 @@ fn describe(artifact: Vec<u8>, data: Option<Vec<u8>>) -> VerificationInput {
             intent_type: "transfer".to_string(),
             raw_natural_language: "send 0.002 SOL".to_string(),
             confidence_of_parse: 0.95,
-            extracted_parameters: None,
+            // Round 36 (F-003): what the request states, which the bytes carry.
+            extracted_parameters: Some(graphite_core::verification::ExtractedParameters {
+                // The amount the description's own data states.
+                amount: Some(
+                    data.as_ref()
+                        .and_then(|d| d.get(4..12))
+                        .map(|b| u64::from_le_bytes(b.try_into().unwrap()))
+                        .map(|l| format!("{}.{:09}", l / 1_000_000_000, l % 1_000_000_000))
+                        .unwrap_or_else(|| "0.002".to_string()),
+                ),
+                destination: Some(keys[1].clone()),
+                input_token: Some("SOL".to_string()),
+                ..Default::default()
+            }),
         },
         program_id: SYSTEM.to_string(),
         protocol_version: "1.0.0".to_string(),

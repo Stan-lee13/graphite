@@ -605,6 +605,9 @@ const (
 	UnobservedOtherInstructions        = "other_instructions"
 	UnobservedFeePayerBlockhashSigners = "fee_payer_blockhash_signers"
 	UnobservedNoRealEffects            = "no_real_effects"
+	// UnobservedIntentParameters (Round 36, F-003): the request states an
+	// amount, recipient or asset the Core could not tie to the bytes.
+	UnobservedIntentParameters = "intent_parameters"
 )
 
 // IsInherentUnobserved reports whether a residual code is one every

@@ -245,7 +245,13 @@ mod rpc {
                 intent_type: "transfer".to_string(),
                 raw_natural_language: "send SOL".to_string(),
                 confidence_of_parse: 0.95,
-                extracted_parameters: None,
+                // Round 36 (F-003): what the request states, which the bytes carry.
+                extracted_parameters: Some(graphite_core::verification::ExtractedParameters {
+                    amount: Some("0.002".to_string()),
+                    destination: Some(keys[1].clone()),
+                    input_token: Some("SOL".to_string()),
+                    ..Default::default()
+                }),
             },
             program_id: SYSTEM.to_string(),
             protocol_version: "1.0.0".to_string(),

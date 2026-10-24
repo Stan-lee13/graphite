@@ -753,7 +753,7 @@ jobs:
           # Every *.test.ts in the directory, so a test file cannot sit in
           # the repository looking like a gate without ever running.
           npm test 2>&1 | tee "$RUNNER_TEMP/agent-guard.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/agent-guard.log" 301
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/agent-guard.log" 316
           # The guard and the Rust Core are two implementations of one
           # agreement: the guard serializes a transaction and describes its
           # instructions, the Core reads both and decides whether they agree.
@@ -1106,6 +1106,13 @@ jobs:
         run: |
           set -euo pipefail
           bin="$RUNNER_TEMP/deploy-bin"
+          # Round 36 (F-021): the full-disk rehearsal mounts a tmpfs inside an
+          # unprivileged user+mount namespace, which Ubuntu 24.04's AppArmor
+          # restricts by default. Lift it for this job so the rehearsal runs
+          # (the floor below counts its checks) instead of being skipped.
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
           GRAPHITE_BIN="$PWD/graphite-core/target/release/graphite" CADDY_BIN="$bin/caddy" \
             PROMTOOL_BIN="$bin/promtool" bash deploy/tests/run.sh 2>&1 | tee "$RUNNER_TEMP/deploy.log"
           # Every check ran: a section that silently stopped running would
@@ -1116,9 +1123,11 @@ jobs:
           # rotation, R33-19 / D-6); 109 with the audit-key rotation under
           # GRAPHITE_AUDIT_PREVIOUS_KEY_FILE and rotate-keys.sh's exit 4
           # (R33-13 / R33-4). The owner checks need root or passwordless
-          # sudo, which the hosted runner has.
-          if [ -z "$passed" ] || [ "$passed" -lt 109 ]; then
-            echo "::error::deploy tests: ${passed:-no summary} passed, floor 109"; exit 1
+          # sudo, which the hosted runner has. 162 at Round 36 (F-019 one
+          # replica, F-021 rehearsals: second Core, SIGTERM in flight, full
+          # disk, lost audit key; alert coverage; compose/Dockerfile checks).
+          if [ -z "$passed" ] || [ "$passed" -lt 162 ]; then
+            echo "::error::deploy tests: ${passed:-no summary} passed, floor 162"; exit 1
           fi
 
   # Round 34: the scripts the release and the live workflows run, tested
