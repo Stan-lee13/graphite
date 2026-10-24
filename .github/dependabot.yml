@@ -218,7 +218,8 @@ updates:
   # Round 34 (R33-20): the production compose file pins its own images by
   # digest — caddy (the internet-facing TLS edge) and python (the AI layer) —
   # and the `docker` entry above reads only the Dockerfile, so neither digest
-  # was ever offered a bump. The Core's image there is ${GRAPHITE_IMAGE}, set
+  # was ever offered a bump. The Core's image there is
+  # ${GRAPHITE_IMAGE}@${GRAPHITE_IMAGE_DIGEST} (Round 36: the digest required), set
   # per deployment to a verified release, which Dependabot cannot and should
   # not move. Tools pinned by hand in the workflows (Caddy and promtool for
   # the deploy tests, Agave, cargo-audit, cargo-cyclonedx, the assurance

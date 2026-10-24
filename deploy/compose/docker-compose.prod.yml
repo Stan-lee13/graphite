@@ -15,7 +15,8 @@
 #     # 10001 is the image's user. The server refuses an audit key that
 #     # group/other can read; leave admin_api_key EMPTY to disable /admin/*.
 #   cat > .env <<'EOF'
-#   GRAPHITE_IMAGE=ghcr.io/<owner>/graphite-core:<version>@sha256:<digest>
+#   GRAPHITE_IMAGE=ghcr.io/<owner>/graphite-core:<version>
+#   GRAPHITE_IMAGE_DIGEST=sha256:<digest>     # from the release notes; verified below
 #   GRAPHITE_SITE=graphite.example.com
 #   ACME_EMAIL=ops@example.com
 #   EOF
@@ -66,7 +67,20 @@ services:
       options: { max-size: "10m", max-file: "5" }
 
   graphite:
-    image: ${GRAPHITE_IMAGE:?set GRAPHITE_IMAGE to a verified release, pinned by digest}
+    # The digest is a separate, required variable (Round 36): with one
+    # GRAPHITE_IMAGE a tag alone rendered and deployed whatever the tag pointed
+    # at that day. A tag without GRAPHITE_IMAGE_DIGEST now refuses to render.
+    image: ${GRAPHITE_IMAGE:?set GRAPHITE_IMAGE to the verified release (ghcr.io/<owner>/graphite-core:<version>)}@${GRAPHITE_IMAGE_DIGEST:?set GRAPHITE_IMAGE_DIGEST to the verified release's sha256:<digest>}
+    # ONE replica, by construction (Round 36, F-019). The Core is a single
+    # process over one data directory: it takes graphite.lock and
+    # .audit.jsonl.lock, keeps the trail's chain head and index, the semantic
+    # graph and the per-client rate limiter in its own memory. A second
+    # replica on this volume refuses to start (the lock) and crash-loops; on
+    # another volume it would be a second, disjoint audit trail and a second
+    # rate-limit budget behind one name. A fixed container_name makes
+    # `deploy.replicas` > 1 and `--scale graphite=2` errors, not a second copy.
+    # Horizontal scale is unsupported: docs/ops/production-checklist.md, 9g.
+    container_name: graphite-core
     restart: unless-stopped
     # The keys come from secrets, exported only into the server's own process.
     # admin_api_key may be an empty file: /admin/* is then disabled.
@@ -109,6 +123,7 @@ services:
     stop_signal: SIGTERM
     stop_grace_period: 30s
     deploy:
+      replicas: 1
       resources:
         limits: { cpus: "2", memory: 512M, pids: 256 }
     logging: *logging

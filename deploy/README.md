@@ -7,20 +7,20 @@ list is [`docs/ops/production-checklist.md`](../docs/ops/production-checklist.md
 
 | Path | What it is | Checked by |
 |---|---|---|
-| `compose/docker-compose.prod.yml` | Caddy (TLS) + Core from a released image pinned by digest + the optional AI layer (`--profile ai`); every key a file-backed secret | `docker compose config` |
-| `systemd/graphite.service` | The Core as a hardened systemd service (`systemd-analyze security`: 1.1) behind Caddy on the same host | `systemd-analyze verify` |
-| `systemd/graphite-anchor.{service,timer}` | Hourly checkpoint export and off-host anchoring | `systemd-analyze verify` |
+| `compose/docker-compose.prod.yml` | Caddy (TLS) + ONE Core (fixed `container_name`, `deploy.replicas: 1`) from a released image pinned by digest (`GRAPHITE_IMAGE` + the required `GRAPHITE_IMAGE_DIGEST`) + the optional AI layer (`--profile ai`); every key a file-backed secret | `docker compose config`, overrides with 2 replicas refused, the hardening read as data |
+| `systemd/graphite.service` | The Core as a hardened systemd service (`systemd-analyze security`: 1.1), one instance (not a template), behind Caddy on the same host | `systemd-analyze verify`, exposure < 2 |
+| `systemd/graphite-anchor.{service,timer}` | Hourly checkpoint export and off-host anchoring (the server's sandbox; exposure 1.1) | `systemd-analyze verify`, exposure < 1.5 |
 | `systemd/graphite.env.example` | The service's `/etc/graphite/graphite.env` | — |
 | `caddy/Caddyfile` | TLS, HSTS, a 1 MiB body limit (the Core's; since Round 34 a declared `Content-Length` over it is answered 413 at the edge, before anything is proxied), and only `/verify`, `/verify/execution`, `/audit/event` (POST), `/manifests`, `/api/*` (GET) reachable; `/health`, `/metrics`, `/admin/*` answer 404 at the edge | `caddy validate`, `caddy fmt` |
-| `prometheus/graphite-alerts.yml` | 19 alerts on the series the server exports and on `/health`'s degraded reasons | `promtool check rules`, `promtool test rules` (`graphite-alerts.test.yml`) |
+| `prometheus/graphite-alerts.yml` | 19 alerts on the series the server exports and on `/health`'s degraded reasons | `promtool check rules`, `promtool test rules` (`graphite-alerts.test.yml`: every alert fires in one case and stays quiet in another) |
 | `prometheus/prometheus.example.yml` | Scrape config with the read key | `promtool check config --syntax-only` |
 | `grafana/graphite-dashboard.json` | Verdicts, refusals, L8, audit trail | every query parsed by promtool; every series exists in `server.rs` |
 | `scripts/health-textfile.sh` | `/health` `degraded_reasons` → `graphite_health_degraded{reason=…}` for node_exporter | `deploy/tests/run.sh` |
-| `scripts/backup.sh` | Cold (stop/copy/start) or `--hot` backup; kept only if `graphite audit verify` passes on the copy; `.sha256` and a `.mac` (HMAC-SHA256 of the archive under the audit key) beside it | same |
-| `scripts/restore.sh` | `--anchor-dir` required; a `.sha256` naming the archive itself, then its `.mac` under a given key; verify the unpacked trail and against the newest anchored checkpoint, then swap it in, keeping the old directory | same |
+| `scripts/backup.sh` | Cold (stop/copy/start) or `--hot` backup; kept only if `graphite audit verify` passes on the copy; `.sha256` and a `.mac` (HMAC-SHA256 of the archive under the audit key) beside it; `--lost-key` after a lost audit key | same |
+| `scripts/restore.sh` | `--anchor-dir` required; a `.sha256` naming the archive itself, then its `.mac` under a given key; verify the unpacked trail and against the newest anchored checkpoint, then swap it in, keeping the old directory; `--lost-key` | same |
 | `scripts/anchor-checkpoints.sh` | `graphite audit checkpoint` into the anchor directory; optional upload to an S3 Object-Lock bucket | same (the S3 upload is not exercised: see below) |
 | `scripts/rotate-keys.sh` | New API key in an env file or secret file (keeping the file's owner, or an explicit `UID:GID`), new audit MAC key, verify the trail under every key | same |
-| `tests/run.sh` | All of the above, against a real Core and Caddy on loopback | — |
+| `tests/run.sh` | All of the above, against a real Core and Caddy on loopback; plus a second Core on a live data directory, SIGTERM with a verdict in flight, a lost audit key, and a full data directory | — |
 
 ## Run the checks
 
@@ -30,8 +30,10 @@ GRAPHITE_BIN=$PWD/graphite-core/target/release/graphite deploy/tests/run.sh
 ```
 
 It needs `caddy`, `promtool`, `shellcheck`, `curl`, `jq`, `openssl`, `flock` and
-Python 3 with PyYAML; `systemd-analyze` and `docker compose` are used when
-present and reported as skipped otherwise. Override any binary with
+Python 3 with PyYAML; `systemd-analyze`, `docker compose` and `unshare` (the
+full-disk case mounts a 256 KiB tmpfs in an unprivileged user+mount namespace)
+are used when present and reported as skipped otherwise (the full-disk case
+needs no root). Override any binary with
 `CADDY_BIN`, `PROMTOOL_BIN`, `SHELLCHECK_BIN`. It starts the Core and two
 Caddy instances on free loopback ports in a temporary directory and removes
 everything when it exits. Exit 0 only when every check passed.
@@ -88,4 +90,14 @@ everything when it exits. Exit 0 only when every check passed.
 - The S3 Object-Lock upload (no S3 endpoint or `aws` CLI in the test
   environment); the `put-object` flags are from the AWS CLI reference.
 - The units under a running systemd (only `systemd-analyze` ran), and the
-  compose stack under a running Docker daemon (only `docker compose config`).
+  compose stack under a running Docker daemon (only `docker compose config`):
+  not the hardened anchor unit running the aws CLI, not
+  `docker compose up --scale graphite=2` (only the `replicas: 2` and
+  `scale: 2` override files, refused at render time), not the image's
+  read-only root filesystem at run time, not a second replica crash-looping
+  on the lock inside a container (the lock refusal itself is rehearsed with
+  the binary).
+- A real host, DNS, and WORM storage: the anchors here are a local
+  directory, so a host compromise that rewrites them is not modelled.
+- A full disk on a real filesystem (ext4/xfs reserved blocks, a full volume
+  under Docker): the rehearsal uses a size-limited tmpfs.

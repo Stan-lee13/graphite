@@ -102,6 +102,19 @@ trail, refuses a broken one, and writes a key-adoption record under the new key
 that names the lost key as not checked. The records under the lost key then
 verify as chained but not MAC'd (exit 2).
 
+From then on that exit 2 is permanent, and `deploy/scripts/backup.sh` and
+`restore.sh` refused every archive of the trail (Round 36, found by the
+rehearsal in `deploy/tests/run.sh`). Pass them the lost key's id — the 16 hex
+digits `graphite audit verify --key-file <new key>` prints as `NOT SUPPLIED` —
+as `--lost-key <id>`. It accepts that exit 2 and nothing else: every key not
+given must be named, each must be followed by a key-adoption record whose MAC
+verified, the head must be under a key given, and a break, a torn write or an
+unconfirmed checkpoint is still refused. A record under the lost key that was
+rewritten breaks the hash chain the adoption record vouches for, so
+`--lost-key` never restores one. Record the key id and the date in the
+incident log; anchor a checkpoint under the new key right after the adoption
+(`deploy/scripts/anchor-checkpoints.sh`).
+
 **Adding a key to an unkeyed trail.** A server with a key refuses to resume
 onto a newest record that carries no MAC: MAC'ing on top of an unkeyed history
 would vouch for whatever that history holds, including a rewrite with the MACs

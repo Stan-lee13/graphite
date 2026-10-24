@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Back up a Graphite data directory to a verified, checksummed archive.
 #
-#   backup.sh [--hot] [--key-file F]... DATA_DIR OUT_DIR
+#   backup.sh [--hot] [--key-file F]... [--lost-key KEY_ID]... DATA_DIR OUT_DIR
 #
 # Cold (default): STOP_CMD stops the server, the directory is archived, then
 # START_CMD starts it again — the archive is exactly the state the server
@@ -19,7 +19,8 @@
 #
 # Every archive is verified before it is kept: `graphite audit verify` exit 0
 # on the copy (exit 2 — MACs under a key not supplied — is refused: pass
-# every key with --key-file, or GRAPHITE_AUDIT_KEY_FILE). The audit MAC key is
+# every key with --key-file, or GRAPHITE_AUDIT_KEY_FILE; a key that is lost:
+# --lost-key below). The audit MAC key is
 # NOT in the archive (it lives outside the data directory by design); back it
 # up separately, to a different place.
 #
@@ -34,6 +35,16 @@
 # restore.sh refuses an archive without a .mac that verifies. With no key at
 # all (an unkeyed trail) no .mac is written, and restoring it needs
 # ALLOW_UNKEYED_ARCHIVE=1.
+#
+# --lost-key KEY_ID (Round 36, F-021): after an audit key is LOST and the trail
+# continues under a new one (`graphite audit adopt-key`, docs/ops/keys.md),
+# `audit verify` exits 2 from then on — the records under the lost key cannot
+# be MAC-checked — so every backup was refused and a deployment that lost a key
+# could never be backed up again. Naming the lost key's id (the 16 hex digits
+# `graphite audit verify` prints as NOT SUPPLIED) accepts exactly that exit 2:
+# only when every key not given is named here, each is followed by a
+# key-adoption record whose MAC verified, the head is under a key given, and
+# nothing else (a break, a tear, an unconfirmed checkpoint) is wrong.
 # Needs: bash, tar, gzip, sha256sum, flock, python3, graphite (GRAPHITE_BIN).
 set -euo pipefail
 
@@ -42,10 +53,16 @@ usage() { sed -n '2,4p' "$0" >&2; exit 64; }
 hot=0
 keys=()
 keyfiles=()
+lost=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --hot) hot=1; shift ;;
     --key-file) keys+=(--key-file "$2"); keyfiles+=("$2"); shift 2 ;;
+    --lost-key)
+      [[ "${2:-}" =~ ^[0-9a-f]{16}$ ]] || { echo "backup: --lost-key takes a key id (16 hex digits)" >&2; exit 64; }
+      lost+=("$2")
+      shift 2
+      ;;
     -h | --help) usage ;;
     --) shift; break ;;
     -*) echo "unknown option $1" >&2; usage ;;
@@ -72,6 +89,36 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+
+# only_lost_keys_unchecked REPORT.json KEY_ID... — exit 0 when the only thing
+# `audit verify --json` could not prove is the MACs under the named lost keys.
+# (restore.sh carries the same check.)
+only_lost_keys_unchecked() {
+  python3 -I - "$@" <<'PY'
+import json, sys
+r, lost = json.load(open(sys.argv[1])), set(sys.argv[2:])
+def no(why):
+    sys.exit(f"lost-key check: {why}; refusing")
+if r.get("first_break") is not None: no("the trail has a break")
+if r.get("unacknowledged_tears"): no("the trail has an unacknowledged torn write")
+if r.get("unparseable_lines"): no("the trail has unparseable lines")
+if not r.get("chained_records"): no("no chained record")
+cp = r.get("checkpoint")
+if cp is not None and cp.get("status") != "confirmed": no(f"checkpoint {cp.get('status')}")
+ranges = r.get("key_ranges") or []
+if not ranges or not ranges[-1].get("supplied"): no("the head's key was not given")
+unchecked = 0
+for i, k in enumerate(ranges):
+    if k.get("supplied"): continue
+    if k.get("key_id") not in lost: no(f"key {k.get('key_id')} was not given and is not named by --lost-key")
+    nxt = ranges[i + 1] if i + 1 < len(ranges) else {}
+    if nxt.get("introduced_by") != "adoption_checked":
+        no(f"lost key {k['key_id']} is not followed by a verified key-adoption record")
+    unchecked += k.get("records", 0)
+if unchecked != r.get("macs_unverified"): no("MACs unchecked outside the lost keys' ranges")
+print(f"lost keys {', '.join(sorted(lost))}: {unchecked} records chained but not MAC-checked (--lost-key)")
+PY
+}
 
 server_holds_lock() {
   [ -e "$data/graphite.lock" ] && ! flock -n -E 75 "$data/graphite.lock" true 2>/dev/null
@@ -108,6 +155,10 @@ snapshot() {
 verify_copy() {
   local rc=0
   "$bin" audit verify --data-dir "$work/data" ${keys[@]+"${keys[@]}"} >"$work/verify.txt" 2>&1 || rc=$?
+  if [ "$rc" = 2 ] && [ "${#lost[@]}" -gt 0 ]; then
+    "$bin" audit verify --data-dir "$work/data" ${keys[@]+"${keys[@]}"} --json >"$work/verify.json" 2>/dev/null || true
+    only_lost_keys_unchecked "$work/verify.json" "${lost[@]}" >>"$work/verify.txt" 2>&1 && rc=0
+  fi
   echo "$rc"
 }
 

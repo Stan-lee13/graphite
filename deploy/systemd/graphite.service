@@ -10,6 +10,14 @@
 #   systemctl daemon-reload && systemctl enable --now graphite
 #
 # Check:  systemd-analyze security graphite.service   (aim for an exposure score under 2)
+#
+# ONE instance per host and per data directory, deliberately a plain unit and
+# not a template (graphite@.service): the Core is single-process. It holds
+# /var/lib/graphite/graphite.lock and .audit.jsonl.lock, and keeps the audit
+# chain head, the semantic graph and the per-client rate limiter in memory. A
+# second copy on this StateDirectory refuses to start; one on another
+# directory is a second, disjoint audit trail. Running several behind a load
+# balancer is unsupported (docs/ops/production-checklist.md, 9g).
 
 [Unit]
 Description=Graphite Core — transaction verification gate
@@ -54,8 +62,10 @@ Environment=GRAPHITE_LOG_FORMAT=json
 
 Restart=on-failure
 RestartSec=5
-# The server drains open requests (10 s) and writes its final snapshot on
-# SIGTERM; give it room.
+# On SIGTERM the server stops accepting and lets open requests finish, for at
+# most 10 s (REQUEST_TIMEOUT); every record and snapshot is written before its
+# request answers, so nothing is left to flush. Rehearsed by deploy/tests/run.sh
+# (an in-flight verdict answered and on the trail after SIGTERM, exit 0).
 TimeoutStopSec=30
 KillSignal=SIGTERM
 

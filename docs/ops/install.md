@@ -1,5 +1,16 @@
 # Clean install (single node, Docker Compose)
 
+One node means one Core process. Running several replicas, behind a load
+balancer or on one volume, is unsupported: the Core keeps its audit trail's
+head, its semantic graph and its rate limiter in its own process and locks its
+data directory (`graphite.lock`), so a second copy on the same volume refuses
+to start and one on another volume is a second, disjoint trail. Never
+`docker compose up --scale graphite=2`. For production use
+`deploy/compose/docker-compose.prod.yml` (TLS edge, file-backed secrets, a
+release pinned by digest, one replica enforced) and
+[production-checklist.md](production-checklist.md); this page is the
+build-from-source stack.
+
 1. **Check out a tagged release**, not a branch head:
    `git clone https://github.com/Stan-lee13/graphite && cd graphite && git checkout v<version>`.
    Confirm CI was green on that commit (Actions tab, the `CI gate` check).
