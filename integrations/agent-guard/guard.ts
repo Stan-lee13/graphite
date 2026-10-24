@@ -404,8 +404,10 @@ export interface GuardConfig {
     /**
      * The directory every guard of this user on this host shares for its
      * per-wallet locks (Round 32, guard-state.ts). Overrides
-     * GRAPHITE_GUARD_LOCK_DIR. Default (Round 34): a directory no temp cleaner
-     * sweeps (`defaultWalletLockDir`); it must be this user's, mode 0700.
+     * GRAPHITE_GUARD_LOCK_DIR. Default (Round 38, R37-17): one directory per
+     * user, derived from the account alone and no session variable
+     * (`defaultWalletLockDir`: `<home>/.local/state/graphite-guard`); it must
+     * be this user's, mode 0700 (not checked on Windows).
      */
     walletLockDir?: string;
     /**
