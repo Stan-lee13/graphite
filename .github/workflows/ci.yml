@@ -1161,8 +1161,8 @@ jobs:
         run: |
           bash .github/scripts/ci-scripts.test.sh 2>&1 | tee "$RUNNER_TEMP/ci-scripts.log"
           passed="$(sed -n 's/^ci-scripts tests: \([0-9]*\) passed, 0 failed$/\1/p' "$RUNNER_TEMP/ci-scripts.log")"
-          if [ -z "$passed" ] || [ "$passed" -lt 25 ]; then
-            echo "::error::ci-scripts tests: ${passed:-no summary} passed, floor 25"; exit 1
+          if [ -z "$passed" ] || [ "$passed" -lt 33 ]; then
+            echo "::error::ci-scripts tests: ${passed:-no summary} passed, floor 33"; exit 1
           fi
 
   # Round 30 (G-11): the one check the `main` ruleset requires

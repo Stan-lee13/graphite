@@ -3,7 +3,8 @@
 # backticks in single quotes are fixture text, not expansions (SC2016).
 # shellcheck disable=SC2015,SC2016
 # Tests for the small CI scripts of Round 34: set-rpc-env.sh (D-9),
-# pinned-tools.py (R33-20) and check-attestation-commands.py (R33-18).
+# pinned-tools.py (R33-20) and check-attestation-commands.py (R33-18); and
+# Round 36's mutation_floor.py (F-015).
 # Needs bash and python3; no network. Exit 0 only when every case behaved.
 set -uo pipefail
 
@@ -143,6 +144,41 @@ bad = {k: p.get(k) for k, v in want.items() if p.get(k) != v}
 if bad:
     sys.exit(f"profile.ci-test differs from release semantics: {bad}")
 PY
+
+echo "== mutation_floor.py (F-015)"
+# The shapes cargo-mutants 27.1.0 writes. A shard killed by the step timeout
+# leaves outcomes.json with total_mutants EQUAL to the outcomes recorded and
+# end_time null; only mutants.json, written before the first mutant runs,
+# holds the shard's own count. Run 40083338181 scored 15 such shards as
+# complete.
+floor="$root/graphite-core/scripts/mutation_floor.py"
+shard() { # shard DIR LISTED CAUGHT MISSED UNVIABLE END_TIME
+  mkdir -p "$1"
+  python3 -I - "$@" <<'PY'
+import json, sys
+d, listed, caught, missed, unviable, end = sys.argv[1], *map(int, sys.argv[2:6]), sys.argv[6]
+json.dump([{"name": f"m{i}"} for i in range(listed)], open(f"{d}/mutants.json", "w"))
+oc = [{"scenario": "Baseline", "summary": "Success"}]
+for n, s in ((caught, "CaughtMutant"), (missed, "MissedMutant"), (unviable, "Unviable")):
+    oc += [{"scenario": {"Mutant": {}}, "summary": s}] * n
+json.dump({"outcomes": oc, "total_mutants": caught + missed + unviable,
+           "end_time": None if end == "null" else end}, open(f"{d}/outcomes.json", "w"))
+PY
+}
+shard "$T/m-done" 10 8 1 1 2026-10-24T12:55:19Z
+expect 0 "a finished shard at its floor passes" python3 -I "$floor" "$T/m-done/outcomes.json" 0.80
+expect 1 "a finished shard below its floor fails" python3 -I "$floor" "$T/m-done/outcomes.json" 0.90
+shard "$T/m-killed" 40 37 1 0 null
+expect 1 "a shard killed after 38 of 40 is INCOMPLETE, not scored" python3 -I "$floor" "$T/m-killed/outcomes.json" 0.10
+grep -q INCOMPLETE <<<"$(python3 -I "$floor" "$T/m-killed/outcomes.json" 0.10 2>&1)" && ok "and says INCOMPLETE" || bad "the killed shard was not reported INCOMPLETE"
+shard "$T/m-short" 40 37 1 0 2026-10-24T12:55:19Z
+expect 1 "a shard short of its list is INCOMPLETE even with an end time" python3 -I "$floor" "$T/m-short/outcomes.json" 0.10
+shard "$T/m-open" 10 8 1 1 null
+expect 1 "a shard with every outcome but no end time is INCOMPLETE" python3 -I "$floor" "$T/m-open/outcomes.json" 0.10
+shard "$T/m-nolist" 10 9 1 0 2026-10-24T12:55:19Z && rm "$T/m-nolist/mutants.json"
+expect 1 "a shard without its mutant list cannot be judged" python3 -I "$floor" "$T/m-nolist/outcomes.json" 0.10
+shard "$T/m-empty" 0 0 0 0 2026-10-24T12:55:19Z
+expect 1 "a shard that tested nothing fails" python3 -I "$floor" "$T/m-empty/outcomes.json" 0.10
 
 echo
 echo "ci-scripts tests: $pass passed, $fail failed"
