@@ -237,7 +237,24 @@ build directory, and one result in it was stale, so every break was re-run in is
 
 ## D. What was run
 
-FILLED_AFTER_VALIDATION
+All on the integrated tree (`a3b9e73`), in this session's Linux container, debug profile without
+debug info. Push and CI runs are recorded on the PR when the owner allows the push.
+
+| Leg | Command | Result |
+|---|---|---|
+| fmt | `cargo fmt --all -- --check` | clean |
+| clippy, three legs | `--all-targets --all-features`; `--lib --no-default-features`; `--all-targets --no-default-features --features cli`, each `-D warnings` | clean (the first run caught two lints in `intent_binding.rs`, fixed in `a3b9e73`) |
+| Rust default | `cargo test --locked` | **2,387 passed**, 0 failed, 14 ignored, 171 targets (floor 2,363 → 2,387) |
+| Rust lib | `cargo test --locked --no-default-features --lib` | **517 passed**, 0 failed, 3 ignored (floor 513 → 517) |
+| Rust cli | `cargo test --locked --no-default-features --features cli` | **1,947 passed**, 0 failed, 5 ignored (floor 1,942 → 1,947) |
+| release | `cargo build --locked --release --all-features` | builds |
+| runtime oracle | `tools/runtime-oracle`, `--iterations 300000` | "Graphite is never looser than the runtime" |
+| inner-instruction oracle | `tools/inner-instruction-oracle`, `--iterations 1000000`, Rust 1.99.1 (CI's) | "every rebuild round-trips through Agave's parser" |
+| deploy kit | `deploy/tests/run.sh` against the release binary | 138 of 162: Caddy and promtool are not installed in this container, so the edge and promtool checks fail and the single-writer head check reads an empty trail. The keyed trail was then checked by hand against the release binary: written, verified (`tamper_evident`, a trail id), resumed after a restart under the same id. CI runs the whole kit |
+| pinned outputs | `regression_corpus`, `release_evaluation`, `mainnet_conformance`, `r30_declared_effects_census` | unchanged, except the census's new pinned R37-6 row |
+
+No TypeScript, Go or Python file changed in Round 38's commits. The F-001 test and the CI script
+changes are PR #54's, green in CI run 40121939855.
 
 ## E. Residuals and what this round did not do
 

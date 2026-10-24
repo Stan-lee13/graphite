@@ -905,15 +905,15 @@ transaction under the stated threat model, and no external party has yet tried.
 document links here, and `tests/docs_numbers_match_the_code.rs` fails if a live
 document states one elsewhere.
 
-Rust, from the integrated runs of Round 36 on 2026-10-24 (`cargo test --locked`, debug
+Rust, from the integrated runs of Round 38 on 2026-10-24 (`cargo test --locked`, debug
 profile without debug info, on one build target; logs kept outside the repository):
 
-- the default features CI runs: **2,363 Rust tests pass**, 0 failed,
+- the default features CI runs: **2,387 Rust tests pass**, 0 failed,
   14 ignored (network- or sample-dependent, plus three benchmarks, each named in
-  `.github/test-allowlists/rust-ignored.txt`), across 168 test targets;
-- the featureless library (`--no-default-features --lib`): **513 passed, 3 ignored**;
-- the cli-only build (`--no-default-features --features cli`): **1,942 passed, 5 ignored**,
-  across 168 test targets.
+  `.github/test-allowlists/rust-ignored.txt`), across 171 test targets;
+- the featureless library (`--no-default-features --lib`): **517 passed, 3 ignored**;
+- the cli-only build (`--no-default-features --features cli`): **1,947 passed, 5 ignored**,
+  across 171 test targets.
 
 CI's test-count gate holds each leg at these floors (`rust-test` matrix in
 `.github/workflows/ci.yml`).
