@@ -8,7 +8,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ACCEPT_UNOBSERVED_ENV, ResidualPolicy, ResidualPolicyRefusal } from "./residual-policy.js";
+import { ACCEPT_UNOBSERVED_ENV, NEVER_ACCEPTABLE, ResidualPolicy, ResidualPolicyRefusal } from "./residual-policy.js";
 import {
   INHERENT_UNOBSERVED,
   UNOBSERVED_CODES,
@@ -16,6 +16,12 @@ import {
   type UnobservedCode,
   type VerificationScope,
 } from "../../sdk/typescript/src/types.js";
+
+// Re-pinned in Round 38 (G2-5): the most permissive policy accepts every code
+// but the ones no deployment may accept (`intent_parameters`); it was every
+// code, which the constructor now refuses. The tests that use it pin what even
+// the most permissive legal policy refuses.
+const EVERY_ACCEPTABLE = UNOBSERVED_CODES.filter((c) => !NEVER_ACCEPTABLE.has(c));
 
 const DIGEST = "e32950f70a7f63c5d34695964ac376fc53b6727806c26269639ee27b2bc3a886";
 
@@ -39,7 +45,12 @@ test("the inherent residuals are exactly the two the core marks inherent", () =>
   assert.equal(UNOBSERVED_CODES.length, 16);
 });
 
-test("Round 36 (F-003): intent_parameters is a known, non-inherent code — refused by default, accepted only by name", () => {
+// Re-pinned in Round 38 (G2-5). This test ended by pinning that an operator
+// who names intent_parameters accepts it. That switched F-003 off for a
+// whole deployment: every request whose amount, recipient or asset the Core
+// could not bind was signed. It is now never acceptable; naming it refuses
+// to start (guard-round38.test.ts holds the startup paths).
+test("Round 36 (F-003): intent_parameters is a known, non-inherent code — refused by default, and never acceptable (Round 38)", () => {
   assert.ok(UNOBSERVED_CODES.includes("intent_parameters"), "in the list of every code");
   assert.equal(INHERENT_UNOBSERVED.has("intent_parameters"), false, "never inherent");
   // Refused by the default policy, naming the code.
@@ -56,9 +67,13 @@ test("Round 36 (F-003): intent_parameters is a known, non-inherent code — refu
     () => new ResidualPolicy(["no_state_diff"]).assertExecutable(bound([...INHERENT, "intent_parameters"]), "t"),
     /intent_parameters/,
   );
-  // Only an operator who names it accepts it, and the acceptance is reported.
-  const named = new ResidualPolicy(["intent_parameters"]);
-  assert.deepEqual(named.assertExecutable(bound([...INHERENT, "intent_parameters"]), "t").accepted, ["intent_parameters"]);
+  // Naming it is refused: no operator can accept it.
+  assert.throws(() => new ResidualPolicy(["intent_parameters"]), /cannot be accepted.*F-003.*REFUSING TO START/);
+  // And the refusal of a verdict carrying it says so, rather than "name it to accept it".
+  assert.throws(
+    () => new ResidualPolicy(["no_state_diff"]).assertExecutable(bound([...INHERENT, "intent_parameters"]), "t"),
+    /intent_parameters \(never acceptable\)/,
+  );
 });
 
 test("a fully observed artifact-bound verdict passes the default policy", () => {
@@ -117,7 +132,7 @@ test("fromEnv reads GRAPHITE_ACCEPT_UNOBSERVED and defaults to inherent-only", (
 });
 
 test("a descriptive or absent scope refuses regardless of policy", () => {
-  const policy = new ResidualPolicy([...UNOBSERVED_CODES]);
+  const policy = new ResidualPolicy(EVERY_ACCEPTABLE);
   const descriptive: VerificationScope = {
     kind: "descriptive",
     unobserved: ["no artifact"],
@@ -140,7 +155,7 @@ test("codes and prose must pair by position", () => {
 });
 
 test("a code this bridge does not know is refused, even under a permissive policy", () => {
-  const policy = new ResidualPolicy([...UNOBSERVED_CODES]);
+  const policy = new ResidualPolicy(EVERY_ACCEPTABLE);
   const scope = bound([...INHERENT, "something_new" as UnobservedCode]);
   assert.throws(() => policy.assertExecutable(scope, "t"), /unknown to this bridge/);
 });

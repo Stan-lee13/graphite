@@ -658,3 +658,24 @@ test("G2-4: the reservation an unresolved submission names survives a restart; a
   writeFileSync(path, `${JSON.stringify({ ...old, rid: 5 })}\n`);
   assert.throws(() => GuardState.open(path), /not a complete `unresolved` record.*REFUSING TO START/);
 });
+
+// ---------------------------------------------------------------------------
+// G2-5: intent_parameters is never an accepted residual.
+
+test("G2-5 (repro): intent_parameters cannot be accepted — by the policy, GRAPHITE_ACCEPT_UNOBSERVED or acceptUnobserved; the guard refuses to start", async () => {
+  const named = /intent_parameters.*F-003.*REFUSING TO START/;
+  assert.throws(() => new ResidualPolicy(["intent_parameters"]), named);
+  assert.throws(() => new ResidualPolicy([" intent_parameters "]), named);
+  assert.throws(() => ResidualPolicy.fromEnv({ GRAPHITE_ACCEPT_UNOBSERVED: "no_state_diff,intent_parameters" }), named);
+  // Any other code is still accepted by name.
+  assert.deepEqual(new ResidualPolicy(["no_state_diff"]).accepts(), ["no_state_diff"]);
+  const base = {
+    privateKey: bs58.encode(Keypair.generate().secretKey),
+    rpcUrl: "http://127.0.0.1:1",
+    graphiteCoreUrl: "http://127.0.0.1:1",
+    spendPolicy: { maxTransferLamports: 1n },
+  };
+  // Refused before anything is contacted (the Core here does not exist).
+  await withEnv({ GRAPHITE_ACCEPT_UNOBSERVED: "intent_parameters" }, () => assert.rejects(GraphiteGuard.create(base), named));
+  await assert.rejects(GraphiteGuard.create({ ...base, acceptUnobserved: ["no_state_diff", "intent_parameters"] }), named);
+});

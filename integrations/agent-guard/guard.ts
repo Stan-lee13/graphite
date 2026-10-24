@@ -847,6 +847,13 @@ export class GraphiteGuard {
       );
     }
     const lockPlan = walletLockPlan({ lockDir: config?.walletLockDir, allowSharedWallet: config?.allowSharedWallet });
+    // Built here, not lazily: a typo in the accepted list, or a code no
+    // deployment may accept (Round 38, G2-5: `intent_parameters`), is a
+    // startup error before anything is contacted, never a silent refusal at
+    // execution time.
+    const residualPolicy = config?.acceptUnobserved
+      ? new ResidualPolicy(config.acceptUnobserved)
+      : ResidualPolicy.fromEnv();
 
     const signer = await walletSignerFrom(privateKey);
     const connection = connectionWithoutRedirects(rpcUrl, rpcTimeoutMs);
@@ -855,11 +862,6 @@ export class GraphiteGuard {
     try { await graphite.health(); } catch {
       throw new Error(`Graphite Core not reachable at ${graphiteCoreUrl}. Start: GRAPHITE_API_KEY=... cargo run --release -- server`);
     }
-    // Built here, not lazily: a typo in the accepted list is a startup error,
-    // never a silent refusal at execution time.
-    const residualPolicy = config?.acceptUnobserved
-      ? new ResidualPolicy(config.acceptUnobserved)
-      : ResidualPolicy.fromEnv();
     const accepted = residualPolicy.accepts();
     console.log(
       accepted.length === 0
