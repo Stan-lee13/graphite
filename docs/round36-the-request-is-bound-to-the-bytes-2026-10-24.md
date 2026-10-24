@@ -108,11 +108,51 @@ the reverted files and logs:
 - F-019/F-021: the base versions of the fixed files restored.
 - Dashboard: source fixes removed.
 
-F-003/F-004: the break run is recorded in §D.
+F-003/F-004 were broken in a detached worktree of `ce94157` outside the working tree.
+`bind` and `bind_withdrawal` were made to return `NotApplicable`, which is the Round 35
+behaviour. `tests/round36_intent_binding.rs` then failed **18 of 22**. The 4 that still pass are
+the benign control (`a_bound_transfer_is_executable`) and three helper tests that do not go
+through `bind`.
+
+`a_wrong_amount_is_blocked` read: `assertion failed: 0.003: APPROVED | … risk=Clear |
+policy=Approved | … left: ExecutableApproved`. A request for 0.003 SOL was executable on a
+2,000,000-lamport transfer. On the fix it is `Blocked` with `IntentMismatch`. The worktree was
+removed after the run.
 
 ## D. What was run
 
-To be completed with the final run (exact SHA, counts, durations, CI URLs).
+The local runs were made on this branch's tree in a 4-core container, with `cargo test --locked`
+on the debug profile without debug info. CI runs the same suites under its `ci-test` profile.
+
+| Suite | Command | Result |
+|---|---|---|
+| Rust, default features | `cargo test --locked --no-fail-fast` | 2,363 passed, 0 failed, 14 ignored (allowlisted), 168 targets. The first run showed one failure: the CHANGELOG linked to this report before the report existed. The three document and contract tests were re-run after it was written: 4 + 8 + 1 passed |
+| Rust, library | `--no-default-features --lib` | 513 passed, 3 ignored |
+| Rust, cli | `--no-default-features --features cli` | 1,942 passed, 5 ignored |
+| Clippy, `-D warnings` | all three feature legs | clean |
+| fmt | `cargo fmt --all -- --check` | clean |
+| Contract gate | `tests/contract_version_gate.rs` against `v0.2.0-beta` | passes. `unobserved_codes` is new since that tag, so it is not a break; the CHANGELOG names the paths anyway |
+| `cargo audit` | core, fuzz, both oracles | clean except the allowed RUSTSEC-2025-0141 (bincode unmaintained) in the two oracles, which pin bincode to decode exactly as Agave does |
+| npm advisory gate | all six packages (`gate.mjs`); its own tests 10/10 | passes, no new allowlist entry |
+| Agent guard | `npm test` | 316/316; typecheck clean |
+| SAK / MCP / Vercel AI | `npm test` | 10/10, 10/10, 12/12 |
+| TypeScript SDK | `npm test` | 62 passed (4 need a live server; CI runs them in the container job) |
+| Go SDK | `go vet`, `go test ./...` | ok |
+| Python | `pytest` across the AI layer, mainnet-sample and live-measure | 114 passed |
+| Dashboard | typecheck, tests, build, e2e harness | 35/35; smoke at 8 views × 3 sizes and the fault states, axe clean (agent run) |
+| Deploy kit | `deploy/tests/run.sh` against the release binary | 162/162, three runs (agent run) |
+| F-003/F-004 deliberate break | §C | 18 of 22 fail broken; 22/22 pass fixed |
+
+Hosted CI on PR #53:
+- [run 40054717819](https://github.com/Stan-lee13/graphite/actions/runs/40054717819) on `574c207`
+  (F-001) passed every job.
+- [Run 40059292984](https://github.com/Stan-lee13/graphite/actions/runs/40059292984) on `ce94157`
+  and the final head are recorded on the PR.
+- The Assurance workflow was dispatched on the branch
+  ([run 40059300806](https://github.com/Stan-lee13/graphite/actions/runs/40059300806)). It runs
+  the mutation jobs, which have never run on schedule (F-015), plus the six 30-minute fuzz runs and
+  the coverage floor. Its outcome is recorded on the PR when it completes; this report does not
+  claim a mutation score it has not seen.
 
 ## E. Residuals, stated exactly
 

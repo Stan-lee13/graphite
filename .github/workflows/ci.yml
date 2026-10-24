@@ -144,7 +144,7 @@ jobs:
           # leg would compile the same thing twice.
           - leg: default
             flags: ""
-            floor: 2331
+            floor: 2363
             timeout: 90
           # `--lib` deliberately. Without a feature there is no async runtime
           # to drive the synchronous `verify()`, so it refuses with an error
@@ -160,11 +160,11 @@ jobs:
           # `cargo test --no-default-features` had 28 failures.
           - leg: lib
             flags: "--no-default-features --lib"
-            floor: 509
+            floor: 513
             timeout: 20
           - leg: cli
             flags: "--no-default-features --features cli"
-            floor: 1933
+            floor: 1942
             timeout: 45
     defaults:
       run:
@@ -201,7 +201,7 @@ jobs:
         # Round 30: the log is read back, so the gate is "at least the floor
         # passed and none failed", not just "cargo exited 0" — which it also
         # does when no test binary ran at all. The floors are the counts at
-        # Round 35 (2,331 / 509 / 1,933); a change that deletes tests below one
+        # Round 36 (2,363 / 513 / 1,942; 2,331 / 509 / 1,933 at Round 35); a change that deletes tests below one
         # lowers it in the same reviewed diff. The log lives outside the tree
         # so the clean-tree check below still sees only what the tests wrote.
         env:

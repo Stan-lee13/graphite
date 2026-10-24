@@ -5,7 +5,7 @@ other file in `docs/` is a dated record of what was true when it was written;
 each carries a banner pointing here. When this file and a report disagree,
 this file is current and the report is history.
 
-Updated: 2026-10-23, after Round 35 — Round 34 run on real mainnet traffic: a transaction that makes a CPI is approvable on a real RPC again (Agave reports inner instructions only in parsed form, and Graphite read only the compiled one, so every CPI was refused as incomplete; `parsed_inner` now rebuilds them, checked against Agave's own parser by `tools/inner-instruction-oracle`); the live runners seed under the audit key and fetch enough blocks (report: [`round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md`](round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md)). Round 34 — the Round 33 deep audit of `b473a31` (1 P0, 9 P1, 13 P2, ~30 P3) remediated: a `stake` intent declares no withdrawal and staking withdrawals are grounded under `withdraw` (R33-1); a debit line naming no account no longer excuses a signer's loss, and signer netting is per signer (R33-5/6/7/10); the audit trail has one line grammar shared by verify and every reader, keyed readers check MACs, and a keyed trail cannot be downgraded (R33-2/3/4); releases need a signed tag on `main`; the CI Rust job is split (report: [`round34-the-deep-audit-remediated-2026-10-23.md`](round34-the-deep-audit-remediated-2026-10-23.md)). Round 32 — production readiness: a signer's loss under a declaration Graphite cannot read, the W19 lamport debit and a granted withdrawal with no minimum output are refused by default (each with an operator opt-out); one guard per wallet; a release pipeline, a deployment kit and live mainnet/devnet measurement workflows; an audit hand-off pack (report: [`round32-production-readiness-2026-10-22.md`](round32-production-readiness-2026-10-22.md)). Round 31 updated every dependency. Before that, Round 30 — the forensic whole-repository audit of `29e4356` remediated: every verdict says whether it permits signing (`decision`, `executable`); evidence trains only at the built-in floor; baselines are per shape and anchored; an upgrade withdraws evidence; the audit trail is hash-chained and, keyed, tamper-evident; L8 says what its answer rests on; honest intents for 21 grounded withdraw/claim/close/burn/configure instructions (see `git log -1 -- docs/CURRENT.md`). Round 30 report: [`round30-forensic-audit-and-remediation-2026-10-22.md`](round30-forensic-audit-and-remediation-2026-10-22.md).
+Updated: 2026-10-24, after Round 36 — the owner's whole-repository forensic brief (F-001..F-022) remediated: an approval is executable only when the request's amount, recipient and asset are the transaction's, and anything the Core cannot bind is the `intent_parameters` residual (F-003); a withdrawal's minimum is held to the simulation (F-004); 35 declarations rewritten from their IDLs (F-005); the SAK adapter loads no Zod (F-001, the CI gate green again); loader-v4 is read (F-009); registry records carry their signatures (F-008); misspelled switches refuse to start (F-020); the guard's RPC transport is bounded and a stale verdict is not signed (F-014, F-017); one Core per data directory is enforced and its failures rehearsed (F-019, F-021); the dashboard draws what it did not read as unknown (report: [`round36-the-request-is-bound-to-the-bytes-2026-10-24.md`](round36-the-request-is-bound-to-the-bytes-2026-10-24.md)). Round 35 — Round 34 run on real mainnet traffic: a transaction that makes a CPI is approvable on a real RPC again (Agave reports inner instructions only in parsed form, and Graphite read only the compiled one, so every CPI was refused as incomplete; `parsed_inner` now rebuilds them, checked against Agave's own parser by `tools/inner-instruction-oracle`); the live runners seed under the audit key and fetch enough blocks (report: [`round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md`](round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md)). Round 34 — the Round 33 deep audit of `b473a31` (1 P0, 9 P1, 13 P2, ~30 P3) remediated: a `stake` intent declares no withdrawal and staking withdrawals are grounded under `withdraw` (R33-1); a debit line naming no account no longer excuses a signer's loss, and signer netting is per signer (R33-5/6/7/10); the audit trail has one line grammar shared by verify and every reader, keyed readers check MACs, and a keyed trail cannot be downgraded (R33-2/3/4); releases need a signed tag on `main`; the CI Rust job is split (report: [`round34-the-deep-audit-remediated-2026-10-23.md`](round34-the-deep-audit-remediated-2026-10-23.md)). Round 32 — production readiness: a signer's loss under a declaration Graphite cannot read, the W19 lamport debit and a granted withdrawal with no minimum output are refused by default (each with an operator opt-out); one guard per wallet; a release pipeline, a deployment kit and live mainnet/devnet measurement workflows; an audit hand-off pack (report: [`round32-production-readiness-2026-10-22.md`](round32-production-readiness-2026-10-22.md)). Round 31 updated every dependency. Before that, Round 30 — the forensic whole-repository audit of `29e4356` remediated: every verdict says whether it permits signing (`decision`, `executable`); evidence trains only at the built-in floor; baselines are per shape and anchored; an upgrade withdraws evidence; the audit trail is hash-chained and, keyed, tamper-evident; L8 says what its answer rests on; honest intents for 21 grounded withdraw/claim/close/burn/configure instructions (see `git log -1 -- docs/CURRENT.md`). Round 30 report: [`round30-forensic-audit-and-remediation-2026-10-22.md`](round30-forensic-audit-and-remediation-2026-10-22.md).
 If that commit is not HEAD, later commits may have moved things;
 `git log --oneline -- docs/CURRENT.md` shows when this page last changed.
 
@@ -26,7 +26,7 @@ observe is refused rather than assumed (P12).
 ## Security status
 
 ```
-Overall:                         CONDITIONAL — security-hardened alpha. Verdict (Rounds 30–34): RELEASE BLOCKED on
+Overall:                         CONDITIONAL — security-hardened alpha. Verdict (Rounds 30–36): RELEASE BLOCKED on
                                  owner and external gates (branch rules and the release environment not applied, no
                                  independent audit, no production deployment or operations); the code is READY FOR
                                  INDEPENDENT AUDIT. Round 33's internal deep audit found a P0 the earlier rounds
@@ -853,16 +853,15 @@ transaction under the stated threat model, and no external party has yet tried.
 document links here, and `tests/docs_numbers_match_the_code.rs` fails if a live
 document states one elsewhere.
 
-Rust, from the integrated runs of Round 35 on 2026-10-23 (the `ci-test` profile CI
-uses — release semantics with LTO off and 16 codegen units — on one fresh build
-target; logs kept outside the repository):
+Rust, from the integrated runs of Round 36 on 2026-10-24 (`cargo test --locked`, debug
+profile without debug info, on one build target; logs kept outside the repository):
 
-- the default features CI runs: **2,331 Rust tests pass**, 0 failed,
+- the default features CI runs: **2,363 Rust tests pass**, 0 failed,
   14 ignored (network- or sample-dependent, plus three benchmarks, each named in
-  `.github/test-allowlists/rust-ignored.txt`), across 167 test targets;
-- the featureless library (`--no-default-features --lib`): **509 passed, 3 ignored**;
-- the cli-only build (`--no-default-features --features cli`): **1,933 passed, 5 ignored**,
-  across 167 test targets.
+  `.github/test-allowlists/rust-ignored.txt`), across 168 test targets;
+- the featureless library (`--no-default-features --lib`): **513 passed, 3 ignored**;
+- the cli-only build (`--no-default-features --features cli`): **1,942 passed, 5 ignored**,
+  across 168 test targets.
 
 CI's test-count gate holds each leg at these floors (`rust-test` matrix in
 `.github/workflows/ci.yml`).
@@ -870,18 +869,19 @@ CI's test-count gate holds each leg at these floors (`rust-test` matrix in
 Clippy `-D warnings` (all three feature legs) and fmt clean on the integrated tree;
 the release build (`--features server,cli`, thin LTO) builds.
 
-TypeScript (Round 34, run as CI runs them; the four guard packages re-run in Round 35):
-agent guard 316 (301 before Round 35's transport, verdict-age and spend tests and Round 36's F-003 guard tests); SolanaAgentKit adapter 9;
-MCP server 9; Vercel AI adapter 11; TypeScript SDK 66 (62 hermetic, 4 against a live
-server — run in CI's container job); `emit:corpus` and `emit:artifact-fixture` with no
-drift. Not touched in Round 34 and not re-run: dashboard 31, production build OK; Go
-SDK 59 top-level test functions (0 skipped), plus 5 behind the `liveserver` tag.
-Python: AI layer 50 (Round 34); `tools/mainnet-sample` 7; `tools/live-measure` 57 (Round 35).
-Deploy kit: 109 checks (`deploy/tests/run.sh`). The runtime oracle: ~628,500 frames
-per CI seed, bincode and wincode, legacy, v0 and v1, never looser than the runtime
-(both seeds, Round 34). The last hosted CI run that passed every job was on the PR
-head `e34a42d` (Round 32); `main` at `b473a31` failed the CI gate on the Rust job's
-time limit (R33-8), and Round 34's split has not yet run on GitHub.
+TypeScript (Round 36, run as CI runs them): agent guard 316 (301 at Round 35; the
+transport, verdict-age, spend and F-003 tests); SolanaAgentKit adapter 10; MCP server
+10; Vercel AI adapter 12 (each +1 for the Round 36 Zod bound); TypeScript SDK 66 (62
+hermetic, 4 against a live server — run in CI's container job); dashboard 35 (31 at
+Round 35), production build OK, and the e2e harness (`.github/scripts/dashboard-e2e.sh`:
+smoke at three sizes and the Round 36 fault states, axe included). Go SDK: `go vet` and
+`go test` pass. Python: 114 across the AI layer, `tools/mainnet-sample` and
+`tools/live-measure`. Deploy kit: 162 checks (`deploy/tests/run.sh`; 109 at Round 35).
+The npm advisory gate passes for all six packages with no new allowlist entry, and
+`cargo audit` reports nothing but the allowed bincode-unmaintained warning in the two
+oracles. The runtime oracle: ~628,500 frames per CI seed, bincode and wincode, legacy,
+v0 and v1, never looser than the runtime (both seeds, Round 34). Hosted CI on the
+Round 36 head: see the PR (#53) and the Round 36 report.
 
 The holdout (`tests/regression_corpus.rs`): n = 38, 37 true positives, 1 false
 positive, 0 false negatives — precision 0.974, recall 1.000. The committed
