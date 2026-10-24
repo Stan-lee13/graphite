@@ -81,6 +81,9 @@ use std::collections::BTreeMap;
 pub const SYSTEM_PROGRAM: &str = "11111111111111111111111111111111";
 pub const ATA_PROGRAM: &str = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 pub const NATIVE_MINT: &str = "So11111111111111111111111111111111111111112";
+pub const COMPUTE_BUDGET_PROGRAM: &str = "ComputeBudget111111111111111111111111111111";
+pub const MEMO_PROGRAM: &str = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
+pub const MEMO_V1_PROGRAM: &str = "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo";
 
 pub const JUPITER_V6: &str = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
 pub const ORCA_WHIRLPOOLS: &str = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc";
@@ -245,13 +248,15 @@ pub fn parse_amount(text: &str, decimals: u8) -> Result<u64, String> {
     Ok(units as u64)
 }
 
+/// `at` may come from the bytes themselves (a Borsh string's length), so its
+/// end is checked, never added blindly (Round 37, B-7).
 fn le_u64(data: &[u8], at: usize) -> Option<u64> {
-    data.get(at..at + 8)
+    data.get(at..at.checked_add(8)?)
         .map(|b| u64::from_le_bytes(b.try_into().expect("8 bytes")))
 }
 
 fn le_u32(data: &[u8], at: usize) -> Option<u32> {
-    data.get(at..at + 4)
+    data.get(at..at.checked_add(4)?)
         .map(|b| u32::from_le_bytes(b.try_into().expect("4 bytes")))
 }
 
@@ -509,6 +514,25 @@ fn movements(ixs: &[Ix]) -> Result<Vec<Movement>, String> {
     Ok(out)
 }
 
+/// Whether the binding of a transfer, approve or burn accounts for `ix`: the
+/// System program and the token programs (their movements are read; their
+/// other instructions are judged by L4 and L7), compute-budget and memo
+/// instructions (they move nothing), and the associated token account
+/// program's `Create` / `CreateIdempotent` (only rent, into an account the
+/// diff shows). The ATA program's `RecoverNested` moves tokens, and is not.
+fn reads_or_moves_nothing(ix: &Ix) -> bool {
+    match ix.program_id.as_str() {
+        SYSTEM_PROGRAM
+        | SPL_TOKEN_PROGRAM
+        | SPL_TOKEN_2022_PROGRAM
+        | COMPUTE_BUDGET_PROGRAM
+        | MEMO_PROGRAM
+        | MEMO_V1_PROGRAM => true,
+        ATA_PROGRAM => matches!(ix.data.as_slice(), [] | [0] | [1]),
+        _ => false,
+    }
+}
+
 /// The mint of a token movement: the instruction's own, else the source
 /// account's in the simulated pre-state.
 fn movement_mint(source: &str, mint: &Option<String>, diff: Option<&StateDiff>) -> Option<String> {
@@ -574,7 +598,9 @@ pub fn bind(input: &BindingInput<'_>) -> Binding {
             "a stake states an amount, and the Core decodes no stake program's amount: the stake is not tied to what was asked",
         ),
         // A withdrawal's binding is its minimum outputs (`bind_withdrawal`),
-        // judged where the grant is known.
+        // judged where the grant is known; a native stake withdrawal states
+        // its lamports instead.
+        "withdraw" => bind_stake_withdraw(input),
         _ => Binding::NotApplicable,
     }
 }
@@ -662,6 +688,18 @@ fn bind_token_like(input: &BindingInput<'_>, ops: &[TokenOp], native_allowed: bo
     if relevant.is_empty() {
         return Binding::unbound(format!(
             "the transaction carries no top-level {intent} instruction the Core reads (System, SPL Token or Token-2022), so what it moves is not tied to the request"
+        ));
+    }
+    // Round 38 (R37-10): the movements above are all a transfer, approve or
+    // burn binds, so every other top-level instruction must be one that
+    // moves nothing the Core does not read. A sibling of any other program —
+    // a compressed-NFT `transfer` (account data, no balance to net), a pool
+    // `Swap` drawing on the same source — moved value beside an amount that
+    // was "exactly as requested".
+    if let Some(other) = ixs.iter().find(|ix| !reads_or_moves_nothing(ix)) {
+        return Binding::unbound(format!(
+            "the transaction also invokes {}, whose effects the Core does not read: what this {intent} moves is not all tied to the request",
+            other.program_id
         ));
     }
     let authority = relevant[0].authority.clone();
@@ -1367,6 +1405,55 @@ fn keeps_value(
     Ok(())
 }
 
+/// Round 38 (R37-9): whose swap it is.
+///
+/// The effect was measured on `signers.first()`, the fee payer. A relayer
+/// paying the fee while the owner signs the route made the relayer the
+/// wallet: the owner's tokens could buy output delivered to the relayer, and
+/// the binding saw output arrive and nothing of the input leave. The wallet
+/// is now the ONE signer whose token accounts change; every other signer may
+/// pay (the fee, rent) but gains nothing and holds no changed token account.
+/// Value moving between two signers is not one wallet's swap, whichever of
+/// them asked: a mismatch, not a guess.
+fn swapping_wallet<'a>(
+    signers: &'a [String],
+    fee_payer: &'a String,
+    diff: &StateDiff,
+) -> Result<&'a String, Binding> {
+    let effects: Vec<(&String, WalletEffect)> = signers
+        .iter()
+        .map(|s| (s, wallet_effect(diff, s)))
+        .collect();
+    let moved = |e: &WalletEffect| {
+        e.wrapped_sol_delta != 0 || e.token_delta.values().any(|d| *d != 0)
+    };
+    let movers: Vec<&String> = effects
+        .iter()
+        .filter(|(_, e)| moved(e))
+        .map(|(s, _)| *s)
+        .collect();
+    let wallet = match movers.as_slice() {
+        [] => fee_payer,
+        [one] => *one,
+        many => {
+            return Err(Binding::mismatch(format!(
+                "token balances change in the accounts of {} signers ({}); a swap is one wallet's, and value moving between signers is not bound to the request",
+                many.len(),
+                many.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+            )))
+        }
+    };
+    for (s, e) in &effects {
+        if *s != wallet && e.lamports_out < 0 {
+            return Err(Binding::mismatch(format!(
+                "signer {s} gains {} lamports beside {wallet}'s swap; a co-signer may pay for it, not take from it",
+                -e.lamports_out
+            )));
+        }
+    }
+    Ok(wallet)
+}
+
 fn bind_swap(input: &BindingInput<'_>) -> Binding {
     let Some(params) = input.params else {
         return Binding::unbound(
@@ -1458,10 +1545,14 @@ fn bind_swap(input: &BindingInput<'_>) -> Binding {
         };
     }
     // The effect, from Graphite's own simulation.
-    let (Some(diff), Some(wallet)) = (input.diff, input.signers.first()) else {
+    let (Some(diff), Some(fee_payer)) = (input.diff, input.signers.first()) else {
         return Binding::unbound(
             "no simulated state diff: what the swap spends and delivers was not measured, so neither is tied to the request",
         );
+    };
+    let wallet = match swapping_wallet(input.signers, fee_payer, diff) {
+        Ok(w) => w,
+        Err(b) => return b,
     };
     if let Err(b) = keeps_value(
         decoded.name,
@@ -1657,6 +1748,65 @@ fn bind_create(input: &BindingInput<'_>) -> Binding {
 
 // ── Withdrawals (F-004) ─────────────────────────────────────────────────────
 
+pub const STAKE_PROGRAM: &str = "Stake11111111111111111111111111111111111111";
+
+/// A native stake withdrawal is held to the amount the request states
+/// (Round 37, B-6).
+///
+/// Stake `Withdraw(lamports)` carries no minimum (it pays exactly what it
+/// names), so its grant had nothing for `bind_withdrawal` to hold, and the
+/// request's amount was never compared: "withdraw 1 SOL" could withdraw the
+/// whole account. Only to the owner (the grant requires it), so the harm is
+/// stake deactivated beyond what was asked; it is a mismatch all the same.
+/// A request that states no amount states nothing to compare, as before.
+/// The pool and Marinade withdrawals name pool tokens or mSOL, not the SOL a
+/// request asks for, and are not compared (a documented limitation).
+fn bind_stake_withdraw(input: &BindingInput<'_>) -> Binding {
+    let Ok(ixs) = input.instructions else {
+        return Binding::NotApplicable;
+    };
+    let withdrawals: Vec<&Ix> = ixs
+        .iter()
+        .filter(|ix| ix.program_id == STAKE_PROGRAM && le_u32(&ix.data, 0) == Some(4))
+        .collect();
+    if withdrawals.is_empty() {
+        return Binding::NotApplicable;
+    }
+    let Some(amount_text) = input
+        .params
+        .and_then(|p| p.amount.as_deref())
+        .filter(|a| !a.is_empty())
+    else {
+        return Binding::NotApplicable;
+    };
+    if let Some(asset) = input.params.and_then(|p| p.input_token.as_deref()) {
+        if read_asset(asset, "asset (input_token)").ok() != Some(Asset::Native) {
+            return Binding::mismatch(format!(
+                "a stake withdrawal pays SOL; the request names {asset:?}"
+            ));
+        }
+    }
+    let requested = match parse_amount(amount_text, 9) {
+        Ok(r) => r,
+        Err(e) => return Binding::unbound(e),
+    };
+    let mut total: u128 = 0;
+    for ix in &withdrawals {
+        match le_u64(&ix.data, 4) {
+            Some(l) if ix.data.len() == 12 => total += u128::from(l),
+            _ => return Binding::mismatch("a stake Withdraw whose data is not 12 bytes"),
+        }
+    }
+    if total != u128::from(requested) {
+        return Binding::mismatch(format!(
+            "the transaction withdraws {total} lamports of stake; the request states {amount_text} SOL ({requested} lamports)"
+        ));
+    }
+    Binding::Bound(format!(
+        "stake withdrawal of {amount_text} SOL ({requested} lamports), exactly as requested"
+    ))
+}
+
 /// What rides beside a withdrawal (Round 38, R37-1): the transaction's
 /// top-level instructions, the signers, and the withdrawing program.
 pub struct WithdrawalContext<'a> {
@@ -1805,6 +1955,81 @@ mod tests {
         }
         assert!(parse_amount("1.0000000001", 9).is_err());
         assert!(parse_amount("18446744073709551616", 0).is_err());
+    }
+
+    /// A seed length near `usize::MAX` puts the lamports offset at the very
+    /// end of the address space. Reading 8 bytes there overflowed: a panic in
+    /// a debug build, a wrapped range — read as "short" only by luck — in
+    /// release (Round 37, B-7). An offset the bytes chose is checked like
+    /// every other length they state.
+    #[test]
+    fn a_seed_length_at_the_end_of_the_address_space_reads_as_short() {
+        for len in [
+            u64::MAX,
+            (usize::MAX - 44) as u64,
+            (usize::MAX - 43) as u64,
+            (usize::MAX - 50) as u64,
+        ] {
+            let mut data = vec![3, 0, 0, 0];
+            data.extend_from_slice(&[7; 32]);
+            data.extend_from_slice(&len.to_le_bytes());
+            data.extend_from_slice(&[0; 16]);
+            let ix = Ix {
+                program_id: SYSTEM_PROGRAM.to_string(),
+                accounts: vec!["funder".into(), "created".into()],
+                data,
+            };
+            assert!(
+                matches!(system_movement(&ix), Some(Err(_))),
+                "seed length {len}"
+            );
+        }
+        assert_eq!(le_u64(&[0; 8], usize::MAX), None);
+        assert_eq!(le_u32(&[0; 4], usize::MAX - 2), None);
+    }
+
+    /// B-6: a native stake withdrawal's lamports against the request's.
+    #[test]
+    fn a_stake_withdrawal_is_held_to_the_amount_requested() {
+        let withdraw = |lamports: u64| {
+            let mut data = vec![4, 0, 0, 0];
+            data.extend_from_slice(&lamports.to_le_bytes());
+            Ix {
+                program_id: STAKE_PROGRAM.to_string(),
+                accounts: vec!["stake".into(), "owner".into()],
+                data,
+            }
+        };
+        let run = |ixs: &[Ix], amount: Option<&str>, asset: Option<&str>| {
+            let params = ExtractedParameters {
+                amount: amount.map(str::to_string),
+                input_token: asset.map(str::to_string),
+                ..Default::default()
+            };
+            bind(&BindingInput {
+                canonical_intent: "withdraw",
+                params: Some(&params),
+                instructions: Ok(ixs),
+                signers: &["owner".to_string()],
+                diff: None,
+                mint_decimals: &BTreeMap::new(),
+            })
+        };
+        let one = [withdraw(1_000_000_000)];
+        assert!(matches!(run(&one, Some("1"), None), Binding::Bound(_)));
+        assert!(matches!(run(&one, Some("1"), Some("SOL")), Binding::Bound(_)));
+        let all = [withdraw(250_000_000_000)];
+        assert!(matches!(
+            run(&all, Some("1"), None),
+            Binding::Mismatch { .. }
+        ));
+        assert!(matches!(
+            run(&one, Some("1"), Some("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")),
+            Binding::Mismatch { .. }
+        ));
+        // Nothing stated, nothing to compare; no stake Withdraw, as before.
+        assert_eq!(run(&all, None, None), Binding::NotApplicable);
+        assert_eq!(run(&[], Some("1"), None), Binding::NotApplicable);
     }
 
     #[test]

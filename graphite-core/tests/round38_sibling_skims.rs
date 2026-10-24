@@ -581,7 +581,18 @@ enum Beside {
     /// signing, moves this much of the output by CPI: no top-level movement
     /// the bytes show, only the diff.
     CpiSkim(u64),
+    /// R37-9: a relayer pays the fee and co-signs; the owner signs the route,
+    /// whose output lands in the owner's account. Nothing else beside it.
+    Relayed,
+    /// R37-9: the same, the route's output landing in the RELAYER's account.
+    RelayerTakesOutput,
+    /// R37-9: a relayed swap paying the owner, and a System transfer of the
+    /// owner's SOL to the relayer beside it.
+    RelayerTakesLamports(u64),
 }
+
+/// A fee payer that is not the owner (R37-9).
+const RELAYER: &str = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
 
 /// A program somebody deployed.
 const FOREIGN: &str = "Fore1gnProgram11111111111111111111111111111";
@@ -610,7 +621,16 @@ fn jupiter_swap(
 ) -> (Cluster, Vec<Ix>) {
     let mut c = Cluster::default();
     let d = def(JUPITER, "route");
-    let (src, dst) = (ata(OWNER, in_mint), ata(OWNER, out_mint));
+    let relayed = matches!(
+        beside,
+        Beside::Relayed | Beside::RelayerTakesOutput | Beside::RelayerTakesLamports(_)
+    );
+    let receiver = if beside == Beside::RelayerTakesOutput {
+        RELAYER
+    } else {
+        OWNER
+    };
+    let (src, dst) = (ata(OWNER, in_mint), ata(receiver, out_mint));
     let keys = accounts_for(
         JUPITER,
         &d,
@@ -707,7 +727,7 @@ fn jupiter_swap(
     );
     // The owner's input account holds 10 units more than the route takes.
     let held = amount_in + 10_000_000;
-    let mut wallet_out = FEE;
+    let mut wallet_out = if relayed { 0 } else { FEE };
     let mut ixs = vec![];
     if beside == Beside::OwnWrap {
         // The owner moves `amount_in` lamports into their own wSOL account and
@@ -746,7 +766,7 @@ fn jupiter_swap(
         ),
     );
     ixs.push(primary);
-    c.set(&dst, acct(RENT, TOKEN, token_account(out_mint, OWNER, 0)));
+    c.set(&dst, acct(RENT, TOKEN, token_account(out_mint, receiver, 0)));
     let mut kept = gross;
     match beside {
         Beside::Memo => ixs.push(ix(MEMO, &[(OWNER, true, false)], b"swap".to_vec())),
@@ -826,7 +846,23 @@ fn jupiter_swap(
             ],
             vec![9u8],
         )),
-        Beside::Nothing | Beside::OwnWrap => {}
+        Beside::RelayerTakesLamports(skim) => {
+            wallet_out += skim;
+            ixs.push(ix(
+                SYSTEM,
+                &[(OWNER, true, true), (RELAYER, false, true)],
+                system_transfer(skim),
+            ));
+        }
+        Beside::Nothing | Beside::OwnWrap | Beside::Relayed | Beside::RelayerTakesOutput => {}
+    }
+    if relayed {
+        let taken = match beside {
+            Beside::RelayerTakesLamports(skim) => skim,
+            _ => 0,
+        };
+        c.set(RELAYER, acct(10 * SOL, SYSTEM, vec![]));
+        c.after(RELAYER, acct(10 * SOL - FEE + taken, SYSTEM, vec![]));
     }
     c.set(OWNER, acct(10 * SOL, SYSTEM, vec![]));
     c.set(ATTACKER, acct(SOL, SYSTEM, vec![]));
@@ -843,7 +879,7 @@ fn jupiter_swap(
             acct(
                 lamports_of(out_mint, kept),
                 TOKEN,
-                token_account(out_mint, OWNER, kept),
+                token_account(out_mint, receiver, kept),
             ),
         );
         c.after(OWNER, acct(10 * SOL - wallet_out, SYSTEM, vec![]));
@@ -1220,4 +1256,184 @@ async fn an_approval_or_a_cpi_skim_beside_a_swap_is_not_bound() {
             risk(&r)
         );
     }
+}
+
+/// R37-9: the binding measured a swap's effect on `signers.first()`, the fee
+/// payer. With a relayer paying the fee and the owner signing the route, the
+/// owner's tokens could buy output delivered to the relayer, and the binding
+/// saw the relayer's side only: output arrived, nothing of the input left.
+/// The control first: the same relayed swap paying the owner is bound.
+#[tokio::test]
+async fn a_relayed_swap_is_bound_to_the_wallet_that_swaps() {
+    let (c, ixs) = jupiter_swap(
+        MINT_Y,
+        MINT_X,
+        1_000_000,
+        100_000_000,
+        100_000_000,
+        Beside::Relayed,
+    );
+    let p = primary_of(&ixs, JUPITER);
+    let r = verify(c, RELAYER, &ixs, p, "swap", swap_request("1", MINT_Y, MINT_X)).await;
+    record("relayed", &r);
+    assert!(
+        !names(&r, "IntentMismatch") && !names(&r, "SwapUnderbounded"),
+        "a relayed swap paying the owner: {}",
+        risk(&r)
+    );
+    assert!(
+        !r.scope
+            .unobserved_codes()
+            .contains(&UnobservedCode::IntentParameters),
+        "a relayed swap paying the owner is bound: {:?}",
+        r.scope.unobserved()
+    );
+}
+
+#[tokio::test]
+async fn a_relayer_taking_the_owners_swap_output_is_not_bound() {
+    let (c, ixs) = jupiter_swap(
+        MINT_Y,
+        MINT_X,
+        1_000_000,
+        100_000_000,
+        100_000_000,
+        Beside::RelayerTakesOutput,
+    );
+    let p = primary_of(&ixs, JUPITER);
+    let r = verify(c, RELAYER, &ixs, p, "swap", swap_request("1", MINT_Y, MINT_X)).await;
+    record("relayer takes output", &r);
+    assert_ne!(
+        r.decision,
+        ExecutionDecision::ExecutableApproved,
+        "{}",
+        risk(&r)
+    );
+    assert!(
+        names(&r, "IntentMismatch"),
+        "the binding names it: {}",
+        risk(&r)
+    );
+}
+
+/// R37-9, the second rule: a co-signer may pay for a swap, not take from it.
+/// The owner's SOL moved to the relayer is "a signer's own account" to the
+/// sibling rule (R37-1), and 0.009 SOL is inside the 0.01 SOL a swap may
+/// spend on fees and rent, so only the per-signer reading names it.
+#[tokio::test]
+async fn a_relayer_taking_the_owners_lamports_beside_a_swap_is_not_bound() {
+    let (c, ixs) = jupiter_swap(
+        MINT_Y,
+        MINT_X,
+        1_000_000,
+        100_000_000,
+        100_000_000,
+        Beside::RelayerTakesLamports(9_000_000),
+    );
+    let p = primary_of(&ixs, JUPITER);
+    let r = verify(c, RELAYER, &ixs, p, "swap", swap_request("1", MINT_Y, MINT_X)).await;
+    record("relayer takes lamports", &r);
+    assert_ne!(
+        r.decision,
+        ExecutionDecision::ExecutableApproved,
+        "{}",
+        risk(&r)
+    );
+    assert!(
+        names(&r, "IntentMismatch"),
+        "the binding names it: {}",
+        risk(&r)
+    );
+}
+
+// ─── Transfers (R37-10) ────────────────────────────────────────────────────
+
+/// A cNFT-style tree a program somebody deployed keeps: what it moves is
+/// account data, with no lamport or token balance for a diff to net.
+const TREE: &str = "Tree111111111111111111111111111111111111111";
+
+/// 1 SOL from the owner to BOB, with `sibling` beside it: `Some(true)` a
+/// FOREIGN instruction the owner signs that rewrites a tree it owns (the
+/// owner's compressed NFT handed to the attacker), `Some(false)` a memo.
+fn sol_transfer(sibling: Option<bool>) -> (Cluster, Vec<Ix>) {
+    let mut c = Cluster::default();
+    for (p, owner) in [
+        (SYSTEM, NATIVE_LOADER),
+        (MEMO, LOADER),
+        (FOREIGN, LOADER),
+    ] {
+        c.set(p, program_account(owner));
+    }
+    c.set(OWNER, acct(10 * SOL, SYSTEM, vec![]));
+    c.after(OWNER, acct(9 * SOL - FEE, SYSTEM, vec![]));
+    c.set(RELAYER, acct(SOL, SYSTEM, vec![]));
+    c.after(RELAYER, acct(2 * SOL, SYSTEM, vec![]));
+    let mut ixs = vec![ix(
+        SYSTEM,
+        &[(OWNER, true, true), (RELAYER, false, true)],
+        system_transfer(SOL),
+    )];
+    match sibling {
+        Some(true) => {
+            let mut leaf = vec![0u8; 64];
+            leaf[..32].copy_from_slice(pk(OWNER).as_bytes());
+            c.set(TREE, acct(SOL, FOREIGN, leaf.clone()));
+            leaf[..32].copy_from_slice(pk(ATTACKER).as_bytes());
+            c.after(TREE, acct(SOL, FOREIGN, leaf));
+            ixs.push(ix(
+                FOREIGN,
+                &[(TREE, false, true), (OWNER, true, false), (ATTACKER, false, false)],
+                vec![163, 52, 200, 231, 140, 3, 69, 186],
+            ));
+        }
+        Some(false) => ixs.push(ix(MEMO, &[(OWNER, true, false)], b"rent".to_vec())),
+        None => {}
+    }
+    (c, ixs)
+}
+
+fn sol_request(destination: &str) -> Option<ExtractedParameters> {
+    Some(ExtractedParameters {
+        amount: Some("1".to_string()),
+        input_token: Some("SOL".to_string()),
+        destination: Some(destination.to_string()),
+        ..Default::default()
+    })
+}
+
+/// R37-10: a transfer bound only System and SPL Token movements. A sibling
+/// of any other program the owner signs moves what the Core does not read,
+/// and the transfer was still "exactly as requested".
+#[tokio::test]
+async fn a_transfer_beside_an_unread_program_the_owner_signs_is_not_bound() {
+    for (tag, sibling) in [("alone", None), ("memo", Some(false))] {
+        let (c, ixs) = sol_transfer(sibling);
+        let r = verify(c, OWNER, &ixs, 0, "transfer", sol_request(RELAYER)).await;
+        record(tag, &r);
+        assert!(
+            !r.scope
+                .unobserved_codes()
+                .contains(&UnobservedCode::IntentParameters),
+            "{tag}: a transfer beside nothing unread is bound: {:?} {}",
+            r.scope.unobserved(),
+            risk(&r)
+        );
+    }
+    let (c, ixs) = sol_transfer(Some(true));
+    let r = verify(c, OWNER, &ixs, 0, "transfer", sol_request(RELAYER)).await;
+    record("foreign sibling", &r);
+    assert_ne!(
+        r.decision,
+        ExecutionDecision::ExecutableApproved,
+        "{}",
+        risk(&r)
+    );
+    assert!(
+        r.scope
+            .unobserved_codes()
+            .contains(&UnobservedCode::IntentParameters)
+            || names(&r, "IntentMismatch"),
+        "the binding does not claim it: {:?}",
+        r.scope.unobserved()
+    );
 }
