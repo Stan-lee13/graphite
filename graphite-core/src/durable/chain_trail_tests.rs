@@ -100,6 +100,13 @@ fn write_lines(path: &Path, lines: &[String]) {
     std::fs::write(path, text).unwrap();
 }
 
+/// The trail id a link carries (version 2), for a head that continues it.
+fn trail_of(link: &ChainLink) -> Option<[u8; chain::TRAIL_ID_BYTES]> {
+    link.trail
+        .as_deref()
+        .map(|t| hex::decode(t).unwrap().try_into().unwrap())
+}
+
 fn verify(path: &Path, keys: &[AuditKey]) -> TrailReport {
     verify_audit_trail(path, keys, None).unwrap()
 }
@@ -114,6 +121,7 @@ fn rechain_without_key(lines: &mut [String], from: usize) {
             next_seq: link.seq + 1,
             prev: hex::decode(&link.hash).unwrap().try_into().unwrap(),
             keyed: false,
+            trail: trail_of(&link),
         }
     };
     for line in lines.iter_mut().skip(from) {
@@ -613,7 +621,27 @@ fn legacy_records_stay_readable_and_are_never_counted_as_tamper_evident() {
     assert_eq!(report.exit_code(), 2);
 
     let (_, key) = key_file("legacy", 11);
-    let log = keyed(&path, &key, 0);
+    // Round 38 (R37-2): re-pinned. A keyed writer used to start its chain
+    // at genesis after the legacy records, and the walk then accepted any
+    // legacy line before the first chained record as TamperEvident — the
+    // same thing a forged chain-less approval inserted at line 0 of a
+    // keyed trail looks like, which every keyed reader then served. Now
+    // the keyed writer refuses a legacy-only trail until the operator
+    // adopts it (`graphite audit adopt-key`): the adoption record lists
+    // the legacy records (a digest per file), and they are read and
+    // covered because it does.
+    let refused = keyed_with_previous(&path, &key, None).unwrap_err();
+    assert!(refused.to_string().contains("adopt-key"), "{refused}");
+    let log = AuditLog::open_with_options(
+        &path,
+        AuditOptions {
+            rotate_bytes: 0,
+            key: Some(key.clone()),
+            adopt_key: true,
+            ..AuditOptions::default()
+        },
+    )
+    .unwrap();
     // The legacy records are still read.
     assert_eq!(log.read_tail_filtered(10, AuditSelector::All).2, 3);
     write_n(&log, 0, 2);
@@ -621,9 +649,14 @@ fn legacy_records_stay_readable_and_are_never_counted_as_tamper_evident() {
     let report = verify(&path, std::slice::from_ref(&key));
     assert_eq!(report.integrity, Integrity::TamperEvident);
     assert_eq!(
-        (report.legacy_unchained_records, report.chained_records),
-        (3, 2)
+        (
+            report.legacy_unchained_records,
+            report.legacy_adopted,
+            report.chained_records
+        ),
+        (3, 3, 3)
     );
+    assert_eq!(report.exit_code(), 0);
     // An unchained record AFTER the chain began is an insertion.
     let mut lines = lines_of(&path);
     lines.push(legacy[0].clone());
@@ -818,6 +851,7 @@ fn resealed_forgery(template: &str) -> String {
         next_seq: 999,
         prev: [7u8; 32],
         keyed: false,
+        trail: None,
     };
     chain::seal(map, &head, None).0
 }
@@ -1152,6 +1186,7 @@ fn head_of(path: &Path) -> chain::ChainHead {
         next_seq: link.seq + 1,
         prev: hex::decode(&link.hash).unwrap().try_into().unwrap(),
         keyed: link.mac.is_some(),
+        trail: trail_of(&link),
     }
 }
 
@@ -1620,6 +1655,7 @@ fn self_hashed_forgery(
         next_seq: link.seq + 1,
         prev: hex::decode(&link.hash).unwrap().try_into().unwrap(),
         keyed: false,
+        trail: trail_of(&link),
     };
     let (line, _) = chain::seal(content, &head, None);
     let mut v: serde_json::Value = serde_json::from_str(&line).unwrap();
@@ -1756,11 +1792,25 @@ fn a_self_hashed_forgery_in_a_keyed_trail_is_never_read_by_a_reader_with_the_key
         close(server);
 
         // Without a key the reader cannot tell (corruption-evident only).
+        // Round 38 (R37-5): re-pinned. A keyless reader now walks the chain
+        // as `verify` does, so the forgery in the archive, which continues
+        // the line before it, takes the place of the record it displaced,
+        // and nothing after that continues it: the forgery in the active
+        // file is no longer reached (`find_verification` answered from it
+        // before). The documented limit stands — the keyless reader still
+        // reads the archive's forgery when it claims a MAC — and is pinned
+        // on the full read. A forgery with no MAC after MAC'd records is
+        // refused even without a key: the chain was keyed before it.
         let keyless = AuditLog::open_read_only(&path).unwrap();
-        assert!(
-            keyless.find_verification(tx).is_some(),
-            "{mac:?}: documented limit: a reader without the key reads a self-hashed forgery"
-        );
+        let (tail, _, _, _) = keyless.read_tail_filtered(1000, AuditSelector::All);
+        let read = tail.iter().any(|r| r.audit_trail_id == "gr-forged");
+        match mac {
+            ForgedMac::None => assert!(!read, "an unkeyed record after MAC'd ones was read"),
+            _ => assert!(
+                read,
+                "{mac:?}: documented limit: a reader without the key reads a self-hashed forgery"
+            ),
+        }
         keyless.wait_for_index_jobs();
     }
 }
@@ -1806,12 +1856,18 @@ fn records_under_a_rotated_out_key_stay_readable_when_an_adoption_vouches_for_it
     let with_both = keyed_with_previous(&path, &new, Some(&old)).unwrap();
     assert!(with_both.find_verification(tx).is_none());
     close(with_both);
-    let new_only = keyed(&path, &new, 0);
+    // Round 38 (R37-5): re-pinned. A server holding K2 alone used to start
+    // and answer with the forgery (admitted on the adoption's word, its MAC
+    // unchecked). The residual is still there for the reader — it cannot
+    // check a MAC under a key it does not hold — but its walk now takes the
+    // forgery in place of the genuine seq 1, so nothing after it continues
+    // the walk, and the writer refuses to resume onto a head the walk never
+    // reaches rather than fork the chain.
+    let new_only = keyed_with_previous(&path, &new, None).unwrap_err();
     assert!(
-        new_only.find_verification(tx).is_some(),
-        "the documented residual: a record under a key this reader does not hold is admitted on a checked adoption's word"
+        new_only.to_string().contains("does not continue the chain"),
+        "{new_only}"
     );
-    close(new_only);
 }
 
 /// A torn write a pre-Round-34 writer resumed past: terminated by the
@@ -1968,4 +2024,378 @@ fn reader_mac_check_cost_on_a_64_mib_archive() {
             if keyed_reader { "with the key   " } else { "without a key  " }
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Round 38: the Round 37 re-audit (R37-2 … R37-5). Each test shows the
+// attack at the reader (what a reader holding the key returns) and at
+// `verify` (its exit code).
+// ---------------------------------------------------------------------------
+
+/// An approval of `VICTIM_TX` that Graphite never wrote.
+fn victim_approval(id: &str) -> AuditRecord {
+    let mut r = rec(id, true);
+    r.transaction_sha256 = Some(VICTIM_TX.into());
+    r.decision = Some("executable_approved".into());
+    r.executable = Some(true);
+    r
+}
+
+/// A keyed writer at `path`, or the error it refused the trail with.
+fn try_keyed(path: &Path, key: &AuditKey) -> std::io::Result<AuditLog> {
+    AuditLog::open_with_options(
+        path,
+        AuditOptions {
+            rotate_bytes: 0,
+            key: Some(key.clone()),
+            ..AuditOptions::default()
+        },
+    )
+}
+
+/// R37-2: a chain-less ("legacy") line inserted at the top of a keyed trail,
+/// or at the top of the oldest archive left after a prune, is neither read
+/// by a reader holding the key nor accepted by `verify` under the key.
+#[test]
+fn a_forged_legacy_line_in_a_keyed_trail_is_neither_read_nor_verified() {
+    let legacy_forgery = serde_json::to_string(&victim_approval("gr-legacy")).unwrap();
+
+    // A trail keyed from its first record (seq 0): any legacy line is an
+    // insertion.
+    let dir = temp_dir("r37-2-born-keyed");
+    let path = audit_path(&dir);
+    let (_, key) = key_file("r37-2-born-keyed", 80);
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 0, 5);
+    close(log);
+    let mut lines = lines_of(&path);
+    lines.insert(0, legacy_forgery.clone());
+    write_lines(&path, &lines);
+    let report = verify(&path, std::slice::from_ref(&key));
+    assert_eq!(
+        report.exit_code(),
+        1,
+        "a legacy line before a trail keyed from seq 0 is a break: {report:?}"
+    );
+    let server = keyed(&path, &key, 0);
+    let seen = server.find_verification(VerificationKey::TransactionSha256(VICTIM_TX));
+    assert!(
+        seen.is_none(),
+        "the keyed reader returned the forged legacy approval: {seen:?}"
+    );
+    assert_eq!(
+        server.count_verifications(VerificationKey::TransactionSha256(VICTIM_TX)),
+        (0, 0)
+    );
+    assert_eq!(server.read_tail_filtered(100, AuditSelector::All).2, 5);
+    close(server);
+
+    // After a prune, the new oldest archive starts at a seq above 0: a
+    // legacy line at its top is not covered by the key (exit 4), and is not
+    // read.
+    let dir = temp_dir("r37-2-pruned");
+    let path = audit_path(&dir);
+    let (_, key) = key_file("r37-2-pruned", 81);
+    let log = AuditLog::open_with_options(
+        &path,
+        AuditOptions {
+            rotate_bytes: 1_500,
+            max_archives: 2,
+            key: Some(key.clone()),
+            ..AuditOptions::default()
+        },
+    )
+    .unwrap();
+    write_n(&log, 0, 30);
+    close(log);
+    let oldest = archives_of(&path).into_iter().next().unwrap().1;
+    let before = verify(&path, std::slice::from_ref(&key));
+    assert_eq!(before.exit_code(), 0, "{before:?}");
+    assert!(before.first_seq.unwrap() > 0, "{before:?}");
+    let mut lines = lines_of(&oldest);
+    lines.insert(0, legacy_forgery.clone());
+    write_lines(&oldest, &lines);
+    let report = verify(&path, std::slice::from_ref(&key));
+    assert_eq!(
+        report.exit_code(),
+        4,
+        "a legacy line no key-adoption record vouches for is not covered by the key: {report:?}"
+    );
+    let server = keyed(&path, &key, 0);
+    assert!(server
+        .find_verification(VerificationKey::TransactionSha256(VICTIM_TX))
+        .is_none());
+    close(server);
+
+    // The control: a real pre-Round-30 trail adopted under a key. The
+    // adoption record vouches for the legacy prefix (its digest), so the
+    // records stay readable and verify — and one more legacy line inserted
+    // after the adoption is a break and is not read.
+    let dir = temp_dir("r37-2-adopted");
+    let path = audit_path(&dir);
+    let (_, key) = key_file("r37-2-adopted", 82);
+    let legacy: Vec<String> = (0..3)
+        .map(|i| serde_json::to_string(&rec(&format!("gr-old-{i}"), true)).unwrap())
+        .collect();
+    write_lines(&path, &legacy);
+    let log = AuditLog::open_with_options(
+        &path,
+        AuditOptions {
+            rotate_bytes: 0,
+            key: Some(key.clone()),
+            adopt_key: true,
+            ..AuditOptions::default()
+        },
+    )
+    .unwrap();
+    write_n(&log, 0, 2);
+    assert_eq!(log.read_tail_filtered(10, AuditSelector::All).2, 5);
+    close(log);
+    let adopted = verify(&path, std::slice::from_ref(&key));
+    assert_eq!(adopted.exit_code(), 0, "{adopted:?}");
+    assert_eq!(adopted.legacy_unchained_records, 3);
+    let mut lines = lines_of(&path);
+    lines.insert(1, legacy_forgery);
+    write_lines(&path, &lines);
+    let report = verify(&path, std::slice::from_ref(&key));
+    assert_eq!(report.exit_code(), 1, "{report:?}");
+    let server = keyed(&path, &key, 0);
+    assert!(server
+        .find_verification(VerificationKey::TransactionSha256(VICTIM_TX))
+        .is_none());
+    close(server);
+}
+
+/// R37-3: an unkeyed record with a recomputed hash at the start of a file
+/// of a keyed trail is never read by a reader holding the key — whether the
+/// trail was keyed from genesis, or an unterminated forgery at the end of
+/// the newest archive claims the trail was unkeyed there.
+#[test]
+fn an_unkeyed_forgery_is_never_admitted_after_the_trail_is_keyed() {
+    // 1. Keyed from genesis; an unkeyed approval sealed from genesis at
+    //    line 0.
+    let dir = temp_dir("r37-3-genesis");
+    let path = audit_path(&dir);
+    let (_, key) = key_file("r37-3-genesis", 83);
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 0, 5);
+    close(log);
+    let (forged, _) = chain::seal(
+        map_of(&victim_approval("gr-forged")),
+        &chain::ChainHead::genesis(),
+        None,
+    );
+    let mut lines = lines_of(&path);
+    lines.insert(0, forged);
+    write_lines(&path, &lines);
+    let report = verify(&path, std::slice::from_ref(&key));
+    assert_eq!(report.exit_code(), 1, "{report:?}");
+    let server = keyed(&path, &key, 0);
+    let seen = server.find_verification(VerificationKey::TransactionSha256(VICTIM_TX));
+    assert!(
+        seen.is_none(),
+        "variant 1: the keyed reader returned the unkeyed forgery: {seen:?}"
+    );
+    assert!(
+        server
+            .find_verification(VerificationKey::AuditTrailId("gr-00004"))
+            .is_some(),
+        "the records the key covers are still read"
+    );
+    close(server);
+
+    // 2. An unterminated, resealed forgery at the end of the newest archive
+    //    (which used to make the active file's gate start "not keyed"), and
+    //    an unkeyed approval continuing the archive's chain at line 0 of the
+    //    active file. Read after a restart.
+    let (path, key, _) = rotated_keyed_trail("r37-3-archive-tail", 84, 30);
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 30, 3);
+    close(log);
+    let newest = archives_of(&path).into_iter().last().unwrap().1;
+    let last = lines_of(&newest).last().unwrap().clone();
+    let mut bytes = std::fs::read(&newest).unwrap();
+    bytes.extend_from_slice(resealed_forgery(&last).as_bytes());
+    std::fs::write(&newest, bytes).unwrap();
+    let mut active = lines_of(&path);
+    active.insert(
+        0,
+        self_hashed_forgery(
+            &last,
+            map_of(&victim_approval("gr-forged")),
+            ForgedMac::None,
+            &key,
+        ),
+    );
+    write_lines(&path, &active);
+    let report = verify(&path, std::slice::from_ref(&key));
+    assert_ne!(report.exit_code(), 0, "{report:?}");
+    let server = keyed(&path, &key, 0);
+    let seen = server.find_verification(VerificationKey::TransactionSha256(VICTIM_TX));
+    assert!(
+        seen.is_none(),
+        "variant 2: the keyed reader returned the unkeyed forgery after a restart: {seen:?}"
+    );
+    assert_eq!(
+        server.count_verifications(VerificationKey::TransactionSha256(VICTIM_TX)),
+        (0, 0)
+    );
+    close(server);
+}
+
+/// R37-4: once a key-adoption record moved the trail from K1 to K2, a record
+/// sealed under K1 (a leaked retired key) cannot extend it: `verify` with
+/// both keys breaks on it, a reader holding both keys does not read it, and
+/// the writer refuses to resume onto it.
+#[test]
+fn a_retired_key_cannot_extend_the_trail_after_rotation() {
+    let dir = temp_dir("r37-4");
+    let path = audit_path(&dir);
+    let (_, k1) = key_file("r37-4-old", 85);
+    let (_, k2) = key_file("r37-4-new", 86);
+    let log = keyed(&path, &k1, 0);
+    write_n(&log, 0, 4);
+    close(log);
+    let log = keyed_with_previous(&path, &k2, Some(&k1)).unwrap();
+    assert!(!log.previous_key_unused(), "the rotation's start needs it");
+    write_n(&log, 4, 2);
+    close(log);
+    assert_eq!(verify(&path, &[k1.clone(), k2.clone()]).exit_code(), 0);
+
+    // The server is running under K2 with the previous key still set, as
+    // docs/ops/keys.md allowed; whoever holds K1 appends a record under it.
+    let server = keyed_with_previous(&path, &k2, Some(&k1)).unwrap();
+    assert!(
+        server.previous_key_unused(),
+        "the previous key stayed set after the first start: the server warns"
+    );
+    let mut lines = lines_of(&path);
+    let forged = chain::seal(
+        map_of(&victim_approval("gr-forged")),
+        &head_of(&path),
+        Some(&k1),
+    )
+    .0;
+    lines.push(forged);
+    write_lines(&path, &lines);
+    let tx = VerificationKey::TransactionSha256(VICTIM_TX);
+    assert_eq!(
+        server.count_verifications(tx),
+        (0, 0),
+        "a reader holding both keys counted the record under the retired key"
+    );
+    assert_eq!(server.read_tail_filtered(100, AuditSelector::All).2, 6);
+    close(server);
+
+    let report = verify(&path, &[k1.clone(), k2.clone()]);
+    assert_eq!(
+        report.exit_code(),
+        1,
+        "a record under a retired key verified with both keys: {report:?}"
+    );
+    // A restart with the previous key still set: never a resume onto it.
+    match keyed_with_previous(&path, &k2, Some(&k1)) {
+        Ok(server) => {
+            let seen = server.find_verification(tx);
+            close(server);
+            panic!("the writer resumed onto a head under the retired key; its reader saw {seen:?}");
+        }
+        Err(e) => assert!(e.to_string().contains("retired"), "{e}"),
+    }
+}
+
+/// R37-5: a genuine record copied to a new position — later in its own
+/// trail, or from another trail under the same key — is not what a reader
+/// answers with, and is not counted.
+#[test]
+fn a_copied_record_is_not_the_newest_verdict() {
+    let dir = temp_dir("r37-5");
+    let path = audit_path(&dir);
+    let (_, key) = key_file("r37-5", 87);
+    let victim = |id: &str, approved: bool| {
+        let mut r = victim_approval(id);
+        r.approved = approved;
+        if !approved {
+            r.decision = Some("refused".into());
+            r.executable = Some(false);
+        }
+        r
+    };
+    let tx = VerificationKey::TransactionSha256(VICTIM_TX);
+    let log = keyed(&path, &key, 0);
+    assert!(log.append(&rec("gr-00000", true)));
+    assert!(log.append(&victim("gr-00001", true)));
+    assert!(log.append(&rec("gr-00002", true)));
+    assert!(log.append(&victim("gr-00003", false)));
+    assert_eq!(log.count_verifications(tx), (1, 1));
+
+    // Beside the running server: the genuine approval copied to the end.
+    let mut lines = lines_of(&path);
+    lines.push(lines[1].clone());
+    write_lines(&path, &lines);
+    assert_eq!(
+        log.count_verifications(tx),
+        (1, 1),
+        "the running server counted the copied approval twice"
+    );
+    assert_eq!(log.read_tail_filtered(100, AuditSelector::All).2, 4);
+    close(log);
+
+    let report = verify(&path, std::slice::from_ref(&key));
+    assert_eq!(report.exit_code(), 1, "{report:?}");
+    // A restart: the writer either refuses the trail outright, or its
+    // reader answers with the refusal that was written last.
+    if let Ok(server) = try_keyed(&path, &key) {
+        let newest = server.find_verification(tx);
+        let counts = server.count_verifications(tx);
+        close(server);
+        let newest = newest.expect("the refusal is still on record");
+        assert!(
+            !newest.approved && newest.audit_trail_id == "gr-00003",
+            "the copied approval became the newest verdict after a restart: {newest:?}"
+        );
+        assert_eq!(counts, (1, 1));
+    }
+
+    // A record of another trail under the same key, copied in.
+    let other = audit_path(&temp_dir("r37-5-other"));
+    let log = keyed(&other, &key, 0);
+    for i in 0..4 {
+        assert!(log.append(&rec(&format!("gr-1000{i}"), true)));
+    }
+    assert!(log.append(&victim("gr-10004", true)));
+    close(log);
+    let foreign = lines_of(&other)[4].clone();
+    let path = audit_path(&temp_dir("r37-5-target"));
+    let log = keyed(&path, &key, 0);
+    for i in 0..4 {
+        assert!(log.append(&rec(&format!("gr-2000{i}"), true)));
+    }
+    let mut lines = lines_of(&path);
+    lines.push(foreign.clone());
+    write_lines(&path, &lines);
+    assert_eq!(
+        log.count_verifications(tx),
+        (0, 0),
+        "a record of another trail was counted"
+    );
+    close(log);
+    assert_eq!(verify(&path, std::slice::from_ref(&key)).exit_code(), 1);
+
+    // The same record at the top of the target trail, where no record
+    // precedes it to continue: the readers pin the trail id of the newest
+    // record (the writer's own), so it is not read there either.
+    let mut lines = lines_of(&path);
+    lines.pop();
+    lines.insert(0, foreign);
+    write_lines(&path, &lines);
+    let report = verify(&path, std::slice::from_ref(&key));
+    assert_eq!(report.exit_code(), 1, "{report:?}");
+    let server = try_keyed(&path, &key).expect("the trail's own head is where the walk ends");
+    assert!(
+        server.find_verification(tx).is_none(),
+        "a record of another trail at the top of the trail was read"
+    );
+    assert_eq!(server.read_tail_filtered(100, AuditSelector::All).2, 4);
+    close(server);
 }

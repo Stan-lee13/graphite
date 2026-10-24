@@ -62,7 +62,12 @@ const MAGIC: &[u8; 8] = b"GRAIDX\0\0";
 /// (`chain::RecordGate`). A version-1 index may hold the offset of a line
 /// the grammar refuses — a forged line the old parse indexed — so every
 /// version-1 index is rebuilt rather than trusted.
-pub(super) const VERSION: u32 = 2;
+///
+/// 3 (Round 38, R37-5): built by the readers' walk, which admits a chained
+/// line only where it continues the line before it. A version-2 index may
+/// count, or point at, a genuine record copied to a new position, so it is
+/// rebuilt rather than trusted.
+pub(super) const VERSION: u32 = 3;
 const HEADER_LEN: u64 = 72;
 const VERIFICATION_ENTRY: u64 = 56;
 const LIFECYCLE_ENTRY: u64 = 40;

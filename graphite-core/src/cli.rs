@@ -527,9 +527,12 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                 println!("integrity        {:?}", report.integrity);
                 println!("files            {}", report.files.len());
                 println!(
-                    "records          {} chained, {} legacy (unchained)",
-                    report.chained_records, report.legacy_unchained_records
+                    "records          {} chained, {} legacy (unchained; {} listed by a checked key-adoption record)",
+                    report.chained_records, report.legacy_unchained_records, report.legacy_adopted
                 );
+                if let Some(id) = &report.trail_id {
+                    println!("trail id         {id}");
+                }
                 println!(
                     "MACs             {} verified, {} under a key not supplied, {} records unkeyed ({} covered by a key-adoption record)",
                     report.macs_verified,
@@ -564,6 +567,17 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                     println!(
                         "UNKEYED          {} chained record(s) carry no MAC and no key-adoption record covers them: a trail keyed later, or one rewritten with its MACs stripped (docs/ops/keys.md, `graphite audit adopt-key`)",
                         report.unkeyed_not_adopted()
+                    );
+                }
+                if report.keys_supplied && report.legacy_not_adopted() > 0 {
+                    println!(
+                        "LEGACY           {} record(s) without a chain link that no checked key-adoption record lists: not covered by the key, and not read by a server that holds it{} (docs/ops/keys.md, `graphite audit adopt-key`)",
+                        report.legacy_not_adopted(),
+                        if report.legacy_before_keyed_genesis {
+                            "; before a chain keyed from seq 0 they are a break — inserted, unless you know where they came from"
+                        } else {
+                            ""
+                        }
                     );
                 }
                 if report.unparseable_lines > 0 {
@@ -664,24 +678,31 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                     return Ok(3);
                 }
             };
-            if let Some(b) = &report.first_break {
+            // Round 38 (R37-2): legacy records before a chain keyed from
+            // seq 0 are a break only because nothing lists them; the
+            // operator who has checked them lists them here. Any other
+            // break refuses.
+            let only_legacy = report.legacy_before_keyed_genesis && report.other_break.is_none();
+            if let Some(b) = report.first_break.as_ref().filter(|_| !only_legacy) {
                 eprintln!(
                     "the trail is broken at {} line {}: {} — a key adoption would vouch for it; nothing written",
                     b.file, b.line, b.reason
                 );
                 return Ok(1);
             }
-            if report.chained_records == 0 {
+            if report.chained_records == 0 && report.legacy_unchained_records == 0 {
                 println!(
-                    "nothing to adopt: the trail holds no chained record, and a server with key {} starts its chain under it",
+                    "nothing to adopt: the trail holds no record, and a server with key {} starts its chain under it",
                     key.id()
                 );
                 return Ok(0);
             }
-            if report.head_key_id.as_deref() == Some(key.id()) && report.unkeyed_not_adopted() == 0
+            if report.head_key_id.as_deref() == Some(key.id())
+                && report.unkeyed_not_adopted() == 0
+                && report.legacy_not_adopted() == 0
             {
                 println!(
-                    "nothing to adopt: the trail is under key {} and no unkeyed record is uncovered",
+                    "nothing to adopt: the trail is under key {} and no unkeyed or legacy record is uncovered",
                     key.id()
                 );
                 return Ok(0);
@@ -702,10 +723,11 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
             let head = log.health().chain_head_seq;
             drop(log);
             println!(
-                "key {} adopted at seq {}: the {} unkeyed record(s) before it{} are now covered by its MAC. Run `graphite audit verify --key-file {}`",
+                "key {} adopted at seq {}: the {} unkeyed record(s) and {} legacy record(s) before it{} are now covered by its MAC. Run `graphite audit verify --key-file {}`",
                 key.id(),
                 head.map(|s| s.to_string()).unwrap_or_else(|| "?".into()),
                 report.unkeyed_not_adopted(),
+                report.legacy_not_adopted(),
                 match &report.head_key_id {
                     Some(id) if id != key.id() => format!(", and the switch from key {id},"),
                     _ => String::new(),
@@ -730,10 +752,12 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                     return Ok(3);
                 }
             };
-            if let Some(b) = report.other_break.as_ref().or(report
-                .first_break
+            if let Some(b) = report
+                .other_break
                 .as_ref()
-                .filter(|_| report.unacknowledged_tears.is_empty()))
+                .or(report.first_break.as_ref().filter(|_| {
+                    report.unacknowledged_tears.is_empty() || report.legacy_before_keyed_genesis
+                }))
             {
                 eprintln!(
                     "the trail is broken at {} line {} by more than a torn write: {} — nothing written",

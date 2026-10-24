@@ -35,16 +35,37 @@
 //!   to is immutable is the operator's storage, not something Graphite can
 //!   establish or claim.
 //!
-//! Records written before Round 30 carry no `chain`; they verify as
-//! `legacy_unchained` and are never counted as tamper-evident.
+//! Records written before Round 30 carry no `chain` ("legacy"). They are
+//! never tamper-evident on their own. Since Round 38 (R37-2) a key-adoption
+//! record carries a digest of the legacy records on disk when it was
+//! written; under a key, a legacy record that no such digest covers is not
+//! read, and `verify` reports it as not covered (exit 4), or as a break
+//! (exit 1) when the chain was keyed from its first record.
+//!
+//! Link versions (Round 38, R37-5). Version 1 links (Rounds 30–37) hash
+//! `prev`, `seq` and the content. Version 2 links also carry `trail`, a
+//! random id the writer draws when it starts a chain (at genesis, or at its
+//! first record after a version-1 head) and carries in every record after
+//! it; it is hashed, so the MAC binds it, and a record copied from another
+//! trail under the same key does not fit. Version-1 trails stay readable
+//! and verifiable; a version-1 link after a version-2 one is a break.
 
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
-/// The `chain.v` this module writes and verifies.
-pub const CHAIN_VERSION: u8 = 1;
+/// The `chain.v` this module writes (Round 38: version 2, with `trail`).
+pub const CHAIN_VERSION: u8 = 2;
+
+/// The link version Rounds 30–37 wrote: no `trail`. Still read and verified.
+pub const CHAIN_VERSION_1: u8 = 1;
+
+/// `Checkpoint::v`.
+pub const CHECKPOINT_VERSION: u8 = 1;
+
+/// Bytes of a trail id (`ChainLink::trail`, hex).
+pub const TRAIL_ID_BYTES: usize = 16;
 
 /// The environment variable naming the audit key file.
 pub const AUDIT_KEY_ENV: &str = "GRAPHITE_AUDIT_KEY_FILE";
@@ -60,6 +81,9 @@ pub const CHAIN_FIELD: &str = "chain";
 pub const MIN_KEY_BYTES: usize = 32;
 
 const LINK_DOMAIN: &[u8] = b"graphite-audit-chain-v1\0";
+const LINK_DOMAIN_V2: &[u8] = b"graphite-audit-chain-v2\0";
+const LEGACY_DOMAIN: &[u8] = b"graphite-audit-legacy-v1\0";
+const TRAIL_ID_DOMAIN: &[u8] = b"graphite-audit-trail-id-v1\0";
 const MAC_DOMAIN: &[u8] = b"graphite-audit-mac-v1\0";
 const CHECKPOINT_DOMAIN: &[u8] = b"graphite-audit-checkpoint-v1\0";
 const KEY_ID_DOMAIN: &[u8] = b"graphite-audit-key-id-v1\0";
@@ -234,6 +258,10 @@ pub struct ChainLink {
     pub seq: u64,
     pub prev: String,
     pub hash: String,
+    /// The trail's id (version 2, Round 38): 16 random bytes, lowercase hex,
+    /// the same in every record of one trail. Hashed, so the MAC binds it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trail: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -248,6 +276,10 @@ pub(crate) struct ChainHead {
     /// Whether the newest record carried a MAC: a keyed trail cannot be
     /// continued without a key.
     pub keyed: bool,
+    /// The trail id the next record carries (version 2); `None` seals a
+    /// version-1 link (a head read from a Round 30–37 record, before the
+    /// writer draws an id for it).
+    pub trail: Option<[u8; TRAIL_ID_BYTES]>,
 }
 
 impl ChainHead {
@@ -256,16 +288,51 @@ impl ChainHead {
             next_seq: 0,
             prev: GENESIS,
             keyed: false,
+            trail: None,
         }
     }
 
-    fn after(link: &ChainLink, hash: [u8; 32]) -> Self {
+    pub(crate) fn after(link: &ChainLink, hash: [u8; 32]) -> Self {
         Self {
             next_seq: link.seq.saturating_add(1),
             prev: hash,
             keyed: link.mac.is_some(),
+            trail: link.trail.as_deref().and_then(decode_trail),
         }
     }
+}
+
+/// A fresh trail id: SHA-256 over the clock, the process, `salt` and two
+/// OS-seeded hasher states (std's `RandomState`), truncated. It has to be
+/// unique, not secret: it is written into every record.
+pub(crate) fn new_trail_id(salt: &[u8]) -> [u8; TRAIL_ID_BYTES] {
+    use std::hash::{BuildHasher, Hasher};
+    let mut h = Sha256::new();
+    h.update(TRAIL_ID_DOMAIN);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    h.update(nanos.to_be_bytes());
+    h.update(std::process::id().to_be_bytes());
+    h.update((salt.len() as u64).to_be_bytes());
+    h.update(salt);
+    for i in 0u8..2 {
+        let mut s = std::collections::hash_map::RandomState::new().build_hasher();
+        s.write_u8(i);
+        h.update(s.finish().to_be_bytes());
+    }
+    let digest = h.finalize();
+    let mut id = [0u8; TRAIL_ID_BYTES];
+    id.copy_from_slice(&digest[..TRAIL_ID_BYTES]);
+    id
+}
+
+/// A trail id from its hex form: exactly lowercase hex of
+/// `TRAIL_ID_BYTES` bytes, so one id has one spelling.
+fn decode_trail(s: &str) -> Option<[u8; TRAIL_ID_BYTES]> {
+    let bytes: [u8; TRAIL_ID_BYTES] = hex::decode(s).ok()?.try_into().ok()?;
+    (hex::encode(bytes) == s).then_some(bytes)
 }
 
 /// Write `v` as canonical JSON: object keys in byte order at every depth,
@@ -319,6 +386,23 @@ pub(crate) fn link_hash(prev: &[u8; 32], seq: u64, canonical: &[u8]) -> [u8; 32]
     h.finalize().into()
 }
 
+/// `link_hash` of a version-2 link: the trail id is hashed too.
+pub(crate) fn link_hash_v2(
+    prev: &[u8; 32],
+    seq: u64,
+    trail: &[u8; TRAIL_ID_BYTES],
+    canonical: &[u8],
+) -> [u8; 32] {
+    let mut h = Sha256::new();
+    h.update(LINK_DOMAIN_V2);
+    h.update(prev);
+    h.update(trail);
+    h.update(seq.to_be_bytes());
+    h.update((canonical.len() as u64).to_be_bytes());
+    h.update(canonical);
+    h.finalize().into()
+}
+
 /// Seal `record` (a JSON object, without `chain`) onto the chain at `head`:
 /// the line to write, and the head after it once it is written.
 pub(crate) fn seal(
@@ -330,12 +414,23 @@ pub(crate) fn seal(
     let value = serde_json::Value::Object(record);
     let mut canonical = Vec::new();
     canonical_json(&value, &mut canonical);
-    let hash = link_hash(&head.prev, head.next_seq, &canonical);
+    // A head with a trail id seals a version-2 link; one without (only a
+    // test's, or a head read from a version-1 record before the writer drew
+    // an id for it) a version-1 link.
+    let hash = match &head.trail {
+        Some(t) => link_hash_v2(&head.prev, head.next_seq, t, &canonical),
+        None => link_hash(&head.prev, head.next_seq, &canonical),
+    };
     let link = ChainLink {
-        v: CHAIN_VERSION,
+        v: if head.trail.is_some() {
+            CHAIN_VERSION
+        } else {
+            CHAIN_VERSION_1
+        },
         seq: head.next_seq,
         prev: hex::encode(head.prev),
         hash: hex::encode(hash),
+        trail: head.trail.map(hex::encode),
         key_id: key.map(|k| k.id().to_string()),
         mac: key.map(|k| hex::encode(k.mac_of(MAC_DOMAIN, &hash))),
     };
@@ -417,6 +512,115 @@ pub struct KeyAdoption {
     pub previous_key_checked: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub torn_tail: Option<TornTail>,
+    /// The legacy records (no chain link) on disk when the adoption was
+    /// written, per file holding any, oldest first (Round 38, R37-2): what
+    /// the adoption vouches for. A legacy line it does not list is not
+    /// covered; one inserted among those it lists breaks the digest. Pruning
+    /// drops whole files from the front, so the files left must be a suffix
+    /// of this list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legacy: Option<Vec<LegacyFile>>,
+}
+
+/// The legacy records of one file, as a key-adoption record lists them.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LegacyFile {
+    pub records: u64,
+    /// SHA-256 over a domain tag and each legacy line (length-framed), hex.
+    pub sha256: String,
+}
+
+/// A running `LegacyFile` digest.
+#[derive(Clone)]
+pub(crate) struct LegacyDigest {
+    records: u64,
+    hasher: Sha256,
+}
+
+impl Default for LegacyDigest {
+    fn default() -> Self {
+        let mut hasher = Sha256::new();
+        hasher.update(LEGACY_DOMAIN);
+        Self { records: 0, hasher }
+    }
+}
+
+impl LegacyDigest {
+    pub(crate) fn add(&mut self, line: &[u8]) {
+        self.records += 1;
+        self.hasher.update((line.len() as u64).to_be_bytes());
+        self.hasher.update(line);
+    }
+
+    pub(crate) fn finish(&self) -> LegacyFile {
+        LegacyFile {
+            records: self.records,
+            sha256: hex::encode(self.hasher.clone().finalize()),
+        }
+    }
+}
+
+/// Whether the legacy files on disk (`on_disk`, oldest first) are what
+/// `listed` vouches for: the same files, or the newest of them when older
+/// ones were pruned.
+pub(crate) fn legacy_matches(listed: &[LegacyFile], on_disk: &[LegacyFile]) -> bool {
+    on_disk.len() <= listed.len() && listed[listed.len() - on_disk.len()..] == *on_disk
+}
+
+/// The legacy lines of the trail (terminated lines without a chain link,
+/// before the first line that carries one), per file holding any, oldest
+/// first, with the short hash of each line. A file that cannot be read
+/// holds nothing.
+pub(crate) fn legacy_prefix(files: &[PathBuf]) -> Vec<(LegacyFile, Vec<[u8; 16]>)> {
+    let mut out = Vec::new();
+    for path in files {
+        let Ok(file) = File::open(path) else {
+            continue;
+        };
+        let mut reader = BufReader::new(file);
+        let mut line = Vec::new();
+        let mut digest = LegacyDigest::default();
+        let mut hashes = Vec::new();
+        let mut chained = false;
+        loop {
+            line.clear();
+            match reader.read_until(b'\n', &mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {}
+            }
+            let Some(record) = line.strip_suffix(b"\n") else {
+                break;
+            };
+            match classify_line(record) {
+                LineClass::Legacy => {
+                    digest.add(record);
+                    hashes.push(short_hash(record));
+                }
+                LineClass::Chained(_) | LineClass::Invalid { chained: true, .. } => {
+                    chained = true;
+                    break;
+                }
+                _ => {}
+            }
+        }
+        if digest.records > 0 {
+            out.push((digest.finish(), hashes));
+        }
+        if chained {
+            break;
+        }
+    }
+    out
+}
+
+/// The first 16 bytes of a line's SHA-256: what a reader remembers of a
+/// line it may admit later.
+pub(crate) fn short_hash(bytes: &[u8]) -> [u8; 16] {
+    let d = Sha256::digest(bytes);
+    let mut out = [0u8; 16];
+    out.copy_from_slice(&d[..16]);
+    out
 }
 
 /// `CONTROL_FIELD` of a tear acknowledgement.
@@ -485,6 +689,8 @@ pub(crate) enum Control {
 pub(crate) struct ChainedLine {
     pub link: ChainLink,
     pub hash: [u8; 32],
+    /// The trail id of a version-2 link.
+    pub trail: Option<[u8; TRAIL_ID_BYTES]>,
     pub torn_tail: Option<TornTail>,
     /// `Some` for a control record: what it is, or why it is not one.
     pub control: Option<Result<Control, String>>,
@@ -588,9 +794,37 @@ pub(crate) fn classify_line(line: &[u8]) -> LineClass {
         Err(e) => return invalid(named_seq, format!("malformed chain link: {e}"), true, true),
     };
     let seq = Some(link.seq);
-    if link.v != CHAIN_VERSION {
-        return invalid(seq, format!("unknown chain version {}", link.v), true, true);
-    }
+    let trail = match (link.v, link.trail.as_deref()) {
+        (CHAIN_VERSION_1, None) => None,
+        (CHAIN_VERSION, Some(t)) => match decode_trail(t) {
+            Some(t) => Some(t),
+            None => {
+                return invalid(
+                    seq,
+                    "malformed chain link: `trail` is not 16 bytes of lowercase hex".into(),
+                    true,
+                    true,
+                )
+            }
+        },
+        (CHAIN_VERSION_1, Some(_)) => {
+            return invalid(
+                seq,
+                "malformed chain link: a version-1 link carries no `trail`".into(),
+                true,
+                true,
+            )
+        }
+        (CHAIN_VERSION, None) => {
+            return invalid(
+                seq,
+                "malformed chain link: a version-2 link without its `trail`".into(),
+                true,
+                true,
+            )
+        }
+        (v, _) => return invalid(seq, format!("unknown chain version {v}"), true, true),
+    };
     let Some(prev) = decode32(&link.prev) else {
         return invalid(
             seq,
@@ -602,7 +836,10 @@ pub(crate) fn classify_line(line: &[u8]) -> LineClass {
     let content = serde_json::Value::Object(map);
     let mut content_bytes = Vec::with_capacity(line.len());
     canonical_json(&content, &mut content_bytes);
-    let hash = link_hash(&prev, link.seq, &content_bytes);
+    let hash = match &trail {
+        Some(t) => link_hash_v2(&prev, link.seq, t, &content_bytes),
+        None => link_hash(&prev, link.seq, &content_bytes),
+    };
     if decode32(&link.hash) != Some(hash) {
         return invalid(
             seq,
@@ -643,6 +880,7 @@ pub(crate) fn classify_line(line: &[u8]) -> LineClass {
     LineClass::Chained(Box::new(ChainedLine {
         link,
         hash,
+        trail,
         torn_tail,
         control,
     }))
@@ -652,63 +890,123 @@ pub(crate) fn classify_line(line: &[u8]) -> LineClass {
 /// read as a record. Every reader — the scans behind the dashboard, the
 /// active and archive index builders, `find_verification`,
 /// `count_verifications`, the lifecycle readers and every index read-back —
-/// goes through this, and through nothing else.
+/// goes through this, and through nothing else. A line without its newline
+/// is never offered to it: a final line still in flight, or torn by a
+/// crash, is not part of the trail, and never changes what the gate knows.
 ///
-/// A line is a record when it is a valid chained record (`classify_line`)
-/// that is not a control record, or a legacy record before the chain began.
-/// After the first line that carries a chain link, nothing else is ever a
-/// record. A line without its newline is never offered to it: a final line
-/// still in flight, or torn by a crash, is not part of the trail.
+/// Round 38 (R37-2 … R37-5): the gate is the walk `verify` does, carried
+/// across the trail's files in order (`Cursor`), not a judgement of each
+/// line alone. A chained line is admitted only when
 ///
-/// What the readers apply to every line (Round 34): the readers and
-/// `graphite audit verify` read the same bytes the same way, so a trail that
-/// verifies is exactly what the readers see.
+/// - it continues the last line admitted: the next `seq`, and `prev` that
+///   line's hash (the first chained line on disk starts the walk, from
+///   genesis at seq 0, or above 0 when older archives were pruned). A
+///   genuine record copied to another position, or from another trail
+///   under the same key, does not continue anything there (R37-5);
+/// - a version-2 link carries the trail id the walk is under, and no
+///   version-1 link follows a version-2 one;
+/// - with keys held (`GateContext::keys`): its MAC verifies under one of
+///   them, or it is under a key id that a checked key-adoption record names
+///   as the key before it (`vouched`: a key rotated out of this reader's
+///   reach, admitted on that record's word);
+/// - its key id is not one the chain moved away from: a key rotation is
+///   one-way, and a record under a retired key after the rotation is never
+///   read (R37-4). A key change without a key-adoption record (a rotation
+///   written before Round 34) is accepted only before the first adoption
+///   record, and, by a reader with keys, only when it holds both keys;
+/// - an unkeyed record: never once the chain is keyed; and, by a reader
+///   with keys, only when a checked key-adoption record covers it through
+///   the hash chain (`TrailFacts::unkeyed`, R37-3). An unkeyed line at the
+///   top of a trail keyed from genesis is covered by nothing.
 ///
-/// MACs (Round 34 follow-up). A reader that holds keys (`GateContext::keys`:
-/// the server's `GRAPHITE_AUDIT_KEY_FILE` and `GRAPHITE_AUDIT_PREVIOUS_KEY_FILE`)
-/// also requires, of every chained record once the trail is keyed, a MAC
-/// that verifies under one of them — or a MAC under a key id a checked
-/// key-adoption record names as the key before it (`GateContext::vouched`:
-/// records under a key rotated out of reach, which this reader cannot check
-/// and admits on that record's word). An unkeyed record is admitted only
-/// before the trail became keyed (records before a key adoption). So a
-/// forged line with a recomputed hash and a link that continues from the
-/// line before it — which the grammar alone admits — is never read by the
-/// server. A reader without a key cannot tell such a line from a written one:
-/// to it the trail is corruption-evident only, as the walk without a key is.
+/// A legacy line (no chain link) is read only before the first line that
+/// carries one; by a reader with keys, only when a checked key-adoption
+/// record lists it (`KeyAdoption::legacy`, R37-2).
 ///
-/// The gate checks no links (that takes the whole walk): an unkeyed record
-/// forged before a key adoption is admitted by every reader, and the walk
-/// reports it.
+/// A reader without a key checks no MAC: to it the trail is
+/// corruption-evident only, as the walk without a key is.
 #[derive(Debug, Clone)]
 pub(crate) struct RecordGate {
-    chain_began: bool,
-    keyed: bool,
+    cur: Cursor,
     ctx: GateContext,
+    /// Legacy lines of this file seen so far.
+    legacy_in_file: u64,
+    /// Pass 1 of `TrailFacts::unkeyed`: unkeyed records admitted
+    /// tentatively, not yet covered by an adoption.
+    pending: Vec<(u64, [u8; 16])>,
+    /// Pass 1: unkeyed records a checked adoption covered.
+    covered: std::collections::HashSet<(u64, [u8; 16])>,
 }
 
-/// What a reader's gate knows before the first line of a file: whether the
-/// chain began, and became keyed, in an older file, and the keys it checks
-/// MACs under.
+/// Where the reader's walk is (Round 38): what it knows after the last line
+/// it judged. Carried from one file of the trail to the next, oldest first.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Cursor {
+    /// A line carrying a chain link has been seen (even a broken one: a
+    /// forged line never makes a legacy record after it readable).
+    pub chain_began: bool,
+    /// The last chained line admitted: its `seq` and hash.
+    pub last: Option<(u64, [u8; 32])>,
+    /// The key the chain is under at `last` (`None`: not keyed yet).
+    pub chain_key: Option<String>,
+    /// Keys the chain moved away from (R37-4): never again.
+    pub retired: Vec<String>,
+    /// A key-adoption record was admitted.
+    pub adopted: bool,
+    /// The trail id of the version-2 records admitted.
+    pub trail: Option<[u8; TRAIL_ID_BYTES]>,
+}
+
+/// What a reader with keys learns once from the whole trail (Round 34
+/// follow-up, Round 38), lazily, the first time a line needs it.
+#[derive(Default)]
+pub(crate) struct TrailFacts {
+    adoptions: std::sync::OnceLock<AdoptionFacts>,
+    unkeyed: std::sync::OnceLock<std::collections::HashSet<(u64, [u8; 16])>>,
+}
+
+impl std::fmt::Debug for TrailFacts {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TrailFacts").finish_non_exhaustive()
+    }
+}
+
+/// What the key-adoption records whose MAC verifies under a held key say.
+#[derive(Debug, Default)]
+pub(crate) struct AdoptionFacts {
+    /// The key ids they name as the key before them.
+    pub vouched: std::collections::HashSet<String>,
+    /// The legacy lines they list, as (index in its file, short hash), when
+    /// the legacy lines on disk are what one of them lists (R37-2).
+    pub legacy: std::collections::HashSet<(u64, [u8; 16])>,
+}
+
+/// What a reader's gate knows before the first line of a file: where the
+/// walk is (`start`, from the older files), the keys it checks MACs under,
+/// and how to reach the whole trail for `TrailFacts`.
 #[derive(Clone, Default)]
 pub(crate) struct GateContext {
-    pub chain_began: bool,
-    pub keyed: bool,
+    pub start: Cursor,
     /// The keys whose MACs this reader checks; empty: none (corruption-
     /// evident only).
     pub keys: std::sync::Arc<Vec<AuditKey>>,
-    /// Key ids a checked key-adoption record vouches for, computed from the
-    /// whole trail the first time a record under a key not held is met.
-    pub vouched: std::sync::Arc<std::sync::OnceLock<std::collections::HashSet<String>>>,
-    /// The trail's files, for `vouched` (`None`: nothing vouched).
+    pub facts: std::sync::Arc<TrailFacts>,
+    /// The trail's files, oldest first (`None`: nothing is vouched or
+    /// covered).
     pub trail_files: Option<std::sync::Arc<dyn Fn() -> Vec<PathBuf> + Send + Sync>>,
+    /// The trail id of the trail's newest record — the writer's own, for
+    /// the server's readers (Round 38): a version-2 record under any other
+    /// id is never read, wherever it stands, the top of the oldest file
+    /// included.
+    pub pin: Option<[u8; TRAIL_ID_BYTES]>,
+    /// Pass 1 of `TrailFacts::unkeyed`.
+    pub(crate) tentative: bool,
 }
 
 impl std::fmt::Debug for GateContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GateContext")
-            .field("chain_began", &self.chain_began)
-            .field("keyed", &self.keyed)
+            .field("start", &self.start)
             .field("keys", &self.keys)
             .finish_non_exhaustive()
     }
@@ -719,7 +1017,10 @@ impl GateContext {
     #[cfg(test)]
     pub(crate) fn keyless(chain_began: bool) -> Self {
         Self {
-            chain_began,
+            start: Cursor {
+                chain_began,
+                ..Cursor::default()
+            },
             ..Self::default()
         }
     }
@@ -728,21 +1029,82 @@ impl GateContext {
         self.keys.iter().find(|k| k.id() == id)
     }
 
-    fn vouched(&self) -> &std::collections::HashSet<String> {
-        self.vouched.get_or_init(|| match &self.trail_files {
-            Some(files) => vouched_key_ids(&files(), &self.keys),
-            None => Default::default(),
+    fn files(&self) -> Vec<PathBuf> {
+        self.trail_files.as_ref().map(|f| f()).unwrap_or_default()
+    }
+}
+
+impl TrailFacts {
+    fn adoptions(&self, ctx: &GateContext) -> &AdoptionFacts {
+        self.adoptions.get_or_init(|| {
+            let files = ctx.files();
+            let adoptions = checked_adoptions(&files, &ctx.keys);
+            let vouched = adoptions
+                .iter()
+                .filter_map(|a| a.previous_key_id.clone())
+                .collect();
+            let mut legacy = std::collections::HashSet::new();
+            let on_disk = legacy_prefix(&files);
+            if !on_disk.is_empty() {
+                let digests: Vec<LegacyFile> = on_disk.iter().map(|(d, _)| d.clone()).collect();
+                let vouched_for = adoptions.iter().any(|a| {
+                    a.legacy
+                        .as_deref()
+                        .is_some_and(|listed| legacy_matches(listed, &digests))
+                });
+                if vouched_for {
+                    for (_, hashes) in &on_disk {
+                        for (i, h) in hashes.iter().enumerate() {
+                            legacy.insert((i as u64, *h));
+                        }
+                    }
+                }
+            }
+            AdoptionFacts { vouched, legacy }
+        })
+    }
+
+    /// The unkeyed records a checked key-adoption record covers, as
+    /// (seq, first half of the hash): found by walking the trail once with
+    /// unkeyed records admitted tentatively, until an adoption whose MAC
+    /// verifies under a held key continues that walk (pass 1). A forged
+    /// unkeyed record the walk took in place of a written one keeps the
+    /// walk from ever reaching the adoption, and then nothing unkeyed is
+    /// covered: the readers lose the unkeyed records, and never read the
+    /// forgery.
+    fn unkeyed(&self, ctx: &GateContext) -> &std::collections::HashSet<(u64, [u8; 16])> {
+        self.unkeyed.get_or_init(|| {
+            let mut cursor = Cursor::default();
+            let mut pending = Vec::new();
+            let mut covered = std::collections::HashSet::new();
+            for path in ctx.files() {
+                let pass = GateContext {
+                    start: cursor,
+                    tentative: true,
+                    ..ctx.clone()
+                };
+                let mut gate = RecordGate::new(&pass);
+                gate.pending = pending;
+                let _ = walk_file(&path, u64::MAX, &mut gate, |_, _, _| {});
+                cursor = gate.cur;
+                pending = gate.pending;
+                covered.extend(gate.covered);
+                if !covered.is_empty() || (pending.is_empty() && cursor.chain_key.is_some()) {
+                    break;
+                }
+            }
+            covered
         })
     }
 }
 
-/// The key ids that a key-adoption record whose MAC verifies under one of
-/// `keys` names as the key before it.
-pub(crate) fn vouched_key_ids(
-    files: &[PathBuf],
-    keys: &[AuditKey],
-) -> std::collections::HashSet<String> {
-    let mut vouched = std::collections::HashSet::new();
+/// The key-adoption records of `files` whose MAC verifies under one of
+/// `keys`.
+fn checked_adoptions(files: &[PathBuf], keys: &[AuditKey]) -> Vec<KeyAdoption> {
+    let mut found = Vec::new();
+    if keys.is_empty() {
+        return found;
+    }
     let marker = format!("\"{CONTROL_FIELD}\":\"{KEY_ADOPTION}\"");
     for path in files {
         let Ok(file) = File::open(path) else {
@@ -771,16 +1133,16 @@ pub(crate) fn vouched_key_ids(
             let (Some(id), Some(mac)) = (&c.link.key_id, &c.link.mac) else {
                 continue;
             };
-            if let (Some(key), Some(previous)) =
-                (keys.iter().find(|k| k.id() == id), &a.previous_key_id)
+            if keys
+                .iter()
+                .find(|k| k.id() == id)
+                .is_some_and(|key| mac_verifies(key, mac, &c.hash))
             {
-                if mac_verifies(key, mac, &c.hash) {
-                    vouched.insert(previous.clone());
-                }
+                found.push(a.clone());
             }
         }
     }
-    vouched
+    found
 }
 
 fn mac_verifies(key: &AuditKey, mac: &str, hash: &[u8; 32]) -> bool {
@@ -789,58 +1151,209 @@ fn mac_verifies(key: &AuditKey, mac: &str, hash: &[u8; 32]) -> bool {
         .unwrap_or(false)
 }
 
+/// Feed every terminated line of the first `limit` bytes of `path` to
+/// `gate`, calling `visit(offset, line, admitted)` for each. A final line
+/// without its newline is never offered. A file that cannot be read offers
+/// nothing. Returns the bytes read, a final line without its newline
+/// included.
+pub(crate) fn walk_file(
+    path: &Path,
+    limit: u64,
+    gate: &mut RecordGate,
+    mut visit: impl FnMut(u64, &[u8], bool),
+) -> u64 {
+    let Ok(file) = File::open(path) else {
+        return 0;
+    };
+    let mut reader = BufReader::new(file.take(limit));
+    let mut offset = 0u64;
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        let n = match reader.read_until(b'\n', &mut line) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => n as u64,
+        };
+        let at = offset;
+        offset += n;
+        let Some(record) = line.strip_suffix(b"\n") else {
+            break;
+        };
+        let admitted = gate.admit(record);
+        visit(at, record, admitted);
+    }
+    offset
+}
+
 impl RecordGate {
     /// A gate for a file, given what is known before its first line.
     pub(crate) fn new(ctx: &GateContext) -> Self {
         Self {
-            chain_began: ctx.chain_began,
-            keyed: ctx.keyed,
+            cur: ctx.start.clone(),
             ctx: ctx.clone(),
+            legacy_in_file: 0,
+            pending: Vec::new(),
+            covered: Default::default(),
         }
     }
 
-    /// Whether a line carrying a chain link has been seen.
-    pub(crate) fn chain_began(&self) -> bool {
-        self.chain_began
+    /// Where the walk is after the lines judged so far.
+    pub(crate) fn cursor(&self) -> &Cursor {
+        &self.cur
     }
 
     /// Whether `line` (a terminated line, without its newline) is a record
-    /// the readers may read.
+    /// the readers may read. A control record that continues the walk
+    /// moves it on and is not a record.
     pub(crate) fn admit(&mut self, line: &[u8]) -> bool {
         match classify_line(line) {
             LineClass::Chained(c) => {
-                self.chain_began = true;
-                let authentic = self.authentic(&c);
-                authentic && c.control.is_none()
+                self.cur.chain_began = true;
+                if !self.accept(&c) {
+                    return false;
+                }
+                self.advance(&c);
+                c.control.is_none()
             }
-            LineClass::Legacy => !self.chain_began,
+            LineClass::Legacy => {
+                let index = self.legacy_in_file;
+                self.legacy_in_file += 1;
+                if self.cur.chain_began {
+                    return false;
+                }
+                if self.ctx.keys.is_empty() {
+                    return true;
+                }
+                self.ctx
+                    .facts
+                    .adoptions(&self.ctx)
+                    .legacy
+                    .contains(&(index, short_hash(line)))
+            }
             LineClass::Invalid { chained, .. } => {
-                // Even a broken link means the chain began: a forged line
-                // never makes a legacy record after it readable.
-                self.chain_began |= chained;
+                self.cur.chain_began |= chained;
                 false
             }
             LineClass::Blank => false,
         }
     }
 
-    /// Whether a chained line carries the MAC this reader requires.
-    fn authentic(&mut self, c: &ChainedLine) -> bool {
-        if self.ctx.keys.is_empty() {
-            return true;
+    /// Whether a chained line continues the walk (see `RecordGate`).
+    fn accept(&mut self, c: &ChainedLine) -> bool {
+        if let Some(Err(_)) = &c.control {
+            return false;
         }
-        match (&c.link.key_id, &c.link.mac) {
-            (Some(id), Some(mac)) => {
-                // Any MAC'd line, even a forged one, means the trail is
-                // keyed from here: never an unkeyed record after it.
-                self.keyed = true;
-                match self.ctx.held(id) {
-                    Some(key) => mac_verifies(key, mac, &c.hash),
-                    None => self.ctx.vouched().contains(id),
+        let prev = decode32(&c.link.prev);
+        match self.cur.last {
+            Some((seq, hash)) => {
+                if c.link.seq != seq.saturating_add(1) || prev != Some(hash) {
+                    return false;
                 }
             }
-            (None, None) => !self.keyed,
+            None => {
+                if c.link.seq == 0 && prev != Some(GENESIS) {
+                    return false;
+                }
+            }
+        }
+        match (self.cur.trail, c.trail) {
+            (Some(t), Some(u)) if t != u => return false,
+            (Some(_), None) => return false,
+            _ => {}
+        }
+        if let (Some(pin), Some(t)) = (self.ctx.pin, c.trail) {
+            if pin != t {
+                return false;
+            }
+        }
+        let keyed_reader = !self.ctx.keys.is_empty();
+        match (&c.link.key_id, &c.link.mac) {
+            (None, None) => {
+                if c.adoption().is_some() || self.cur.chain_key.is_some() {
+                    return false;
+                }
+                if !keyed_reader {
+                    return true;
+                }
+                let mut half = [0u8; 16];
+                half.copy_from_slice(&c.hash[..16]);
+                let entry = (c.link.seq, half);
+                if self.ctx.tentative {
+                    self.pending.push(entry);
+                    return true;
+                }
+                self.ctx.facts.unkeyed(&self.ctx).contains(&entry)
+            }
+            (Some(id), Some(mac)) => {
+                if self.cur.retired.iter().any(|r| r == id) {
+                    return false;
+                }
+                let checked = if keyed_reader {
+                    match self.ctx.held(id) {
+                        Some(key) => {
+                            if !mac_verifies(key, mac, &c.hash) {
+                                return false;
+                            }
+                            true
+                        }
+                        None => {
+                            if !self.ctx.facts.adoptions(&self.ctx).vouched.contains(id) {
+                                return false;
+                            }
+                            false
+                        }
+                    }
+                } else {
+                    false
+                };
+                match c.adoption() {
+                    Some(Ok(a)) => {
+                        if a.key_id != *id || a.previous_key_id != self.cur.chain_key {
+                            return false;
+                        }
+                        if self.ctx.tentative && checked {
+                            self.covered.extend(self.pending.drain(..));
+                        }
+                        true
+                    }
+                    Some(Err(_)) => false,
+                    None => match &self.cur.chain_key {
+                        None => true,
+                        Some(current) if current == id => true,
+                        // A key change with no adoption record: a rotation
+                        // written before Round 34, accepted only before the
+                        // first adoption record.
+                        Some(current) => {
+                            !self.cur.adopted
+                                && (!keyed_reader || (checked && self.ctx.held(current).is_some()))
+                        }
+                    },
+                }
+            }
             _ => false,
+        }
+    }
+
+    /// Move the walk past an accepted chained line.
+    fn advance(&mut self, c: &ChainedLine) {
+        self.cur.last = Some((c.link.seq, c.hash));
+        if c.trail.is_some() {
+            self.cur.trail = c.trail;
+        }
+        if let Some(id) = &c.link.key_id {
+            let previous = match c.adoption() {
+                Some(Ok(a)) => {
+                    self.cur.adopted = true;
+                    a.previous_key_id.clone()
+                }
+                _ => self.cur.chain_key.clone(),
+            };
+            if let Some(p) = previous {
+                if p != *id && !self.cur.retired.contains(&p) {
+                    self.cur.retired.push(p);
+                }
+            }
+            self.cur.chain_key = Some(id.clone());
         }
     }
 }
@@ -853,12 +1366,10 @@ fn decode32(s: &str) -> Option<[u8; 32]> {
 /// The newest line of a file that carries a chain link.
 #[derive(Debug, Clone)]
 pub(crate) enum Newest {
-    Valid(Box<ChainedLine>),
+    /// `true`: it is the file's final line, without its newline.
+    Valid(Box<ChainedLine>, bool),
     /// It carries a link and is not a valid chained record.
-    Altered {
-        seq: Option<u64>,
-        reason: String,
-    },
+    Altered { seq: Option<u64>, reason: String },
 }
 
 /// The newest line of `path` that carries a chain link, read backwards from
@@ -897,12 +1408,12 @@ pub(crate) fn newest_chained(path: &Path) -> std::io::Result<Option<Newest>> {
         let tail_is_json =
             !tail.is_empty() && serde_json::from_slice::<serde_json::Value>(tail).is_ok();
         let candidates = tail_is_json
-            .then_some(tail)
+            .then_some((tail, true))
             .into_iter()
-            .chain(lines.into_iter().rev());
-        for line in candidates {
+            .chain(lines.into_iter().rev().map(|l| (l, false)));
+        for (line, unterminated) in candidates {
             match classify_line(line) {
-                LineClass::Chained(c) => return Ok(Some(Newest::Valid(c))),
+                LineClass::Chained(c) => return Ok(Some(Newest::Valid(c, unterminated))),
                 LineClass::Invalid {
                     chained: true,
                     seq,
@@ -917,6 +1428,23 @@ pub(crate) fn newest_chained(path: &Path) -> std::io::Result<Option<Newest>> {
         }
         window = window.saturating_mul(2);
     }
+}
+
+/// The trail id of the newest chained record of the trail (`newest_chained`
+/// of the active file, else of the newest archive holding one): what the
+/// readers pin (`GateContext::pin`). `None` for a version-1 head or none.
+pub(crate) fn head_trail(
+    active: &Path,
+    archives_newest_first: &[PathBuf],
+) -> Option<[u8; TRAIL_ID_BYTES]> {
+    for file in std::iter::once(active).chain(archives_newest_first.iter().map(PathBuf::as_path)) {
+        match newest_chained(file) {
+            Ok(None) => continue,
+            Ok(Some(Newest::Valid(c, _))) => return c.trail,
+            _ => return None,
+        }
+    }
+    None
 }
 
 /// A key-adoption record the writer must append before anything else.
@@ -951,12 +1479,29 @@ pub(crate) struct Resume {
 ///   it (a rotation; a key-adoption record is planned), or with `adopt` (a
 ///   lost key, recorded as not checked). A head under a key id nobody
 ///   supplies is what a rewrite under an invented key id looks like.
+///
+/// Round 38: `walked` is where the readers' walk of the whole trail ends
+/// (with this writer's keys). Also refused:
+///
+/// - a head under a key the trail retired at a rotation (R37-4): rotation
+///   is one-way, and a record under the old key after the adoption record
+///   is one whoever still holds that key wrote;
+/// - a head this writer can check (under one of its keys, or unkeyed with
+///   no key configured) that is not where the walk ends (R37-5): a genuine
+///   record copied to the end, or one from another trail. Continuing after
+///   it would fork the chain;
+/// - with a key configured, a trail that holds records without a chain
+///   link and no chained record (R37-2): a chain keyed from genesis after
+///   them would be indistinguishable from legacy lines inserted before it.
+///   `adopt` writes a key-adoption record at genesis that lists them.
 pub(crate) fn resume_head(
     active: &Path,
     archives_newest_first: &[PathBuf],
     key: Option<&AuditKey>,
     previous: Option<&AuditKey>,
     adopt: bool,
+    walked: &Cursor,
+    legacy_on_disk: bool,
 ) -> Result<Resume, String> {
     let files = std::iter::once(active.to_path_buf()).chain(archives_newest_first.iter().cloned());
     for file in files {
@@ -971,10 +1516,46 @@ pub(crate) fn resume_head(
                     seq.map(|s| s.to_string()).unwrap_or_else(|| "?".into())
                 ))
             }
-            Some(Newest::Valid(c)) => c,
+            Some(Newest::Valid(c, unterminated)) => (c, unterminated),
         };
+        let (c, unterminated) = c;
         let link = &c.link;
         let at = format!("{}, seq {}", file.display(), link.seq);
+        if let Some(id) = &link.key_id {
+            if walked.retired.iter().any(|r| r == id) {
+                return Err(format!(
+                    "the newest audit record ({at}) is MAC'd under key {id}, which this trail retired when it rotated to key {}: a key rotation is one-way, so a record under the retired key after the rotation was written by whoever still holds that key. Run `graphite audit verify`; unset {AUDIT_PREVIOUS_KEY_ENV} (docs/ops/keys.md)",
+                    walked.chain_key.as_deref().unwrap_or("?")
+                ));
+            }
+        }
+        let checkable = match &link.key_id {
+            Some(id) => key.is_some_and(|k| k.id() == id) || previous.is_some_and(|p| p.id() == id),
+            None => key.is_none(),
+        };
+        if checkable {
+            let continues = if unterminated {
+                // A whole record that lacks only its newline: it must
+                // continue where the walk (which never reads it) ends.
+                match walked.last {
+                    Some((seq, hash)) => {
+                        link.seq == seq.saturating_add(1) && decode32(&link.prev) == Some(hash)
+                    }
+                    None => true,
+                }
+            } else {
+                walked.last == Some((link.seq, c.hash))
+            };
+            if !continues {
+                return Err(format!(
+                    "the newest chained audit record ({at}) does not continue the chain the readers walk (it ends at {}): a genuine record copied to the end of the trail, or one from another trail. Continuing after it would fork the chain. Run `graphite audit verify`",
+                    match walked.last {
+                        Some((seq, _)) => format!("seq {seq}"),
+                        None => "no record".into(),
+                    }
+                ));
+            }
+        }
         let head = ChainHead::after(link, c.hash);
         let mac_ok = |k: &AuditKey, mac: &str| {
             hex::decode(mac)
@@ -1037,6 +1618,21 @@ pub(crate) fn resume_head(
             )),
         };
     }
+    if let (Some(k), true) = (key, legacy_on_disk) {
+        if !adopt {
+            return Err(format!(
+                "the audit trail holds records without a chain link (written before Round 30) and no chained record, and a key ({}) is configured. A chain keyed from genesis after them could not be told from legacy lines inserted before it: check them (`graphite audit verify`) and run `graphite audit adopt-key` once with the server stopped; its key-adoption record lists them (docs/ops/keys.md)",
+                k.id()
+            ));
+        }
+        return Ok(Resume {
+            head: ChainHead::genesis(),
+            adoption: Some(AdoptionPlan {
+                previous_key_id: None,
+                previous_key_checked: false,
+            }),
+        });
+    }
     Ok(Resume {
         head: ChainHead::genesis(),
         adoption: None,
@@ -1079,7 +1675,7 @@ impl Checkpoint {
     pub fn new(log: &str, seq: u64, hash: &str, records: u64, key: Option<&AuditKey>) -> Self {
         let mut cp = Checkpoint {
             kind: CHECKPOINT_KIND.to_string(),
-            v: CHAIN_VERSION,
+            v: CHECKPOINT_VERSION,
             log: log.to_string(),
             seq,
             hash: hash.to_string(),
@@ -1187,6 +1783,16 @@ pub struct TrailReport {
     pub files: Vec<String>,
     pub chained_records: u64,
     pub legacy_unchained_records: u64,
+    /// Of `legacy_unchained_records`, those a checked key-adoption record
+    /// lists (Round 38, R37-2).
+    pub legacy_adopted: u64,
+    /// Legacy records precede a chain keyed from its first record (seq 0)
+    /// and no key-adoption record lists them: inserted (R37-2). This is the
+    /// break `first_break` names (`graphite audit adopt-key` can still list
+    /// them, once an operator has checked them).
+    pub legacy_before_keyed_genesis: bool,
+    /// The trail id of the version-2 records (Round 38), hex.
+    pub trail_id: Option<String>,
     pub macs_verified: u64,
     /// MACs under a key that was not supplied.
     pub macs_unverified: u64,
@@ -1239,6 +1845,12 @@ impl TrailReport {
         self.unkeyed_records.saturating_sub(self.unkeyed_adopted)
     }
 
+    /// Legacy records no checked key-adoption record lists (Round 38).
+    pub fn legacy_not_adopted(&self) -> u64 {
+        self.legacy_unchained_records
+            .saturating_sub(self.legacy_adopted)
+    }
+
     /// What `graphite audit verify` exits with (docs/ops/keys.md):
     ///
     /// - 0: nothing failed — every link checked, every MAC under a supplied
@@ -1250,8 +1862,9 @@ impl TrailReport {
     ///   not supplied, a trail with no chained record, a checkpoint whose
     ///   records were pruned;
     /// - 4 (Round 34): keys were supplied and something is not covered by
-    ///   them — chained records with no MAC and no key-adoption record, or a
-    ///   checkpoint with no MAC or under a key not supplied.
+    ///   them — chained records with no MAC and no key-adoption record, a
+    ///   checkpoint with no MAC or under a key not supplied, or (Round 38,
+    ///   R37-2) legacy records no checked key-adoption record lists.
     ///
     /// (3, a trail that could not be read, is decided by the caller.)
     pub fn exit_code(&self) -> i32 {
@@ -1265,7 +1878,7 @@ impl TrailReport {
             Some(CheckpointStatus::UnsignedCheckpoint { .. }) => return 4,
             _ => {}
         }
-        if self.keys_supplied && self.unkeyed_not_adopted() > 0 {
+        if self.keys_supplied && (self.unkeyed_not_adopted() > 0 || self.legacy_not_adopted() > 0) {
             return 4;
         }
         if matches!(self.checkpoint, Some(CheckpointStatus::NotOnDisk { .. })) {
@@ -1305,6 +1918,9 @@ pub(crate) fn verify_trail_with(
         files: Vec::new(),
         chained_records: 0,
         legacy_unchained_records: 0,
+        legacy_adopted: 0,
+        legacy_before_keyed_genesis: false,
+        trail_id: None,
         macs_verified: 0,
         macs_unverified: 0,
         unkeyed_records: 0,
@@ -1336,6 +1952,17 @@ pub(crate) fn verify_trail_with(
     let mut unkeyed_pending: u64 = 0;
     let mut checkpoint_hit: Option<bool> = None;
     let supplied = |id: &str| keys.iter().find(|k| k.id() == id);
+    // Keys the chain moved away from, with the seq it moved at (R37-4).
+    let mut retired: Vec<(String, u64)> = Vec::new();
+    // The trail id of the version-2 records (R37-5).
+    let mut trail: Option<[u8; TRAIL_ID_BYTES]> = None;
+    // The legacy records of each file before the chain began (R37-2), the
+    // first one's position, whether the oldest chained record is a MAC'd
+    // seq 0, and whether a key-adoption record lists them.
+    let mut legacy_files: Vec<LegacyFile> = Vec::new();
+    let mut first_legacy: Option<ChainBreak> = None;
+    let mut born_keyed = false;
+    let mut legacy_listed = false;
 
     let mut files: Vec<PathBuf> = archives_oldest_first.to_vec();
     let has_active = active.exists();
@@ -1359,6 +1986,7 @@ pub(crate) fn verify_trail_with(
         let mut buf: Vec<u8> = Vec::new();
         // A torn write, judged by the record after it.
         let mut pending: Option<(ChainBreak, TornLine)> = None;
+        let mut legacy_digest = LegacyDigest::default();
         loop {
             buf.clear();
             let n = reader.read_until(b'\n', &mut buf)? as u64;
@@ -1470,6 +2098,13 @@ pub(crate) fn verify_trail_with(
                         );
                     }
                     report.legacy_unchained_records += 1;
+                    legacy_digest.add(line);
+                    if first_legacy.is_none() {
+                        first_legacy = Some(fail(
+                            None,
+                            "a record without a chain link before a chain keyed from its first record (seq 0), and no key-adoption record lists it: inserted. (An operator who has checked these records can list them with `graphite audit adopt-key`.)".into(),
+                        ));
+                    }
                     continue;
                 }
                 LineClass::Chained(c) => c,
@@ -1507,7 +2142,23 @@ pub(crate) fn verify_trail_with(
                         );
                     }
                     report.first_seq = Some(link.seq);
+                    born_keyed = link.seq == 0 && link.mac.is_some();
                 }
+            }
+            match (trail, c.trail) {
+                (Some(t), Some(u)) if t != u => stop!(
+                    seq,
+                    format!(
+                        "a record of another trail (trail id {}; this trail is {}): copied in from a trail under the same key",
+                        hex::encode(u),
+                        hex::encode(t)
+                    )
+                ),
+                (Some(_), None) => stop!(
+                    seq,
+                    "a version-1 chain link after version-2 links: written by an older writer after a newer one, or copied in".into()
+                ),
+                _ => {}
             }
             if let Some(Err(e)) = &c.control {
                 stop!(seq, format!("a malformed control record: {e}"));
@@ -1529,6 +2180,14 @@ pub(crate) fn verify_trail_with(
                 (Some(id), Some(mac)) => {
                     if !report.key_ids_seen.contains(id) {
                         report.key_ids_seen.push(id.clone());
+                    }
+                    if let Some((_, at_seq)) = retired.iter().find(|(k, _)| k == id) {
+                        stop!(
+                            seq,
+                            format!(
+                                "a record under key {id}, which the chain retired at seq {at_seq} when it moved to another key: a key rotation is one-way, so whoever still holds a retired key cannot extend the trail"
+                            )
+                        );
                     }
                     let checked = match supplied(id) {
                         Some(key) => {
@@ -1572,6 +2231,27 @@ pub(crate) fn verify_trail_with(
                                     )
                                 );
                             }
+                            if let Some(listed) = &a.legacy {
+                                let mut on_disk = legacy_files.clone();
+                                let here = legacy_digest.finish();
+                                if here.records > 0 {
+                                    on_disk.push(here);
+                                }
+                                if !legacy_matches(listed, &on_disk) {
+                                    stop!(
+                                        seq,
+                                        format!(
+                                            "the key-adoption record lists {} legacy record(s) in {} file(s), and the records without a chain link before the chain are not those: one was inserted, altered or removed",
+                                            listed.iter().map(|f| f.records).sum::<u64>(),
+                                            listed.len()
+                                        )
+                                    );
+                                }
+                                legacy_listed = true;
+                                if checked {
+                                    report.legacy_adopted = report.legacy_unchained_records;
+                                }
+                            }
                             report.key_adoptions += 1;
                             if checked {
                                 // Its MAC covers every record before it
@@ -1587,6 +2267,19 @@ pub(crate) fn verify_trail_with(
                             None => Some("first_keyed_record"),
                             Some(current) if current == id => None,
                             Some(current) => {
+                                if report.key_adoptions > 0 {
+                                    // Round 38 (R37-4): a key change with no
+                                    // adoption record exists only in trails
+                                    // rotated before Round 34, so only
+                                    // before the first adoption record.
+                                    stop!(
+                                        seq,
+                                        format!(
+                                            "the key id changes from {current} to {id} at seq {} with no key-adoption record, after the trail's key-adoption records: every key change since Round 34 writes one",
+                                            link.seq
+                                        )
+                                    );
+                                }
                                 if checked && supplied(current).is_some() {
                                     Some("switch_without_adoption")
                                 } else {
@@ -1607,6 +2300,9 @@ pub(crate) fn verify_trail_with(
                         },
                     };
                     if let Some(how) = introduced {
+                        if let Some(old) = chain_key.as_ref().filter(|old| *old != id) {
+                            retired.push((old.clone(), link.seq));
+                        }
                         chain_key = Some(id.clone());
                         report.key_ranges.push(KeyRange {
                             key_id: id.clone(),
@@ -1636,6 +2332,9 @@ pub(crate) fn verify_trail_with(
                 }
             }
             report.chained_records += 1;
+            if c.trail.is_some() {
+                trail = c.trail;
+            }
             prev = Some(c.hash);
             expected_seq = Some(link.seq.saturating_add(1));
             report.head_seq = Some(link.seq);
@@ -1644,11 +2343,24 @@ pub(crate) fn verify_trail_with(
         if let Some(tear) = pending.take() {
             tears.push(tear);
         }
+        let here = legacy_digest.finish();
+        if here.records > 0 {
+            legacy_files.push(here);
+        }
     }
     report.head_key_id = chain_key;
+    report.trail_id = trail.map(hex::encode);
     // Every tear no record named must be acknowledged; the first that is not
-    // is the break (it precedes any break that stopped the walk).
+    // is the break (it precedes any break that stopped the walk). Legacy
+    // records before a chain keyed from seq 0 that nothing lists precede
+    // everything (R37-2).
     let real_break = report.first_break.take();
+    if born_keyed && !legacy_listed {
+        if let Some(b) = first_legacy {
+            report.legacy_before_keyed_genesis = true;
+            report.first_break = Some(b);
+        }
+    }
     for (brk, tear) in tears {
         if acknowledgements.iter().any(|a| a.names(&tear)) {
             report.tears_acknowledged += 1;
@@ -1669,7 +2381,9 @@ pub(crate) fn verify_trail_with(
         Integrity::Broken
     } else if report.chained_records == 0 {
         Integrity::LegacyUnchained
-    } else if report.macs_verified + report.unkeyed_adopted == report.chained_records {
+    } else if report.macs_verified + report.unkeyed_adopted == report.chained_records
+        && report.legacy_not_adopted() == 0
+    {
         Integrity::TamperEvident
     } else {
         Integrity::CorruptionEvident
