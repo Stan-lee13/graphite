@@ -7,14 +7,18 @@
  * (`../agent-guard/guard.test.ts`, R-P8 phase 3). What is pinned here is what
  * this adapter adds:
  *
- *   F-19-C2  the SolanaAgentKit agent it exposes cannot sign, and the secret
- *            key is not reachable from it or from the adapter
+ *   F-19-C2  the wallet it gives a SolanaAgentKit agent cannot sign, and the
+ *            secret key is not reachable from it, the agent or the adapter
+ *   F-001    importing the adapter loads no SAK and no Zod (Round 36)
  *   delegation  executeTransfer goes through the guard
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Keypair, Transaction } from "@solana/web3.js";
 import bs58 from "bs58";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { SolanaAgentKit } from "solana-agent-kit";
 import { VerifiedSakAgent, UngatedSigningRefused } from "./graphite-sak-bridge.js";
 import { BLOCKED_VERDICT, mockRpc, mockService, type Loopback, type MockService } from "../agent-guard/loopback-mocks.js";
 
@@ -30,11 +34,11 @@ interface Harness {
   close(): Promise<void>;
 }
 
-/** Round 29 (M8): a Core API key and an OpenAI key that must not be reachable through the adapter. */
+/** Round 29 (M8): a Core API key that must not be reachable through the adapter; the OpenAI key is the test's SAK agent's own. */
 const CORE_API_KEY = `loopback-core-key-${Math.random().toString(36).slice(2)}`;
 const OPENAI_KEY = `loopback-test-placeholder-not-a-key-${Math.random().toString(36).slice(2)}`;
 
-async function harness(opts: { withSak?: boolean; spendPolicy?: { maxTransferLamports?: bigint } } = {}): Promise<Harness> {
+async function harness(opts: { spendPolicy?: { maxTransferLamports?: bigint } } = {}): Promise<Harness> {
   const rpc = await mockRpc();
   const core = await mockService({ "GET /health": { status: "ok", service: "graphite", version: "test" } });
   core.answer.set("POST /verify", { status: 200, body: BLOCKED_VERDICT });
@@ -57,9 +61,6 @@ async function harness(opts: { withSak?: boolean; spendPolicy?: { maxTransferLam
     graphiteApiKey: CORE_API_KEY,
     // Round 29 (M6): the guard requires a per-transaction cap.
     spendPolicy: opts.spendPolicy ?? { maxTransferLamports: 2_000_000_000n },
-    // SAK is only constructed with this set. It is never sent anywhere: no
-    // code path in these tests calls a model.
-    openAiApiKey: opts.withSak ? OPENAI_KEY : undefined,
   });
   return {
     agent,
@@ -73,11 +74,15 @@ async function harness(opts: { withSak?: boolean; spendPolicy?: { maxTransferLam
   };
 }
 
-test("F-19-C2: the SolanaAgentKit agent the bridge exposes cannot sign, and the secret key is not in it", async () => {
-  const h = await harness({ withSak: true });
+/** A caller's own SAK agent on the adapter's wallet. The OpenAI key is never sent: no code path here calls a model. */
+function callersSakAgent(h: Harness): SolanaAgentKit {
+  return new SolanaAgentKit(h.agent.getGatedWallet(), h.rpc.url, { OPENAI_API_KEY: OPENAI_KEY });
+}
+
+test("F-19-C2: a SolanaAgentKit agent built on the adapter's wallet cannot sign, and the secret key is not in it", async () => {
+  const h = await harness();
   try {
-    const sak = h.agent.getSakAgent();
-    assert.ok(sak, "with an OpenAI key configured the agent exists (read-only use)");
+    const sak = callersSakAgent(h);
     assert.equal((sak.wallet.publicKey as { toBase58(): string }).toBase58(), h.wallet.publicKey.toBase58());
     await assert.rejects(sak.wallet.signTransaction(new Transaction()), UngatedSigningRefused);
     await assert.rejects(sak.wallet.signAndSendTransaction(new Transaction()), UngatedSigningRefused);
@@ -113,7 +118,7 @@ test("F-19-C2: the SolanaAgentKit agent the bridge exposes cannot sign, and the 
 });
 
 test("R8: the wallet's secret key is not reachable through the adapter or SAK at runtime", async () => {
-  const h = await harness({ withSak: true });
+  const h = await harness();
   try {
     const secret = Buffer.from(h.wallet.secretKey).toString("hex");
     const seen = new Set<unknown>();
@@ -159,10 +164,10 @@ test("R8: the wallet's secret key is not reachable through the adapter or SAK at
     // and with it the Core API key.
     walk(h.agent.getGraphiteClient(), "agent.getGraphiteClient()", 0);
     assert.deepEqual(found, [], `a secret is reachable through the adapter or the guard: ${found.join("; ")}`);
-    // SolanaAgentKit itself keeps the OpenAI key in its own config (SAK's
+    // A caller's SolanaAgentKit keeps its own OpenAI key in its config (SAK's
     // design: it needs it to call a model). The wallet key and the Core key are
     // not there; the OpenAI key is, and that is the one thing it holds.
-    walk(h.agent.getSakAgent(), "sak", 0);
+    walk(callersSakAgent(h), "sak", 0);
     assert.ok((found as string[]).every((f) => f.endsWith("holds the OpenAI key")), found.join("; "));
   } finally {
     await h.close();
@@ -181,7 +186,6 @@ test("executeTransfer goes through the guard: an unsigned artifact to the Core, 
     assert.deepEqual(body.account_addresses, [h.wallet.publicKey.toBase58(), DEST]);
     for (const call of h.rpc.calls) assert.notEqual(call.signed, true, `${call.method} carried a signature`);
     assert.equal(h.rpc.calls.filter((c) => c.method === "sendTransaction").length, 0);
-    assert.equal(h.agent.getSakAgent(), null, "no OpenAI key, no SAK agent; the verified path does not need one");
   } finally {
     await h.close();
   }
@@ -215,4 +219,31 @@ test("Round 29 (M8): getGraphiteClient is the Core's read-only endpoints, not th
   } finally {
     await h.close();
   }
+});
+
+test("Round 36 (F-001): importing the adapter loads no SolanaAgentKit and no Zod", () => {
+  // The module graph of a fresh process that imports the adapter, recorded by
+  // a resolve hook. Before Round 36 it held solana-agent-kit, LangChain, the
+  // OpenAI agents SDK and Zod (`zod/v3` included), all in the process that
+  // holds the wallet key.
+  const here = fileURLToPath(new URL(".", import.meta.url));
+  const hook =
+    "data:text/javascript," +
+    encodeURIComponent(
+      'export async function resolve(s, c, n) { const r = await n(s, c); if (r.url.includes("/node_modules/")) process.stderr.write("LOADED " + r.url.split("/node_modules/").pop() + "\\n"); return r; }',
+    );
+  const register = `import { register } from "node:module"; register(${JSON.stringify(hook)});`;
+  const run = spawnSync(
+    process.execPath,
+    ["--import", "data:text/javascript," + encodeURIComponent(register), "--import", "tsx", "-e", 'await import("./graphite-sak-bridge.ts")'],
+    { cwd: here, encoding: "utf8", timeout: 60_000 },
+  );
+  assert.equal(run.status, 0, run.stderr);
+  const loaded = run.stderr
+    .split("\n")
+    .filter((l) => l.startsWith("LOADED "))
+    .map((l) => l.slice(7));
+  assert.ok(loaded.some((m) => m.startsWith("@solana/web3.js/")), `the hook saw the adapter's own imports: ${loaded.slice(0, 5)}`);
+  const forbidden = loaded.filter((m) => /^(solana-agent-kit|zod|@openai\/zod|@langchain|@openai\/agents|ai|@ai-sdk)\//.test(m));
+  assert.deepEqual(forbidden, [], "the key-holding process loads SAK's tree");
 });

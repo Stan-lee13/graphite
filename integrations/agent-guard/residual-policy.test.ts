@@ -36,7 +36,29 @@ test("the inherent residuals are exactly the two the core marks inherent", () =>
   assert.deepEqual([...INHERENT_UNOBSERVED].sort(), [...INHERENT].sort());
   // And they are in the code list, as is everything else the core emits.
   for (const c of INHERENT) assert.ok(UNOBSERVED_CODES.includes(c));
-  assert.equal(UNOBSERVED_CODES.length, 15);
+  assert.equal(UNOBSERVED_CODES.length, 16);
+});
+
+test("Round 36 (F-003): intent_parameters is a known, non-inherent code — refused by default, accepted only by name", () => {
+  assert.ok(UNOBSERVED_CODES.includes("intent_parameters"), "in the list of every code");
+  assert.equal(INHERENT_UNOBSERVED.has("intent_parameters"), false, "never inherent");
+  // Refused by the default policy, naming the code.
+  assert.throws(
+    () => new ResidualPolicy().assertExecutable(bound([...INHERENT, "intent_parameters"]), "t"),
+    (e: Error) => e.message.includes("intent_parameters") && e.message.includes(ACCEPT_UNOBSERVED_ENV),
+  );
+  assert.throws(
+    () => ResidualPolicy.fromEnv({}).assertExecutable(bound([...INHERENT, "intent_parameters"]), "t"),
+    /intent_parameters/,
+  );
+  // Accepting another residual does not accept it.
+  assert.throws(
+    () => new ResidualPolicy(["no_state_diff"]).assertExecutable(bound([...INHERENT, "intent_parameters"]), "t"),
+    /intent_parameters/,
+  );
+  // Only an operator who names it accepts it, and the acceptance is reported.
+  const named = new ResidualPolicy(["intent_parameters"]);
+  assert.deepEqual(named.assertExecutable(bound([...INHERENT, "intent_parameters"]), "t").accepted, ["intent_parameters"]);
 });
 
 test("a fully observed artifact-bound verdict passes the default policy", () => {

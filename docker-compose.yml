@@ -18,6 +18,12 @@
 services:
   graphite:
     build: .
+    # One Core, never more (Round 36, F-019): it locks its data directory and
+    # keeps its trail head, graph and rate limiter in its own process; a second
+    # replica on this volume crash-loops on graphite.lock. A fixed name makes
+    # `--scale graphite=2` and `deploy.replicas: 2` errors (and keeps this
+    # stack and deploy/compose/docker-compose.prod.yml off one host together).
+    container_name: graphite-core
     ports:
       # Bound to loopback on the HOST by default: publishing straight to
       # 0.0.0.0 would put the API on every interface of the machine, which is
@@ -48,10 +54,10 @@ services:
       # ideally storage the container can write but not rewrite:
       # - ./anchors:/anchors
     restart: unless-stopped
-    # Round 30: on SIGTERM the server stops accepting, drains open requests
-    # for up to its 10 s request timeout, then writes its final snapshot.
-    # Docker's default grace is also 10 s, so the SIGKILL could land during
-    # that last write; 30 s leaves the shutdown room to finish.
+    # Round 30: on SIGTERM the server stops accepting and drains open requests
+    # for up to its 10 s request timeout (each request's record and snapshot
+    # are written before it answers). Docker's default grace is also 10 s, so
+    # the SIGKILL could land inside the drain; 30 s leaves it room to finish.
     stop_signal: SIGTERM
     stop_grace_period: 30s
 
@@ -71,6 +77,7 @@ services:
     # the whole host. `pids` lives here rather than as a top-level
     # `pids_limit:` because Compose rejects the two being specified together.
     deploy:
+      replicas: 1
       resources:
         limits:
           cpus: "2"

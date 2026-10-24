@@ -126,6 +126,25 @@ export function windowLabel(n: number, total: number): string {
   return n < total ? `last ${n.toLocaleString()}` : `all ${n.toLocaleString()}`;
 }
 
+/**
+ * A figure's label with its window, or the bare label while there is no
+ * window yet. Round 36: before the first answer the labels read
+ * "Executable, all 0" — a claim about a trail nobody had read.
+ */
+export function windowed(label: string, window: string | null): string {
+  return window === null ? label : `${label}, ${window}`;
+}
+
+/**
+ * The mean confidence of a window, or null for an empty one. Round 36: an
+ * empty trail drew "Mean confidence 0.00", a figure for verdicts that do
+ * not exist.
+ */
+export function meanConfidence(series: readonly Pick<ConfidencePoint, "confidence">[]): number | null {
+  if (series.length === 0) return null;
+  return series.reduce((s, p) => s + p.confidence, 0) / series.length;
+}
+
 /** The server's per-list caps (server.rs CONFIDENCE_SERIES_CAP, VIOLATIONS_CAP). */
 export const ERROR_VIOLATIONS_CAP = 200;
 
@@ -149,6 +168,50 @@ export function refusalTotals(v: PolicyViolations): RefusalTotals {
   const refused = v.violation_count ?? Math.max(0, v.count - returnedErrors);
   if (v.error_count !== undefined) return { refused, rejected: v.error_count, rejectedAtLeast: false };
   return { refused, rejected: returnedErrors, rejectedAtLeast: returnedErrors >= ERROR_VIOLATIONS_CAP };
+}
+
+/**
+ * The counters whose first non-zero value is a page: each means a decision
+ * the gate made was not the decision that happened, or the record of it is
+ * in doubt. The Core names them "page on this" in its own metric help text.
+ */
+export const BYPASS_COUNTERS = [
+  "graphite_execution_discrepancies_total",
+  "graphite_lifecycle_events_on_blocked_total",
+  "graphite_execution_chain_bytes_rejected_total",
+  "graphite_execution_chain_inconsistent_total",
+  "graphite_execution_witness_disagreements_total",
+  "graphite_lifecycle_sequence_anomalies_total",
+] as const;
+
+export interface BypassReading {
+  /**
+   * "unread": no /metrics answer yet. "alarm": a counter read non-zero.
+   * "unknown": nothing read non-zero, but some counter was not in the
+   * answer. "clear": every counter read, every one zero.
+   */
+  state: "unread" | "alarm" | "unknown" | "clear";
+  hits: { metric: string; n: number }[];
+  missing: string[];
+}
+
+/**
+ * What the bypass counters say. Round 36: both views read an absent counter
+ * as 0 (`m.get(name) ?? 0`), so a /metrics answered by a proxy's sign-in
+ * page (an empty parse) or a Core that does not export a counter was drawn
+ * "clear" on System and as no band at all on Overview — the all-clear,
+ * from counters nobody read. Unread is not zero.
+ */
+export function readBypass(m: ReadonlyMap<string, number> | null, counters: readonly string[] = BYPASS_COUNTERS): BypassReading {
+  if (m === null) return { state: "unread", hits: [], missing: [...counters] };
+  const hits: { metric: string; n: number }[] = [];
+  const missing: string[] = [];
+  for (const metric of counters) {
+    const n = m.get(metric);
+    if (n === undefined) missing.push(metric);
+    else if (n > 0) hits.push({ metric, n });
+  }
+  return { state: hits.length > 0 ? "alarm" : missing.length > 0 ? "unknown" : "clear", hits, missing };
 }
 
 export interface TrailTotals {

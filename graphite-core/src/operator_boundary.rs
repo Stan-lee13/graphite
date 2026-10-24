@@ -60,6 +60,175 @@ pub fn env_number<T: std::str::FromStr + Copy>(
     }
 }
 
+/// Every `GRAPHITE_*` variable the Core reads (Round 36, F-020). Kept
+/// complete by `tests/round36_env_names.rs`, which reads the source.
+pub const CORE_ENV_NAMES: &[&str] = &[
+    "GRAPHITE_ADMIN_API_KEY",
+    "GRAPHITE_ALLOW_DURABLE_NONCE",
+    "GRAPHITE_ALLOW_PERMISSIVE_PROFILES",
+    "GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT",
+    "GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS",
+    "GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS",
+    "GRAPHITE_API_KEY",
+    "GRAPHITE_AUDIT_ANCHOR_DIR",
+    "GRAPHITE_AUDIT_KEY_FILE",
+    "GRAPHITE_AUDIT_MAX_ARCHIVES",
+    "GRAPHITE_AUDIT_PREVIOUS_KEY_FILE",
+    "GRAPHITE_AUDIT_ROTATE_BYTES",
+    "GRAPHITE_CONNECTION_LIFETIME_SECS",
+    "GRAPHITE_CORS_ORIGINS",
+    "GRAPHITE_DATA_DIR",
+    "GRAPHITE_DEV_MODE",
+    "GRAPHITE_GRAPH_STATE",
+    "GRAPHITE_L8_HIGH_ASSURANCE",
+    "GRAPHITE_LEARN_FROM_POLICY_REFUSALS",
+    "GRAPHITE_LOG_FORMAT",
+    "GRAPHITE_MAX_CONCURRENT",
+    "GRAPHITE_MAX_CONNECTIONS",
+    "GRAPHITE_MAX_CONNECTIONS_PER_IP",
+    "GRAPHITE_PLUGINS_DIR",
+    "GRAPHITE_PLUGIN_EVENTS_FILE",
+    "GRAPHITE_QUARANTINE_ON_UPGRADE",
+    "GRAPHITE_RATE_LIMIT",
+    "GRAPHITE_READ_API_KEY",
+    "GRAPHITE_REGISTRY_STATE",
+    "GRAPHITE_RPC_PROVIDER",
+    "GRAPHITE_RPC_URL",
+    "GRAPHITE_RPC_WITNESS_PROVIDER",
+    "GRAPHITE_RPC_WITNESS_URL",
+    "GRAPHITE_SIGNER_KEY_FILE",
+    "GRAPHITE_TRUST_PROXY",
+    "GRAPHITE_WALLET_PROFILE",
+];
+
+/// `GRAPHITE_*` names other Graphite components read (the agent guard and
+/// its adapters, the dashboard, the deploy kit, CI and the measurement
+/// tools). The AI layer's are [`AI_LAYER_ENV_PREFIX`]: the Core names none
+/// of them (`tests/ai_layer_isolation.rs`, P1). Never a misspelling of a Core name, even when one is
+/// a letter away from one. Kept complete by `tests/round36_env_names.rs`.
+pub const COMPONENT_ENV_NAMES: &[&str] = &[
+    "GRAPHITE_ACCEPT_UNOBSERVED",
+    "GRAPHITE_ALLOWED_DESTINATIONS",
+    "GRAPHITE_ALLOW_UNCAPPED",
+    "GRAPHITE_BIN",
+    "GRAPHITE_BINARY",
+    "GRAPHITE_CONTRACT_GATE_REQUIRED",
+    "GRAPHITE_CORE_URL",
+    "GRAPHITE_DASHBOARD_SOURCEMAP",
+    "GRAPHITE_DEVNET_RPC_URL",
+    "GRAPHITE_GUARD_ALLOW_SHARED_WALLET",
+    "GRAPHITE_GUARD_LOCK_DIR",
+    "GRAPHITE_GUARD_STATE_FILE",
+    "GRAPHITE_HEALTH_URL",
+    "GRAPHITE_IMAGE",
+    "GRAPHITE_IMAGE_DIGEST",
+    "GRAPHITE_LIVE_RPC_URL",
+    "GRAPHITE_MAINNET_HONEST_INTENT",
+    "GRAPHITE_MAINNET_LIVE_LIMIT",
+    "GRAPHITE_MAINNET_REASONS",
+    "GRAPHITE_MAINNET_REQUESTS",
+    "GRAPHITE_MAINNET_RPC_URL",
+    "GRAPHITE_MAINNET_SAMPLE",
+    "GRAPHITE_MAINNET_SHOW_DRAINER",
+    "GRAPHITE_MAINNET_SHOW_L2",
+    "GRAPHITE_MAINNET_SHOW_RISK",
+    "GRAPHITE_MAINNET_VERDICTS",
+    "GRAPHITE_MAX_TOTAL_LAMPORTS",
+    "GRAPHITE_MAX_TRANSFER_LAMPORTS",
+    "GRAPHITE_MAX_VERDICT_AGE_MS",
+    "GRAPHITE_MCP_CONFIRMATION",
+    "GRAPHITE_RESEAL_HOLDOUT",
+    "GRAPHITE_RPC_TIMEOUT_MS",
+    "GRAPHITE_SERVER_URL",
+    "GRAPHITE_SITE",
+    "GRAPHITE_SPEND_WINDOW_SECONDS",
+    "GRAPHITE_SWAP_ALLOW_UNPRICED",
+    "GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION",
+    "GRAPHITE_SWAP_COMPUTE_UNIT_LIMIT",
+    "GRAPHITE_SWAP_COMPUTE_UNIT_PRICE",
+    "GRAPHITE_SWAP_CREATE_OUTPUT_ATA",
+    "GRAPHITE_SWAP_MAX_SLIPPAGE_BPS",
+    "GRAPHITE_SWAP_MIN_RATES",
+    "GRAPHITE_SWAP_STRICT",
+    "GRAPHITE_TOOL_APPROVAL",
+    "GRAPHITE_TRANSACTION_VERSION",
+    "GRAPHITE_UPSTREAM",
+    "GRAPHITE_URL",
+];
+
+/// The prefix of every variable the AI layer reads, and only it.
+pub const AI_LAYER_ENV_PREFIX: &str = "GRAPHITE_AI_";
+
+/// Levenshtein distance, bounded: anything over `max` is `max + 1`.
+fn edit_distance(a: &str, b: &str, max: usize) -> usize {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len().abs_diff(b.len()) > max {
+        return max + 1;
+    }
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    for (i, x) in a.iter().enumerate() {
+        let mut cur = vec![i + 1; b.len() + 1];
+        for (j, y) in b.iter().enumerate() {
+            cur[j + 1] = (prev[j] + usize::from(x != y))
+                .min(prev[j + 1] + 1)
+                .min(cur[j] + 1);
+        }
+        prev = cur;
+    }
+    prev[b.len()].min(max + 1)
+}
+
+/// What the environment names that no Graphite component reads (Round 36,
+/// F-020): `(name, Some(core_name))` for a near-miss of a Core variable —
+/// within two edits, or the same letters in another case — and
+/// `(name, None)` for any other unknown `GRAPHITE_*` name. A switch spelled
+/// one letter short of `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS` was simply
+/// never read: the operator believed a decision was configured that the
+/// Core never saw.
+pub fn unknown_env_names<'a>(
+    names: impl IntoIterator<Item = &'a str>,
+) -> Vec<(String, Option<&'static str>)> {
+    let mut out = Vec::new();
+    for name in names {
+        let upper = name.to_ascii_uppercase();
+        if !upper.starts_with("GRAPHITE_")
+            || name.starts_with(AI_LAYER_ENV_PREFIX)
+            || CORE_ENV_NAMES.contains(&name)
+            || COMPONENT_ENV_NAMES.contains(&name)
+        {
+            continue;
+        }
+        let near = CORE_ENV_NAMES
+            .iter()
+            .copied()
+            .find(|core| *core == upper || edit_distance(&upper, core, 2) <= 2);
+        out.push((name.to_string(), near));
+    }
+    out.sort();
+    out
+}
+
+/// Refuse a near-miss of a Core variable; name every other unknown one.
+/// The server calls this before it reads anything else.
+pub fn check_env_names<'a>(
+    names: impl IntoIterator<Item = &'a str>,
+) -> Result<Vec<String>, String> {
+    let mut warnings = Vec::new();
+    for (name, near) in unknown_env_names(names) {
+        match near {
+            Some(core) => {
+                return Err(format!(
+                    "{name} is set, and no Graphite component reads it; did you mean {core}? The Core would have run as if it were unset. REFUSING TO START."
+                ))
+            }
+            None => warnings.push(format!(
+                "{name} is set and no Graphite component reads it"
+            )),
+        }
+    }
+    Ok(warnings)
+}
+
 /// Parse `GRAPHITE_WALLET_PROFILE`. Accepts the four built-in names, or
 /// `custom:<min_confidence>:<TrustTier>`. An unparseable value is a
 /// configuration error the operator must see, so it is reported rather

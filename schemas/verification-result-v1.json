@@ -497,7 +497,8 @@
                   "no_artifact",
                   "other_instructions",
                   "fee_payer_blockhash_signers",
-                  "no_real_effects"
+                  "no_real_effects",
+                  "intent_parameters"
                 ]
               },
               "minItems": 1,
@@ -619,7 +620,8 @@
                   "no_artifact",
                   "other_instructions",
                   "fee_payer_blockhash_signers",
-                  "no_real_effects"
+                  "no_real_effects",
+                  "intent_parameters"
                 ]
               },
               "minItems": 1,

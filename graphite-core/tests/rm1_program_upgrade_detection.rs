@@ -251,10 +251,12 @@ async fn a_redeployed_program_is_reported_once_and_not_refused_by_default() {
     assert!(upgrades(&core).await.0.is_empty(), "reported once");
     assert!(core.quarantined_programs().is_empty());
 
-    // Every read was a header, never a program binary.
+    // Every read was a header, never a program binary: 48 bytes covers
+    // either loader's program-account header (loader-v4's LoaderV4State,
+    // Round 36), 45 a loader-v3 ProgramData header.
     let slices = loader.slices.lock().unwrap().clone();
     assert!(
-        !slices.is_empty() && slices.iter().all(|l| *l == 36 || *l == 45),
+        !slices.is_empty() && slices.iter().all(|l| *l == 48 || *l == 45),
         "{slices:?}"
     );
 }

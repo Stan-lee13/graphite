@@ -28,8 +28,14 @@ than pointing the old binary at the new state.
    docker compose ps             # (healthy)
    docker compose logs --since 5m graphite | grep -iE 'refus|error|warn'
    ```
-   The compose stop grace is 30 s, so the old process drains and writes its
-   last snapshot before it is killed.
+   The compose stop grace is 30 s, so the old process drains its open
+   requests (at most 10 s) before it is killed; every record is already on
+   disk. With `deploy/compose/docker-compose.prod.yml`, set `GRAPHITE_IMAGE`
+   and `GRAPHITE_IMAGE_DIGEST` in `deploy/compose/.env` to the new verified
+   release (production-checklist.md, 10e) and run
+   `docker compose -f docker-compose.prod.yml pull graphite && docker compose -f docker-compose.prod.yml up -d graphite`
+   instead of building. Either way it is a stop and a start of the one Core,
+   never a rolling update: two Cores cannot share the data volume.
 5. Check: `/health` shows `degraded: false`; one known-good verification
    through your client still returns the verdict you expect; the dashboard's
    totals continued from where they were (the trail was read, not restarted).

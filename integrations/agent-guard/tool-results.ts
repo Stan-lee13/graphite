@@ -9,7 +9,7 @@
  */
 import { PriorSubmissionUnresolved, RequestInFlight, type ExecutionOutcome } from "./guard.js";
 import { UnsupportedCapability, type UnsupportedCapabilityCode } from "./capabilities.js";
-import { ConfirmationDeclined, SubmissionOutcomeUnknown } from "./execution-lifecycle.js";
+import { ConfirmationDeclined, StaleVerdict, SubmissionOutcomeUnknown } from "./execution-lifecycle.js";
 import { IntentGroundingError } from "./intent-grounding.js";
 import { ResidualPolicyRefusal } from "./residual-policy.js";
 import { SpendPolicyRefusal } from "./spend-policy.js";
@@ -23,9 +23,12 @@ export interface GraphiteToolResult {
    * simulated, the slippage allowed or the price floor — Round 29, H2).
    * `submission-unknown`: signed and handed to the RPC, outcome unknown —
    * `signature` is set and must be checked before any retry (Round 29, L2).
+   * `stale-verdict`: the verdict aged past the deployment's bound before it
+   * could be signed; nothing was signed or sent (Round 35, F-017).
    */
   refusedBy?:
     | "spend-policy"
+    | "stale-verdict"
     | "request-grounding"
     | "swap-route"
     | "residual-policy"
@@ -144,6 +147,7 @@ export function toolRefusalOf(e: unknown): GraphiteToolResult {
   if (e instanceof SwapRouteRefusal) return { executed: false, refusedBy: "swap-route", reason };
   if (e instanceof ResidualPolicyRefusal) return { executed: false, refusedBy: "residual-policy", reason };
   if (e instanceof ConfirmationDeclined) return { executed: false, refusedBy: "person", reason };
+  if (e instanceof StaleVerdict) return { executed: false, refusedBy: "stale-verdict", reason };
   if (e instanceof SubmissionOutcomeUnknown) {
     return { executed: false, refusedBy: "submission-unknown", reason, signature: e.signature };
   }

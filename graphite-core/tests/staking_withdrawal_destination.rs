@@ -841,44 +841,21 @@ async fn a_withdraw_intent_cannot_liquid_unstake_marinade_to_another_account() {
 }
 
 #[tokio::test]
-async fn a_marinade_liquid_unstake_to_the_signer_is_granted_but_l4_refuses_until_its_declaration_names_its_accounts(
+async fn a_marinade_liquid_unstake_to_the_signer_is_executable_now_its_declaration_names_its_accounts(
 ) {
-    // Re-pinned at integration (Round 34): this control reached
-    // ExecutableApproved on the R33-1 branch alone. With R33-5 merged, the
-    // manifest's "withdraws funds and transfers them out of the pool to the
-    // involved accounts" names no account, so the user's mSOL leaving
-    // `getMsolFrom` is SignerTokenDebitUnderUnscopedDebit. That is the R33-5
-    // rule working: the declaration does not say whose tokens may leave. The
-    // grant itself holds (L5 passes on the `withdraw` intent); the honest
-    // unstake becomes executable once the declaration is rewritten from
-    // Marinade's IDL, which is not in the repository (a documented limitation,
-    // `docs/CURRENT.md`).
+    // Round 34 pinned this control refused: the manifest's "withdraws funds
+    // and transfers them out of the pool to the involved accounts" named no
+    // account, so the user's mSOL leaving `getMsolFrom` was
+    // SignerTokenDebitUnderUnscopedDebit. Round 36 (F-005) rewrote the
+    // declaration from Marinade's on-chain IDL
+    // (docs/audit-r36/declaration-rewrites.json): it names `getMsolFrom` as
+    // the debit and `transferSolTo` as the credit, so the honest unstake is
+    // what the declaration says and is executable. The two tests above still
+    // refuse it paying anyone else.
     let r = marinade_liquid_unstake(None, "withdraw", "unstake my mSOL")
         .verify()
         .await;
-    assert!(
-        !r.approved,
-        "a liquidUnstake under an unscoped declaration was approved"
-    );
-    let layer = |p: &str| {
-        r.layers
-            .iter()
-            .find(|l| l.layer.starts_with(p))
-            .expect("layer present")
-    };
-    assert_eq!(
-        layer("L5").status,
-        graphite_core::verification::LayerStatus::Passed,
-        "the grant must still declare liquidUnstake under `withdraw`: {}",
-        layer("L5").reason
-    );
-    assert!(
-        layer("L4")
-            .reason
-            .contains("SignerTokenDebitUnderUnscopedDebit"),
-        "refused, but not by the unscoped-debit rule: {}",
-        layer("L4").reason
-    );
+    assert_executable(&r, "an honest Marinade liquidUnstake back to the signer");
 }
 
 // ---------------------------------------------------------------------------

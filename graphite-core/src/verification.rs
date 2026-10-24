@@ -1997,6 +1997,14 @@ pub enum UnobservedCode {
     FeePayerBlockhashSigners,
     /// Nothing to simulate, so no real effects were measured.
     NoRealEffects,
+    // ── Either mode (Round 36, F-003) ─────────────────────────────────────
+    /// The request states an amount, recipient or asset the Core could not
+    /// tie to the bytes (`intent_binding`): none were sent, an asset was named
+    /// by symbol, the instruction's amounts are not ones the Core decodes, or
+    /// there was no simulation to read the effect from. Never inherent: an
+    /// approval carrying it says the transaction is not a known attack, not
+    /// that it is the transaction the user asked for.
+    IntentParameters,
 }
 
 impl UnobservedCode {
@@ -2030,12 +2038,13 @@ impl UnobservedCode {
             UnobservedCode::OtherInstructions => "other_instructions",
             UnobservedCode::FeePayerBlockhashSigners => "fee_payer_blockhash_signers",
             UnobservedCode::NoRealEffects => "no_real_effects",
+            UnobservedCode::IntentParameters => "intent_parameters",
         }
     }
 
     /// Every code, in declaration order — what the SDKs and the bridge's
     /// policy validate an operator's accepted list against.
-    pub const ALL: [UnobservedCode; 15] = [
+    pub const ALL: [UnobservedCode; 16] = [
         UnobservedCode::NotSimulated,
         UnobservedCode::NoStateDiff,
         UnobservedCode::SimulationFailed,
@@ -2051,6 +2060,7 @@ impl UnobservedCode {
         UnobservedCode::OtherInstructions,
         UnobservedCode::FeePayerBlockhashSigners,
         UnobservedCode::NoRealEffects,
+        UnobservedCode::IntentParameters,
     ];
 }
 
@@ -2183,7 +2193,16 @@ fn verification_scope(
     privileges: PrivilegeSource,
     lookups: Option<Result<usize, String>>,
     instruction_located: bool,
+    intent_unbound: Option<&str>,
 ) -> VerificationScope {
+    let intent_residual = |r: &mut Residuals| {
+        if let Some(why) = intent_unbound {
+            r.push(
+                UnobservedCode::IntentParameters,
+                format!("whether this is the transaction the request asked for: {why}"),
+            );
+        }
+    };
     match &input.signed_transaction {
         Some(bytes) if !bytes.is_empty() => {
             use sha2::{Digest, Sha256};
@@ -2317,6 +2336,7 @@ fn verification_scope(
                     );
                 }
             }
+            intent_residual(&mut r);
             let parsed = parsed.ok();
             VerificationScope::ArtifactBound {
                 // The digest of the UNSIGNED frame — identical to the raw bytes
@@ -2364,10 +2384,68 @@ fn verification_scope(
                     "per-account signer/writable flags were not supplied (real_account_metas), so privilege escalation within the account list is not checked",
                 );
             }
+            intent_residual(&mut r);
             VerificationScope::Descriptive {
                 unobserved: r.prose,
                 unobserved_codes: r.codes,
             }
+        }
+    }
+}
+
+/// The instructions and signers `intent_binding` reads (Round 36, F-003):
+/// the artifact's own, every account resolved, when there is an artifact;
+/// otherwise the described primary instruction, which a descriptive verdict
+/// can still be refused on and is never executable.
+fn binding_instructions(
+    input: &VerificationInput,
+    message: Option<&crate::tx_artifact::ArtifactMessage>,
+    lookups: Option<&crate::tx_artifact::ResolvedLookups>,
+) -> (Result<Vec<crate::intent_binding::Ix>, String>, Vec<String>) {
+    match message {
+        Some(m) => (
+            m.instructions
+                .iter()
+                .map(|ix| {
+                    crate::tx_artifact::resolve_instruction_accounts(m, ix, lookups)
+                        .map(|accounts| crate::intent_binding::Ix {
+                            program_id: ix.program_id.clone(),
+                            accounts,
+                            data: ix.data.clone(),
+                        })
+                        .ok_or_else(|| {
+                            "an instruction reaches accounts through lookup tables that were not resolved".to_string()
+                        })
+                })
+                .collect(),
+            m.signers.clone(),
+        ),
+        None => {
+            let signers = if input.real_account_metas.len() == input.account_addresses.len() {
+                input
+                    .account_addresses
+                    .iter()
+                    .zip(&input.real_account_metas)
+                    .filter(|(_, m)| m.is_signer)
+                    .map(|(a, _)| a.clone())
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            (
+                match &input.instruction_data {
+                    Some(data) if input.transaction_instructions.len() <= 1 => Ok(vec![
+                        crate::intent_binding::Ix {
+                            program_id: input.program_id.clone(),
+                            accounts: input.account_addresses.clone(),
+                            data: data.clone(),
+                        },
+                    ]),
+                    Some(_) => Err("the described transaction's other instructions carry no data".to_string()),
+                    None => Err("no instruction data was supplied".to_string()),
+                },
+                signers,
+            )
         }
     }
 }
@@ -3018,11 +3096,6 @@ struct PendingObservation {
 /// first, and never train anything.
 #[cfg(feature = "rpc")]
 const MAX_PENDING_OBSERVATIONS: usize = 1024;
-
-/// The loader-v4 program. Code it owns can be redeployed, and Graphite does
-/// not read its deployments (Round 30, G-04).
-#[cfg(feature = "rpc")]
-const LOADER_V4: &str = "LoaderV411111111111111111111111111111111111";
 
 /// Hold the witness's account of a signature against the primary's.
 #[cfg(feature = "rpc")]
@@ -3748,13 +3821,19 @@ impl GraphiteCore {
                     upgrade_authority,
                     ..
                 } => (deploy_slot, upgrade_authority),
-                crate::rpc_client::ProgramDeployment::NotUpgradeable { owner }
-                    if owner == LOADER_V4 =>
-                {
-                    notes.push(format!(
-                        "ProgramUpgradeUntracked: {program} is owned by loader-v4, whose deployments Graphite does not read; a redeployment of it would not be noticed and its evidence would not be withdrawn"
-                    ));
-                    continue;
+                // Round 36 (F-009): loader-v4's deployment is in the program
+                // account's own header, read like a ProgramData header.
+                crate::rpc_client::ProgramDeployment::LoaderV4 {
+                    deploy_slot,
+                    authority,
+                    retracted,
+                } => {
+                    if retracted {
+                        notes.push(format!(
+                            "ProgramRetracted: {program} is a loader-v4 program retracted at slot {deploy_slot}; it cannot execute until its authority redeploys it, and a redeployment is a new deployment"
+                        ));
+                    }
+                    (deploy_slot, authority)
                 }
                 // Final code (BPF loader 2, a builtin) or no account: nothing
                 // to track.
@@ -6978,6 +7057,9 @@ impl GraphiteCore {
         // intent (a Stake `Withdraw` labelled `stake`): which intent declares
         // it, and where its value would go — said beside the refusal.
         let mut declared_elsewhere: Option<String> = None;
+        // Round 36 (F-004): a grounded withdrawal's minimum outputs and the
+        // accounts they bound, held below to what the simulation delivered.
+        let mut withdrawal_minimums: Option<Vec<(&'static str, u64, String)>> = None;
         let declared_intent =
             crate::risk_engine::canonical_intent(&input.proposed_intent.intent_type);
         let (expected_account_count, variable_accounts, manifest_risk_class) = match manifest {
@@ -6997,6 +7079,19 @@ impl GraphiteCore {
                             self.allow_unbounded_withdrawals,
                         ) {
                             crate::intent_grants::GrantOutcome::Grounded(class) => {
+                                // The operator's GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS
+                                // covers the economic bound too: it is the
+                                // same decision, to sign a withdrawal the
+                                // chain does not hold to an amount.
+                                if !self.allow_unbounded_withdrawals {
+                                    withdrawal_minimums = crate::intent_grants::withdrawal_minimums(
+                                        &input.program_id,
+                                        i,
+                                        &declared_intent,
+                                        &input.account_addresses,
+                                        input.instruction_data.as_deref(),
+                                    );
+                                }
                                 class.to_string()
                             }
                             crate::intent_grants::GrantOutcome::Ungrounded(why) => {
@@ -7793,6 +7888,11 @@ impl GraphiteCore {
         // outranks a claim about evidence (P5).
         #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
         let mut observed_diff: Option<crate::state_diff::StateDiff> = None;
+        // Round 36 (F-003): decimals of the mints the request names, read by
+        // Graphite at pre-state so a stated amount can be put in base units.
+        #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
+        let mut binding_mint_decimals: std::collections::BTreeMap<String, u8> =
+            std::collections::BTreeMap::new();
         // Transfer-hook programs the simulator saw Token-2022 invoke, and
         // ONLY Token-2022, whose reach the transaction's bytes bound
         // (Round 22) — with why. An observed CPI into one of these is the
@@ -8476,6 +8576,47 @@ impl GraphiteCore {
                                             Err(()) => {
                                                 tracing::warn!(
                                                     "transfer-fee mint fetch ran out of budget"
+                                                )
+                                            }
+                                        }
+                                    }
+                                    // Round 36 (F-003): the decimals of the
+                                    // mints the request names, from the RPC.
+                                    let binding_mints = crate::intent_binding::mints_to_read(
+                                        &declared_intent,
+                                        input.proposed_intent.extracted_parameters.as_ref(),
+                                    );
+                                    if !binding_mints.is_empty() {
+                                        match within_budget(
+                                            &budget,
+                                            client.get_multiple_accounts(&binding_mints),
+                                        )
+                                        .await
+                                        {
+                                            Ok(Ok(accounts)) => {
+                                                for (mint, account) in
+                                                    binding_mints.iter().zip(accounts.iter())
+                                                {
+                                                    if let Some(view) = account
+                                                        .as_ref()
+                                                        .filter(|a| {
+                                                            a.owner == crate::state_diff::SPL_TOKEN_PROGRAM
+                                                                || a.owner
+                                                                    == crate::state_diff::SPL_TOKEN_2022_PROGRAM
+                                                        })
+                                                        .and_then(|a| crate::state_diff::decode_mint(&a.data))
+                                                    {
+                                                        binding_mint_decimals
+                                                            .insert(mint.clone(), view.decimals);
+                                                    }
+                                                }
+                                            }
+                                            Ok(Err(e)) => {
+                                                tracing::warn!("intent mint fetch failed: {}", e)
+                                            }
+                                            Err(()) => {
+                                                tracing::warn!(
+                                                    "intent mint fetch ran out of budget"
                                                 )
                                             }
                                         }
@@ -9456,6 +9597,55 @@ impl GraphiteCore {
             }
         };
 
+        // Round 36 (F-003 / F-004): the request's stated parameters, bound to
+        // the bytes (`intent_binding`). A disagreement blocks; parameters the
+        // Core could not tie to the bytes are the `intent_parameters`
+        // residual, and the verdict is not executable.
+        let binding_diff = observed_diff
+            .as_ref()
+            .filter(|d| d.provenance == crate::state_diff::DiffProvenance::RpcSimulated);
+        let intent_binding = match &withdrawal_minimums {
+            Some(minimums) => crate::intent_binding::bind_withdrawal(
+                &instruction_name,
+                minimums,
+                input.proposed_intent.extracted_parameters.as_ref(),
+                binding_diff,
+            ),
+            None => {
+                let (instructions, signers) = binding_instructions(
+                    input,
+                    artifact_message.as_ref(),
+                    resolved_lookups.as_ref().and_then(|r| r.as_ref().ok()),
+                );
+                crate::intent_binding::bind(&crate::intent_binding::BindingInput {
+                    canonical_intent: &declared_intent,
+                    params: input.proposed_intent.extracted_parameters.as_ref(),
+                    instructions: instructions.as_deref().map_err(|e| e.as_str()),
+                    signers: &signers,
+                    diff: binding_diff,
+                    mint_decimals: &binding_mint_decimals,
+                })
+            }
+        };
+        let mut intent_unbound: Option<String> = None;
+        let risk_summary = match intent_binding {
+            crate::intent_binding::Binding::Mismatch { pattern, reason } => {
+                let mut summary = risk_summary;
+                summary.status = "Blocked".to_string();
+                summary.findings.push(RiskFinding {
+                    pattern: pattern.to_string(),
+                    reason: format!("{pattern}: {reason}"),
+                });
+                summary
+            }
+            crate::intent_binding::Binding::Unbound(reason) => {
+                intent_unbound = Some(reason);
+                risk_summary
+            }
+            crate::intent_binding::Binding::Bound(_)
+            | crate::intent_binding::Binding::NotApplicable => risk_summary,
+        };
+
         // L5: Semantic Verification
         let l5_result = self.verify_semantic(
             &input.proposed_intent,
@@ -10233,6 +10423,7 @@ impl GraphiteCore {
                         .as_ref()
                         .map(|r| r.as_ref().map(|l| l.len()).map_err(|e| e.clone())),
                     artifact_instruction_located,
+                    intent_unbound.as_deref(),
                 )
             },
             resolved_accounts: resolution.resolved_accounts.clone(),

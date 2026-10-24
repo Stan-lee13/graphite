@@ -191,3 +191,294 @@ tests:
       - eval_time: 25m
         alertname: GraphiteVerifyErrorRate
         exp_alerts: []
+
+  # Round 36: every alert has a case that fires and one that does not
+  # (deploy/tests/run.sh checks that no alert is left without both).
+  # GraphiteLifecycleSequenceAnomaly: one graphite_lifecycle_sequence_anomalies_total fires; none does not; it clears once the 30m window has passed.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_lifecycle_sequence_anomalies_total{instance="core:7331", job="graphite"}'
+        values: '0 0 0 1+0x40'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: GraphiteLifecycleSequenceAnomaly
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: GraphiteLifecycleSequenceAnomaly
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "Lifecycle reports out of order or contradictory (core:7331)"
+              description: "A duplicate, out-of-order or unpreceded lifecycle stage, or a signature that differs from the one on record: one report is false."
+      - eval_time: 40m
+        alertname: GraphiteLifecycleSequenceAnomaly
+        exp_alerts: []
+
+  # GraphiteRpcBytesRejected: one graphite_execution_chain_bytes_rejected_total fires; none does not; it clears once the 30m window has passed.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_execution_chain_bytes_rejected_total{instance="core:7331", job="graphite"}'
+        values: '0 0 0 1+0x40'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: GraphiteRpcBytesRejected
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: GraphiteRpcBytesRejected
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "The RPC returned transaction bytes not bound to their signature (core:7331)"
+              description: "A faulty or hostile RPC provider. Compare against the witness; consider switching providers."
+      - eval_time: 40m
+        alertname: GraphiteRpcBytesRejected
+        exp_alerts: []
+
+  # GraphiteRpcInconsistent: one graphite_execution_chain_inconsistent_total fires; none does not; it clears once the 30m window has passed.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_execution_chain_inconsistent_total{instance="core:7331", job="graphite"}'
+        values: '0 0 0 1+0x40'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: GraphiteRpcInconsistent
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: GraphiteRpcInconsistent
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "The primary RPC gave two accounts of one signature (core:7331)"
+              description: "getSignatureStatuses and getTransaction disagree; no positive L8 conclusion is drawn from it."
+      - eval_time: 40m
+        alertname: GraphiteRpcInconsistent
+        exp_alerts: []
+
+  # GraphiteProgramUpgraded: one graphite_program_upgrades_detected_total fires; none does not; it clears once the 60m window has passed.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_program_upgrades_detected_total{instance="core:7331", job="graphite"}'
+        values: '0 0 0 1+0x70'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: GraphiteProgramUpgraded
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: GraphiteProgramUpgraded
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "A manifested program was redeployed or changed upgrade authority (core:7331)"
+              description: "Its evidence was withdrawn; it is refused until re-earned or re-seeded. Review the upgrade before re-seeding (docs/ops/incidents.md)."
+      - eval_time: 70m
+        alertname: GraphiteProgramUpgraded
+        exp_alerts: []
+
+  # GraphiteAuditRotationFailing: one graphite_audit_rotations_failed_total fires; none does not; it clears once the 30m window has passed.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_audit_rotations_failed_total{instance="core:7331", job="graphite"}'
+        values: '0 0 0 1+0x40'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: GraphiteAuditRotationFailing
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: GraphiteAuditRotationFailing
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "Audit log rotation is failing (core:7331)"
+              description: "The active file grows without bound and every dashboard read scans it."
+      - eval_time: 40m
+        alertname: GraphiteAuditRotationFailing
+        exp_alerts: []
+
+  # GraphiteAuditAnchorFailing: one graphite_audit_anchor_writes_failed_total fires; none does not; it clears once the 60m window has passed.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_audit_anchor_writes_failed_total{instance="core:7331", job="graphite"}'
+        values: '0 0 0 1+0x70'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: GraphiteAuditAnchorFailing
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: GraphiteAuditAnchorFailing
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "A rotation checkpoint could not be written to the anchor directory (core:7331)"
+              description: "The trail since the last anchored checkpoint is not anchored."
+      - eval_time: 70m
+        alertname: GraphiteAuditAnchorFailing
+        exp_alerts: []
+
+  # GraphiteGraphSnapshotFailing: one graphite_graph_snapshots_failed_total fires; none does not; it clears once the 30m window has passed.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_graph_snapshots_failed_total{instance="core:7331", job="graphite"}'
+        values: '0 0 0 1+0x40'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: GraphiteGraphSnapshotFailing
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: GraphiteGraphSnapshotFailing
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "Semantic-graph snapshots are failing (core:7331)"
+              description: "Trust tiers and baselines earned since the last good snapshot exist only in memory."
+      - eval_time: 40m
+        alertname: GraphiteGraphSnapshotFailing
+        exp_alerts: []
+
+  # GraphiteWitnessDisagreement: three disagreements in an hour are tolerated, five are not.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_execution_witness_disagreements_total{instance="core:7331", job="graphite"}'
+        values: '0 0 3 3 3 3 5 5 5 5'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: GraphiteWitnessDisagreement
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: GraphiteWitnessDisagreement
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "The inclusion witness keeps disagreeing with the primary RPC (core:7331)"
+              description: "Sustained disagreement means one endpoint is wrong about the chain, or the witness is unreachable."
+
+  # GraphiteLoadShedding: shedding every minute fires after 10m; a single burst never does.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_load_shed_total{instance="core:7331", job="graphite"}'
+        values: '0+5x40'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: GraphiteLoadShedding
+        exp_alerts: []
+      - eval_time: 25m
+        alertname: GraphiteLoadShedding
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "Verification requests are being shed at the in-flight limit (core:7331)"
+              description: "Raise GRAPHITE_MAX_CONCURRENT only with CPU to match, or add capacity."
+
+  - interval: 1m
+    input_series:
+      - series: 'graphite_load_shed_total{instance="core:7331", job="graphite"}'
+        values: '0 0 7 7+0x40'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: GraphiteLoadShedding
+        exp_alerts: []
+
+  # GraphiteAuthFailureSpike: two refused keys a second for 10m fires; one every two seconds does not.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_auth_failures_total{instance="core:7331", job="graphite"}'
+        values: '0+120x40'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: GraphiteAuthFailureSpike
+        exp_alerts: []
+      - eval_time: 25m
+        alertname: GraphiteAuthFailureSpike
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              instance: core:7331
+            exp_annotations:
+              summary: "More than one refused key per second (core:7331)"
+              description: "A misconfigured client after a key rotation, or someone guessing keys."
+
+  - interval: 1m
+    input_series:
+      - series: 'graphite_auth_failures_total{instance="core:7331", job="graphite"}'
+        values: '0+30x40'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: GraphiteAuthFailureSpike
+        exp_alerts: []
+
+  # GraphiteAuditActiveFileLarge: over 512 MiB for 30m fires (pending before); under it never.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_audit_active_bytes{instance="core:7331", job="graphite"}'
+        values: '600000000x50'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: GraphiteAuditActiveFileLarge
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: GraphiteAuditActiveFileLarge
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "The active audit file is over 512 MiB (core:7331)"
+              description: "Rotation is off (GRAPHITE_AUDIT_ROTATE_BYTES=0) or not happening."
+
+  - interval: 1m
+    input_series:
+      - series: 'graphite_audit_active_bytes{instance="core:7331", job="graphite"}'
+        values: '500000000x50'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: GraphiteAuditActiveFileLarge
+        exp_alerts: []
+
+  # The quiet side of GraphiteDown, GraphiteDegraded and GraphiteAuditWritesFailing:
+  # a one-minute scrape gap, a degraded reason that clears inside five minutes
+  # and a writes-failed counter that never moves do not alert.
+  - interval: 1m
+    input_series:
+      - series: 'up{instance="core:7331", job="graphite"}'
+        values: '1 1 0 1 1 1 1 1'
+      - series: 'graphite_health_degraded{instance="core:7331", reason="audit_writes_failed"}'
+        values: '0 1 1 1 0 0 0 0 0 0'
+      - series: 'graphite_audit_writes_failed_total{instance="core:7331", job="graphite"}'
+        values: '0x15'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: GraphiteDown
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: GraphiteDegraded
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: GraphiteAuditWritesFailing
+        exp_alerts: []

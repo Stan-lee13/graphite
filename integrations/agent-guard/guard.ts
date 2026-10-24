@@ -46,6 +46,15 @@ import {
   noRedirectFetch,
   readJsonBounded,
 } from "./rpc-simulator.js";
+// Round 35 (F-014): the one bounded transport every RPC request goes through.
+import {
+  BoundedConnection,
+  DEFAULT_RPC_TIMEOUT_MS,
+  MAX_RPC_TIMEOUT_MS,
+  RpcTransportRefusal,
+  resolveRpcTimeoutMs,
+} from "./rpc-transport.js";
+export { BoundedConnection, DEFAULT_RPC_TIMEOUT_MS, MAX_RPC_TIMEOUT_MS, RpcTransportRefusal };
 // Round 30: what the guard can build, as data, and the refusal for the rest.
 import { GUARD_CAPABILITIES, UnsupportedCapability, type GuardCapabilities } from "./capabilities.js";
 export { GUARD_CAPABILITIES, UnsupportedCapability, type GuardCapabilities };
@@ -131,8 +140,22 @@ import {
   type SwapEnvelopeConfig,
 } from "./swap-envelope.js";
 export { swapEnvelopeFromEnv, type SwapEnvelopeConfig };
-import { ConfirmationDeclined, DEFAULT_CONFIRM_TIMEOUT_MS, SubmissionOutcomeUnknown } from "./execution-lifecycle.js";
-export { ConfirmationDeclined, DEFAULT_CONFIRM_TIMEOUT_MS, SubmissionOutcomeUnknown };
+import {
+  ConfirmationDeclined,
+  DEFAULT_CONFIRM_TIMEOUT_MS,
+  DEFAULT_MAX_VERDICT_AGE_MS,
+  MAX_MAX_VERDICT_AGE_MS,
+  StaleVerdict,
+  SubmissionOutcomeUnknown,
+} from "./execution-lifecycle.js";
+export {
+  ConfirmationDeclined,
+  DEFAULT_CONFIRM_TIMEOUT_MS,
+  DEFAULT_MAX_VERDICT_AGE_MS,
+  MAX_MAX_VERDICT_AGE_MS,
+  StaleVerdict,
+  SubmissionOutcomeUnknown,
+};
 
 // AuditBind lives in ./auditbind.ts — a dependency-free module (Node crypto
 // only) so its cross-language pinned-vector tests run without the SAK tree.
@@ -386,6 +409,20 @@ export interface GuardConfig {
      * milliseconds. Default `DEFAULT_CONFIRM_TIMEOUT_MS` (Round 30).
      */
     confirmTimeoutMs?: number;
+    /**
+     * The deadline on every Solana RPC request, headers and whole answer, in
+     * milliseconds (GRAPHITE_RPC_TIMEOUT_MS; 1 to `MAX_RPC_TIMEOUT_MS`,
+     * default `DEFAULT_RPC_TIMEOUT_MS`). Round 35 (F-014): web3.js's own
+     * requests had none.
+     */
+    rpcTimeoutMs?: number;
+    /**
+     * The oldest a verdict may be when it is signed, in milliseconds, counted
+     * from the moment the verification was asked for (GRAPHITE_MAX_VERDICT_AGE_MS;
+     * 1 to `MAX_MAX_VERDICT_AGE_MS`, default `DEFAULT_MAX_VERDICT_AGE_MS`).
+     * Round 35 (F-017): an older one is refused (`StaleVerdict`), nothing signed.
+     */
+    maxVerdictAgeMs?: number;
 }
 
 /**
@@ -412,6 +449,8 @@ export const GUARD_CONFIG_KEYS: readonly (keyof GuardConfig)[] = Object.freeze([
   "walletLockDir",
   "allowSharedWallet",
   "confirmTimeoutMs",
+  "rpcTimeoutMs",
+  "maxVerdictAgeMs",
 ] as const);
 
 /**
@@ -530,6 +569,30 @@ export class PriorSubmissionUnresolved extends Error {
 /** The most bytes the AI layer's answer may carry (audit 2026-10-20, Info). */
 export const MAX_AI_LAYER_RESPONSE_BYTES = 64 * 1024;
 
+/**
+ * Read GRAPHITE_MAX_VERDICT_AGE_MS (or the config value): a whole number of
+ * milliseconds from 1 to `MAX_MAX_VERDICT_AGE_MS` (Round 35, F-017).
+ */
+export function resolveMaxVerdictAgeMs(value: number | string | undefined): number {
+  if (value === undefined || value === "") return DEFAULT_MAX_VERDICT_AGE_MS;
+  const n = typeof value === "string" && /^[0-9]{1,9}$/.test(value.trim()) ? Number(value.trim()) : value;
+  if (typeof n !== "number" || !Number.isSafeInteger(n) || n < 1 || n > MAX_MAX_VERDICT_AGE_MS) {
+    throw new Error(
+      `[Graphite] the verdict age bound ${JSON.stringify(value)} is not a whole number of milliseconds from 1 to ` +
+        `${MAX_MAX_VERDICT_AGE_MS} (GRAPHITE_MAX_VERDICT_AGE_MS / maxVerdictAgeMs). REFUSING TO START.`,
+    );
+  }
+  return n;
+}
+
+/**
+ * A grounded mint as the Core's intent binding reads a token (Round 36,
+ * F-003): "SOL" for the native mint, the base58 mint otherwise.
+ */
+export function coreTokenOf(mint: string): string {
+  return mint === NATIVE_MINT ? "SOL" : mint;
+}
+
 /** How long the guard waits for a submission to confirm, at most. */
 const CONFIRMATION_MAX_MS = 90_000;
 const CONFIRMATION_POLL_MS = 500;
@@ -621,6 +684,8 @@ export class GraphiteGuard {
   /** Requests being executed right now, by the same key (Round 30). */
   #inFlight = new Set<string>();
   #confirmTimeoutMs: number;
+  /** The oldest verdict this guard signs (Round 35, F-017). */
+  #maxVerdictAgeMs: number;
   /**
    * The connection handed out by `getConnection()` (Round 30): a second
    * instance to the same endpoint. Handing out the guard's own let a caller
@@ -635,16 +700,18 @@ export class GraphiteGuard {
     aiLayerTimeoutMs: number; transactionVersion: BridgeTransactionVersion; reporterName: string;
     spendPolicy: SpendPolicy; swapPolicy: SwapPolicy; swapEnvelope: SwapEnvelopeConfig; rpcUrl: string;
     state: GuardState; walletLock: WalletLock; confirmTimeoutMs: number;
+    rpcTimeoutMs: number; maxVerdictAgeMs: number;
   }) {
     this.#graphite = c.graphite;
     this.#connection = c.connection;
-    this.#readConnection = connectionWithoutRedirects(c.rpcUrl);
+    // Round 35 (F-014): bounded like the guard's own, and without websockets.
+    this.#readConnection = connectionWithoutRedirects(c.rpcUrl, c.rpcTimeoutMs);
     this.#walletProfile = c.walletProfile;
     this.#aiLayerUrl = c.aiLayerUrl;
     this.#aiLayerTimeoutMs = c.aiLayerTimeoutMs;
     this.#signer = c.signer;
     this.#walletPublicKey = c.signer.publicKey.toBase58();
-    this.#simulator = new RpcSimulator(c.rpcUrl);
+    this.#simulator = new RpcSimulator(c.rpcUrl, c.rpcTimeoutMs);
     this.#residualPolicy = c.residualPolicy;
     this.#transactionVersion = c.transactionVersion;
     this.#reporterName = c.reporterName;
@@ -655,6 +722,7 @@ export class GraphiteGuard {
     this.#swapPolicy = c.swapPolicy;
     this.#swapEnvelope = c.swapEnvelope;
     this.#confirmTimeoutMs = c.confirmTimeoutMs;
+    this.#maxVerdictAgeMs = c.maxVerdictAgeMs;
     Object.freeze(this);
   }
 
@@ -735,10 +803,20 @@ export class GraphiteGuard {
     if (!Number.isSafeInteger(confirmTimeoutMs) || confirmTimeoutMs < 1) {
       throw new Error(`[Graphite] confirmTimeoutMs ${String(confirmTimeoutMs)} is not a positive integer. REFUSING TO START.`);
     }
+    // Round 35 (F-014, F-017): the RPC deadline and the verdict's age bound,
+    // read before anything is contacted; a malformed one refuses to start.
+    const rpcTimeoutMs = resolveRpcTimeoutMs(config?.rpcTimeoutMs ?? process.env.GRAPHITE_RPC_TIMEOUT_MS);
+    const maxVerdictAgeMs = resolveMaxVerdictAgeMs(config?.maxVerdictAgeMs ?? process.env.GRAPHITE_MAX_VERDICT_AGE_MS);
+    if (confirmTimeoutMs >= maxVerdictAgeMs) {
+      console.warn(
+        `[Graphite] confirmTimeoutMs (${confirmTimeoutMs}) is not below the verdict age bound (${maxVerdictAgeMs} ms): ` +
+          "a confirmation that takes that long is answered about a verdict too old to sign, and is refused.",
+      );
+    }
     const lockPlan = walletLockPlan({ lockDir: config?.walletLockDir, allowSharedWallet: config?.allowSharedWallet });
 
     const signer = await walletSignerFrom(privateKey);
-    const connection = connectionWithoutRedirects(rpcUrl);
+    const connection = connectionWithoutRedirects(rpcUrl, rpcTimeoutMs);
 
     const graphite = new GraphiteClient({ baseUrl: graphiteCoreUrl, apiKey: graphiteApiKey });
     try { await graphite.health(); } catch {
@@ -778,7 +856,7 @@ export class GraphiteGuard {
     return new GraphiteGuard({
       graphite, connection, walletProfile, aiLayerUrl, signer, residualPolicy, aiLayerTimeoutMs,
       transactionVersion, reporterName: config?.reporter ?? "agent-guard", spendPolicy, swapPolicy, swapEnvelope,
-      rpcUrl, state, walletLock, confirmTimeoutMs,
+      rpcUrl, state, walletLock, confirmTimeoutMs, rpcTimeoutMs, maxVerdictAgeMs,
     });
   }
 
@@ -1108,6 +1186,7 @@ export class GraphiteGuard {
     label: string,
     key: string,
     reservation: SpendReservation,
+    verdictRequestedAt: number,
     confirm?: (acceptedUnobserved: string[]) => Promise<boolean>,
   ): Promise<ExecutionLifecycle> {
     // The whole path — policy, signing, the lifecycle events, submission,
@@ -1126,6 +1205,9 @@ export class GraphiteGuard {
         reportedBy: this.#reporter(),
         label,
         confirmTimeoutMs: this.#confirmTimeoutMs,
+        // Round 35 (F-017): the verdict's age, checked immediately before
+        // the digest is recomputed and the bytes signed.
+        verdictAge: { requestedAt: verdictRequestedAt, maxMs: this.#maxVerdictAgeMs },
         ...(confirm ? { confirm: ({ acceptedUnobserved }) => confirm(acceptedUnobserved) } : {}),
         // Round 34: again before signing, after the confirmation, which can
         // take minutes; the guard can be closed or lose its lock meanwhile.
@@ -1279,7 +1361,7 @@ export class GraphiteGuard {
     // the amount or the destination with the instruction; they are bound
     // here, because the transfer below is built from exactly these values.
     const groundedIntent: ProposedIntent = {
-      intent_type: intentType as any,
+      intent_type: intentType,
       raw_natural_language: naturalLanguage,
       confidence_of_parse: proposedIntent.confidence_of_parse,
       extracted_parameters: {
@@ -1323,6 +1405,9 @@ export class GraphiteGuard {
     const reservation = this.#ledger.reserve(outflow.lamports);
     let handedOff = false;
     try {
+      // Round 35 (F-017): the verdict's age is counted from before it was
+      // asked for, so it is never under-counted.
+      const verdictRequestedAt = performance.now();
       const verification = await this.#verifyTransaction({
         programId: SYSTEM_PROGRAM, instructionDiscriminator: TRANSFER_DISCRIMINATOR,
         accountAddresses: [this.#walletPublicKey, destination], proposedIntent: groundedIntent, instructions: [transferIx],
@@ -1384,7 +1469,7 @@ export class GraphiteGuard {
         : undefined;
       console.log("[Graphite] Transfer approved + AuditBind verified — executing...");
       handedOff = true;
-      const lifecycle = await this.#signSubmitAndConfirm(bound, verification, "transfer", key, reservation, confirm);
+      const lifecycle = await this.#signSubmitAndConfirm(bound, verification, "transfer", key, reservation, verdictRequestedAt, confirm);
       console.log(`[Solana] ${lifecycle.confirmed ? "Confirmed" : "Submitted (not confirmed)"}: ${lifecycle.signature}`);
       return { executed: true, verifiedExecution: true, verification, signature: lifecycle.signature, lifecycle };
     } finally {
@@ -1503,15 +1588,19 @@ export class GraphiteGuard {
   ): Promise<ExecutionOutcome> {
     await this.#assertNoUnresolvedSubmission(key);
     const swapIntent: ProposedIntent = {
-      intent_type: intentType as any,
+      intent_type: intentType,
       raw_natural_language: naturalLanguage,
       confidence_of_parse: proposedIntent.confidence_of_parse,
+      // Round 36 (F-003): the Core binds these to the bytes, and it reads a
+      // token only as "SOL" or a base58 mint — a symbol ("USDC") is unbound
+      // and the verdict carries `intent_parameters`. So the grounded MINTS
+      // travel, and "SOL" for the native mint, never the text as written.
       extracted_parameters: {
         amount: groundedSwap.amountText,
-        input_token: groundedSwap.input.written,
-        output_token: groundedSwap.output.written,
+        input_token: coreTokenOf(groundedSwap.input.mint),
+        output_token: coreTokenOf(groundedSwap.output.mint),
         ...(groundedSwap.slippageBps !== undefined ? { slippage_bps: groundedSwap.slippageBps } : {}),
-      } as ProposedIntent["extracted_parameters"],
+      },
     };
     const accountAddresses = payload.accounts.map((a) => a.pubkey);
     // P1 fix (2026-09-05 audit): the bound payload already carries the REAL
@@ -1588,6 +1677,9 @@ export class GraphiteGuard {
     const reservation = this.#ledger.reserve(outflowLamports);
     let handedOff = false;
     try {
+      // Round 35 (F-017): the verdict's age is counted from before it was
+      // asked for, so it is never under-counted.
+      const verdictRequestedAt = performance.now();
       const verification = await this.#verifyTransaction({
         programId: payload.programId,
         // Round 29 (L1): the decoded selector, normalised once, is both what
@@ -1654,7 +1746,7 @@ export class GraphiteGuard {
       // would reintroduce the copy-versus-original gap one level down.
       console.log("[Graphite] Swap approved + AuditBind verified — submitting the bound transaction...");
       handedOff = true;
-      const lifecycle = await this.#signSubmitAndConfirm(boundSwap, verification, "swap", key, reservation, confirm);
+      const lifecycle = await this.#signSubmitAndConfirm(boundSwap, verification, "swap", key, reservation, verdictRequestedAt, confirm);
       console.log(`[Solana] ${lifecycle.confirmed ? "Confirmed" : "Submitted (not confirmed)"}: ${lifecycle.signature}`);
       return { executed: true, verifiedExecution: true, verification, signature: lifecycle.signature, lifecycle };
     } finally {

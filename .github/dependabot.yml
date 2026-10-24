@@ -45,6 +45,16 @@ updates:
       # must decode exactly as the runtime does, so it moves when agave does.
       - dependency-name: bincode
         update-types: ["version-update:semver-major"]
+      # Round 36: solana-transaction and solana-message move TOGETHER (one
+      # is built on the other: a lone bump of either gives two
+      # VersionedMessage types and the oracle does not compile, PRs #47 and
+      # #48), and 6.0 changes the v1 limits the oracle pins Graphite to
+      # (Cargo.toml). A major bump of the referee is a deliberate change, made
+      # by hand with the parser's limits decided alongside it.
+      - dependency-name: solana-transaction
+        update-types: ["version-update:semver-major"]
+      - dependency-name: solana-message
+        update-types: ["version-update:semver-major"]
     groups:
       runtime-oracle:
         patterns: ["*"]
@@ -60,6 +70,12 @@ updates:
     open-pull-requests-limit: 2
     ignore:
       - dependency-name: bincode
+        update-types: ["version-update:semver-major"]
+      # Round 36: solana-message must be the version
+      # solana-transaction-status (the pinned parser) is built on. A lone major
+      # bump gives two AccountKeys types and the oracle does not compile (PR
+      # #52); it moves when the parser crate does.
+      - dependency-name: solana-message
         update-types: ["version-update:semver-major"]
     groups:
       inner-instruction-oracle:
@@ -218,7 +234,8 @@ updates:
   # Round 34 (R33-20): the production compose file pins its own images by
   # digest — caddy (the internet-facing TLS edge) and python (the AI layer) —
   # and the `docker` entry above reads only the Dockerfile, so neither digest
-  # was ever offered a bump. The Core's image there is ${GRAPHITE_IMAGE}, set
+  # was ever offered a bump. The Core's image there is
+  # ${GRAPHITE_IMAGE}@${GRAPHITE_IMAGE_DIGEST} (Round 36: the digest required), set
   # per deployment to a verified release, which Dependabot cannot and should
   # not move. Tools pinned by hand in the workflows (Caddy and promtool for
   # the deploy tests, Agave, cargo-audit, cargo-cyclonedx, the assurance

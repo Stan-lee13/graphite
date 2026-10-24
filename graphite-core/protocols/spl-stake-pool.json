@@ -919,7 +919,11 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: stake_pool, validator_list, validator_or_reserve_stake, new_stake_account, user_pool_token_account, fee_account, pool_mint",
-    "withdraws funds and transfers them out of the pool to the involved accounts"
+    "debits accounts.user_pool_token_account by the pool tokens withdrawn",
+    "burns pool tokens of accounts.pool_mint from accounts.user_pool_token_account",
+    "credits accounts.fee_account with the pool's share of the pool tokens",
+    "transfers lamports from accounts.validator_or_reserve_stake into accounts.new_stake_account",
+    "sets the authorities of accounts.new_stake_account to accounts.user_withdraw_authority"
    ],
    "allowed_cpis": [
     "Stake11111111111111111111111111111111111111",
@@ -1451,7 +1455,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: stake_pool, user_pool_token_account, reserve_stake, destination, fee_account, pool_mint",
-    "withdraws funds and transfers them out of the pool to the involved accounts"
+    "debits accounts.user_pool_token_account by the pool tokens withdrawn",
+    "burns pool tokens of accounts.pool_mint from accounts.user_pool_token_account",
+    "credits accounts.fee_account with the pool's share of the pool tokens",
+    "transfers lamports from accounts.reserve_stake to accounts.destination"
    ],
    "allowed_cpis": [
     "Stake11111111111111111111111111111111111111",
@@ -2260,7 +2267,11 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: stake_pool, validator_list, validator_or_reserve_stake, new_stake_account, user_pool_token_account, fee_account, pool_mint",
-    "withdraws funds and transfers them out of the pool to the involved accounts"
+    "debits accounts.user_pool_token_account by the pool tokens withdrawn",
+    "burns pool tokens of accounts.pool_mint from accounts.user_pool_token_account",
+    "credits accounts.fee_account with the pool's share of the pool tokens",
+    "transfers lamports from accounts.validator_or_reserve_stake into accounts.new_stake_account",
+    "sets the authorities of accounts.new_stake_account to accounts.user_withdraw_authority"
    ],
    "allowed_cpis": [
     "Stake11111111111111111111111111111111111111",
@@ -2471,7 +2482,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: stake_pool, user_pool_token_account, reserve_stake, destination, fee_account, pool_mint",
-    "withdraws funds and transfers them out of the pool to the involved accounts"
+    "debits accounts.user_pool_token_account by the pool tokens withdrawn",
+    "burns pool tokens of accounts.pool_mint from accounts.user_pool_token_account",
+    "credits accounts.fee_account with the pool's share of the pool tokens",
+    "transfers lamports from accounts.reserve_stake to accounts.destination"
    ],
    "allowed_cpis": [
     "Stake11111111111111111111111111111111111111",

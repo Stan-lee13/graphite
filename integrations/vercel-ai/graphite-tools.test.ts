@@ -346,3 +346,41 @@ test("K-01: the confirm hook sees the resolved transfer and its digest after the
     await s.close();
   }
 });
+
+test("Round 36 (F-001, GHSA-mrhx-c7xc-m3w5): a model-written oversized route is refused on its size bound, never reaching the guard", async () => {
+  // Below Zod 4.6.6 a bounded array was parsed element by element before its
+  // bound was checked: a 2,000,000-element `instructionData` of invalid bytes
+  // meant two million issues. 4.6.6+ refuses on the bound first.
+  const s = await services();
+  try {
+    const guard = await s.guard(2_000_000_000n);
+    const route = {
+      programId: DEST,
+      discriminator: "e517cb977ae3ad2a",
+      accounts: [{ pubkey: DEST, isSigner: false, isWritable: true }],
+      instructionData: new Array(2_000_000).fill("not a byte"),
+    };
+    const started = Date.now();
+    const result = await generateText({
+      model: modelCalling("graphite_swap", { request: "Swap 1 SOL for USDC", route }),
+      tools: graphiteTools(guard, REQUEST_ONLY),
+      toolApproval: APPROVED,
+      prompt: "Swap 1 SOL for USDC",
+    });
+    const elapsed = Date.now() - started;
+    assert.equal(result.toolResults.length, 0, "the tool never ran");
+    assert.ok(elapsed < 10_000, `bounded time (${elapsed} ms)`);
+    assert.equal(s.core.calls.length + s.rpc.calls.length, 1, "only the guard's startup health check");
+    // The tool's own schema, parsed directly: ONE issue (the bound), not one
+    // per element. (The AI SDK's error then echoes the model's input; its size
+    // is the model's output, bounded by the provider, not by this package.)
+    const schema = graphiteTools(guard, REQUEST_ONLY).graphite_swap.inputSchema as unknown as {
+      safeParse(v: unknown): { success: boolean; error?: { issues: unknown[] } };
+    };
+    const parsed = schema.safeParse({ request: "Swap 1 SOL for USDC", route });
+    assert.equal(parsed.success, false);
+    assert.equal(parsed.error!.issues.length, 1, "refused on the size bound before any element");
+  } finally {
+    await s.close();
+  }
+});

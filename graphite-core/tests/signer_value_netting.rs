@@ -723,9 +723,9 @@ async fn drained_withdrawal(program: &str) -> (VerificationResult, LayerStatus, 
 }
 
 /// A Raydium CLMM `decrease_liquidity_v2` — granted, grounded, minimums
-/// non-zero — whose declaration's only effect line names no account
-/// ("withdraws funds and transfers them out of the pool to the involved
-/// accounts"), beside a sibling that sends 5 SOL of the owner's wallet to
+/// non-zero — whose declaration's only effect line named no account until
+/// Round 36 ("withdraws funds and transfers them out of the pool to the
+/// involved accounts"), beside a sibling that sends 5 SOL of the owner's wallet to
 /// someone else. L4 refuses it and names the amount. Before Round 34 L4
 /// passed it, and so did L5 and the Risk Engine (L7): the sibling transfer
 /// was refused by nothing.
@@ -734,7 +734,11 @@ async fn a_signers_wallet_drained_beside_a_withdrawal_that_names_no_account_is_r
     let (r, status, reason) = drained_withdrawal(CLMM).await;
     assert_eq!(status, LayerStatus::Failed, "L4: {reason}");
     assert!(
-        reason.contains("SignerLamportsUnderUnscopedDebit") && reason.contains("5000000000"),
+        // Round 36 (F-005): the declaration now names the accounts it
+        // debits (docs/audit-r36/declaration-rewrites.json), so the drain is
+        // a signer's loss outside every named debit, not under an unscoped
+        // one. Refused either way, and the amount is named.
+        reason.contains("SignerLamportsOutsideDeclaredDebit") && reason.contains("5000000000"),
         "the drain is not what L4 names: {reason}"
     );
     assert!(!r.approved);
@@ -748,7 +752,11 @@ async fn a_signers_wallet_drained_beside_a_cpmm_withdrawal_is_named() {
     let (_, status, reason) = drained_withdrawal(CPMM).await;
     assert_eq!(status, LayerStatus::Failed, "L4: {reason}");
     assert!(
-        reason.contains("SignerLamportsUnderUnscopedDebit") && reason.contains("5000000000"),
+        // Round 36 (F-005): the declaration now names the accounts it
+        // debits (docs/audit-r36/declaration-rewrites.json), so the drain is
+        // a signer's loss outside every named debit, not under an unscoped
+        // one. Refused either way, and the amount is named.
+        reason.contains("SignerLamportsOutsideDeclaredDebit") && reason.contains("5000000000"),
         "the drain is not what L4 names: {reason}"
     );
 }

@@ -144,7 +144,7 @@ jobs:
           # leg would compile the same thing twice.
           - leg: default
             flags: ""
-            floor: 2331
+            floor: 2363
             timeout: 90
           # `--lib` deliberately. Without a feature there is no async runtime
           # to drive the synchronous `verify()`, so it refuses with an error
@@ -160,11 +160,11 @@ jobs:
           # `cargo test --no-default-features` had 28 failures.
           - leg: lib
             flags: "--no-default-features --lib"
-            floor: 509
+            floor: 513
             timeout: 20
           - leg: cli
             flags: "--no-default-features --features cli"
-            floor: 1933
+            floor: 1942
             timeout: 45
     defaults:
       run:
@@ -201,7 +201,7 @@ jobs:
         # Round 30: the log is read back, so the gate is "at least the floor
         # passed and none failed", not just "cargo exited 0" — which it also
         # does when no test binary ran at all. The floors are the counts at
-        # Round 35 (2,331 / 509 / 1,933); a change that deletes tests below one
+        # Round 36 (2,363 / 513 / 1,942; 2,331 / 509 / 1,933 at Round 35); a change that deletes tests below one
         # lowers it in the same reviewed diff. The log lives outside the tree
         # so the clean-tree check below still sees only what the tests wrote.
         env:
@@ -753,7 +753,7 @@ jobs:
           # Every *.test.ts in the directory, so a test file cannot sit in
           # the repository looking like a gate without ever running.
           npm test 2>&1 | tee "$RUNNER_TEMP/agent-guard.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/agent-guard.log" 301
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/agent-guard.log" 316
           # The guard and the Rust Core are two implementations of one
           # agreement: the guard serializes a transaction and describes its
           # instructions, the Core reads both and decides whether they agree.
@@ -776,7 +776,7 @@ jobs:
           npm ci --ignore-scripts
           npm run typecheck
           npm test 2>&1 | tee "$RUNNER_TEMP/vercel-ai.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/vercel-ai.log" 11
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/vercel-ai.log" 12
       - name: MCP server typecheck + tests
         working-directory: integrations/mcp-server
         run: |
@@ -785,7 +785,7 @@ jobs:
           npm ci --ignore-scripts
           npm run typecheck
           npm test 2>&1 | tee "$RUNNER_TEMP/mcp-server.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/mcp-server.log" 9
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/mcp-server.log" 10
       - name: SAK adapter typecheck + tests
         working-directory: integrations/solana-agent-kit
         run: |
@@ -800,7 +800,7 @@ jobs:
           npm ci --ignore-scripts
           npm run typecheck
           npm test 2>&1 | tee "$RUNNER_TEMP/sak.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sak.log" 9
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sak.log" 10
 
   go:
     name: Go SDK — fmt, vet, tests
@@ -885,7 +885,7 @@ jobs:
           NODE_OPTIONS: --test-reporter=tap
         run: |
           npm test 2>&1 | tee "$RUNNER_TEMP/dashboard.log"
-          bash ../.github/scripts/test-count.sh tap "$RUNNER_TEMP/dashboard.log" 31
+          bash ../.github/scripts/test-count.sh tap "$RUNNER_TEMP/dashboard.log" 35
       - name: Build
         run: npm run build
       # Round 29 (audit 2026-10-20, D6): what the build ships. No source
@@ -1106,6 +1106,13 @@ jobs:
         run: |
           set -euo pipefail
           bin="$RUNNER_TEMP/deploy-bin"
+          # Round 36 (F-021): the full-disk rehearsal mounts a tmpfs inside an
+          # unprivileged user+mount namespace, which Ubuntu 24.04's AppArmor
+          # restricts by default. Lift it for this job so the rehearsal runs
+          # (the floor below counts its checks) instead of being skipped.
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
           GRAPHITE_BIN="$PWD/graphite-core/target/release/graphite" CADDY_BIN="$bin/caddy" \
             PROMTOOL_BIN="$bin/promtool" bash deploy/tests/run.sh 2>&1 | tee "$RUNNER_TEMP/deploy.log"
           # Every check ran: a section that silently stopped running would
@@ -1116,9 +1123,11 @@ jobs:
           # rotation, R33-19 / D-6); 109 with the audit-key rotation under
           # GRAPHITE_AUDIT_PREVIOUS_KEY_FILE and rotate-keys.sh's exit 4
           # (R33-13 / R33-4). The owner checks need root or passwordless
-          # sudo, which the hosted runner has.
-          if [ -z "$passed" ] || [ "$passed" -lt 109 ]; then
-            echo "::error::deploy tests: ${passed:-no summary} passed, floor 109"; exit 1
+          # sudo, which the hosted runner has. 162 at Round 36 (F-019 one
+          # replica, F-021 rehearsals: second Core, SIGTERM in flight, full
+          # disk, lost audit key; alert coverage; compose/Dockerfile checks).
+          if [ -z "$passed" ] || [ "$passed" -lt 162 ]; then
+            echo "::error::deploy tests: ${passed:-no summary} passed, floor 162"; exit 1
           fi
 
   # Round 34: the scripts the release and the live workflows run, tested

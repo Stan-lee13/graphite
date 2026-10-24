@@ -262,3 +262,34 @@ test("the stdio server, as a process: stdout carries only the protocol; the guar
     await s.close();
   }
 });
+
+test("Round 36 (F-001, GHSA-mrhx-c7xc-m3w5): an oversized route is refused on its size bound, before its elements are parsed", async () => {
+  // A client's model writes the tool arguments. Every collection in the swap
+  // route is bounded (`.max`), and Zod checks those bounds before parsing any
+  // element (4.6.6+). Below 4.6.6 a 2,000,000-element `instructionData` of
+  // invalid bytes was parsed element by element first: two million issues,
+  // allocated and serialised into the refusal, before the bound said no.
+  const s = await services();
+  try {
+    const c = await connect(await s.guard(2_000_000_000n), "none");
+    const route = {
+      programId: DEST,
+      discriminator: "e517cb977ae3ad2a",
+      accounts: [{ pubkey: DEST, isSigner: false, isWritable: true }],
+      instructionData: new Array(2_000_000).fill("not a byte"),
+    };
+    const started = Date.now();
+    const out = await c.client.callTool({ name: "graphite_swap", arguments: { request: "Swap 1 SOL for USDC", route } });
+    const elapsed = Date.now() - started;
+    assert.equal(out.isError, true, "refused");
+    const text = JSON.stringify(out.content);
+    assert.match(text, /4096/, "the refusal names the size bound");
+    assert.ok(text.length < 4_000, `one issue, not one per element (${text.length} bytes of refusal)`);
+    assert.ok(elapsed < 10_000, `bounded time (${elapsed} ms)`);
+    assert.equal(s.core.calls.filter((x) => x.method === "POST /verify").length, 0, "the Core is never asked");
+    assert.equal(s.rpc.calls.length, 0, "the RPC is never asked");
+    await c.close();
+  } finally {
+    await s.close();
+  }
+});

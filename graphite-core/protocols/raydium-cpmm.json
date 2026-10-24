@@ -1417,7 +1417,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool_state, owner_lp_token, token_0_account, token_1_account, token_0_vault, token_1_vault, lp_mint",
-    "withdraws funds and transfers them out of the pool to the involved accounts"
+    "debits accounts.owner_lp_token by data.lp_token_amount",
+    "burns data.lp_token_amount of accounts.lp_mint from accounts.owner_lp_token",
+    "transfers tokens from accounts.token_0_vault to accounts.token_0_account",
+    "transfers tokens from accounts.token_1_vault to accounts.token_1_account"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"

@@ -12,6 +12,7 @@
 import { useMemo } from "react";
 import { api, type GraphEdge, type GraphNode } from "../api";
 import { hrefFor, navigate } from "../router";
+import { MANIFESTS_POLL_MS } from "../poll-state";
 import { useLayout, usePolling } from "../usePolling";
 import { CopyId, Detail, Empty, Fault, Figure, Freshness, PageHead, Section, Skeleton, State, TierBadge, fmt, pollFault, shortId } from "../ui";
 import { ProgramDetail } from "./ProgramsView";
@@ -126,12 +127,12 @@ export function GraphView({ selected }: { selected?: string }) {
   const graph = usePolling(() => api.graph(), 5000);
   const data = graph.data;
   const top = usePolling(() => api.topProtocols(), 10000);
-  const manifests = usePolling(() => api.manifests(), 30000);
+  const manifests = usePolling(() => api.manifests(), MANIFESTS_POLL_MS);
 
   const g = useMemo(() => (data ? layout(data.nodes, data.edges) : null), [data]);
 
   const fault = pollFault(graph);
-  if (fault) return <Fault error={fault} />;
+  if (fault) return <Fault error={fault} title="Call graph" />;
   const loading = !data || !g;
 
   const edges = data?.edges ?? [];
@@ -244,7 +245,11 @@ export function GraphView({ selected }: { selected?: string }) {
                 const n = p.node;
                 const dim = selected !== null && selected !== undefined && selected !== n.program_id;
                 const last = p.col === g.lastCol;
-                const cap = last ? 24 : 32;
+                // Round 36: 32 characters overran the canvas's left edge in
+                // the first column (195 units at 12px: "Wormhole Core Bridge
+                // Solana (HD…" lost its first letter); the full name is in
+                // the accessible name and the title.
+                const cap = last ? 24 : 28;
                 const label = n.name.length > cap ? `${n.name.slice(0, cap - 1)}…` : n.name;
                 // Round 32 (WCAG 2.5.3): the name starts with exactly what
                 // is drawn — a shortened label, the "×n" degree — and then

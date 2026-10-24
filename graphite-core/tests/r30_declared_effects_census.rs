@@ -53,7 +53,9 @@ fn every_shipped_declaration_is_classified_as_measured() {
     }
     assert_eq!(
         (total, silent, unreadable, mixed, strict, relaxable),
-        (3541, 0, 366, 38, 227, 139),
+        // Round 36 (F-005): 38 -> 37 mixed. Meteora DLMM `swap`'s unreadable
+        // "updates reserve_x and reserve_y" line was rewritten from the IDL.
+        (3541, 0, 366, 37, 227, 139),
         "(instructions, silent, unreadable, mixed, unreadable-and-strict-even-when-relaxed, unreadable-and-relaxable)"
     );
 }
@@ -526,7 +528,11 @@ fn debit_lines_that_name_no_account_are_counted() {
         // Stake Withdraw names its accounts). Under the R33-5 rule a signer's
         // loss beneath these lines is refused until their declarations name
         // the accounts they debit.
-        (3541, 1820, 1802, 1802, 18, 27),
+        //
+        // Round 36 (F-005): all 18 rewritten from their IDLs, with 17 swaps
+        // (docs/audit-r36/declaration-rewrites.json): (1820, 1802, 1802, 18)
+        // -> (1780, 1767, 1767, 0). No grant's declaration names no account now.
+        (3541, 1780, 1767, 1767, 0, 27),
         "(instructions, unscoped debit lines, instructions with one, of them with no named debit, grants with one, grants)"
     );
 }

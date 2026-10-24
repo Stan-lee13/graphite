@@ -16,6 +16,15 @@
 #     jsondiffpatch 0.7.6, langsmith 0.6.3, hono 4.13.12, ip-address 10.7.2,
 #     qs 6.16.0. Typecheck and all bridge tests pass on them.
 #
+# Round 36 (2026-10-24, F-001): solana-agent-kit is a DEVELOPMENT dependency
+# only. The bridge no longer imports it (its plugin-free SAK agent had no
+# actions), so nothing below is loaded in the process that holds the wallet
+# key; a test pins that the bridge's module graph holds no SAK and no Zod.
+# The entries stay because `npm audit` reports the dev tree too, and the
+# tests that prove SAK's own signing helpers are refused run it. The
+# development tree's Zod is forced to 4.6.7 (`overrides`), past
+# GHSA-mrhx-c7xc-m3w5 (every Zod below 4.6.6); that advisory is NOT listed.
+#
 # What remains has no fix that can be applied from here:
 GHSA-3gc7-fjrx-p6mg@bigint-buffer  review-by:2027-01-20  # high  bigint-buffer <=1.1.5 (no patched release exists): solana-agent-kit 2.0.10 -> @solana/spl-token 0.4.15 -> @solana/buffer-layout-utils 0.3.0 -> bigint-buffer 1.1.5 (npm ls, 2026-10-02). The overflow is in the package's NATIVE addon (toBigIntLE). Every install of this tree runs with --ignore-scripts, so the addon is never built and bigint-buffer runs its pure-JS fallback. Since R-P8 phase 3 (2026-10-02) only this adapter package depends on solana-agent-kit: the guard that signs (integrations/agent-guard) and every other integration do not carry this advisory.
 #

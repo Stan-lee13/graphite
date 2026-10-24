@@ -2316,7 +2316,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: user, user_volume_accumulator",
-    "closes the position or account and transfers remaining funds back to the user"
+    "closes accounts.user_volume_accumulator, sends its lamports to accounts.user"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

@@ -5,19 +5,29 @@
 # Validates everything under deploy/ with its own tool, then runs it against a
 # real Graphite Core and Caddy on loopback:
 #
-#   static   shellcheck, caddy validate, promtool check/test, systemd-analyze
-#            verify, docker compose config, every dashboard query parsed by
-#            promtool and every series it or an alert names exported by
-#            server.rs
+#   static   shellcheck, caddy validate, promtool check/test (every alert
+#            with a case that fires and one that does not), systemd-analyze
+#            verify and exposure of both services, docker compose config, the
+#            compose and Dockerfile hardening (one Core replica, non-root,
+#            read-only, no capabilities, images pinned by digest, no secret in
+#            the environment), every dashboard query parsed by promtool and
+#            every series it or an alert names exported by server.rs
 #   edge     Caddy's route allow-list (404 for /health, /metrics, /admin/*),
 #            401 passthrough, 413 over the body limit, HSTS, no Server
-#            header, X-Forwarded-For spoofing does not escape the rate limit
-#   ops      health-textfile.sh, anchor-checkpoints.sh, backup.sh (hot and
-#            cold, the archive MAC), restore.sh (lock refusal, --anchor-dir
+#            header, X-Forwarded-For spoofing does not escape the rate limit,
+#            no admin API
+#   ops      a second Core (and a writing CLI) on the live data directory
+#            refused, health-textfile.sh, anchor-checkpoints.sh, backup.sh (hot
+#            and cold, the archive MAC), restore.sh (lock refusal, --anchor-dir
 #            required, checksum naming the archive, MAC refusals, stale-restore
 #            refusal, tamper refusal), rotate-keys.sh (env, file, audit key +
 #            verify; owner and mode kept across a rotation, as root or with
-#            passwordless sudo), the compose entrypoint's secret handling
+#            passwordless sudo), a lost audit key (adopt-key, then backup and
+#            restore with --lost-key), the compose entrypoint's secret handling
+#   failure  SIGTERM with a verdict in flight (answered, recorded, exit 0);
+#            the data directory full during audit appends (a 256 KiB tmpfs in
+#            an unprivileged user+mount namespace: every verdict either on the
+#            trail or refused 503, never answered unrecorded)
 #
 #   GRAPHITE_BIN CADDY_BIN PROMTOOL_BIN SHELLCHECK_BIN  default: from PATH
 #   (systemd-analyze and docker are used when present, reported when not)
@@ -101,16 +111,119 @@ if command -v systemd-analyze >/dev/null; then
   check "systemd-analyze verify" systemd-analyze verify "$T/sd/graphite.service" "$T/sd/graphite-anchor.service" "$T/sd/graphite-anchor.timer"
   score="$(systemd-analyze security --offline=true "$T/sd/graphite.service" 2>/dev/null | sed -n 's/.*exposure level for graphite.service: \([0-9.]*\).*/\1/p')"
   if [ -n "$score" ] && awk -v s="$score" 'BEGIN{exit !(s < 2)}'; then ok "graphite.service exposure $score < 2"; else bad "graphite.service exposure '$score'"; fi
+  # Round 36: the anchor unit holds the audit key and the S3 credentials too;
+  # it scored 1.7 with half the server's sandbox.
+  score="$(systemd-analyze security --offline=true "$T/sd/graphite-anchor.service" 2>/dev/null | sed -n 's/.*exposure level for graphite-anchor.service: \([0-9.]*\).*/\1/p')"
+  if [ -n "$score" ] && awk -v s="$score" 'BEGIN{exit !(s < 1.5)}'; then ok "graphite-anchor.service exposure $score < 1.5"; else bad "graphite-anchor.service exposure '$score' (wanted < 1.5)"; fi
 else
   skipped+=("systemd-analyze not installed")
 fi
+# One Core per host: a plain unit, never an instance template (F-019).
+[ -z "$(find "$deploy/systemd" -name '*@.service')" ] && grep -q 'ONE instance' "$deploy/systemd/graphite.service" &&
+  ok "systemd: one graphite.service, no instance template" || bad "systemd: an instance template (graphite@.service) or no single-instance note"
+
+# Round 36: every alert has a promtool case where it fires and one where it
+# does not (11 of 19 had neither).
+untested="$(python3 - "$deploy/prometheus/graphite-alerts.yml" "$deploy/prometheus/graphite-alerts.test.yml" <<'EOF'
+import sys, yaml
+rules = yaml.safe_load(open(sys.argv[1]))
+alerts = {r["alert"] for g in rules["groups"] for r in g["rules"] if "alert" in r}
+fires, quiet = set(), set()
+for t in yaml.safe_load(open(sys.argv[2]))["tests"]:
+    for a in t.get("alert_rule_test", []):
+        (fires if a.get("exp_alerts") else quiet).add(a["alertname"])
+print(" ".join(sorted((alerts - fires) | (alerts - quiet))))
+EOF
+)"
+[ -z "$untested" ] && ok "every alert has a firing and a quiet promtool case" || bad "alerts without a firing and a quiet promtool case: $untested"
+
+# The production compose file and the Dockerfile, read as data: what must stay
+# true of them whatever docker is installed.
+compose_audit() { # compose_audit WHAT -> prints the violations of WHAT
+  python3 - "$deploy/compose/docker-compose.prod.yml" "$repo/Dockerfile" "$1" <<'EOF'
+import re, sys, yaml
+c = yaml.safe_load(open(sys.argv[1]))
+svcs, what, out = c["services"], sys.argv[3], []
+DIGEST = re.compile(r"@sha256:[0-9a-f]{64}$")
+if what == "replicas":
+    # The production file and the build-from-source one at the root alike.
+    for f in (sys.argv[1], sys.argv[2].replace("Dockerfile", "docker-compose.yml")):
+        g = yaml.safe_load(open(f))["services"]["graphite"]
+        if not g.get("container_name"): out.append(f"{f}: graphite has no container_name (replicas > 1 render)")
+        if (g.get("deploy") or {}).get("replicas") != 1: out.append(f"{f}: graphite deploy.replicas is not 1")
+        if "scale" in g: out.append(f"{f}: graphite sets scale")
+elif what == "hardening":
+    for n, s in svcs.items():
+        if s.get("read_only") is not True: out.append(f"{n}: not read_only")
+        if s.get("cap_drop") != ["ALL"]: out.append(f"{n}: cap_drop is not [ALL]")
+        if set(s.get("cap_add") or []) - ({"NET_BIND_SERVICE"} if n == "caddy" else set()): out.append(f"{n}: cap_add {s.get('cap_add')}")
+        if "no-new-privileges:true" not in (s.get("security_opt") or []): out.append(f"{n}: no no-new-privileges")
+        if s.get("privileged") or s.get("network_mode") == "host" or s.get("pid") == "host" or s.get("ipc") == "host": out.append(f"{n}: host namespace or privileged")
+        if any("docker.sock" in str(v) for v in s.get("volumes") or []): out.append(f"{n}: mounts the docker socket")
+        if n != "caddy" and (s.get("ports") or s.get("network_mode")): out.append(f"{n}: publishes ports")
+        if n != "caddy" and str(s.get("user", "")).split(":")[0] in ("", "0", "root"): out.append(f"{n}: runs as root")
+elif what == "digests":
+    for n, s in svcs.items():
+        img = s.get("image", "")
+        if n == "graphite":
+            if not re.search(r"@\$\{GRAPHITE_IMAGE_DIGEST:\?[^}]*\}$", img): out.append(f"graphite image {img!r} does not require GRAPHITE_IMAGE_DIGEST")
+        elif not DIGEST.search(img): out.append(f"{n} image {img!r} is not pinned by digest")
+    stages = set()
+    for line in open(sys.argv[2]):
+        m = re.match(r"FROM\s+(\S+)(?:\s+AS\s+(\S+))?", line, re.I)
+        if not m: continue
+        ref = m.group(1)
+        if not (ref == "scratch" or ref in stages or ref.startswith("binary-$") or DIGEST.search(ref)):
+            out.append(f"Dockerfile FROM {ref} is not pinned by digest")
+        if m.group(2): stages.add(m.group(2))
+    users = [l.split()[1] for l in open(sys.argv[2]) if l.startswith("USER ")]
+    if not users or users[-1].split(":")[0] in ("0", "root"): out.append(f"Dockerfile's final USER is {users[-1:] or 'unset'}")
+elif what == "secrets":
+    for n, s in svcs.items():
+        env = s.get("environment") or {}
+        if not isinstance(env, dict):
+            env = dict((e.split("=", 1) + [""])[:2] for e in env)
+        for k, v in env.items():
+            if re.search(r"KEY|SECRET|TOKEN|PASSWORD", k) and not k.endswith("_FILE") and v not in (None, ""):
+                out.append(f"{n}: {k} has a value in the environment")
+    for k in ("api_key", "read_api_key", "admin_api_key", "audit_key"):
+        if k not in (c.get("secrets") or {}) or "file" not in c["secrets"][k]: out.append(f"secret {k} is not file-backed")
+print("; ".join(out))
+EOF
+}
+for w in replicas hardening digests secrets; do
+  v="$(compose_audit "$w" 2>&1)"
+  case "$w" in
+    replicas) d="compose: one Core replica (container_name and deploy.replicas: 1)" ;;
+    hardening) d="compose: every service read-only, cap_drop ALL, no-new-privileges, no host namespaces; Core and AI non-root, unpublished" ;;
+    digests) d="compose and Dockerfile: every image pinned by digest; the Dockerfile ends non-root" ;;
+    secrets) d="compose: keys only as file-backed secrets, none in the environment" ;;
+  esac
+  [ -z "$v" ] && ok "$d" || bad "$d: $v"
+done
 
 if command -v docker >/dev/null && docker compose version >/dev/null 2>&1; then
-  check "docker compose config (prod)" env GRAPHITE_IMAGE=ghcr.io/o/graphite-core:0@sha256:0000000000000000000000000000000000000000000000000000000000000000 \
-    GRAPHITE_SITE=g.example.com ACME_EMAIL=ops@example.com \
-    docker compose -f "$deploy/compose/docker-compose.prod.yml" --profile ai config --quiet
-  expect_rc 1 "compose refuses to render without GRAPHITE_IMAGE" env -u GRAPHITE_IMAGE GRAPHITE_SITE=g ACME_EMAIL=a \
-    docker compose -f "$deploy/compose/docker-compose.prod.yml" config --quiet
+  dcenv=(GRAPHITE_IMAGE=ghcr.io/o/graphite-core:0 GRAPHITE_IMAGE_DIGEST=sha256:0000000000000000000000000000000000000000000000000000000000000000
+    GRAPHITE_SITE=g.example.com ACME_EMAIL=ops@example.com)
+  dc=(env -u GRAPHITE_IMAGE -u GRAPHITE_IMAGE_DIGEST "${dcenv[@]}" docker compose -f "$deploy/compose/docker-compose.prod.yml")
+  dc_without() { # dc_without VAR ARGS... — compose with every variable above but VAR
+    local drop="$1" kept=() x
+    shift
+    for x in "${dcenv[@]}"; do [ "${x%%=*}" = "$drop" ] || kept+=("$x"); done
+    env -u "$drop" "${kept[@]}" docker compose -f "$deploy/compose/docker-compose.prod.yml" "$@"
+  }
+  check "docker compose config (prod)" "${dc[@]}" --profile ai config --quiet
+  expect_rc 1 "compose refuses to render without GRAPHITE_IMAGE" dc_without GRAPHITE_IMAGE config --quiet
+  # Round 36: a tag alone used to render (and deploy whatever it pointed at).
+  expect_rc 1 "compose refuses an image without GRAPHITE_IMAGE_DIGEST (a tag alone)" dc_without GRAPHITE_IMAGE_DIGEST config --quiet
+  img="$("${dc[@]}" config --format json 2>/dev/null | jq -r .services.graphite.image)"
+  [ "$img" = "ghcr.io/o/graphite-core:0@sha256:0000000000000000000000000000000000000000000000000000000000000000" ] &&
+    ok "compose: the Core's image is GRAPHITE_IMAGE@GRAPHITE_IMAGE_DIGEST" || bad "compose: the Core's image renders as '$img'"
+  # F-019: an operator's override cannot turn the Core into two replicas.
+  printf 'services:\n  graphite:\n    deploy:\n      replicas: 2\n' >"$T/replicas2.yml"
+  printf 'services:\n  graphite:\n    scale: 2\n' >"$T/scale2.yml"
+  expect_rc 1 "compose refuses a second Core replica (deploy.replicas: 2 override)" "${dc[@]}" -f "$T/replicas2.yml" config --quiet
+  expect_rc 1 "compose refuses a second Core replica (scale: 2 override)" "${dc[@]}" -f "$T/scale2.yml" config --quiet
 else
   skipped+=("docker compose not installed")
 fi
@@ -238,6 +351,9 @@ grep -qi '^server:' <<<"$hdr" && bad "edge: Server header present (proxied)" || 
 # Caddy's own answers carry `Server: Caddy` unless the Caddyfile removes it.
 hdr404="$(curl -s -D - -o /dev/null "$E/no-such-route")"
 grep -qi '^server:' <<<"$hdr404" && bad "edge: Server header present (edge 404)" || ok "edge: no Server header (edge 404)"
+# `admin off`: no config API on Caddy's default localhost:2019 (two Caddys run).
+c="$(code "http://127.0.0.1:2019/config/")"
+[ "$c" = 000 ] && ok "edge: no Caddy admin API on localhost:2019" || bad "edge: localhost:2019 answered $c"
 # A client rotating X-Forwarded-For still hits its own rate limit: Caddy
 # replaces the header (no trusted_proxies), so the Core sees one address.
 sleep 1.1
@@ -251,6 +367,28 @@ done
 sleep 1.1
 
 echo "== ops scripts"
+# F-019: one Core per data directory. A second server on the live directory
+# (its own port, the same keys) exits at once naming the lock, a writing CLI
+# is refused the same way, and neither touched the trail.
+head_before="$("$G" audit verify --data-dir "$T/data" --key-file "$T/keys/audit-1.key" --json 2>/dev/null | jq -r .head_hash)"
+rc2=0
+GRAPHITE_API_KEY="$key" GRAPHITE_READ_API_KEY="$rkey" GRAPHITE_DATA_DIR="$T/data" \
+  GRAPHITE_REGISTRY_STATE="$T/data/registry_state.json" GRAPHITE_AUDIT_KEY_FILE="$T/keys/audit-1.key" \
+  GRAPHITE_AUDIT_ANCHOR_DIR="$T/anchors" GRAPHITE_WALLET_PROFILE=treasury \
+  timeout 20 "$G" server --host 127.0.0.1 --port "$(port)" >"$T/second.log" 2>&1 || rc2=$?
+[ "$rc2" != 0 ] && [ "$rc2" != 124 ] && grep -q 'graphite.lock is locked' "$T/second.log" &&
+  ok "a second Core on the live data directory refuses to start (exit $rc2, names graphite.lock)" ||
+  bad "a second Core on the live data directory: exit $rc2: $(tail -n 1 "$T/second.log")"
+rcq=0
+outq="$(GRAPHITE_AUDIT_KEY_FILE="$T/keys/audit-1.key" "$G" quarantine add --data-dir "$T/data" \
+  --program 11111111111111111111111111111111 --reason "deploy test" 2>&1)" || rcq=$?
+[ "$rcq" != 0 ] && grep -q 'graphite.lock is locked' <<<"$outq" && ok "a writing CLI on the live data directory refuses (exit $rcq)" ||
+  bad "quarantine add beside the server: exit $rcq: $outq"
+check "the first Core still serves" curl -fsS "http://127.0.0.1:$gport/health"
+[ -n "$head_before" ] && [ "$head_before" != null ] &&
+  [ "$("$G" audit verify --data-dir "$T/data" --key-file "$T/keys/audit-1.key" --json 2>/dev/null | jq -r .head_hash)" = "$head_before" ] &&
+  ok "the refused writers left the trail's head where it was" || bad "the trail's head moved while the second writers were refused"
+
 check "write verdicts (rotation at 4 KiB)" verify_n 12
 ls "$T/data"/audit.jsonl.* >/dev/null 2>&1 && ok "audit rotated into archives" || bad "no audit archive after 12 verdicts"
 ls "$T/anchors"/audit.jsonl-checkpoint-*.json >/dev/null 2>&1 && ok "server wrote rotation checkpoints to the anchor dir" || bad "no rotation checkpoint"
@@ -484,6 +622,67 @@ else
   skipped+=("rotate-keys.sh owner preservation: not root and no passwordless sudo")
 fi
 
+echo "== a lost audit key"
+# Round 36 (F-021): the key a trail was MAC'd under is gone. The trail goes on
+# under a new key through `graphite audit adopt-key` (docs/ops/keys.md); from
+# then on `audit verify` exits 2, and backup.sh and restore.sh refused every
+# archive of that trail, for good. --lost-key <id> accepts that exit 2 and
+# nothing else.
+L="$T/lost"
+mkdir -p "$L/data" "$L/keys" "$L/anchors" "$L/backups"
+chmod 700 "$L/keys"
+openssl rand -hex 32 >"$L/keys/old.key"
+chmod 600 "$L/keys/old.key"
+qadd() { # qadd KEY_FILE PROGRAM — one keyed record, written by the CLI
+  GRAPHITE_AUDIT_KEY_FILE="$1" "$G" quarantine add --data-dir "$L/data" --program "$2" --reason "deploy test" >/dev/null 2>&1
+}
+check "a record under the old key" qadd "$L/keys/old.key" 11111111111111111111111111111111
+check "another record under the old key" qadd "$L/keys/old.key" Vote111111111111111111111111111111111111111
+mv "$L/keys/old.key" "$L/old.key.lost"
+"$deploy/scripts/rotate-keys.sh" audit-key "$L/keys" >/dev/null 2>&1
+lnew="$(find "$L/keys" -name 'audit-*.key' | head -n 1)"
+expect_rc 1 "the new key alone does not continue the trail" qadd "$lnew" Stake11111111111111111111111111111111111111
+check "graphite audit adopt-key under the new key (the old one lost)" "$G" audit adopt-key --data-dir "$L/data" --key-file "$lnew"
+check "a record under the new key after the adoption" qadd "$lnew" Stake11111111111111111111111111111111111111
+lost_id="$("$G" audit verify --data-dir "$L/data" --key-file "$lnew" --json 2>/dev/null | jq -r '.key_ranges[] | select(.supplied | not) | .key_id')"
+[[ "$lost_id" =~ ^[0-9a-f]{16}$ ]] && ok "audit verify names the lost key ($lost_id) as not supplied" || bad "no single lost key id in audit verify: '$lost_id'"
+expect_rc 2 "rotate-keys.sh verify with the new key only -> 2 (the lost key's MACs cannot be checked)" \
+  "$deploy/scripts/rotate-keys.sh" verify "$L/data" "$lnew"
+check "anchor a checkpoint under the new key" env GRAPHITE_DATA_DIR="$L/data" GRAPHITE_AUDIT_ANCHOR_DIR="$L/anchors" \
+  GRAPHITE_AUDIT_KEY_FILE="$lnew" "$deploy/scripts/anchor-checkpoints.sh"
+LB=("$deploy/scripts/backup.sh" --hot --key-file "$lnew")
+expect_rc 1 "backup.sh refuses the trail without --lost-key" "${LB[@]}" "$L/data" "$L/backups"
+expect_rc 64 "backup.sh refuses a --lost-key that is not a key id" "${LB[@]}" --lost-key nothex "$L/data" "$L/backups"
+expect_rc 1 "backup.sh refuses a --lost-key naming another key" "${LB[@]}" --lost-key 0123456789abcdef "$L/data" "$L/backups"
+[ -z "$(find "$L/backups" -name '*.tar.gz')" ] && ok "no archive kept by the refused backups" || bad "a refused lost-key backup kept an archive"
+expect_rc 0 "backup.sh --lost-key <the lost key's id>" "${LB[@]}" --lost-key "$lost_id" "$L/data" "$L/backups"
+larch="$(find "$L/backups" -name 'graphite-*.tar.gz' | head -n 1)"
+grep -q "records chained but not MAC-checked" "${larch%.tar.gz}.verify.txt" 2>/dev/null &&
+  ok "the backup's verify report records what --lost-key accepted" || bad "the backup's verify report does not say what --lost-key accepted"
+LR=("$deploy/scripts/restore.sh" --key-file "$lnew" --anchor-dir "$L/anchors")
+expect_rc 1 "restore.sh refuses the archive without --lost-key" "${LR[@]}" "$larch" "$L/restored"
+expect_rc 0 "restore.sh --lost-key (trail, newest checkpoint and in place)" "${LR[@]}" --lost-key "$lost_id" "$larch" "$L/restored"
+expect_rc 2 "the restored trail still verifies as 2, not 0: nothing was vouched for" "$G" audit verify --data-dir "$L/restored" --key-file "$lnew"
+# --lost-key never covers a rewrite: a record under the lost key changed, the
+# archive re-packed with a matching checksum and a MAC under the new key.
+mkdir -p "$L/tamper"
+tar -C "$L/tamper" -xzf "$larch"
+python3 -I - "$L/tamper/audit.jsonl" <<'EOF'
+import sys
+p = sys.argv[1]
+lines = open(p).read().splitlines(keepends=True)
+# The first record's reason (under the lost key); left alone if it is not
+# there, so the restore below then succeeds and the check fails.
+lines[0] = lines[0].replace("deploy test", "deploy tesT", 1)
+open(p, "w").write("".join(lines))
+EOF
+tar -C "$L/tamper" -czf "$L/backups/ltampered.tar.gz" .
+(cd "$L/backups" && sha256sum ltampered.tar.gz >ltampered.tar.gz.sha256)
+mac_of "$lnew" "$L/backups/ltampered.tar.gz" >"$L/backups/ltampered.tar.gz.mac"
+expect_rc 1 "restore.sh --lost-key refuses a rewritten record under the lost key" "${LR[@]}" --lost-key "$lost_id" \
+  "$L/backups/ltampered.tar.gz" "$L/restored-tampered"
+[ ! -e "$L/restored-tampered" ] && ok "the rewritten archive was not restored" || bad "the rewritten archive reached $L/restored-tampered"
+
 echo "== compose entrypoint"
 # The Core's entrypoint script from the prod compose file, run against a
 # fake /run/secrets: keys exported, an empty admin key leaves /admin/* off.
@@ -507,6 +706,158 @@ out="$(env -i PATH="$PATH" sh -ec "$(cat "$T/entry.sh")")"
 grep -qx GRAPHITE_ADMIN_API_KEY=kkkk <<<"$out" && ok "entrypoint: admin key exported when set" || bad "entrypoint (admin)"
 rm "$T/secrets/api_key"
 if env -i PATH="$PATH" sh -ec "$(cat "$T/entry.sh")" >/dev/null 2>&1; then bad "entrypoint ran without the api_key secret"; else ok "entrypoint: missing api_key secret -> refuses"; fi
+
+echo "== failure (SIGTERM, a full disk)"
+# Each case runs its own Core on its own data directory, started here, so its
+# exit status can be read. The environment every such Core gets:
+mkdir -p "$T/fkeys"
+chmod 700 "$T/fkeys"
+openssl rand -hex 32 >"$T/fkeys/audit.key"
+chmod 600 "$T/fkeys/audit.key"
+fenv() { # fenv DATA_DIR ANCHOR_DIR -> the env(1) prefix of a Core on DATA_DIR
+  fe=(env GRAPHITE_API_KEY="$key" GRAPHITE_DATA_DIR="$1" GRAPHITE_REGISTRY_STATE="$1/registry_state.json"
+    GRAPHITE_AUDIT_KEY_FILE="$T/fkeys/audit.key" GRAPHITE_AUDIT_ANCHOR_DIR="$2" GRAPHITE_WALLET_PROFILE=treasury
+    GRAPHITE_RATE_LIMIT=1000 RUST_LOG=info)
+}
+wait_up() { # wait_up PORT PID
+  local _
+  for _ in $(seq 1 100); do
+    curl -fsS "http://127.0.0.1:$1/health" >/dev/null 2>&1 && return 0
+    kill -0 "$2" 2>/dev/null || return 1
+    sleep 0.1
+  done
+  return 1
+}
+
+# SIGTERM with a verdict in flight: the request's body is still arriving when
+# the signal lands. The server stops accepting, answers that request, records
+# it, and exits 0 with its lock released (what systemd's and compose's 30 s
+# stop grace and backup.sh's STOP_CMD rely on).
+mkdir -p "$T/sig/data" "$T/sig/anchors"
+fenv "$T/sig/data" "$T/sig/anchors"
+sport3="$(port)"
+"${fe[@]}" "$G" server --host 127.0.0.1 --port "$sport3" >"$T/sig/core.log" 2>&1 &
+spid=$!
+pids+=("$spid")
+check "a Core for the SIGTERM case" wait_up "$sport3" "$spid"
+cat >"$T/slow.py" <<'EOF'
+import json, socket, sys, time
+port, key, body, pause = int(sys.argv[1]), sys.argv[2], open(sys.argv[3], "rb").read(), float(sys.argv[4])
+s = socket.create_connection(("127.0.0.1", port), timeout=20)
+s.sendall(b"POST /verify HTTP/1.1\r\nHost: core\r\nAuthorization: Bearer " + key.encode()
+          + b"\r\nContent-Type: application/json\r\nContent-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body[:10])
+time.sleep(pause)
+s.sendall(body[10:])
+data = b""
+while True:
+    c = s.recv(65536)
+    if not c:
+        break
+    data += c
+    head, sep, rest = data.partition(b"\r\n\r\n")
+    cl = [l for l in head.split(b"\r\n") if l.lower().startswith(b"content-length:")]
+    if sep and cl and len(rest) >= int(cl[0].split(b":")[1]):
+        break
+print(data.split(b"\r\n")[0].decode())
+print(json.loads(data.partition(b"\r\n\r\n")[2]).get("audit_trail_id"))
+EOF
+python3 -I "$T/slow.py" "$sport3" "$key" "$repo/examples/verify-input.json" 1.5 >"$T/sig/slow.out" 2>&1 &
+slow=$!
+sleep 0.7
+kill -TERM "$spid"
+sleep 0.3
+c="$(code "http://127.0.0.1:$sport3/health")"
+[ "$c" = 000 ] && ok "SIGTERM: no new connection is accepted while draining" || bad "SIGTERM: a new request during the drain got $c"
+wait "$slow"
+src=0
+wait "$spid" || src=$?
+grep -qx 'HTTP/1.1 200 OK' "$T/sig/slow.out" && ok "SIGTERM: the in-flight verdict was answered (200)" || bad "SIGTERM: the in-flight request got: $(head -n 1 "$T/sig/slow.out")"
+sid="$(tail -n 1 "$T/sig/slow.out")"
+[ -n "$sid" ] && [ "$sid" != None ] && grep -qF "\"$sid\"" "$T/sig/data/audit.jsonl" && ok "SIGTERM: and is on the trail ($sid)" || bad "SIGTERM: the answered verdict '$sid' is not on the trail"
+[ "$src" = 0 ] && ok "SIGTERM: the Core exits 0" || bad "SIGTERM: the Core exited $src"
+grep -q 'Received SIGTERM' "$T/sig/core.log" && ok "SIGTERM: logged as a graceful shutdown" || bad "SIGTERM: no shutdown line in the log"
+check "SIGTERM: the data directory's lock is free" flock -n "$T/sig/data/graphite.lock" true
+expect_rc 0 "SIGTERM: the trail verifies after the shutdown" "$G" audit verify --data-dir "$T/sig/data" --key-file "$T/fkeys/audit.key"
+
+# A full data directory (Constitution P9: no verdict without a durable
+# record). A 256 KiB tmpfs is the data directory, mounted in a user+mount
+# namespace (no root, no host mount); the Core runs inside it, the network is
+# the host's. Filled once the Core runs: every verdict is then either on the
+# trail or refused 503 AuditWriteFailed, never answered unrecorded; the trail
+# still verifies; /health says audit_writes_failed; freed space is used again.
+cat >"$T/diskfull.sh" <<'EOF'
+#!/usr/bin/env bash
+# diskfull.sh T G KEY VERIFY_INPUT PORT — run inside `unshare --user --map-root-user --mount`
+set -u
+T="$1" G="$2" key="$3" input="$4" p="$5"
+R="$T/full/results"
+mkdir -p "$R"
+mount -t tmpfs -o size=256k,mode=0700 tmpfs "$T/full/data" || { echo mount >"$R/error"; exit 1; }
+GRAPHITE_API_KEY="$key" GRAPHITE_DATA_DIR="$T/full/data" GRAPHITE_REGISTRY_STATE="$T/full/data/registry_state.json" \
+  GRAPHITE_AUDIT_KEY_FILE="$T/fkeys/audit.key" GRAPHITE_AUDIT_ANCHOR_DIR="$T/full/anchors" GRAPHITE_WALLET_PROFILE=treasury \
+  GRAPHITE_RATE_LIMIT=1000 RUST_LOG=info "$G" server --host 127.0.0.1 --port "$p" >"$T/full/core.log" 2>&1 &
+pid=$!
+trap 'kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null' EXIT
+up=0
+for _ in $(seq 1 100); do curl -fsS "http://127.0.0.1:$p/health" >/dev/null 2>&1 && { up=1; break; }; sleep 0.1; done
+[ "$up" = 1 ] || { echo "no core" >"$R/error"; exit 1; }
+n=0
+v() { # one verdict; its status and, when 200, its trail id
+  n=$((n + 1))
+  local c
+  c="$(curl -s -o "$R/resp.$n" -w '%{http_code}' -H "Authorization: Bearer $key" -H 'Content-Type: application/json' \
+    --data-binary @"$input" "http://127.0.0.1:$p/verify")"
+  echo "$1 $c $(jq -r '.audit_trail_id // .error_type // empty' "$R/resp.$n" 2>/dev/null)" >>"$R/verdicts"
+}
+v before
+dd if=/dev/zero of="$T/full/data/filler" bs=4096 >/dev/null 2>&1
+df -k "$T/full/data" | tail -n 1 | awk '{print $4}' >"$R/avail"
+for _ in 1 2 3 4 5 6 7 8; do v full; done
+curl -s "http://127.0.0.1:$p/health" >"$R/health.full"
+curl -s -H "Authorization: Bearer $key" "http://127.0.0.1:$p/metrics" >"$R/metrics.full"
+"$G" audit verify --data-dir "$T/full/data" --key-file "$T/fkeys/audit.key" >/dev/null 2>&1
+echo $? >"$R/verify.full"
+rm -f "$T/full/data/filler"
+v freed
+v freed
+cp "$T/full/data/audit.jsonl" "$R/audit.jsonl"
+"$G" audit verify --data-dir "$T/full/data" --key-file "$T/fkeys/audit.key" >/dev/null 2>&1
+echo $? >"$R/verify.freed"
+echo done >"$R/done"
+EOF
+mkdir -p "$T/full/data" "$T/full/anchors"
+if unshare --user --map-root-user --mount true 2>/dev/null; then
+  unshare --user --map-root-user --mount bash "$T/diskfull.sh" "$T" "$G" "$key" "$repo/examples/verify-input.json" "$(port)" >/dev/null 2>&1
+  FR="$T/full/results"
+  if [ -e "$FR/done" ]; then
+    [ "$(cat "$FR/avail")" = 0 ] && ok "disk full: the data directory has 0 KiB free" || bad "disk full: $(cat "$FR/avail") KiB still free"
+    grep -q '^before 200 ' "$FR/verdicts" && ok "disk full: verdicts answered before the disk filled" || bad "disk full: no verdict before filling"
+    refused="$(grep -c '^full 503 AuditWriteFailed$' "$FR/verdicts")"
+    [ "$refused" -gt 0 ] && ok "disk full: verdicts refused 503 AuditWriteFailed ($refused of 8)" || bad "disk full: no 503 AuditWriteFailed: $(grep '^full' "$FR/verdicts" | tr '\n' ' ')"
+    other="$(grep -v -e ' 200 gr-' -e ' 503 AuditWriteFailed$' "$FR/verdicts")"
+    [ -z "$other" ] && ok "disk full: every answer is a recorded verdict or a 503 refusal" || bad "disk full: other answers: $other"
+    unrec=""
+    while read -r _ c id; do
+      [ "$c" = 200 ] && ! grep -qF "\"$id\"" "$FR/audit.jsonl" && unrec="$unrec $id"
+    done <"$FR/verdicts"
+    [ -z "$unrec" ] && ok "disk full: every 200 is on the trail (no verdict without a durable record)" || bad "disk full: answered but not on the trail:$unrec"
+    jq -e '.degraded == true and (.degraded_reasons | index("audit_writes_failed"))' "$FR/health.full" >/dev/null 2>&1 &&
+      ok "disk full: /health degraded: audit_writes_failed" || bad "disk full: /health $(cat "$FR/health.full")"
+    wf="$(sed -n 's/^graphite_audit_writes_failed_total \([0-9]*\)$/\1/p' "$FR/metrics.full")"
+    [ "$wf" = "$refused" ] && ok "disk full: graphite_audit_writes_failed_total counts the refusals ($wf)" || bad "disk full: writes_failed_total '$wf', refusals $refused"
+    blocked="$(sed -n 's/^graphite_verify_blocked_total \([0-9]*\)$/\1/p' "$FR/metrics.full")"
+    answered="$(grep -c -e '^before 200 ' -e '^full 200 ' "$FR/verdicts")"
+    [ "$blocked" = "$answered" ] && ok "disk full: a refused verdict is not counted as given ($blocked counted, $answered answered)" ||
+      bad "disk full: verify_blocked_total $blocked, answered $answered"
+    [ "$(cat "$FR/verify.full")" = 0 ] && ok "disk full: the trail verifies while full (the failed appends left nothing)" || bad "disk full: audit verify exit $(cat "$FR/verify.full") while full"
+    [ "$(grep -c '^freed 200 gr-' "$FR/verdicts")" = 2 ] && [ "$(cat "$FR/verify.freed")" = 0 ] &&
+      ok "disk full: once space is freed, verdicts are recorded again and the trail verifies" || bad "disk full: after freeing: $(grep '^freed' "$FR/verdicts" | tr '\n' ' ') verify $(cat "$FR/verify.freed")"
+  else
+    bad "disk full: the namespace run did not finish: $(cat "$FR/error" 2>/dev/null) $(tail -n 3 "$T/full/core.log" 2>/dev/null)"
+  fi
+else
+  skipped+=("disk full: unprivileged user namespaces unavailable (unshare --user --map-root-user --mount)")
+fi
 
 echo
 if [ "${#skipped[@]}" -gt 0 ]; then printf '  skipped: %s\n' "${skipped[@]}"; fi

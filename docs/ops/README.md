@@ -17,10 +17,14 @@ of them stops existing, the runbook is wrong, not the code.
 
 What these runbooks assume, and what is not provided here:
 
-- **One replica.** The rate limiter, the concurrency caps and the data-directory
-  lock are per process, and a second server on the same data directory refuses
-  to start (`<GRAPHITE_DATA_DIR>/graphite.lock`). Horizontal scale needs a
-  shared limiter that does not exist yet.
+- **One replica; scaling out is unsupported.** The Core is single-tenant and
+  single-process: the data-directory locks (`graphite.lock`,
+  `.audit.jsonl.lock`), the audit chain's head and index, the semantic graph,
+  the rate limiter and the concurrency caps all belong to one process. A
+  second server on the same data directory refuses to start; one on another
+  directory keeps a second, disjoint audit trail. The production compose file
+  and the systemd unit allow exactly one (production-checklist.md, 9g).
+  Horizontal scale would need a shared trail and limiter that do not exist.
 - **TLS is terminated in front of the container.** The server speaks plain
   HTTP/1.1. docker-compose.yml publishes it on host loopback only.
 - **Monitoring, alert routing and on-call are the operator's.** The signals

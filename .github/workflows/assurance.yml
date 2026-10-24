@@ -106,38 +106,58 @@ jobs:
       # mutant would be days of runner time. A mutant one of these suites
       # misses may still be caught by another suite; the Round 30 report
       # lists the missed ones that were triaged by hand.
+      # Round 36 (F-015): the first hosted run (40059300806) put 235, 199,
+      # 324 and 1,004 mutants (`cargo mutants --list --file`) into six shards,
+      # and every shard hit the six-hour limit before scoring. Each shard now
+      # holds about 40 mutants; the suites and floor for each file are chosen
+      # in the "Select" step below. A shard that cannot finish is reported
+      # INCOMPLETE by mutation_floor.py, never scored on the part that ran.
       matrix:
         include:
-          # risk_engine.rs: a round-robin quarter of its 233 mutants scored
-          # 57 of 57 viable against these suites after Round 30's tests
-          # (39 of 57 against the risk suites alone). 0.90 leaves room for the
-          # three quarters not yet measured locally. The other floors are
-          # PROVISIONAL (not yet measured): raise each to its first measured
-          # score, rounded down.
-          - file: src/risk_engine.rs
-            shard: 0/1
-            floor: "0.90"
-            tests: --lib --test adversarial_tests --test secondary_instruction_risk --test p0_validation_attacks --test omega_red_team --test integration_tests --test cert_revalidation_attacks --test regression_corpus --test truncated_discriminator --test round21_open_list --test mainnet_conformance --test real_exploit_tests --test real_world_attacks --test extreme_adversarial --test round22_remaining --test hell_mode_tests --test deep_extreme_tests --test protocol_expansion_tests --test intent_synonym_consistency --test campaign_invariants --test release_evaluation
-          - file: src/simulation_integrity.rs
-            shard: 0/1
-            floor: "0.60"
-            tests: --lib --test audit_a2_baseline_variance_ratchet --test audit_a2_shadow_takes_refused_requests --test round19_what_one_observation_is --test audit_2026_10_20_simulation_gate
-          - file: src/tx_artifact.rs
-            shard: 0/1
-            floor: "0.60"
-            tests: --lib --test tx_artifact_real --test wire_format_bounds --test alt_real_v0 --test round19_v1_transactions --test durable_nonce --test audit_a1_compute_budget_trailing --test alt_privilege --test privilege_from_artifact
-          - file: src/state_diff.rs
-            shard: 0/3
-            floor: "0.60"
-            tests: --lib --test round29_state_diff --test l4_state_diff_gate --test token2022_extensions --test round20_transfer_fee --test audit_a2_data_only_change_is_not_noop --test audit_a2_delegate_allowance_increase --test audit_a2_declared_effects_account_names --test round30_fuzz_findings
-          - file: src/state_diff.rs
-            shard: 1/3
-            floor: "0.60"
-            tests: --lib --test round29_state_diff --test l4_state_diff_gate --test token2022_extensions --test round20_transfer_fee --test audit_a2_data_only_change_is_not_noop --test audit_a2_delegate_allowance_increase --test audit_a2_declared_effects_account_names --test round30_fuzz_findings
-          - file: src/state_diff.rs
-            shard: 2/3
-            floor: "0.60"
-            tests: --lib --test round29_state_diff --test l4_state_diff_gate --test token2022_extensions --test round20_transfer_fee --test audit_a2_data_only_change_is_not_noop --test audit_a2_delegate_allowance_increase --test audit_a2_declared_effects_account_names --test round30_fuzz_findings
+          - { file: src/risk_engine.rs, shard: 0/6 }
+          - { file: src/risk_engine.rs, shard: 1/6 }
+          - { file: src/risk_engine.rs, shard: 2/6 }
+          - { file: src/risk_engine.rs, shard: 3/6 }
+          - { file: src/risk_engine.rs, shard: 4/6 }
+          - { file: src/risk_engine.rs, shard: 5/6 }
+          - { file: src/simulation_integrity.rs, shard: 0/5 }
+          - { file: src/simulation_integrity.rs, shard: 1/5 }
+          - { file: src/simulation_integrity.rs, shard: 2/5 }
+          - { file: src/simulation_integrity.rs, shard: 3/5 }
+          - { file: src/simulation_integrity.rs, shard: 4/5 }
+          - { file: src/tx_artifact.rs, shard: 0/8 }
+          - { file: src/tx_artifact.rs, shard: 1/8 }
+          - { file: src/tx_artifact.rs, shard: 2/8 }
+          - { file: src/tx_artifact.rs, shard: 3/8 }
+          - { file: src/tx_artifact.rs, shard: 4/8 }
+          - { file: src/tx_artifact.rs, shard: 5/8 }
+          - { file: src/tx_artifact.rs, shard: 6/8 }
+          - { file: src/tx_artifact.rs, shard: 7/8 }
+          - { file: src/state_diff.rs, shard: 0/25 }
+          - { file: src/state_diff.rs, shard: 1/25 }
+          - { file: src/state_diff.rs, shard: 2/25 }
+          - { file: src/state_diff.rs, shard: 3/25 }
+          - { file: src/state_diff.rs, shard: 4/25 }
+          - { file: src/state_diff.rs, shard: 5/25 }
+          - { file: src/state_diff.rs, shard: 6/25 }
+          - { file: src/state_diff.rs, shard: 7/25 }
+          - { file: src/state_diff.rs, shard: 8/25 }
+          - { file: src/state_diff.rs, shard: 9/25 }
+          - { file: src/state_diff.rs, shard: 10/25 }
+          - { file: src/state_diff.rs, shard: 11/25 }
+          - { file: src/state_diff.rs, shard: 12/25 }
+          - { file: src/state_diff.rs, shard: 13/25 }
+          - { file: src/state_diff.rs, shard: 14/25 }
+          - { file: src/state_diff.rs, shard: 15/25 }
+          - { file: src/state_diff.rs, shard: 16/25 }
+          - { file: src/state_diff.rs, shard: 17/25 }
+          - { file: src/state_diff.rs, shard: 18/25 }
+          - { file: src/state_diff.rs, shard: 19/25 }
+          - { file: src/state_diff.rs, shard: 20/25 }
+          - { file: src/state_diff.rs, shard: 21/25 }
+          - { file: src/state_diff.rs, shard: 22/25 }
+          - { file: src/state_diff.rs, shard: 23/25 }
+          - { file: src/state_diff.rs, shard: 24/25 }
     defaults:
       run:
         working-directory: graphite-core
@@ -153,25 +173,59 @@ jobs:
           workspaces: graphite-core
       - name: Install cargo-mutants
         run: cargo install cargo-mutants --locked --version "$CARGO_MUTANTS_VERSION"
+      - name: Select the suites and floor for this file
+        id: select
+        # Each security-critical module is mutated against the lib unit tests
+        # and the integration suites that exercise it; the whole suite per
+        # mutant would be days of runner time. A mutant these suites miss may
+        # still be caught by another suite.
+        #
+        # risk_engine.rs: a round-robin quarter of its mutants scored 57 of
+        # 57 viable against these suites after Round 30's tests (39 of 57
+        # against the risk suites alone); 0.90 leaves room for the rest. The
+        # other floors are PROVISIONAL (never yet measured to completion):
+        # raise each to its first complete measured score, rounded down.
+        run: |
+          case "${{ matrix.file }}" in
+            src/risk_engine.rs)
+              floor=0.90
+              tests="--lib --test adversarial_tests --test secondary_instruction_risk --test p0_validation_attacks --test omega_red_team --test integration_tests --test cert_revalidation_attacks --test regression_corpus --test truncated_discriminator --test round21_open_list --test mainnet_conformance --test real_exploit_tests --test real_world_attacks --test extreme_adversarial --test round22_remaining --test hell_mode_tests --test deep_extreme_tests --test protocol_expansion_tests --test intent_synonym_consistency --test campaign_invariants --test release_evaluation" ;;
+            src/simulation_integrity.rs)
+              floor=0.60
+              tests="--lib --test audit_a2_baseline_variance_ratchet --test audit_a2_shadow_takes_refused_requests --test round19_what_one_observation_is --test audit_2026_10_20_simulation_gate" ;;
+            src/tx_artifact.rs)
+              floor=0.60
+              tests="--lib --test tx_artifact_real --test wire_format_bounds --test alt_real_v0 --test round19_v1_transactions --test durable_nonce --test audit_a1_compute_budget_trailing --test alt_privilege --test privilege_from_artifact" ;;
+            src/state_diff.rs)
+              floor=0.60
+              tests="--lib --test round29_state_diff --test l4_state_diff_gate --test token2022_extensions --test round20_transfer_fee --test audit_a2_data_only_change_is_not_noop --test audit_a2_delegate_allowance_increase --test audit_a2_declared_effects_account_names --test round30_fuzz_findings" ;;
+            *) echo "::error::no suites for ${{ matrix.file }}"; exit 1 ;;
+          esac
+          echo "floor=$floor" >> "$GITHUB_OUTPUT"
+          echo "tests=$tests" >> "$GITHUB_OUTPUT"
       - name: Mutate
         # cargo-mutants exits non-zero when a mutant is missed; the floor
         # step below judges the run from the outcomes file, so that exit is
-        # recorded here rather than fatal.
+        # recorded here rather than fatal. The step stops short of the job's
+        # limit so the floor step always runs: on an unfinished shard it
+        # reports INCOMPLETE rather than nothing (Round 36).
+        timeout-minutes: 330
         run: |
           set +e
           cargo mutants --in-place --no-shuffle --timeout 300 \
             --file "${{ matrix.file }}" --shard "${{ matrix.shard }}" \
-            -- ${{ matrix.tests }}
+            -- ${{ steps.select.outputs.tests }}
           echo "cargo-mutants exit: $?"
       - name: Enforce the mutation-score floor
-        run: python3 scripts/mutation_floor.py mutants.out/outcomes.json "${{ matrix.floor }}"
-      - name: Name the artifact
-        id: name
-        run: echo "slug=$(echo '${{ matrix.file }}-${{ matrix.shard }}' | tr '/.' '--')" >> "$GITHUB_OUTPUT"
+        if: always() && steps.select.outcome == 'success'
+        run: python3 scripts/mutation_floor.py mutants.out/outcomes.json "${{ steps.select.outputs.floor }}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: mutants-${{ steps.name.outputs.slug }}
+          # The job index, not a step's output: Round 36's run named every
+          # artifact "mutants-" because the naming step never ran after a
+          # timeout.
+          name: mutants-${{ strategy.job-index }}-${{ strategy.job-total }}
           path: graphite-core/mutants.out
           retention-days: 30
 

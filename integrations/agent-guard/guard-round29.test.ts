@@ -204,7 +204,9 @@ test("coverage: an approved Jupiter swap runs the same lifecycle on the bound by
       proposed_intent: { intent_type: string; extracted_parameters: Record<string, unknown> };
     };
     assert.equal(body.instruction_discriminator, "e517cb977ae3ad2a");
-    assert.deepEqual(body.proposed_intent.extracted_parameters, { amount: "1", input_token: "SOL", output_token: "USDC" });
+    // Round 36 (F-003): the grounded mint, which the Core binds to the bytes
+    // ("USDC" as written would leave the output token unbound).
+    assert.deepEqual(body.proposed_intent.extracted_parameters, { amount: "1", input_token: "SOL", output_token: USDC });
   } finally {
     await h.close();
   }

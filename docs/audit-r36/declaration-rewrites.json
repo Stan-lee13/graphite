@@ -1,0 +1,1555 @@
+{
+  "title": "Round 36: declaration rewrites from authoritative IDLs (R33-5 follow-up)",
+  "date": "2026-10-24",
+  "base": "main 2140427",
+  "rule": "graphite-core/src/state_diff.rs DeclaredEffects::parse / covers_by_name / debit_names_no_account (R33-5): only a line that names accounts.<x> declares that account's debit for the signer judgements; a line naming no account is unreadable for a signer's loss.",
+  "method": [
+    "The census was reproduced in Python with a line-for-line port of DeclaredEffects::parse and effect_words, over SEED_MANIFESTS and intent_grants.rs GRANTS: HEAD gives (3541, 1820, 1802, 1802, 18, 27), as pinned.",
+    "Each rewrite names only accounts present in every layout of its instruction (exact spelling); each new line was parsed alone and must name an account for every effect it declares (no unscoped line), and the whole declaration must keep a named debit.",
+    "Roles follow the grammar: an account after 'from' takes the debit, after 'to'/'into' only the credit, otherwise every effect of the line. Signer-owned accounts are named as debited only where the IDL says the user's value leaves them; user destinations are credit-only; fee/referral/host accounts are credit-only.",
+    "Where an IDL file exists, the manifest layout was checked slot by slot against it (as tests/r30_declared_effects_census.rs does for REWRITTEN).",
+    "Also checked: the swap intent's L5 vocabulary and L7 FakeSwap ('credit'/'output') still match; no line carries the structural trigger words signer/approve/delegate/assign; no line uses a word that would declare an unintended effect (owner -> authority, mint -> mint, open/init -> create, fee/pay -> debit).",
+    "Lines that declare nothing (the generated 'modifies writable accounts: ...' lines and the bare identifiers in raydium-amm-v4) were kept, so no declaration got shorter (the drainer heuristic counts lines)."
+  ],
+  "the_18_grants_with_an_unscoped_debit_line_before": [
+    "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK::decrease_liquidity_v2",
+    "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK::close_position",
+    "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C::withdraw",
+    "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo::remove_liquidity2",
+    "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo::remove_liquidity_by_range2",
+    "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo::remove_all_liquidity",
+    "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo::claim_fee2",
+    "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo::close_position",
+    "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo::close_position2",
+    "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo::close_position_if_empty",
+    "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA::withdraw",
+    "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA::close_user_volume_accumulator",
+    "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P::close_user_volume_accumulator",
+    "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy::WithdrawSol",
+    "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy::WithdrawSolWithSlippage",
+    "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy::WithdrawStake",
+    "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy::WithdrawStakeWithSlippage",
+    "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD::liquidUnstake"
+  ],
+  "swaps_found": {
+    "rewritten (all were manifested and carried only unscoped debit lines)": [
+      "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA::sell",
+      "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA::buy",
+      "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA::buy_exact_quote_in (added: same accounts as buy)",
+      "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK::swap_v2",
+      "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK::swap",
+      "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8::SwapBaseIn",
+      "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8::SwapBaseOut",
+      "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8::SwapBaseInV2 (added)",
+      "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8::SwapBaseOutV2 (added)",
+      "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN::swap2",
+      "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN::swap (added)",
+      "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo::swap",
+      "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo::swap2",
+      "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4::route_v2",
+      "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4::route",
+      "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4::sharedAccountsRoute (the manifest's name for shared_accounts_route)",
+      "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4::shared_accounts_route_v2 (added)"
+    ],
+    "left_unchanged": {
+      "DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH::swap": "manifested (swap-orchestrator-df1ow4.json), only an unscoped line. The IDL's fixed accounts are token_program, associated_token_program, system_program, user_token_authority (signer), event_authority, program: the user's source and destination token accounts are remaining accounts addressed by SwapParams.actions. No layout account holds the user's value, so no accounts.<name> can be written; left unchanged (honest DFlow swaps stay refused under R33-5).",
+      "DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH::swap_with_destination": "same: the source is a remaining account; only destination_token_account (a credit) is in the layout, and a credit line would not change the refusal. Left unchanged, as are swap2, swap2_with_destination, swap_with_destination_native, swap2_with_destination_native."
+    },
+    "not_in_scope_untouched": "Jupiter exactOut*/routeWithTokenLedger*/accountCompression* variants and the other unscoped instructions of these programs (deposits, creates, admin) were not requested and are unchanged."
+  },
+  "census": {
+    "debit_lines_that_name_no_account_are_counted": {
+      "fields": "(instructions, unscoped debit lines, instructions with one, of them with no named debit, grants with one, grants)",
+      "before": [
+        3541,
+        1820,
+        1802,
+        1802,
+        18,
+        27
+      ],
+      "after": [
+        3541,
+        1780,
+        1767,
+        1767,
+        0,
+        27
+      ]
+    },
+    "every_shipped_declaration_is_classified_as_measured": {
+      "fields": "(instructions, silent, unreadable, mixed, strict, relaxable)",
+      "before": [
+        3541,
+        0,
+        366,
+        38,
+        227,
+        139
+      ],
+      "after": [
+        3541,
+        0,
+        366,
+        37,
+        227,
+        139
+      ],
+      "why": "Meteora DLMM swap's 'updates reserve_x and reserve_y' (unreadable alone) was replaced by named lines; no rewritten instruction was or is unreadable, so strict/relaxable are unchanged."
+    },
+    "every_declared_account_reference_names_a_layout_account": "every new accounts.<name> is in every layout of its instruction (checked)."
+  },
+  "rewrites": [
+    {
+      "program_id": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
+      "manifest": "graphite-core/protocols/raydium-clmm.json",
+      "instruction": "decrease_liquidity_v2",
+      "kind": "withdrawal grant",
+      "intent": "withdraw",
+      "old_lines": [
+        "modifies writable accounts: personal_position, pool_state, token_vault_0, token_vault_1, tick_array_lower, tick_array_upper, recipient_token_account_0, recipient_token_account_1",
+        "withdraws funds and transfers them out of the pool to the involved accounts"
+      ],
+      "new_lines": [
+        "modifies writable accounts: personal_position, pool_state, token_vault_0, token_vault_1, tick_array_lower, tick_array_upper, recipient_token_account_0, recipient_token_account_1",
+        "transfers tokens from accounts.token_vault_0 to accounts.recipient_token_account_0",
+        "transfers tokens from accounts.token_vault_1 to accounts.recipient_token_account_1"
+      ],
+      "removed": [
+        "withdraws funds and transfers them out of the pool to the involved accounts"
+      ],
+      "added": [
+        "transfers tokens from accounts.token_vault_0 to accounts.recipient_token_account_0",
+        "transfers tokens from accounts.token_vault_1 to accounts.recipient_token_account_1"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK.json",
+      "justification": {
+        "accounts.token_vault_0 / token_vault_1 (debited)": "IDL: token_vault_0 'Token_0 vault', token_vault_1 'Token_1 vault' (writable, not signer)",
+        "accounts.recipient_token_account_0 / _1 (credited)": "IDL: 'The destination token account for receive amount_0' / 'amount_1'"
+      },
+      "not_excused": {
+        "nft_owner (signer wallet)": "signs only; the IDL moves nothing out of it",
+        "nft_account": "read-only position NFT holder; nothing leaves it",
+        "recipient_token_account_0/1": "credited only: a debit of the user's recipient accounts is not excused"
+      },
+      "confidence": "high",
+      "notes": "Reward vaults paid out from remaining accounts are program-owned and not nameable in the layout; they need no name (only signer-owned debits are judged per account).",
+      "meets_census_REWRITTEN_constraints": true
+    },
+    {
+      "program_id": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
+      "manifest": "graphite-core/protocols/raydium-clmm.json",
+      "instruction": "close_position",
+      "kind": "withdrawal grant",
+      "intent": "close",
+      "old_lines": [
+        "modifies writable accounts: nft_owner, position_nft_mint, position_nft_account, personal_position",
+        "closes the position or account and transfers remaining funds back to the user"
+      ],
+      "new_lines": [
+        "modifies writable accounts: nft_owner, position_nft_mint, position_nft_account, personal_position",
+        "closes accounts.personal_position, sends its lamports to accounts.nft_owner",
+        "debits accounts.position_nft_account by the position NFT",
+        "burns the position NFT of accounts.position_nft_mint from accounts.position_nft_account",
+        "closes accounts.position_nft_account, sends its lamports to accounts.nft_owner",
+        "closes accounts.position_nft_mint under Token-2022, sends its lamports to accounts.nft_owner"
+      ],
+      "removed": [
+        "closes the position or account and transfers remaining funds back to the user"
+      ],
+      "added": [
+        "closes accounts.personal_position, sends its lamports to accounts.nft_owner",
+        "debits accounts.position_nft_account by the position NFT",
+        "burns the position NFT of accounts.position_nft_mint from accounts.position_nft_account",
+        "closes accounts.position_nft_account, sends its lamports to accounts.nft_owner",
+        "closes accounts.position_nft_mint under Token-2022, sends its lamports to accounts.nft_owner"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK.json",
+      "justification": {
+        "accounts.personal_position (closed)": "IDL instruction doc: 'Close the user's position and NFT account'; personal_position is the position PDA (seeds 'position' + position_nft_mint)",
+        "accounts.position_nft_account (NFT debited, burned from, closed)": "IDL: 'User token account where position NFT be minted to'; instruction doc: closes the NFT account",
+        "accounts.position_nft_mint (burn; Token-2022 close)": "IDL: 'Mint address bound to the personal position'; doc: 'If the NFT mint belongs to token2022, it will also be closed and the funds returned to the NFT owner'",
+        "accounts.nft_owner (credited)": "IDL: 'The position nft owner'; doc: funds returned to the NFT owner"
+      },
+      "not_excused": {
+        "nft_owner (signer wallet)": "credited only (Recipient role); no debit or closure of the wallet is excused"
+      },
+      "confidence": "high",
+      "notes": "The only signer-owned debit excused is the position NFT account, which this instruction exists to burn and close.",
+      "meets_census_REWRITTEN_constraints": "no: names a signer as the recipient of a closed account's lamports (the REWRITTEN test asserts every named account is writable and not a signer)"
+    },
+    {
+      "program_id": "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",
+      "manifest": "graphite-core/protocols/raydium-cpmm.json",
+      "instruction": "withdraw",
+      "kind": "withdrawal grant",
+      "intent": "withdraw",
+      "old_lines": [
+        "modifies writable accounts: pool_state, owner_lp_token, token_0_account, token_1_account, token_0_vault, token_1_vault, lp_mint",
+        "withdraws funds and transfers them out of the pool to the involved accounts"
+      ],
+      "new_lines": [
+        "modifies writable accounts: pool_state, owner_lp_token, token_0_account, token_1_account, token_0_vault, token_1_vault, lp_mint",
+        "debits accounts.owner_lp_token by data.lp_token_amount",
+        "burns data.lp_token_amount of accounts.lp_mint from accounts.owner_lp_token",
+        "transfers tokens from accounts.token_0_vault to accounts.token_0_account",
+        "transfers tokens from accounts.token_1_vault to accounts.token_1_account"
+      ],
+      "removed": [
+        "withdraws funds and transfers them out of the pool to the involved accounts"
+      ],
+      "added": [
+        "debits accounts.owner_lp_token by data.lp_token_amount",
+        "burns data.lp_token_amount of accounts.lp_mint from accounts.owner_lp_token",
+        "transfers tokens from accounts.token_0_vault to accounts.token_0_account",
+        "transfers tokens from accounts.token_1_vault to accounts.token_1_account"
+      ],
+      "idl_source": "graphite-core/scripts/idls/raydium_cpmm.json",
+      "justification": {
+        "accounts.owner_lp_token (debited, burned from)": "IDL: 'Owner lp token account'; arg lp_token_amount: 'Amount of pool tokens to burn'",
+        "accounts.lp_mint (burn)": "IDL: 'Pool lp token mint' (writable)",
+        "accounts.token_0_vault / token_1_vault (debited)": "IDL: 'The address that holds pool tokens for token_0' / 'token_1'",
+        "accounts.token_0_account / token_1_account (credited)": "IDL: 'The token account for receive token_0' / 'token_1'"
+      },
+      "not_excused": {
+        "owner (signer wallet)": "IDL doc 'Pays to mint the position' is boilerplate; withdraw moves no lamports from it",
+        "token_0_account / token_1_account": "credited only"
+      },
+      "confidence": "high",
+      "notes": "Fixes the pre-existing UndeclaredBurn on an honest CPMM withdraw (lp_mint supply decrease now declared on lp_mint by name).",
+      "meets_census_REWRITTEN_constraints": true
+    },
+    {
+      "program_id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+      "manifest": "graphite-core/protocols/meteora-dlmm.json",
+      "instruction": "remove_liquidity2",
+      "kind": "withdrawal grant",
+      "intent": "withdraw",
+      "old_lines": [
+        "modifies writable accounts: position, lb_pair, bin_array_bitmap_extension, user_token_x, user_token_y, reserve_x, reserve_y",
+        "withdraws funds and transfers them out of the protocol to the involved accounts"
+      ],
+      "new_lines": [
+        "modifies writable accounts: position, lb_pair, bin_array_bitmap_extension, user_token_x, user_token_y, reserve_x, reserve_y",
+        "transfers tokens out of accounts.reserve_x",
+        "transfers tokens out of accounts.reserve_y",
+        "credits accounts.user_token_x token balance",
+        "credits accounts.user_token_y token balance"
+      ],
+      "removed": [
+        "withdraws funds and transfers them out of the protocol to the involved accounts"
+      ],
+      "added": [
+        "transfers tokens out of accounts.reserve_x",
+        "transfers tokens out of accounts.reserve_y",
+        "credits accounts.user_token_x token balance",
+        "credits accounts.user_token_y token balance"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo.json",
+      "justification": {
+        "accounts.reserve_x / reserve_y (debited)": "IDL: reserve_x/reserve_y writable, relation lb_pair (the pair's reserves)",
+        "accounts.user_token_x / user_token_y (credited)": "IDL: user_token_x/user_token_y writable; intent_grants.rs DLMM_IDL source: 'user_token_x/user_token_y receive the position's tokens'"
+      },
+      "not_excused": {
+        "sender (signer)": "signs only",
+        "user_token_x / user_token_y": "credited only"
+      },
+      "confidence": "high",
+      "notes": "Identical to the already-reviewed Round 32 rewrite of remove_liquidity / remove_liquidity_by_range (same accounts, same IDL); the v2 layout only adds memo_program.",
+      "meets_census_REWRITTEN_constraints": true
+    },
+    {
+      "program_id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+      "manifest": "graphite-core/protocols/meteora-dlmm.json",
+      "instruction": "remove_liquidity_by_range2",
+      "kind": "withdrawal grant",
+      "intent": "withdraw",
+      "old_lines": [
+        "modifies writable accounts: position, lb_pair, bin_array_bitmap_extension, user_token_x, user_token_y, reserve_x, reserve_y",
+        "withdraws funds and transfers them out of the protocol to the involved accounts"
+      ],
+      "new_lines": [
+        "modifies writable accounts: position, lb_pair, bin_array_bitmap_extension, user_token_x, user_token_y, reserve_x, reserve_y",
+        "transfers tokens out of accounts.reserve_x",
+        "transfers tokens out of accounts.reserve_y",
+        "credits accounts.user_token_x token balance",
+        "credits accounts.user_token_y token balance"
+      ],
+      "removed": [
+        "withdraws funds and transfers them out of the protocol to the involved accounts"
+      ],
+      "added": [
+        "transfers tokens out of accounts.reserve_x",
+        "transfers tokens out of accounts.reserve_y",
+        "credits accounts.user_token_x token balance",
+        "credits accounts.user_token_y token balance"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo.json",
+      "justification": {
+        "accounts.reserve_x / reserve_y (debited)": "IDL: reserve_x/reserve_y writable, relation lb_pair (the pair's reserves)",
+        "accounts.user_token_x / user_token_y (credited)": "IDL: user_token_x/user_token_y writable; intent_grants.rs DLMM_IDL source: 'user_token_x/user_token_y receive the position's tokens'"
+      },
+      "not_excused": {
+        "sender (signer)": "signs only",
+        "user_token_x / user_token_y": "credited only"
+      },
+      "confidence": "high",
+      "notes": "Identical to the already-reviewed Round 32 rewrite of remove_liquidity / remove_liquidity_by_range (same accounts, same IDL); the v2 layout only adds memo_program.",
+      "meets_census_REWRITTEN_constraints": true
+    },
+    {
+      "program_id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+      "manifest": "graphite-core/protocols/meteora-dlmm.json",
+      "instruction": "remove_all_liquidity",
+      "kind": "withdrawal grant",
+      "intent": "withdraw",
+      "old_lines": [
+        "modifies writable accounts: position, lb_pair, bin_array_bitmap_extension, user_token_x, user_token_y, reserve_x, reserve_y, bin_array_lower, bin_array_upper",
+        "withdraws funds and transfers them out of the protocol to the involved accounts"
+      ],
+      "new_lines": [
+        "modifies writable accounts: position, lb_pair, bin_array_bitmap_extension, user_token_x, user_token_y, reserve_x, reserve_y, bin_array_lower, bin_array_upper",
+        "transfers tokens out of accounts.reserve_x",
+        "transfers tokens out of accounts.reserve_y",
+        "credits accounts.user_token_x token balance",
+        "credits accounts.user_token_y token balance"
+      ],
+      "removed": [
+        "withdraws funds and transfers them out of the protocol to the involved accounts"
+      ],
+      "added": [
+        "transfers tokens out of accounts.reserve_x",
+        "transfers tokens out of accounts.reserve_y",
+        "credits accounts.user_token_x token balance",
+        "credits accounts.user_token_y token balance"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo.json",
+      "justification": {
+        "accounts.reserve_x / reserve_y (debited)": "IDL: reserve_x/reserve_y writable, relation lb_pair (the pair's reserves)",
+        "accounts.user_token_x / user_token_y (credited)": "IDL: user_token_x/user_token_y writable; intent_grants.rs DLMM_IDL source: 'user_token_x/user_token_y receive the position's tokens'"
+      },
+      "not_excused": {
+        "sender (signer)": "signs only",
+        "user_token_x / user_token_y": "credited only"
+      },
+      "confidence": "high",
+      "notes": "Identical to the already-reviewed Round 32 rewrite of remove_liquidity / remove_liquidity_by_range (same accounts, same IDL); the v2 layout only adds memo_program.",
+      "meets_census_REWRITTEN_constraints": true
+    },
+    {
+      "program_id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+      "manifest": "graphite-core/protocols/meteora-dlmm.json",
+      "instruction": "claim_fee2",
+      "kind": "withdrawal grant",
+      "intent": "claim",
+      "old_lines": [
+        "modifies writable accounts: lb_pair, position, reserve_x, reserve_y, user_token_x, user_token_y",
+        "withdraws funds and transfers them out of the protocol to the involved accounts"
+      ],
+      "new_lines": [
+        "modifies writable accounts: lb_pair, position, reserve_x, reserve_y, user_token_x, user_token_y",
+        "transfers tokens out of accounts.reserve_x",
+        "transfers tokens out of accounts.reserve_y",
+        "credits accounts.user_token_x token balance",
+        "credits accounts.user_token_y token balance"
+      ],
+      "removed": [
+        "withdraws funds and transfers them out of the protocol to the involved accounts"
+      ],
+      "added": [
+        "transfers tokens out of accounts.reserve_x",
+        "transfers tokens out of accounts.reserve_y",
+        "credits accounts.user_token_x token balance",
+        "credits accounts.user_token_y token balance"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo.json",
+      "justification": {
+        "accounts.reserve_x / reserve_y (debited)": "IDL: reserve_x/reserve_y (relation lb_pair); the pair's fees are held in its reserves",
+        "accounts.user_token_x / user_token_y (credited)": "IDL: user_token_x/user_token_y writable; grant source DLMM_IDL"
+      },
+      "not_excused": {
+        "sender (signer)": "signs only",
+        "user_token_x / user_token_y": "credited only"
+      },
+      "confidence": "high",
+      "notes": "Identical to the already-reviewed Round 32 rewrite of claim_fee.",
+      "meets_census_REWRITTEN_constraints": true
+    },
+    {
+      "program_id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+      "manifest": "graphite-core/protocols/meteora-dlmm.json",
+      "instruction": "close_position",
+      "kind": "withdrawal grant",
+      "intent": "close",
+      "old_lines": [
+        "modifies writable accounts: position, lb_pair, bin_array_lower, bin_array_upper, rent_receiver",
+        "closes the position or account and transfers remaining funds back to the user"
+      ],
+      "new_lines": [
+        "modifies writable accounts: position, lb_pair, bin_array_lower, bin_array_upper, rent_receiver",
+        "closes accounts.position, sends its lamports to accounts.rent_receiver"
+      ],
+      "removed": [
+        "closes the position or account and transfers remaining funds back to the user"
+      ],
+      "added": [
+        "closes accounts.position, sends its lamports to accounts.rent_receiver"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo.json",
+      "justification": {
+        "accounts.position (closed)": "IDL: position writable; the instruction closes it",
+        "accounts.rent_receiver (credited)": "IDL: rent_receiver writable; intent_grants.rs DLMM_RENT_TO_SENDER grounds rent_receiver == sender"
+      },
+      "not_excused": {
+        "sender (signer)": "signs only; not debited",
+        "rent_receiver": "credited only"
+      },
+      "confidence": "high",
+      "notes": "",
+      "meets_census_REWRITTEN_constraints": true
+    },
+    {
+      "program_id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+      "manifest": "graphite-core/protocols/meteora-dlmm.json",
+      "instruction": "close_position2",
+      "kind": "withdrawal grant",
+      "intent": "close",
+      "old_lines": [
+        "modifies writable accounts: position, rent_receiver",
+        "closes the position or account and transfers remaining funds back to the user"
+      ],
+      "new_lines": [
+        "modifies writable accounts: position, rent_receiver",
+        "closes accounts.position, sends its lamports to accounts.rent_receiver"
+      ],
+      "removed": [
+        "closes the position or account and transfers remaining funds back to the user"
+      ],
+      "added": [
+        "closes accounts.position, sends its lamports to accounts.rent_receiver"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo.json",
+      "justification": {
+        "accounts.position (closed)": "IDL: position writable; the instruction closes it",
+        "accounts.rent_receiver (credited)": "IDL: rent_receiver writable; intent_grants.rs DLMM_RENT_TO_SENDER grounds rent_receiver == sender"
+      },
+      "not_excused": {
+        "sender (signer)": "signs only; not debited",
+        "rent_receiver": "credited only"
+      },
+      "confidence": "high",
+      "notes": "",
+      "meets_census_REWRITTEN_constraints": true
+    },
+    {
+      "program_id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+      "manifest": "graphite-core/protocols/meteora-dlmm.json",
+      "instruction": "close_position_if_empty",
+      "kind": "withdrawal grant",
+      "intent": "close",
+      "old_lines": [
+        "modifies writable accounts: position, rent_receiver",
+        "closes the position or account and transfers remaining funds back to the user"
+      ],
+      "new_lines": [
+        "modifies writable accounts: position, rent_receiver",
+        "closes accounts.position, sends its lamports to accounts.rent_receiver"
+      ],
+      "removed": [
+        "closes the position or account and transfers remaining funds back to the user"
+      ],
+      "added": [
+        "closes accounts.position, sends its lamports to accounts.rent_receiver"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo.json",
+      "justification": {
+        "accounts.position (closed)": "IDL: position writable; the instruction closes it",
+        "accounts.rent_receiver (credited)": "IDL: rent_receiver writable; intent_grants.rs DLMM_RENT_TO_SENDER grounds rent_receiver == sender"
+      },
+      "not_excused": {
+        "sender (signer)": "signs only; not debited",
+        "rent_receiver": "credited only"
+      },
+      "confidence": "high",
+      "notes": "",
+      "meets_census_REWRITTEN_constraints": true
+    },
+    {
+      "program_id": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "manifest": "graphite-core/protocols/pump-amm-pammba.json",
+      "instruction": "withdraw",
+      "kind": "withdrawal grant",
+      "intent": "withdraw",
+      "old_lines": [
+        "modifies writable accounts: pool, lp_mint, user_base_token_account, user_quote_token_account, user_pool_token_account, pool_base_token_account, pool_quote_token_account",
+        "withdraws funds and transfers them out of the protocol to the involved accounts"
+      ],
+      "new_lines": [
+        "modifies writable accounts: pool, lp_mint, user_base_token_account, user_quote_token_account, user_pool_token_account, pool_base_token_account, pool_quote_token_account",
+        "debits accounts.user_pool_token_account by data.lp_token_amount_in",
+        "burns data.lp_token_amount_in of accounts.lp_mint from accounts.user_pool_token_account",
+        "transfers base tokens from accounts.pool_base_token_account to accounts.user_base_token_account",
+        "transfers quote tokens from accounts.pool_quote_token_account to accounts.user_quote_token_account"
+      ],
+      "removed": [
+        "withdraws funds and transfers them out of the protocol to the involved accounts"
+      ],
+      "added": [
+        "debits accounts.user_pool_token_account by data.lp_token_amount_in",
+        "burns data.lp_token_amount_in of accounts.lp_mint from accounts.user_pool_token_account",
+        "transfers base tokens from accounts.pool_base_token_account to accounts.user_base_token_account",
+        "transfers quote tokens from accounts.pool_quote_token_account to accounts.user_quote_token_account"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA.json",
+      "justification": {
+        "accounts.user_pool_token_account (debited, burned from)": "IDL: user_pool_token_account writable; arg lp_token_amount_in",
+        "accounts.lp_mint (burn)": "IDL: lp_mint writable, relation pool",
+        "accounts.pool_base_token_account / pool_quote_token_account (debited)": "IDL: writable, relation pool",
+        "accounts.user_base_token_account / user_quote_token_account (credited)": "IDL: writable; args min_base_amount_out / min_quote_amount_out"
+      },
+      "not_excused": {
+        "user (signer)": "signs only (not writable in the IDL)",
+        "user_base_token_account / user_quote_token_account": "credited only"
+      },
+      "confidence": "high",
+      "notes": "Fixes the pre-existing UndeclaredBurn on an honest Pump AMM withdraw.",
+      "meets_census_REWRITTEN_constraints": true
+    },
+    {
+      "program_id": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "manifest": "graphite-core/protocols/pump-amm-pammba.json",
+      "instruction": "close_user_volume_accumulator",
+      "kind": "withdrawal grant",
+      "intent": "close",
+      "old_lines": [
+        "modifies writable accounts: user, user_volume_accumulator",
+        "closes the position or account and transfers remaining funds back to the user"
+      ],
+      "new_lines": [
+        "modifies writable accounts: user, user_volume_accumulator",
+        "closes accounts.user_volume_accumulator, sends its lamports to accounts.user"
+      ],
+      "removed": [
+        "closes the position or account and transfers remaining funds back to the user"
+      ],
+      "added": [
+        "closes accounts.user_volume_accumulator, sends its lamports to accounts.user"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA.json",
+      "justification": {
+        "accounts.user_volume_accumulator (closed)": "IDL: user_volume_accumulator writable PDA (seeds 'user_volume_accumulator' + user)",
+        "accounts.user (credited)": "IDL: user is the only other writable account (signer); intent_grants.rs VOLUME_ACCUMULATOR grounds the PDA as seeded by user"
+      },
+      "not_excused": {
+        "user (signer wallet)": "credited only (Recipient role); no debit or closure of the wallet is excused"
+      },
+      "confidence": "high",
+      "notes": "",
+      "meets_census_REWRITTEN_constraints": "no: names a signer as the recipient of a closed account's lamports (the REWRITTEN test asserts every named account is writable and not a signer)"
+    },
+    {
+      "program_id": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+      "manifest": "graphite-core/protocols/pump-fun.json",
+      "instruction": "close_user_volume_accumulator",
+      "kind": "withdrawal grant",
+      "intent": "close",
+      "old_lines": [
+        "modifies writable accounts: user, user_volume_accumulator",
+        "closes the position or account and transfers remaining funds back to the user"
+      ],
+      "new_lines": [
+        "modifies writable accounts: user, user_volume_accumulator",
+        "closes accounts.user_volume_accumulator, sends its lamports to accounts.user"
+      ],
+      "removed": [
+        "closes the position or account and transfers remaining funds back to the user"
+      ],
+      "added": [
+        "closes accounts.user_volume_accumulator, sends its lamports to accounts.user"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P.json",
+      "justification": {
+        "accounts.user_volume_accumulator (closed)": "IDL: user_volume_accumulator writable PDA (seeds 'user_volume_accumulator' + user)",
+        "accounts.user (credited)": "IDL: user is the only other writable account (signer); intent_grants.rs VOLUME_ACCUMULATOR grounds the PDA as seeded by user"
+      },
+      "not_excused": {
+        "user (signer wallet)": "credited only (Recipient role); no debit or closure of the wallet is excused"
+      },
+      "confidence": "high",
+      "notes": "",
+      "meets_census_REWRITTEN_constraints": "no: names a signer as the recipient of a closed account's lamports (the REWRITTEN test asserts every named account is writable and not a signer)"
+    },
+    {
+      "program_id": "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy",
+      "manifest": "graphite-core/protocols/spl-stake-pool.json",
+      "instruction": "WithdrawSol",
+      "kind": "withdrawal grant",
+      "intent": "withdraw",
+      "old_lines": [
+        "modifies writable accounts: stake_pool, user_pool_token_account, reserve_stake, destination, fee_account, pool_mint",
+        "withdraws funds and transfers them out of the pool to the involved accounts"
+      ],
+      "new_lines": [
+        "modifies writable accounts: stake_pool, user_pool_token_account, reserve_stake, destination, fee_account, pool_mint",
+        "debits accounts.user_pool_token_account by the pool tokens withdrawn",
+        "burns pool tokens of accounts.pool_mint from accounts.user_pool_token_account",
+        "credits accounts.fee_account with the pool's share of the pool tokens",
+        "transfers lamports from accounts.reserve_stake to accounts.destination"
+      ],
+      "removed": [
+        "withdraws funds and transfers them out of the pool to the involved accounts"
+      ],
+      "added": [
+        "debits accounts.user_pool_token_account by the pool tokens withdrawn",
+        "burns pool tokens of accounts.pool_mint from accounts.user_pool_token_account",
+        "credits accounts.fee_account with the pool's share of the pool tokens",
+        "transfers lamports from accounts.reserve_stake to accounts.destination"
+      ],
+      "idl_source": "no IDL in the repository (native program): manifest layout graphite-core/protocols/spl-stake-pool.json + intent_grants.rs STAKE_POOL_SOURCE ('WithdrawSol pays destination; WithdrawStake makes user_withdraw_authority the new stake account's authority; user_transfer_authority signs for the pool tokens burned')",
+      "justification": {
+        "accounts.user_pool_token_account (debited, burned from)": "layout name; intent_grants.rs: 'the pool tokens are burned from user_pool_token_account under user_transfer_authority's signature'",
+        "accounts.pool_mint (burn)": "layout name pool_mint (writable)",
+        "accounts.fee_account (credited)": "layout name fee_account (writable): the manager's withdrawal fee in pool tokens",
+        "accounts.reserve_stake (debited) -> accounts.destination (credited)": "intent_grants.rs STAKE_POOL_SOL_TO_SIGNER: 'the SOL goes to destination'; reserve_stake is the pool's reserve"
+      },
+      "not_excused": {
+        "user_transfer_authority (signer wallet)": "signs only; when it is also destination it is credited only",
+        "destination": "credited only",
+        "fee_account": "credited only"
+      },
+      "confidence": "medium",
+      "notes": "No IDL file: account names and roles come from the manifest layout and the grant's documented source. The fee split (pool tokens to fee_account) is credit-only, so it excuses nothing if absent.",
+      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository"
+    },
+    {
+      "program_id": "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy",
+      "manifest": "graphite-core/protocols/spl-stake-pool.json",
+      "instruction": "WithdrawSolWithSlippage",
+      "kind": "withdrawal grant",
+      "intent": "withdraw",
+      "old_lines": [
+        "modifies writable accounts: stake_pool, user_pool_token_account, reserve_stake, destination, fee_account, pool_mint",
+        "withdraws funds and transfers them out of the pool to the involved accounts"
+      ],
+      "new_lines": [
+        "modifies writable accounts: stake_pool, user_pool_token_account, reserve_stake, destination, fee_account, pool_mint",
+        "debits accounts.user_pool_token_account by the pool tokens withdrawn",
+        "burns pool tokens of accounts.pool_mint from accounts.user_pool_token_account",
+        "credits accounts.fee_account with the pool's share of the pool tokens",
+        "transfers lamports from accounts.reserve_stake to accounts.destination"
+      ],
+      "removed": [
+        "withdraws funds and transfers them out of the pool to the involved accounts"
+      ],
+      "added": [
+        "debits accounts.user_pool_token_account by the pool tokens withdrawn",
+        "burns pool tokens of accounts.pool_mint from accounts.user_pool_token_account",
+        "credits accounts.fee_account with the pool's share of the pool tokens",
+        "transfers lamports from accounts.reserve_stake to accounts.destination"
+      ],
+      "idl_source": "no IDL in the repository (native program): manifest layout graphite-core/protocols/spl-stake-pool.json + intent_grants.rs STAKE_POOL_SOURCE ('WithdrawSol pays destination; WithdrawStake makes user_withdraw_authority the new stake account's authority; user_transfer_authority signs for the pool tokens burned')",
+      "justification": {
+        "accounts.user_pool_token_account (debited, burned from)": "layout name; intent_grants.rs: 'the pool tokens are burned from user_pool_token_account under user_transfer_authority's signature'",
+        "accounts.pool_mint (burn)": "layout name pool_mint (writable)",
+        "accounts.fee_account (credited)": "layout name fee_account (writable): the manager's withdrawal fee in pool tokens",
+        "accounts.reserve_stake (debited) -> accounts.destination (credited)": "intent_grants.rs STAKE_POOL_SOL_TO_SIGNER: 'the SOL goes to destination'; reserve_stake is the pool's reserve"
+      },
+      "not_excused": {
+        "user_transfer_authority (signer wallet)": "signs only; when it is also destination it is credited only",
+        "destination": "credited only",
+        "fee_account": "credited only"
+      },
+      "confidence": "medium",
+      "notes": "No IDL file: account names and roles come from the manifest layout and the grant's documented source. The fee split (pool tokens to fee_account) is credit-only, so it excuses nothing if absent.",
+      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository"
+    },
+    {
+      "program_id": "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy",
+      "manifest": "graphite-core/protocols/spl-stake-pool.json",
+      "instruction": "WithdrawStake",
+      "kind": "withdrawal grant",
+      "intent": "withdraw",
+      "old_lines": [
+        "modifies writable accounts: stake_pool, validator_list, validator_or_reserve_stake, new_stake_account, user_pool_token_account, fee_account, pool_mint",
+        "withdraws funds and transfers them out of the pool to the involved accounts"
+      ],
+      "new_lines": [
+        "modifies writable accounts: stake_pool, validator_list, validator_or_reserve_stake, new_stake_account, user_pool_token_account, fee_account, pool_mint",
+        "debits accounts.user_pool_token_account by the pool tokens withdrawn",
+        "burns pool tokens of accounts.pool_mint from accounts.user_pool_token_account",
+        "credits accounts.fee_account with the pool's share of the pool tokens",
+        "transfers lamports from accounts.validator_or_reserve_stake into accounts.new_stake_account",
+        "sets the authorities of accounts.new_stake_account to accounts.user_withdraw_authority"
+      ],
+      "removed": [
+        "withdraws funds and transfers them out of the pool to the involved accounts"
+      ],
+      "added": [
+        "debits accounts.user_pool_token_account by the pool tokens withdrawn",
+        "burns pool tokens of accounts.pool_mint from accounts.user_pool_token_account",
+        "credits accounts.fee_account with the pool's share of the pool tokens",
+        "transfers lamports from accounts.validator_or_reserve_stake into accounts.new_stake_account",
+        "sets the authorities of accounts.new_stake_account to accounts.user_withdraw_authority"
+      ],
+      "idl_source": "no IDL in the repository (native program): manifest layout graphite-core/protocols/spl-stake-pool.json + intent_grants.rs STAKE_POOL_SOURCE ('WithdrawSol pays destination; WithdrawStake makes user_withdraw_authority the new stake account's authority; user_transfer_authority signs for the pool tokens burned')",
+      "justification": {
+        "accounts.user_pool_token_account (debited, burned from)": "as WithdrawSol",
+        "accounts.pool_mint (burn)": "layout name pool_mint (writable)",
+        "accounts.fee_account (credited)": "layout name fee_account (writable)",
+        "accounts.validator_or_reserve_stake (debited) -> accounts.new_stake_account (credited)": "layout names; the stake is split from the pool's validator or reserve stake account into new_stake_account",
+        "accounts.new_stake_account (authority change)": "intent_grants.rs STAKE_POOL_SOURCE: 'WithdrawStake makes user_withdraw_authority ... the new stake account's authority'"
+      },
+      "not_excused": {
+        "user_transfer_authority (signer wallet)": "signs only",
+        "user_withdraw_authority": "named after 'to': takes no effect at all (not even credit is meaningful); R33-14 CreatedAccountAuthorityNotSigner still refuses a non-signing authority whatever the declaration says",
+        "new_stake_account": "credited and its authorities declared; no debit is excused"
+      },
+      "confidence": "medium",
+      "notes": "Adds an authority declaration scoped to new_stake_account only, because the new stake account's authorities appearing is what WithdrawStake does (otherwise UndeclaredNativeAuthorityChange); R33-14 is not excused by any declaration.",
+      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository"
+    },
+    {
+      "program_id": "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy",
+      "manifest": "graphite-core/protocols/spl-stake-pool.json",
+      "instruction": "WithdrawStakeWithSlippage",
+      "kind": "withdrawal grant",
+      "intent": "withdraw",
+      "old_lines": [
+        "modifies writable accounts: stake_pool, validator_list, validator_or_reserve_stake, new_stake_account, user_pool_token_account, fee_account, pool_mint",
+        "withdraws funds and transfers them out of the pool to the involved accounts"
+      ],
+      "new_lines": [
+        "modifies writable accounts: stake_pool, validator_list, validator_or_reserve_stake, new_stake_account, user_pool_token_account, fee_account, pool_mint",
+        "debits accounts.user_pool_token_account by the pool tokens withdrawn",
+        "burns pool tokens of accounts.pool_mint from accounts.user_pool_token_account",
+        "credits accounts.fee_account with the pool's share of the pool tokens",
+        "transfers lamports from accounts.validator_or_reserve_stake into accounts.new_stake_account",
+        "sets the authorities of accounts.new_stake_account to accounts.user_withdraw_authority"
+      ],
+      "removed": [
+        "withdraws funds and transfers them out of the pool to the involved accounts"
+      ],
+      "added": [
+        "debits accounts.user_pool_token_account by the pool tokens withdrawn",
+        "burns pool tokens of accounts.pool_mint from accounts.user_pool_token_account",
+        "credits accounts.fee_account with the pool's share of the pool tokens",
+        "transfers lamports from accounts.validator_or_reserve_stake into accounts.new_stake_account",
+        "sets the authorities of accounts.new_stake_account to accounts.user_withdraw_authority"
+      ],
+      "idl_source": "no IDL in the repository (native program): manifest layout graphite-core/protocols/spl-stake-pool.json + intent_grants.rs STAKE_POOL_SOURCE ('WithdrawSol pays destination; WithdrawStake makes user_withdraw_authority the new stake account's authority; user_transfer_authority signs for the pool tokens burned')",
+      "justification": {
+        "accounts.user_pool_token_account (debited, burned from)": "as WithdrawSol",
+        "accounts.pool_mint (burn)": "layout name pool_mint (writable)",
+        "accounts.fee_account (credited)": "layout name fee_account (writable)",
+        "accounts.validator_or_reserve_stake (debited) -> accounts.new_stake_account (credited)": "layout names; the stake is split from the pool's validator or reserve stake account into new_stake_account",
+        "accounts.new_stake_account (authority change)": "intent_grants.rs STAKE_POOL_SOURCE: 'WithdrawStake makes user_withdraw_authority ... the new stake account's authority'"
+      },
+      "not_excused": {
+        "user_transfer_authority (signer wallet)": "signs only",
+        "user_withdraw_authority": "named after 'to': takes no effect at all (not even credit is meaningful); R33-14 CreatedAccountAuthorityNotSigner still refuses a non-signing authority whatever the declaration says",
+        "new_stake_account": "credited and its authorities declared; no debit is excused"
+      },
+      "confidence": "medium",
+      "notes": "Adds an authority declaration scoped to new_stake_account only, because the new stake account's authorities appearing is what WithdrawStake does (otherwise UndeclaredNativeAuthorityChange); R33-14 is not excused by any declaration.",
+      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository"
+    },
+    {
+      "program_id": "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD",
+      "manifest": "graphite-core/protocols/marinade.json",
+      "instruction": "liquidUnstake",
+      "kind": "withdrawal grant",
+      "intent": "withdraw",
+      "old_lines": [
+        "modifies writable accounts: state, msolMint, liqPoolSolLegPda, liqPoolMsolLeg, treasuryMsolAccount, getMsolFrom, transferSolTo",
+        "withdraws funds and transfers them out of the pool to the involved accounts"
+      ],
+      "new_lines": [
+        "modifies writable accounts: state, msolMint, liqPoolSolLegPda, liqPoolMsolLeg, treasuryMsolAccount, getMsolFrom, transferSolTo",
+        "transfers data.msolAmount of mSOL from accounts.getMsolFrom to accounts.liqPoolMsolLeg",
+        "credits accounts.treasuryMsolAccount with the treasury's share of the mSOL",
+        "transfers the withdrawn SOL from accounts.liqPoolSolLegPda to accounts.transferSolTo"
+      ],
+      "removed": [
+        "withdraws funds and transfers them out of the pool to the involved accounts"
+      ],
+      "added": [
+        "transfers data.msolAmount of mSOL from accounts.getMsolFrom to accounts.liqPoolMsolLeg",
+        "credits accounts.treasuryMsolAccount with the treasury's share of the mSOL",
+        "transfers the withdrawn SOL from accounts.liqPoolSolLegPda to accounts.transferSolTo"
+      ],
+      "idl_source": "graphite-core/scripts/idls/marinade.json",
+      "justification": {
+        "accounts.getMsolFrom (debited)": "IDL account getMsolFrom (writable) with getMsolFromAuthority (signer); arg msolAmount",
+        "accounts.liqPoolMsolLeg (credited)": "IDL account liqPoolMsolLeg (writable): the liquidity pool's mSOL leg",
+        "accounts.treasuryMsolAccount (credited)": "IDL account treasuryMsolAccount (writable): the treasury's mSOL fee",
+        "accounts.liqPoolSolLegPda (debited) -> accounts.transferSolTo (credited)": "IDL accounts liqPoolSolLegPda / transferSolTo (both writable)"
+      },
+      "not_excused": {
+        "getMsolFromAuthority (signer wallet)": "signs only",
+        "transferSolTo": "credited only",
+        "msolMint": "no burn declared: the IDL does not say liquidUnstake changes the mSOL supply (and the repo's own fixture in tests/staking_withdrawal_destination.rs keeps it unchanged); a supply change stays UndeclaredBurn/UndeclaredMint"
+      },
+      "confidence": "medium",
+      "notes": "The IDL carries no docs; roles rest on the IDL's account names and the msolAmount argument. 'withdrawn' keeps the withdraw intent's vocabulary in the prose (the name liquidUnstake carries none).",
+      "meets_census_REWRITTEN_constraints": true
+    },
+    {
+      "program_id": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "manifest": "graphite-core/protocols/pump-amm-pammba.json",
+      "instruction": "sell",
+      "kind": "swap",
+      "intent": "swap",
+      "old_lines": [
+        "modifies writable accounts: pool, user, user_base_token_account, user_quote_token_account, pool_base_token_account, pool_quote_token_account, protocol_fee_recipient_token_account, coin_creator_vault_ata",
+        "credits the output token account with the received amount for the swap"
+      ],
+      "new_lines": [
+        "modifies writable accounts: pool, user, user_base_token_account, user_quote_token_account, pool_base_token_account, pool_quote_token_account, protocol_fee_recipient_token_account, coin_creator_vault_ata",
+        "transfers base tokens from accounts.user_base_token_account to accounts.pool_base_token_account",
+        "transfers quote tokens from accounts.pool_quote_token_account to accounts.user_quote_token_account",
+        "credits accounts.protocol_fee_recipient_token_account with the protocol's share of the quote tokens",
+        "credits accounts.coin_creator_vault_ata with the coin creator's share of the quote tokens"
+      ],
+      "removed": [
+        "credits the output token account with the received amount for the swap"
+      ],
+      "added": [
+        "transfers base tokens from accounts.user_base_token_account to accounts.pool_base_token_account",
+        "transfers quote tokens from accounts.pool_quote_token_account to accounts.user_quote_token_account",
+        "credits accounts.protocol_fee_recipient_token_account with the protocol's share of the quote tokens",
+        "credits accounts.coin_creator_vault_ata with the coin creator's share of the quote tokens"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA.json",
+      "justification": {
+        "accounts.user_base_token_account (debited)": "IDL sell args base_amount_in, min_quote_amount_out: the user sells base tokens from user_base_token_account",
+        "accounts.pool_base_token_account (credited) / pool_quote_token_account (debited)": "IDL: writable, relation pool",
+        "accounts.user_quote_token_account (credited)": "IDL: writable; receives at least min_quote_amount_out",
+        "accounts.protocol_fee_recipient_token_account / coin_creator_vault_ata (credited)": "IDL: writable PDAs of protocol_fee_recipient / coin_creator_vault_authority over quote_mint"
+      },
+      "not_excused": {
+        "user (signer wallet)": "no lamport debit excused (IDL states no SOL movement for sell)",
+        "user_quote_token_account": "credited only: a debit of the user's quote account is not excused on a sell",
+        "fee accounts": "credited only; the IDL does not say whose quote pays them on a sell, so no source is named"
+      },
+      "confidence": "high",
+      "notes": "",
+      "meets_census_REWRITTEN_constraints": true
+    },
+    {
+      "program_id": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "manifest": "graphite-core/protocols/pump-amm-pammba.json",
+      "instruction": "buy",
+      "kind": "swap",
+      "intent": "swap",
+      "old_lines": [
+        "modifies writable accounts: pool, user, user_base_token_account, user_quote_token_account, pool_base_token_account, pool_quote_token_account, protocol_fee_recipient_token_account, coin_creator_vault_ata, user_volume_accumulator",
+        "credits the output token account with the received amount for the swap"
+      ],
+      "new_lines": [
+        "modifies writable accounts: pool, user, user_base_token_account, user_quote_token_account, pool_base_token_account, pool_quote_token_account, protocol_fee_recipient_token_account, coin_creator_vault_ata, user_volume_accumulator",
+        "transfers quote tokens from accounts.user_quote_token_account to accounts.pool_quote_token_account",
+        "credits accounts.protocol_fee_recipient_token_account with the protocol's share of the quote tokens",
+        "credits accounts.coin_creator_vault_ata with the coin creator's share of the quote tokens",
+        "transfers base tokens from accounts.pool_base_token_account to accounts.user_base_token_account"
+      ],
+      "removed": [
+        "credits the output token account with the received amount for the swap"
+      ],
+      "added": [
+        "transfers quote tokens from accounts.user_quote_token_account to accounts.pool_quote_token_account",
+        "credits accounts.protocol_fee_recipient_token_account with the protocol's share of the quote tokens",
+        "credits accounts.coin_creator_vault_ata with the coin creator's share of the quote tokens",
+        "transfers base tokens from accounts.pool_base_token_account to accounts.user_base_token_account"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA.json",
+      "justification": {
+        "accounts.user_quote_token_account (debited)": "IDL buy args max_quote_amount_in (buy) / spendable_quote_in, doc 'Fees will be deducted from spendable_quote_in' (buy_exact_quote_in)",
+        "accounts.pool_quote_token_account (credited) / pool_base_token_account (debited)": "IDL: writable, relation pool",
+        "accounts.user_base_token_account (credited)": "IDL: writable; receives base_amount_out / at least min_base_amount_out",
+        "accounts.protocol_fee_recipient_token_account / coin_creator_vault_ata (credited)": "IDL: writable PDAs over quote_mint"
+      },
+      "not_excused": {
+        "user (signer wallet)": "no lamport debit excused: wrapped SOL is netted as value kept in the signer's own WSOL account; any other SOL leaving the wallet is still SignerLamportsOutsideDeclaredDebit",
+        "user_base_token_account": "credited only"
+      },
+      "confidence": "high",
+      "notes": "The buy IDL does not document account creation, so no rent is declared: a first buy that creates user_volume_accumulator or a fee ATA still costs the signer unexcused rent (SignerLamportsOutsideDeclaredDebit), as it did before.",
+      "meets_census_REWRITTEN_constraints": true
+    },
+    {
+      "program_id": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "manifest": "graphite-core/protocols/pump-amm-pammba.json",
+      "instruction": "buy_exact_quote_in",
+      "kind": "swap",
+      "intent": "swap",
+      "old_lines": [
+        "modifies writable accounts: pool, user, user_base_token_account, user_quote_token_account, pool_base_token_account, pool_quote_token_account, protocol_fee_recipient_token_account, coin_creator_vault_ata, user_volume_accumulator",
+        "credits the output token account with the received amount for the swap"
+      ],
+      "new_lines": [
+        "modifies writable accounts: pool, user, user_base_token_account, user_quote_token_account, pool_base_token_account, pool_quote_token_account, protocol_fee_recipient_token_account, coin_creator_vault_ata, user_volume_accumulator",
+        "transfers quote tokens from accounts.user_quote_token_account to accounts.pool_quote_token_account",
+        "credits accounts.protocol_fee_recipient_token_account with the protocol's share of the quote tokens",
+        "credits accounts.coin_creator_vault_ata with the coin creator's share of the quote tokens",
+        "transfers base tokens from accounts.pool_base_token_account to accounts.user_base_token_account",
+        "creates accounts.protocol_fee_recipient_token_account when it does not exist yet",
+        "creates accounts.coin_creator_vault_ata when it does not exist yet",
+        "creates accounts.user_volume_accumulator when it does not exist yet"
+      ],
+      "removed": [
+        "credits the output token account with the received amount for the swap"
+      ],
+      "added": [
+        "transfers quote tokens from accounts.user_quote_token_account to accounts.pool_quote_token_account",
+        "credits accounts.protocol_fee_recipient_token_account with the protocol's share of the quote tokens",
+        "credits accounts.coin_creator_vault_ata with the coin creator's share of the quote tokens",
+        "transfers base tokens from accounts.pool_base_token_account to accounts.user_base_token_account",
+        "creates accounts.protocol_fee_recipient_token_account when it does not exist yet",
+        "creates accounts.coin_creator_vault_ata when it does not exist yet",
+        "creates accounts.user_volume_accumulator when it does not exist yet"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA.json",
+      "justification": {
+        "accounts.user_quote_token_account (debited)": "IDL buy args max_quote_amount_in (buy) / spendable_quote_in, doc 'Fees will be deducted from spendable_quote_in' (buy_exact_quote_in)",
+        "accounts.pool_quote_token_account (credited) / pool_base_token_account (debited)": "IDL: writable, relation pool",
+        "accounts.user_base_token_account (credited)": "IDL: writable; receives base_amount_out / at least min_base_amount_out",
+        "accounts.protocol_fee_recipient_token_account / coin_creator_vault_ata (credited)": "IDL: writable PDAs over quote_mint"
+      },
+      "not_excused": {
+        "user (signer wallet)": "no lamport debit excused: wrapped SOL is netted as value kept in the signer's own WSOL account; any other SOL leaving the wallet is still SignerLamportsOutsideDeclaredDebit",
+        "user_base_token_account": "credited only"
+      },
+      "confidence": "high",
+      "notes": "IDL doc: 'Make sure the payer has enough SOL to cover creation of the following accounts (unless already created): protocol_fee_recipient_token_account, coin_creator_vault_ata, user_volume_accumulator'. Declaring them by name lets their rent (owned by a token program / Pump AMM) net against the signer's loss (R33-6 rule), capped at each account's rent-exempt minimum.",
+      "meets_census_REWRITTEN_constraints": true
+    },
+    {
+      "program_id": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
+      "manifest": "graphite-core/protocols/raydium-clmm.json",
+      "instruction": "swap",
+      "kind": "swap",
+      "intent": "swap",
+      "old_lines": [
+        "modifies writable accounts: pool_state, input_token_account, output_token_account, input_vault, output_vault, observation_state, tick_array",
+        "credits the output token account with the received amount for the swap"
+      ],
+      "new_lines": [
+        "modifies writable accounts: pool_state, input_token_account, output_token_account, input_vault, output_vault, observation_state, tick_array",
+        "transfers the input tokens from accounts.input_token_account to accounts.input_vault",
+        "transfers the output tokens from accounts.output_vault to accounts.output_token_account"
+      ],
+      "removed": [
+        "credits the output token account with the received amount for the swap"
+      ],
+      "added": [
+        "transfers the input tokens from accounts.input_token_account to accounts.input_vault",
+        "transfers the output tokens from accounts.output_vault to accounts.output_token_account"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK.json",
+      "justification": {
+        "accounts.input_token_account (debited)": "IDL: 'The user token account for input token'",
+        "accounts.input_vault (credited)": "IDL: 'The vault token account for input token'",
+        "accounts.output_vault (debited)": "IDL: 'The vault token account for output token'",
+        "accounts.output_token_account (credited)": "IDL: 'The user token account for output token'"
+      },
+      "not_excused": {
+        "payer (signer wallet)": "IDL: 'The user performing the swap' - signs only, no lamports move",
+        "output_token_account": "credited only"
+      },
+      "confidence": "high",
+      "notes": "",
+      "meets_census_REWRITTEN_constraints": true
+    },
+    {
+      "program_id": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
+      "manifest": "graphite-core/protocols/raydium-clmm.json",
+      "instruction": "swap_v2",
+      "kind": "swap",
+      "intent": "swap",
+      "old_lines": [
+        "modifies writable accounts: pool_state, input_token_account, output_token_account, input_vault, output_vault, observation_state",
+        "credits the output token account with the received amount for the swap"
+      ],
+      "new_lines": [
+        "modifies writable accounts: pool_state, input_token_account, output_token_account, input_vault, output_vault, observation_state",
+        "transfers the input tokens from accounts.input_token_account to accounts.input_vault",
+        "transfers the output tokens from accounts.output_vault to accounts.output_token_account"
+      ],
+      "removed": [
+        "credits the output token account with the received amount for the swap"
+      ],
+      "added": [
+        "transfers the input tokens from accounts.input_token_account to accounts.input_vault",
+        "transfers the output tokens from accounts.output_vault to accounts.output_token_account"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK.json",
+      "justification": {
+        "accounts.input_token_account (debited)": "IDL: 'The user token account for input token'",
+        "accounts.input_vault (credited)": "IDL: 'The vault token account for input token'",
+        "accounts.output_vault (debited)": "IDL: 'The vault token account for output token'",
+        "accounts.output_token_account (credited)": "IDL: 'The user token account for output token'"
+      },
+      "not_excused": {
+        "payer (signer wallet)": "IDL: 'The user performing the swap' - signs only, no lamports move",
+        "output_token_account": "credited only"
+      },
+      "confidence": "high",
+      "notes": "",
+      "meets_census_REWRITTEN_constraints": true
+    },
+    {
+      "program_id": "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN",
+      "manifest": "graphite-core/protocols/dynamic-bonding-curve-dbcij3.json",
+      "instruction": "swap",
+      "kind": "swap",
+      "intent": "swap",
+      "old_lines": [
+        "modifies writable accounts: pool, input_token_account, output_token_account, base_vault, quote_vault, referral_token_account",
+        "credits the output token account with the received amount for the swap"
+      ],
+      "new_lines": [
+        "modifies writable accounts: pool, input_token_account, output_token_account, base_vault, quote_vault, referral_token_account",
+        "transfers the input tokens from accounts.input_token_account to the pool's vault",
+        "transfers tokens into or out of accounts.base_vault",
+        "transfers tokens into or out of accounts.quote_vault",
+        "transfers the output tokens from the pool's vault to accounts.output_token_account",
+        "credits accounts.referral_token_account with the referral share when it is passed"
+      ],
+      "removed": [
+        "credits the output token account with the received amount for the swap"
+      ],
+      "added": [
+        "transfers the input tokens from accounts.input_token_account to the pool's vault",
+        "transfers tokens into or out of accounts.base_vault",
+        "transfers tokens into or out of accounts.quote_vault",
+        "transfers the output tokens from the pool's vault to accounts.output_token_account",
+        "credits accounts.referral_token_account with the referral share when it is passed"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN.json",
+      "justification": {
+        "accounts.input_token_account (debited)": "IDL: 'The user token account for input token'",
+        "accounts.base_vault / quote_vault (debited and credited)": "IDL: 'The vault token account for base token' / 'quote token'; which one is input depends on direction",
+        "accounts.output_token_account (credited)": "IDL: 'The user token account for output token'",
+        "accounts.referral_token_account (credited)": "IDL: 'referral token account' (optional)"
+      },
+      "not_excused": {
+        "payer (signer wallet)": "IDL: 'The user performing the swap' - signs only",
+        "output_token_account / referral_token_account": "credited only"
+      },
+      "confidence": "high",
+      "notes": "",
+      "meets_census_REWRITTEN_constraints": true
+    },
+    {
+      "program_id": "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN",
+      "manifest": "graphite-core/protocols/dynamic-bonding-curve-dbcij3.json",
+      "instruction": "swap2",
+      "kind": "swap",
+      "intent": "swap",
+      "old_lines": [
+        "modifies writable accounts: pool, input_token_account, output_token_account, base_vault, quote_vault, referral_token_account",
+        "credits the output token account with the received amount for the swap"
+      ],
+      "new_lines": [
+        "modifies writable accounts: pool, input_token_account, output_token_account, base_vault, quote_vault, referral_token_account",
+        "transfers the input tokens from accounts.input_token_account to the pool's vault",
+        "transfers tokens into or out of accounts.base_vault",
+        "transfers tokens into or out of accounts.quote_vault",
+        "transfers the output tokens from the pool's vault to accounts.output_token_account",
+        "credits accounts.referral_token_account with the referral share when it is passed"
+      ],
+      "removed": [
+        "credits the output token account with the received amount for the swap"
+      ],
+      "added": [
+        "transfers the input tokens from accounts.input_token_account to the pool's vault",
+        "transfers tokens into or out of accounts.base_vault",
+        "transfers tokens into or out of accounts.quote_vault",
+        "transfers the output tokens from the pool's vault to accounts.output_token_account",
+        "credits accounts.referral_token_account with the referral share when it is passed"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN.json",
+      "justification": {
+        "accounts.input_token_account (debited)": "IDL: 'The user token account for input token'",
+        "accounts.base_vault / quote_vault (debited and credited)": "IDL: 'The vault token account for base token' / 'quote token'; which one is input depends on direction",
+        "accounts.output_token_account (credited)": "IDL: 'The user token account for output token'",
+        "accounts.referral_token_account (credited)": "IDL: 'referral token account' (optional)"
+      },
+      "not_excused": {
+        "payer (signer wallet)": "IDL: 'The user performing the swap' - signs only",
+        "output_token_account / referral_token_account": "credited only"
+      },
+      "confidence": "high",
+      "notes": "",
+      "meets_census_REWRITTEN_constraints": true
+    },
+    {
+      "program_id": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+      "manifest": "graphite-core/protocols/raydium-amm-v4.json",
+      "instruction": "SwapBaseIn",
+      "kind": "swap",
+      "intent": "swap",
+      "old_lines": [
+        "pool_coin_token_account",
+        "pool_pc_token_account",
+        "user_source_token_account",
+        "user_dest_token_account",
+        "credits the output token account with the received amount for the swap"
+      ],
+      "new_lines": [
+        "pool_coin_token_account",
+        "pool_pc_token_account",
+        "user_source_token_account",
+        "user_dest_token_account",
+        "transfers the input tokens from accounts.user_source_token_account to the pool",
+        "transfers tokens into or out of accounts.pool_coin_token_account",
+        "transfers tokens into or out of accounts.pool_pc_token_account",
+        "transfers the output tokens from the pool to accounts.user_dest_token_account"
+      ],
+      "removed": [
+        "credits the output token account with the received amount for the swap"
+      ],
+      "added": [
+        "transfers the input tokens from accounts.user_source_token_account to the pool",
+        "transfers tokens into or out of accounts.pool_coin_token_account",
+        "transfers tokens into or out of accounts.pool_pc_token_account",
+        "transfers the output tokens from the pool to accounts.user_dest_token_account"
+      ],
+      "idl_source": "no IDL in the repository (native program): manifest layout graphite-core/protocols/raydium-amm-v4.json (Raydium's instruction.rs account names)",
+      "justification": {
+        "accounts.user_source_token_account (debited)": "layout name: the user's source token account (the only user token account the swap spends from)",
+        "accounts.pool_coin_token_account / pool_pc_token_account (debited and credited)": "layout names: the pool's coin and pc vaults; which one is input depends on direction",
+        "accounts.user_dest_token_account (credited)": "layout name: the user's destination token account"
+      },
+      "not_excused": {
+        "user_owner (signer wallet)": "signs only",
+        "user_dest_token_account": "credited only",
+        "market_coin_vault / market_pc_vault (layout 0)": "not named: OpenBook market vaults are not the user's and need no name"
+      },
+      "confidence": "medium",
+      "notes": "No IDL file in the repository; the layout's names are self-describing and the existing manifest already lists exactly these four token accounts as bare names.",
+      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository"
+    },
+    {
+      "program_id": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+      "manifest": "graphite-core/protocols/raydium-amm-v4.json",
+      "instruction": "SwapBaseOut",
+      "kind": "swap",
+      "intent": "swap",
+      "old_lines": [
+        "pool_coin_token_account",
+        "pool_pc_token_account",
+        "user_source_token_account",
+        "user_dest_token_account",
+        "credits the output token account with the received amount for the swap"
+      ],
+      "new_lines": [
+        "pool_coin_token_account",
+        "pool_pc_token_account",
+        "user_source_token_account",
+        "user_dest_token_account",
+        "transfers the input tokens from accounts.user_source_token_account to the pool",
+        "transfers tokens into or out of accounts.pool_coin_token_account",
+        "transfers tokens into or out of accounts.pool_pc_token_account",
+        "transfers the output tokens from the pool to accounts.user_dest_token_account"
+      ],
+      "removed": [
+        "credits the output token account with the received amount for the swap"
+      ],
+      "added": [
+        "transfers the input tokens from accounts.user_source_token_account to the pool",
+        "transfers tokens into or out of accounts.pool_coin_token_account",
+        "transfers tokens into or out of accounts.pool_pc_token_account",
+        "transfers the output tokens from the pool to accounts.user_dest_token_account"
+      ],
+      "idl_source": "no IDL in the repository (native program): manifest layout graphite-core/protocols/raydium-amm-v4.json (Raydium's instruction.rs account names)",
+      "justification": {
+        "accounts.user_source_token_account (debited)": "layout name: the user's source token account (the only user token account the swap spends from)",
+        "accounts.pool_coin_token_account / pool_pc_token_account (debited and credited)": "layout names: the pool's coin and pc vaults; which one is input depends on direction",
+        "accounts.user_dest_token_account (credited)": "layout name: the user's destination token account"
+      },
+      "not_excused": {
+        "user_owner (signer wallet)": "signs only",
+        "user_dest_token_account": "credited only",
+        "market_coin_vault / market_pc_vault (layout 0)": "not named: OpenBook market vaults are not the user's and need no name"
+      },
+      "confidence": "medium",
+      "notes": "No IDL file in the repository; the layout's names are self-describing and the existing manifest already lists exactly these four token accounts as bare names.",
+      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository"
+    },
+    {
+      "program_id": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+      "manifest": "graphite-core/protocols/raydium-amm-v4.json",
+      "instruction": "SwapBaseInV2",
+      "kind": "swap",
+      "intent": "swap",
+      "old_lines": [
+        "pool_coin_token_account",
+        "pool_pc_token_account",
+        "user_source_token_account",
+        "user_dest_token_account",
+        "credits the output token account with the received amount for the swap"
+      ],
+      "new_lines": [
+        "pool_coin_token_account",
+        "pool_pc_token_account",
+        "user_source_token_account",
+        "user_dest_token_account",
+        "transfers the input tokens from accounts.user_source_token_account to the pool",
+        "transfers tokens into or out of accounts.pool_coin_token_account",
+        "transfers tokens into or out of accounts.pool_pc_token_account",
+        "transfers the output tokens from the pool to accounts.user_dest_token_account"
+      ],
+      "removed": [
+        "credits the output token account with the received amount for the swap"
+      ],
+      "added": [
+        "transfers the input tokens from accounts.user_source_token_account to the pool",
+        "transfers tokens into or out of accounts.pool_coin_token_account",
+        "transfers tokens into or out of accounts.pool_pc_token_account",
+        "transfers the output tokens from the pool to accounts.user_dest_token_account"
+      ],
+      "idl_source": "no IDL in the repository (native program): manifest layout graphite-core/protocols/raydium-amm-v4.json (Raydium's instruction.rs account names)",
+      "justification": {
+        "accounts.user_source_token_account (debited)": "layout name: the user's source token account (the only user token account the swap spends from)",
+        "accounts.pool_coin_token_account / pool_pc_token_account (debited and credited)": "layout names: the pool's coin and pc vaults; which one is input depends on direction",
+        "accounts.user_dest_token_account (credited)": "layout name: the user's destination token account"
+      },
+      "not_excused": {
+        "user_owner (signer wallet)": "signs only",
+        "user_dest_token_account": "credited only",
+        "market_coin_vault / market_pc_vault (layout 0)": "not named: OpenBook market vaults are not the user's and need no name"
+      },
+      "confidence": "medium",
+      "notes": "No IDL file in the repository; the layout's names are self-describing and the existing manifest already lists exactly these four token accounts as bare names.",
+      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository"
+    },
+    {
+      "program_id": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+      "manifest": "graphite-core/protocols/raydium-amm-v4.json",
+      "instruction": "SwapBaseOutV2",
+      "kind": "swap",
+      "intent": "swap",
+      "old_lines": [
+        "pool_coin_token_account",
+        "pool_pc_token_account",
+        "user_source_token_account",
+        "user_dest_token_account",
+        "credits the output token account with the received amount for the swap"
+      ],
+      "new_lines": [
+        "pool_coin_token_account",
+        "pool_pc_token_account",
+        "user_source_token_account",
+        "user_dest_token_account",
+        "transfers the input tokens from accounts.user_source_token_account to the pool",
+        "transfers tokens into or out of accounts.pool_coin_token_account",
+        "transfers tokens into or out of accounts.pool_pc_token_account",
+        "transfers the output tokens from the pool to accounts.user_dest_token_account"
+      ],
+      "removed": [
+        "credits the output token account with the received amount for the swap"
+      ],
+      "added": [
+        "transfers the input tokens from accounts.user_source_token_account to the pool",
+        "transfers tokens into or out of accounts.pool_coin_token_account",
+        "transfers tokens into or out of accounts.pool_pc_token_account",
+        "transfers the output tokens from the pool to accounts.user_dest_token_account"
+      ],
+      "idl_source": "no IDL in the repository (native program): manifest layout graphite-core/protocols/raydium-amm-v4.json (Raydium's instruction.rs account names)",
+      "justification": {
+        "accounts.user_source_token_account (debited)": "layout name: the user's source token account (the only user token account the swap spends from)",
+        "accounts.pool_coin_token_account / pool_pc_token_account (debited and credited)": "layout names: the pool's coin and pc vaults; which one is input depends on direction",
+        "accounts.user_dest_token_account (credited)": "layout name: the user's destination token account"
+      },
+      "not_excused": {
+        "user_owner (signer wallet)": "signs only",
+        "user_dest_token_account": "credited only",
+        "market_coin_vault / market_pc_vault (layout 0)": "not named: OpenBook market vaults are not the user's and need no name"
+      },
+      "confidence": "medium",
+      "notes": "No IDL file in the repository; the layout's names are self-describing and the existing manifest already lists exactly these four token accounts as bare names.",
+      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository"
+    },
+    {
+      "program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+      "manifest": "graphite-core/protocols/jupiter-v6.json",
+      "instruction": "route",
+      "kind": "swap",
+      "intent": "swap",
+      "old_lines": [
+        "swaps tokens through routed DEX venues",
+        "debits user source token account",
+        "credits user destination token account"
+      ],
+      "new_lines": [
+        "debits accounts.user_source_token_account by data.in_amount, swapped through the routed venues",
+        "credits accounts.user_destination_token_account with the routed output",
+        "credits accounts.destination_token_account with the routed output when it is passed",
+        "credits accounts.platform_fee_account with the platform's share when it is passed"
+      ],
+      "removed": [
+        "swaps tokens through routed DEX venues",
+        "debits user source token account",
+        "credits user destination token account"
+      ],
+      "added": [
+        "debits accounts.user_source_token_account by data.in_amount, swapped through the routed venues",
+        "credits accounts.user_destination_token_account with the routed output",
+        "credits accounts.destination_token_account with the routed output when it is passed",
+        "credits accounts.platform_fee_account with the platform's share when it is passed"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4.json (+ graphite-core/scripts/idls/jupiter.json)",
+      "justification": {
+        "accounts.user_source_token_account (debited)": "IDL: user_source_token_account writable, spent under user_transfer_authority (signer); arg in_amount",
+        "accounts.user_destination_token_account (credited)": "IDL: user_destination_token_account writable",
+        "accounts.destination_token_account (credited)": "IDL: destination_token_account writable, optional",
+        "accounts.platform_fee_account (credited)": "IDL: platform_fee_account writable, optional; arg platform_fee_bps"
+      },
+      "not_excused": {
+        "user_transfer_authority (signer wallet)": "signs only",
+        "user_destination_token_account": "credited only",
+        "intermediate venue accounts (remaining accounts)": "not nameable; a signer-owned one that ends lower is still UndeclaredTokenDebit"
+      },
+      "confidence": "high",
+      "notes": "",
+      "meets_census_REWRITTEN_constraints": true,
+      "integration_note": "Round 36 integration: the user's input is stated as a named debit ('debits accounts.<source> by data.in_amount') rather than only 'transfers ... from'. Both parse as a debit of that account; the word keeps the opt-in fake-rewards-drainer plugin, which reads 'debit'/'deduct', seeing the outflow (tests/extreme_adversarial.rs t19)."
+    },
+    {
+      "program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+      "manifest": "graphite-core/protocols/jupiter-v6.json",
+      "instruction": "route_v2",
+      "kind": "swap",
+      "intent": "swap",
+      "old_lines": [
+        "swaps tokens through routed DEX venues",
+        "debits user source token account",
+        "credits user destination token account"
+      ],
+      "new_lines": [
+        "debits accounts.user_source_token_account by data.in_amount, swapped through the routed venues",
+        "credits accounts.user_destination_token_account with the routed output",
+        "credits accounts.destination_token_account with the routed output when it is passed"
+      ],
+      "removed": [
+        "swaps tokens through routed DEX venues",
+        "debits user source token account",
+        "credits user destination token account"
+      ],
+      "added": [
+        "debits accounts.user_source_token_account by data.in_amount, swapped through the routed venues",
+        "credits accounts.user_destination_token_account with the routed output",
+        "credits accounts.destination_token_account with the routed output when it is passed"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4.json (+ graphite-core/scripts/idls/jupiter.json)",
+      "justification": {
+        "accounts.user_source_token_account (debited)": "IDL: user_source_token_account writable, spent under user_transfer_authority (signer); arg in_amount",
+        "accounts.user_destination_token_account (credited)": "IDL: user_destination_token_account writable",
+        "accounts.destination_token_account (credited)": "IDL: destination_token_account writable, optional"
+      },
+      "not_excused": {
+        "user_transfer_authority (signer wallet)": "signs only",
+        "user_destination_token_account": "credited only",
+        "intermediate venue accounts (remaining accounts)": "not nameable; a signer-owned one that ends lower is still UndeclaredTokenDebit"
+      },
+      "confidence": "high",
+      "notes": "",
+      "meets_census_REWRITTEN_constraints": true,
+      "integration_note": "Round 36 integration: the user's input is stated as a named debit ('debits accounts.<source> by data.in_amount') rather than only 'transfers ... from'. Both parse as a debit of that account; the word keeps the opt-in fake-rewards-drainer plugin, which reads 'debit'/'deduct', seeing the outflow (tests/extreme_adversarial.rs t19)."
+    },
+    {
+      "program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+      "manifest": "graphite-core/protocols/jupiter-v6.json",
+      "instruction": "sharedAccountsRoute",
+      "kind": "swap",
+      "intent": "swap",
+      "old_lines": [
+        "swaps tokens through routed DEX venues with shared accounts",
+        "debits user source token account",
+        "credits user destination token account"
+      ],
+      "new_lines": [
+        "debits accounts.source_token_account by data.in_amount",
+        "transfers data.in_amount from accounts.source_token_account to accounts.program_source_token_account",
+        "swaps through the routed venues from accounts.program_source_token_account to accounts.program_destination_token_account",
+        "transfers the routed output from accounts.program_destination_token_account to accounts.destination_token_account",
+        "credits accounts.platform_fee_account with the platform's share when it is passed"
+      ],
+      "removed": [
+        "swaps tokens through routed DEX venues with shared accounts",
+        "debits user source token account",
+        "credits user destination token account"
+      ],
+      "added": [
+        "debits accounts.source_token_account by data.in_amount",
+        "transfers data.in_amount from accounts.source_token_account to accounts.program_source_token_account",
+        "swaps through the routed venues from accounts.program_source_token_account to accounts.program_destination_token_account",
+        "transfers the routed output from accounts.program_destination_token_account to accounts.destination_token_account",
+        "credits accounts.platform_fee_account with the platform's share when it is passed"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4.json (+ graphite-core/scripts/idls/jupiter.json)",
+      "justification": {
+        "accounts.source_token_account (debited)": "IDL: source_token_account writable, spent under user_transfer_authority; arg in_amount",
+        "accounts.program_source_token_account / program_destination_token_account": "IDL: program-owned (program_authority) intermediate accounts; scripts/idls/jupiter.json doc 'Route by using program owned token accounts'",
+        "accounts.destination_token_account (credited)": "IDL: destination_token_account writable",
+        "accounts.platform_fee_account (credited)": "IDL: platform_fee_account writable, optional"
+      },
+      "not_excused": {
+        "user_transfer_authority (signer wallet)": "signs only",
+        "destination_token_account": "credited only"
+      },
+      "confidence": "high",
+      "notes": "",
+      "meets_census_REWRITTEN_constraints": true,
+      "integration_note": "Round 36 integration: the user's input is stated as a named debit ('debits accounts.<source> by data.in_amount') rather than only 'transfers ... from'. Both parse as a debit of that account; the word keeps the opt-in fake-rewards-drainer plugin, which reads 'debit'/'deduct', seeing the outflow (tests/extreme_adversarial.rs t19)."
+    },
+    {
+      "program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+      "manifest": "graphite-core/protocols/jupiter-v6.json",
+      "instruction": "shared_accounts_route_v2",
+      "kind": "swap",
+      "intent": "swap",
+      "old_lines": [
+        "swaps tokens through routed DEX venues with shared accounts",
+        "debits user source token account",
+        "credits user destination token account"
+      ],
+      "new_lines": [
+        "debits accounts.source_token_account by data.in_amount",
+        "transfers data.in_amount from accounts.source_token_account to accounts.program_source_token_account",
+        "swaps through the routed venues from accounts.program_source_token_account to accounts.program_destination_token_account",
+        "transfers the routed output from accounts.program_destination_token_account to accounts.destination_token_account"
+      ],
+      "removed": [
+        "swaps tokens through routed DEX venues with shared accounts",
+        "debits user source token account",
+        "credits user destination token account"
+      ],
+      "added": [
+        "debits accounts.source_token_account by data.in_amount",
+        "transfers data.in_amount from accounts.source_token_account to accounts.program_source_token_account",
+        "swaps through the routed venues from accounts.program_source_token_account to accounts.program_destination_token_account",
+        "transfers the routed output from accounts.program_destination_token_account to accounts.destination_token_account"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4.json (+ graphite-core/scripts/idls/jupiter.json)",
+      "justification": {
+        "accounts.source_token_account (debited)": "IDL: source_token_account writable, spent under user_transfer_authority; arg in_amount",
+        "accounts.program_source_token_account / program_destination_token_account": "IDL: program-owned (program_authority) intermediate accounts; scripts/idls/jupiter.json doc 'Route by using program owned token accounts'",
+        "accounts.destination_token_account (credited)": "IDL: destination_token_account writable"
+      },
+      "not_excused": {
+        "user_transfer_authority (signer wallet)": "signs only",
+        "destination_token_account": "credited only"
+      },
+      "confidence": "high",
+      "notes": "",
+      "meets_census_REWRITTEN_constraints": true,
+      "integration_note": "Round 36 integration: the user's input is stated as a named debit ('debits accounts.<source> by data.in_amount') rather than only 'transfers ... from'. Both parse as a debit of that account; the word keeps the opt-in fake-rewards-drainer plugin, which reads 'debit'/'deduct', seeing the outflow (tests/extreme_adversarial.rs t19)."
+    },
+    {
+      "program_id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+      "manifest": "graphite-core/protocols/meteora-dlmm.json",
+      "instruction": "swap",
+      "kind": "swap",
+      "intent": "swap",
+      "old_lines": [
+        "swaps tokens using active bin arrays",
+        "debits user_token_in",
+        "credits user_token_out",
+        "updates reserve_x and reserve_y"
+      ],
+      "new_lines": [
+        "transfers the input tokens from accounts.user_token_in to the pair's reserve",
+        "transfers tokens into or out of accounts.reserve_x",
+        "transfers tokens into or out of accounts.reserve_y",
+        "transfers the output tokens from the pair's reserve to accounts.user_token_out",
+        "credits accounts.host_fee_in with the host's share when it is passed"
+      ],
+      "removed": [
+        "swaps tokens using active bin arrays",
+        "debits user_token_in",
+        "credits user_token_out",
+        "updates reserve_x and reserve_y"
+      ],
+      "added": [
+        "transfers the input tokens from accounts.user_token_in to the pair's reserve",
+        "transfers tokens into or out of accounts.reserve_x",
+        "transfers tokens into or out of accounts.reserve_y",
+        "transfers the output tokens from the pair's reserve to accounts.user_token_out",
+        "credits accounts.host_fee_in with the host's share when it is passed"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo.json (+ graphite-core/scripts/idls/meteora-dlmm.json)",
+      "justification": {
+        "accounts.user_token_in (debited)": "IDL: user_token_in writable; arg amount_in",
+        "accounts.reserve_x / reserve_y (debited and credited)": "IDL: reserve_x/reserve_y writable, relation lb_pair; which is input depends on direction",
+        "accounts.user_token_out (credited)": "IDL: user_token_out writable; arg min_amount_out",
+        "accounts.host_fee_in (credited)": "IDL: host_fee_in writable, optional"
+      },
+      "not_excused": {
+        "user (signer wallet)": "signs only",
+        "user_token_out / host_fee_in": "credited only"
+      },
+      "confidence": "high",
+      "notes": "The old 'debits user_token_in' named the account without the accounts. prefix, so it parsed as a debit of any account.",
+      "meets_census_REWRITTEN_constraints": true
+    },
+    {
+      "program_id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+      "manifest": "graphite-core/protocols/meteora-dlmm.json",
+      "instruction": "swap2",
+      "kind": "swap",
+      "intent": "swap",
+      "old_lines": [
+        "modifies writable accounts: lb_pair, bin_array_bitmap_extension, reserve_x, reserve_y, user_token_in, user_token_out, oracle, host_fee_in",
+        "credits the output token account with the received amount for the swap"
+      ],
+      "new_lines": [
+        "modifies writable accounts: lb_pair, bin_array_bitmap_extension, reserve_x, reserve_y, user_token_in, user_token_out, oracle, host_fee_in",
+        "transfers the input tokens from accounts.user_token_in to the pair's reserve",
+        "transfers tokens into or out of accounts.reserve_x",
+        "transfers tokens into or out of accounts.reserve_y",
+        "transfers the output tokens from the pair's reserve to accounts.user_token_out",
+        "credits accounts.host_fee_in with the host's share when it is passed"
+      ],
+      "removed": [
+        "credits the output token account with the received amount for the swap"
+      ],
+      "added": [
+        "transfers the input tokens from accounts.user_token_in to the pair's reserve",
+        "transfers tokens into or out of accounts.reserve_x",
+        "transfers tokens into or out of accounts.reserve_y",
+        "transfers the output tokens from the pair's reserve to accounts.user_token_out",
+        "credits accounts.host_fee_in with the host's share when it is passed"
+      ],
+      "idl_source": "graphite-core/scripts/out/onchain_idls/LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo.json (+ graphite-core/scripts/idls/meteora-dlmm.json)",
+      "justification": {
+        "accounts.user_token_in (debited)": "IDL: user_token_in writable; arg amount_in",
+        "accounts.reserve_x / reserve_y (debited and credited)": "IDL: reserve_x/reserve_y writable, relation lb_pair; which is input depends on direction",
+        "accounts.user_token_out (credited)": "IDL: user_token_out writable; arg min_amount_out",
+        "accounts.host_fee_in (credited)": "IDL: host_fee_in writable, optional"
+      },
+      "not_excused": {
+        "user (signer wallet)": "signs only",
+        "user_token_out / host_fee_in": "credited only"
+      },
+      "confidence": "high",
+      "notes": "",
+      "meets_census_REWRITTEN_constraints": true
+    }
+  ],
+  "tests_whose_pins_move": {
+    "graphite-core/tests/r30_declared_effects_census.rs": "re-pin the two tuples above; the 18-grants comment no longer holds (0 of 27).",
+    "graphite-core/src/state_diff.rs (debit_names_no_account doc comment)": "'1,802 of 3,541' becomes 1,767.",
+    "graphite-core/tests/signer_value_netting.rs a_signers_wallet_drained_beside_a_withdrawal_that_names_no_account_is_refused / a_signers_wallet_drained_beside_a_cpmm_withdrawal_is_named": "still refused, but the 5 SOL sibling drain is now SignerLamportsOutsideDeclaredDebit (W19, Critical by default: the declaration names other accounts) instead of SignerLamportsUnderUnscopedDebit. The CPMM withdraw no longer fails UndeclaredBurn (the LP burn is declared on lp_mint). Expected reason still contains 5000000000.",
+    "graphite-core/tests/staking_withdrawal_destination.rs a_marinade_liquid_unstake_to_the_signer_is_granted_but_l4_refuses_until_its_declaration_names_its_accounts": "asserts SignerTokenDebitUnderUnscopedDebit and !approved; getMsolFrom is now a named debit, so L4 should pass and the control may reach approval (the outcome the test's comment says the rewrite would give). Re-pin.",
+    "graphite-core/tests/staking_withdrawal_destination.rs (Stake Pool WithdrawSol/WithdrawStake to the signer)": "assertions (L5 passes, risk Clear) still hold; their comments' 'L4 refuses UndeclaredBurn / UndeclaredNativeAuthorityChange' no longer describe the result. The stranger cases stay refused by the grant (SameKey) and, for WithdrawStake, by R33-14 CreatedAccountAuthorityNotSigner, which no declaration excuses."
+  },
+  "residuals": [
+    "Pump AMM buy/sell: the IDL documents account creation only for buy_exact_quote_in, so buy declares none; a first buy that pays rent for user_volume_accumulator or a fee ATA is still a W19 refusal.",
+    "Stake Pool and Raydium AMM v4 have no IDL file in the repository; their rewrites rest on the manifest layout names (and, for Stake Pool, intent_grants.rs STAKE_POOL_SOURCE). Confidence medium.",
+    "Marinade liquidUnstake: no mSOL burn is declared because the IDL does not say the supply changes.",
+    "Remaining accounts (CLMM reward vaults, Jupiter venue accounts, DLMM bin arrays) cannot be named; a signer-owned one that ends lower is UndeclaredTokenDebit, now with no relaxation (before: SignerTokenDebitUnderUnscopedDebit, relaxable by GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS).",
+    "Side effect on L7 heuristics: detect_hidden_transfer's threshold is 4 x the distinct accounts.<name> references (min 12), so naming accounts raises it for the non-DEX programs rewritten here (Pump AMM, DBC, Stake Pool, Marinade). It only applies when the account list does not match the manifest layout."
+  ]
+}

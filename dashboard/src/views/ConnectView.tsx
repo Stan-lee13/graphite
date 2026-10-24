@@ -6,7 +6,7 @@
 // console, the agent kit, the CLI. This screen is where the console receives
 // its copy, and it proves the copy works before anything depends on it.
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { Check, Eye, EyeOff, X } from "lucide-react";
 import {
   MIN_KEY_CHARS,
@@ -27,22 +27,34 @@ export function ConnectView({ core }: { core: CoreState }) {
   const [remember, setRemember] = useState(current.remember);
   const [show, setShow] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [report, setReport] = useState<ConnectionReport | null>(null);
+  const [report, setReport] = useState<(ConnectionReport & { tested: { base: string; key: string } }) | null>(null);
   const [saved, setSaved] = useState(false);
 
   const keyTooShort = key.trim().length > 0 && key.trim().length < MIN_KEY_CHARS;
   const dirty =
     normaliseBase(base) !== current.base || key.trim() !== current.key || remember !== current.remember;
 
+  // Round 36: a report is about the address and key it tested. It stayed on
+  // screen after either field was edited — "Core reached, key accepted"
+  // beside an address nobody had tested — and a slow test that an edit had
+  // overtaken landed later under the new address. A report is now shown
+  // only while the fields still hold what it tested, and only the latest
+  // test may report at all.
+  const run = useRef(0);
   const runTest = async () => {
+    const id = ++run.current;
+    const tested = { base: normaliseBase(base), key: key.trim() };
     setTesting(true);
     setReport(null);
     try {
-      setReport(await testConnection({ base, key, remember }));
+      const r = await testConnection({ base, key, remember });
+      if (run.current === id) setReport({ ...r, tested });
     } finally {
-      setTesting(false);
+      if (run.current === id) setTesting(false);
     }
   };
+  const shownReport =
+    report && report.tested.base === normaliseBase(base) && report.tested.key === key.trim() ? report : null;
 
   const save = (e: FormEvent) => {
     e.preventDefault();
@@ -157,7 +169,7 @@ export function ConnectView({ core }: { core: CoreState }) {
               )}
             </div>
 
-            {report && <Report report={report} hasKey={key.trim().length > 0} />}
+            {shownReport && <Report report={shownReport} hasKey={key.trim().length > 0} />}
           </Section>
         </form>
 

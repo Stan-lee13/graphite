@@ -4,10 +4,10 @@
 
 import { useState } from "react";
 import { api, type ConfidencePoint } from "../api";
-import { countWindow, verdictKind, verdictLabel, verdictMeaning, verdictTone, windowLabel } from "../figures";
+import { countWindow, meanConfidence, verdictKind, verdictLabel, verdictMeaning, verdictTone, windowLabel, windowed } from "../figures";
 import { hrefFor } from "../router";
 import { useLayout, usePolling } from "../usePolling";
-import { CopyId, Empty, Fault, Figure, Freshness, PageHead, Section, Skeleton, State, fmt, pollFault, relTime, shortTime } from "../ui";
+import { CopyId, Empty, Fault, Figure, Freshness, PageHead, Section, Skeleton, State, fmt, pollFault, relTime, shortId, shortTime } from "../ui";
 
 const W = 1040;
 const H = 240;
@@ -46,7 +46,7 @@ export function VerificationsView() {
   const [filter, setFilter] = useState<Filter>("all");
 
   const fault = pollFault(history);
-  if (fault) return <Fault error={fault} />;
+  if (fault) return <Fault error={fault} title="Verifications" />;
   const data = history.data;
   const loading = !data;
   const pts = data?.series ?? [];
@@ -56,8 +56,8 @@ export function VerificationsView() {
   // server returned (its newest 500), and says so; descriptive approvals
   // are counted apart from approvals bound to bytes.
   const win = countWindow(pts);
-  const winLabel = windowLabel(win.n, data?.count ?? win.n);
-  const mean = pts.length ? pts.reduce((s, p) => s + p.confidence, 0) / pts.length : 0;
+  const winLabel = data ? windowLabel(win.n, data.count) : null;
+  const mean = meanConfidence(pts);
 
   const listed = [...pts]
     .reverse()
@@ -81,24 +81,28 @@ export function VerificationsView() {
       <div className="figures five">
         <Figure label="On record" value={loading ? "—" : fmt.int(data.count)} sub="all time" />
         <Figure
-          label={`Executable, ${winLabel}`}
+          label={windowed("Executable", winLabel)}
           value={loading ? "—" : fmt.int(win.executable)}
           sub={win.n ? `${fmt.pct(win.executable / win.n)} may be signed` : undefined}
           tone={win.executable > 0 ? "pass" : "idle"}
         />
         <Figure
-          label={`Not executable, ${winLabel}`}
+          label={windowed("Not executable", winLabel)}
           value={loading ? "—" : fmt.int(win.notExecutable)}
           sub={loading ? undefined : `approved for analysis only; ${fmt.int(win.descriptive)} with no bytes`}
           tone={win.notExecutable > 0 ? "warn" : "idle"}
         />
         <Figure
-          label={`Refused, ${winLabel}`}
+          label={windowed("Refused", winLabel)}
           value={loading ? "—" : fmt.int(win.refused + win.inconclusive)}
           sub={loading || !win.inconclusive ? undefined : `${fmt.int(win.inconclusive)} inconclusive`}
           tone={win.refused + win.inconclusive > 0 ? "block" : "idle"}
         />
-        <Figure label="Mean confidence" value={loading ? "—" : fmt.score(mean)} sub={winLabel} />
+        <Figure
+          label="Mean confidence"
+          value={mean === null ? "—" : fmt.score(mean)}
+          sub={loading ? undefined : mean === null ? "no verdicts to average" : (winLabel ?? undefined)}
+        />
       </div>
 
       <Section
@@ -139,6 +143,9 @@ export function VerificationsView() {
                     <span className="row-meta">
                       <span>{relTime(p.timestamp)}</span>
                       <CopyId value={p.audit_trail_id} />
+                      <span translate="no" title={p.transaction_sha256 ?? undefined}>
+                        {p.transaction_sha256 ? `bytes ${shortId(p.transaction_sha256)}` : "no bytes"}
+                      </span>
                     </span>
                   </a>
                   <div className="row-side">
@@ -157,6 +164,10 @@ export function VerificationsView() {
                   <th className="n">Confidence</th>
                   <th>Verdict</th>
                   <th>Audit ID</th>
+                  {/* Round 36: the digest of the bytes a verdict is bound
+                      to was only in a hover title; a signer comparing it
+                      with the transaction in hand could not see it. */}
+                  <th>Bound to (SHA-256)</th>
                 </tr>
               </thead>
               <tbody>
@@ -174,6 +185,9 @@ export function VerificationsView() {
                     <td><Verdict p={p} /></td>
                     <td className="id">
                       <CopyId value={p.audit_trail_id} />
+                    </td>
+                    <td className="id">
+                      {p.transaction_sha256 ? <CopyId value={p.transaction_sha256} /> : <span className="muted">no bytes</span>}
                     </td>
                   </tr>
                 ))}

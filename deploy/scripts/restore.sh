@@ -2,7 +2,7 @@
 # Restore a Graphite data directory from an archive made by backup.sh, and
 # prove the restored trail before the server sees it.
 #
-#   restore.sh [--key-file F]... --anchor-dir D [--owner UID:GID] ARCHIVE DATA_DIR
+#   restore.sh [--key-file F]... [--lost-key KEY_ID]... --anchor-dir D [--owner UID:GID] ARCHIVE DATA_DIR
 #
 # 1. Refuses while a server holds DATA_DIR/graphite.lock (stop it first).
 #    Refuses without --anchor-dir (exit 64) unless ALLOW_NO_ANCHOR=1: without
@@ -28,6 +28,12 @@
 #    deleted) and the staging directory into place; chowns it to --owner
 #    (10001:10001 for the container image), then verifies once more in place.
 #
+# --lost-key KEY_ID: a trail continued under a new key after the old one was
+# lost (`graphite audit adopt-key`) verifies with exit 2 from then on; see
+# backup.sh. The same check: that exit 2 is accepted only when the only
+# records not MAC-checked are under the keys named here, each followed by a
+# verified key-adoption record, in steps 3 to 5 alike.
+#
 # Needs: bash, tar, gzip, sha256sum, flock, python3, graphite (GRAPHITE_BIN).
 set -euo pipefail
 
@@ -35,11 +41,17 @@ usage() { sed -n '5p' "$0" >&2; exit 64; }
 
 keys=()
 keyfiles=()
+lost=()
 anchors=""
 owner=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --key-file) keys+=(--key-file "$2"); keyfiles+=("$2"); shift 2 ;;
+    --lost-key)
+      [[ "${2:-}" =~ ^[0-9a-f]{16}$ ]] || { echo "restore: --lost-key takes a key id (16 hex digits)" >&2; exit 64; }
+      lost+=("$2")
+      shift 2
+      ;;
     --anchor-dir) anchors="$2"; shift 2 ;;
     --owner) owner="$2"; shift 2 ;;
     -h | --help) usage ;;
@@ -119,14 +131,50 @@ mkdir -p "$parent"
 umask 077
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 stage="$(mktemp -d "$parent/.restore-$stamp.XXXXXX")"
-trap 'rm -rf "$stage"' EXIT
+report="$(mktemp "$parent/.restore-$stamp.report.XXXXXX")"
+trap 'rm -rf "$stage" "$report"' EXIT
 
 tar -C "$stage" --no-same-owner -xzf "$archive"
 
+# only_lost_keys_unchecked REPORT.json KEY_ID... — the check backup.sh makes:
+# exit 0 when the only thing `audit verify --json` could not prove is the MACs
+# under the named lost keys.
+only_lost_keys_unchecked() {
+  python3 -I - "$@" <<'PY'
+import json, sys
+r, lost = json.load(open(sys.argv[1])), set(sys.argv[2:])
+def no(why):
+    sys.exit(f"lost-key check: {why}; refusing")
+if r.get("first_break") is not None: no("the trail has a break")
+if r.get("unacknowledged_tears"): no("the trail has an unacknowledged torn write")
+if r.get("unparseable_lines"): no("the trail has unparseable lines")
+if not r.get("chained_records"): no("no chained record")
+cp = r.get("checkpoint")
+if cp is not None and cp.get("status") != "confirmed": no(f"checkpoint {cp.get('status')}")
+ranges = r.get("key_ranges") or []
+if not ranges or not ranges[-1].get("supplied"): no("the head's key was not given")
+unchecked = 0
+for i, k in enumerate(ranges):
+    if k.get("supplied"): continue
+    if k.get("key_id") not in lost: no(f"key {k.get('key_id')} was not given and is not named by --lost-key")
+    nxt = ranges[i + 1] if i + 1 < len(ranges) else {}
+    if nxt.get("introduced_by") != "adoption_checked":
+        no(f"lost key {k['key_id']} is not followed by a verified key-adoption record")
+    unchecked += k.get("records", 0)
+if unchecked != r.get("macs_unverified"): no("MACs unchecked outside the lost keys' ranges")
+print(f"lost keys {', '.join(sorted(lost))}: {unchecked} records chained but not MAC-checked (--lost-key)")
+PY
+}
+
 verify() { # verify DIR [--checkpoint F]
-  local dir="$1"
+  local dir="$1" rc=0
   shift
-  "$bin" audit verify --data-dir "$dir" ${keys[@]+"${keys[@]}"} "$@"
+  "$bin" audit verify --data-dir "$dir" ${keys[@]+"${keys[@]}"} "$@" || rc=$?
+  if [ "$rc" = 2 ] && [ "${#lost[@]}" -gt 0 ]; then
+    "$bin" audit verify --data-dir "$dir" ${keys[@]+"${keys[@]}"} "$@" --json >"$report" 2>/dev/null || true
+    only_lost_keys_unchecked "$report" "${lost[@]}" && rc=0
+  fi
+  return "$rc"
 }
 
 echo "restore: verifying the unpacked trail"
@@ -161,7 +209,7 @@ if [ -e "$data" ]; then
   echo "restore: previous directory kept at $data.pre-restore-$stamp"
 fi
 mv -- "$stage" "$data"
-trap - EXIT
+trap 'rm -f "$report"' EXIT
 chmod 0700 "$data"
 [ -n "$owner" ] && chown -R -- "$owner" "$data"
 

@@ -13,6 +13,14 @@
 // so a response from the old Core that lands after the switch is dropped
 // rather than shown as the new Core's.
 
+/**
+ * How often `/manifests` is polled, wherever it is. It is every manifest in
+ * full (about 4.6 MB for the shipped set) and changes only on a registry
+ * update or a restart. Round 30 slowed the Programs view's poll to this;
+ * Round 36: the Call graph view still fetched it every 30 s.
+ */
+export const MANIFESTS_POLL_MS = 300_000;
+
 export interface PollState<T, E> {
   data: T | null;
   error: E | null;

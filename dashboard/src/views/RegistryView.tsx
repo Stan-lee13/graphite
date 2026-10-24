@@ -10,7 +10,7 @@ export function RegistryView() {
   const registry = usePolling(() => api.registry(), 5000);
   const graph = usePolling(() => api.graph(), 30000);
   const fault = pollFault(registry);
-  if (fault) return <Fault error={fault} />;
+  if (fault) return <Fault error={fault} title="Registry" />;
   const data = registry.data;
   const loading = !data;
 

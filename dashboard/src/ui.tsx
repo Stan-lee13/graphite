@@ -167,7 +167,20 @@ export function Empty({ title, hint }: { title: string; hint?: ReactNode }) {
  * interface that shows the same red box for both is hiding the one fact the
  * operator needs.
  */
-export function Fault({ error }: { error: ApiError }) {
+export function Fault({ error, title }: { error: ApiError; title?: string }) {
+  // Round 36: a view that failed before its first answer replaced itself
+  // with this note and lost its heading — the page's only <h1> (axe
+  // page-has-heading-one), and the one word that said which view it is.
+  if (title === undefined) return <FaultNote error={error} />;
+  return (
+    <>
+      <PageHead title={title} />
+      <FaultNote error={error} />
+    </>
+  );
+}
+
+function FaultNote({ error }: { error: ApiError }) {
   if (error.kind === "unauthorized") {
     return (
       <div className="note fault" role="alert">

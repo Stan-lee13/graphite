@@ -135,10 +135,11 @@
     }
    ],
    "expected_state_changes": [
-    "swaps tokens using active bin arrays",
-    "debits user_token_in",
-    "credits user_token_out",
-    "updates reserve_x and reserve_y"
+    "transfers the input tokens from accounts.user_token_in to the pair's reserve",
+    "transfers tokens into or out of accounts.reserve_x",
+    "transfers tokens into or out of accounts.reserve_y",
+    "transfers the output tokens from the pair's reserve to accounts.user_token_out",
+    "credits accounts.host_fee_in with the host's share when it is passed"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -2474,7 +2475,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: lb_pair, position, reserve_x, reserve_y, user_token_x, user_token_y",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "transfers tokens out of accounts.reserve_x",
+    "transfers tokens out of accounts.reserve_y",
+    "credits accounts.user_token_x token balance",
+    "credits accounts.user_token_y token balance"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -2902,7 +2906,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: position, lb_pair, bin_array_lower, bin_array_upper, rent_receiver",
-    "closes the position or account and transfers remaining funds back to the user"
+    "closes accounts.position, sends its lamports to accounts.rent_receiver"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -2955,7 +2959,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: position, rent_receiver",
-    "closes the position or account and transfers remaining funds back to the user"
+    "closes accounts.position, sends its lamports to accounts.rent_receiver"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -3008,7 +3012,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: position, rent_receiver",
-    "closes the position or account and transfers remaining funds back to the user"
+    "closes accounts.position, sends its lamports to accounts.rent_receiver"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -5308,7 +5312,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: position, lb_pair, bin_array_bitmap_extension, user_token_x, user_token_y, reserve_x, reserve_y, bin_array_lower, bin_array_upper",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "transfers tokens out of accounts.reserve_x",
+    "transfers tokens out of accounts.reserve_y",
+    "credits accounts.user_token_x token balance",
+    "credits accounts.user_token_y token balance"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -5432,7 +5439,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: position, lb_pair, bin_array_bitmap_extension, user_token_x, user_token_y, reserve_x, reserve_y",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "transfers tokens out of accounts.reserve_x",
+    "transfers tokens out of accounts.reserve_y",
+    "credits accounts.user_token_x token balance",
+    "credits accounts.user_token_y token balance"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -5556,7 +5566,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: position, lb_pair, bin_array_bitmap_extension, user_token_x, user_token_y, reserve_x, reserve_y",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "transfers tokens out of accounts.reserve_x",
+    "transfers tokens out of accounts.reserve_y",
+    "credits accounts.user_token_x token balance",
+    "credits accounts.user_token_y token balance"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -5876,7 +5889,11 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: lb_pair, bin_array_bitmap_extension, reserve_x, reserve_y, user_token_in, user_token_out, oracle, host_fee_in",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.user_token_in to the pair's reserve",
+    "transfers tokens into or out of accounts.reserve_x",
+    "transfers tokens into or out of accounts.reserve_y",
+    "transfers the output tokens from the pair's reserve to accounts.user_token_out",
+    "credits accounts.host_fee_in with the host's share when it is passed"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

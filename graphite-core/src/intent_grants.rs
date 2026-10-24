@@ -115,12 +115,15 @@ pub struct IntentGrant {
     pub source: &'static str,
 }
 
-/// One minimum-output argument of a granted instruction: its IDL name and
-/// where its little-endian `u64` starts in the instruction data.
+/// One minimum-output argument of a granted instruction: its IDL name,
+/// where its little-endian `u64` starts in the instruction data, and the
+/// account whose credit it bounds (Round 36, F-004: a minimum is held to
+/// what the simulation delivered to that account).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MinimumOutput {
     pub name: &'static str,
     pub offset: usize,
+    pub recipient: &'static str,
 }
 
 /// The grounded classes. None is a manifest class (`manifest::RISK_CLASSES`),
@@ -226,10 +229,12 @@ pub const GRANTS: &[IntentGrant] = &[
             MinimumOutput {
                 name: "amount_0_min",
                 offset: 24,
+                recipient: "recipient_token_account_0",
             },
             MinimumOutput {
                 name: "amount_1_min",
                 offset: 32,
+                recipient: "recipient_token_account_1",
             },
         ],
         source: "graphite-core/scripts/idls/raydium_clmm.json decrease_liquidity_v2: recipient_token_account_0/1 \"the destination token account for receive amount_0/1\", unconstrained",
@@ -270,10 +275,12 @@ pub const GRANTS: &[IntentGrant] = &[
             MinimumOutput {
                 name: "minimum_token_0_amount",
                 offset: 16,
+                recipient: "token_0_account",
             },
             MinimumOutput {
                 name: "minimum_token_1_amount",
                 offset: 24,
+                recipient: "token_1_account",
             },
         ],
         source: "graphite-core/scripts/idls/raydium_cpmm.json withdraw: token_0_account/token_1_account \"the token account for receive token_0/1\", unconstrained; the LP burned from owner_lp_token under owner's signature",
@@ -404,10 +411,12 @@ pub const GRANTS: &[IntentGrant] = &[
             MinimumOutput {
                 name: "min_base_amount_out",
                 offset: 16,
+                recipient: "user_base_token_account",
             },
             MinimumOutput {
                 name: "min_quote_amount_out",
                 offset: 24,
+                recipient: "user_quote_token_account",
             },
         ],
         source: "protocols/pump-amm manifest (Pump AMM IDL): user_base_token_account/user_quote_token_account receive the withdrawn liquidity, LP burned from user_pool_token_account under user's signature",
@@ -685,6 +694,65 @@ pub fn ground_with(
             ),
         },
     }
+}
+
+/// Round 36 (F-004): a withdrawal grant's minimum outputs as the
+/// transaction's bytes set them, each with the address of the account it
+/// bounds: `(name, minimum, recipient)`. `None` when no grant names `def` for
+/// `canonical_intent`, the grant is not a withdrawal (`WITHDRAW_TO_OWNER`),
+/// its facts do not hold (then the grant does not apply at all), or it
+/// carries no minimum and its payout no trade can move. An empty list is a
+/// [`PRICE_EXPOSED_WITHOUT_MINIMUM`] withdrawal: the chain enforces no
+/// minimum on a payout a front-runner can move.
+/// Granted withdrawals whose instructions carry no minimum output and whose
+/// payout a trade in front of them moves (Round 36, F-004): removing
+/// liquidity from Meteora DLMM bins pays the bins' composition at landing,
+/// and a swap through those bins first changes it. A native Stake
+/// `Withdraw` pays the lamports it names, and an SPL Stake Pool's rate moves
+/// only at its epoch update, so neither is here. Marinade `liquidUnstake`'s
+/// fee rises as its liquidity pool drains; that is bounded by the pool's
+/// configured maximum fee and is a residual, not listed (docs/CURRENT.md).
+pub const PRICE_EXPOSED_WITHOUT_MINIMUM: &[(&str, &str)] = &[
+    (METEORA_DLMM, "remove_liquidity"),
+    (METEORA_DLMM, "remove_liquidity2"),
+    (METEORA_DLMM, "remove_liquidity_by_range"),
+    (METEORA_DLMM, "remove_liquidity_by_range2"),
+    (METEORA_DLMM, "remove_all_liquidity"),
+];
+
+pub fn withdrawal_minimums(
+    program_id: &str,
+    def: &InstructionDef,
+    canonical_intent: &str,
+    accounts: &[String],
+    data: Option<&[u8]>,
+) -> Option<Vec<(&'static str, u64, String)>> {
+    let grant = grant_for(program_id, &def.name, canonical_intent)?;
+    if grant.class != WITHDRAW_TO_OWNER || check(grant, def, accounts).is_err() {
+        return None;
+    }
+    if grant.minimum_outputs.is_empty()
+        && !PRICE_EXPOSED_WITHOUT_MINIMUM.contains(&(grant.program_id, grant.instruction))
+    {
+        return None;
+    }
+    let layout = def.layout_for(accounts.len());
+    let mut out = Vec::new();
+    for m in grant.minimum_outputs {
+        let value = data
+            .and_then(|d| d.get(m.offset..m.offset + 8))
+            .map(|b| u64::from_le_bytes(b.try_into().expect("8 bytes")));
+        let recipient = layout
+            .iter()
+            .position(|a| a.name == m.recipient)
+            .map(|i| accounts[i].clone());
+        // Unreadable data is `GrantOutcome::Unbounded` already; a recipient
+        // missing from the layout is pinned impossible by the tests below.
+        if let (Some(value), Some(recipient)) = (value, recipient) {
+            out.push((m.name, value, recipient));
+        }
+    }
+    Some(out)
 }
 
 /// Round 34 (R33-1): why the declared intent does not describe `def` when a
@@ -1096,6 +1164,53 @@ mod tests {
             read, 6,
             "CLMM decrease_liquidity_v2, CPMM and Pump AMM withdraw"
         );
+    }
+
+    /// Round 36 (F-004): each minimum names, as the account it bounds, an
+    /// account its grant grounds as the owner's associated token account —
+    /// the credit the simulation measures is the owner's own.
+    #[test]
+    fn every_minimum_bounds_an_account_its_grant_grounds_as_the_owners() {
+        let mut n = 0;
+        for g in GRANTS {
+            for m in g.minimum_outputs {
+                assert!(
+                    g.grounding.iter().any(|f| matches!(
+                        f,
+                        Grounding::AssociatedTokenAccount { account, owner, .. }
+                            if *account == m.recipient && *owner == g.owner
+                    )),
+                    "{} {}: {} bounds {}",
+                    g.program_id,
+                    g.instruction,
+                    m.name,
+                    m.recipient
+                );
+                let def = seed_def(g.program_id, g.instruction);
+                assert!(
+                    def.accounts.iter().any(|a| a.name == m.recipient),
+                    "{} has no {}",
+                    g.instruction,
+                    m.recipient
+                );
+                n += 1;
+            }
+        }
+        assert_eq!(n, 6);
+    }
+
+    /// Round 36 (F-004): every price-exposed withdrawal is a granted
+    /// withdrawal with no minimum output.
+    #[test]
+    fn every_price_exposed_withdrawal_is_a_granted_withdrawal_without_a_minimum() {
+        for (program, instruction) in PRICE_EXPOSED_WITHOUT_MINIMUM {
+            let g = GRANTS
+                .iter()
+                .find(|g| g.program_id == *program && g.instruction == *instruction)
+                .unwrap_or_else(|| panic!("{program} {instruction} is granted"));
+            assert_eq!(g.class, WITHDRAW_TO_OWNER, "{instruction}");
+            assert!(g.minimum_outputs.is_empty(), "{instruction}");
+        }
     }
 
     /// Round 34 (R33-11) re-pin: this test was

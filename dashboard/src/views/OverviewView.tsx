@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Siren } from "lucide-react";
 import { api, type ConfidencePoint, type Metrics } from "../api";
-import { countWindow, refusalTotals, trailTotals, verdictKind, verdictLabel, verdictTone, windowLabel } from "../figures";
+import { countWindow, readBypass, refusalTotals, trailTotals, verdictKind, verdictLabel, verdictTone, windowLabel, windowed } from "../figures";
 import { hrefFor } from "../router";
 import { usePolling, useReducedMotion, type Polled } from "../usePolling";
 import {
@@ -52,7 +52,7 @@ export function OverviewView() {
   const metrics = usePolling(() => api.metrics(), 10000);
 
   const fault = pollFault(graph, top, history, violations);
-  if (fault) return <Fault error={fault} />;
+  if (fault) return <Fault error={fault} title="Overview" />;
 
   const loading = !graph.data || !top.data || !history.data || !violations.data;
 
@@ -67,7 +67,7 @@ export function OverviewView() {
   const totals = history.data && violations.data ? trailTotals(history.data, violations.data) : null;
   const rejections = violations.data ? refusalTotals(violations.data) : null;
   const win = countWindow(series);
-  const winLabel = windowLabel(win.n, history.data?.count ?? win.n);
+  const winLabel = history.data ? windowLabel(win.n, history.data.count) : null;
   const latest = series[series.length - 1];
 
   const blocked = violations.data?.violations ?? [];
@@ -117,13 +117,13 @@ export function OverviewView() {
           tone={totals && totals.refused > 0 ? "block" : "idle"}
         />
         <Figure
-          label={`Executable, ${winLabel}`}
+          label={windowed("Executable", winLabel)}
           value={loading ? "—" : fmt.int(win.executable)}
           sub={loading || !win.n ? undefined : `${fmt.pct(win.executable / win.n)} of those verdicts may be signed`}
           tone={win.executable > 0 ? "pass" : "idle"}
         />
         <Figure
-          label={`Not executable, ${winLabel}`}
+          label={windowed("Not executable", winLabel)}
           value={loading ? "—" : fmt.int(win.notExecutable)}
           sub={loading ? undefined : `approved for analysis only; ${fmt.int(win.descriptive)} with no bytes`}
           tone={win.notExecutable > 0 ? "warn" : "idle"}
@@ -248,7 +248,11 @@ export function OverviewView() {
  */
 function Attention({ metrics }: { metrics: Polled<Metrics> }) {
   const m = metrics.data;
-  const hits = m ? PAGE_ON.map((p) => ({ ...p, n: m.get(p.metric) ?? 0 })).filter((p) => p.n > 0) : [];
+  // Round 36 (figures.ts readBypass): a counter absent from the answer is
+  // unknown, not zero, and nothing read yet is said, not left blank.
+  const reading = readBypass(m, PAGE_ON.map((p) => p.metric));
+  const labelOf = (metric: string) => PAGE_ON.find((p) => p.metric === metric)?.label ?? metric;
+  const hits = reading.hits.map((h) => ({ ...h, label: labelOf(h.metric) }));
   if (metrics.error) {
     return (
       <div className={hits.length > 0 ? "banner block" : "banner warn"} role="alert">
@@ -271,7 +275,36 @@ function Attention({ metrics }: { metrics: Polled<Metrics> }) {
       </div>
     );
   }
-  if (!m || hits.length === 0) return null;
+  if (reading.state === "unread") {
+    return (
+      <p className="freshness" role="status">
+        Bypass signals: not read yet (/metrics has not answered).
+      </p>
+    );
+  }
+  if (reading.state === "clear") return null;
+  if (reading.state === "unknown") {
+    return (
+      <div className="banner warn" role="status">
+        <Siren aria-hidden="true" />
+        <div>
+          <strong>
+            Bypass signals: unknown — {fmt.int(reading.missing.length)} of {fmt.int(PAGE_ON.length)} counters are not in
+            the Core's /metrics answer.
+          </strong>{" "}
+          None read was non-zero; these were not read at all:
+          <ul>
+            {reading.missing.map((metric) => (
+              <li key={metric}>{labelOf(metric)}</li>
+            ))}
+          </ul>
+        </div>
+        <a className="btn small" href={hrefFor("system")}>
+          System
+        </a>
+      </div>
+    );
+  }
   return (
     <div className="banner block" role="alert">
       <Siren aria-hidden="true" />
@@ -283,6 +316,7 @@ function Attention({ metrics }: { metrics: Polled<Metrics> }) {
               <span className="num">{fmt.int(h.n)}</span> {h.label}
             </li>
           ))}
+          {reading.missing.length > 0 && <li>{fmt.int(reading.missing.length)} more counter(s) not in /metrics: unknown</li>}
         </ul>
       </div>
       <a className="btn small" href={hrefFor("system")}>

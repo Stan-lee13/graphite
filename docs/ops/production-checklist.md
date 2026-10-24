@@ -128,7 +128,9 @@ them. **Until R1–R4 are done, anyone with write access can still publish a rel
     --signer-workflow Stan-lee13/graphite/.github/workflows/release.yml \
     --source-ref refs/tags/v0.3.0-beta --deny-self-hosted-runners
   ```
-  The digest is in the release notes. Deploy by that digest, never by the tag. `--repo` alone would
+  The digest is in the release notes. Deploy by that digest, never by the tag: compose takes it as
+  `GRAPHITE_IMAGE_DIGEST=sha256:<digest>` beside `GRAPHITE_IMAGE=ghcr.io/stan-lee13/graphite-core:<version>`
+  in `deploy/compose/.env`, and refuses to render without it. `--repo` alone would
   accept an attestation made by any workflow of the repository, on any ref; the three other flags
   require the release workflow, run for this tag, on a GitHub-hosted runner.
 
@@ -166,8 +168,18 @@ Pick one form: `deploy/compose/docker-compose.prod.yml` or `deploy/systemd/` (bo
   providers; `/health` reports `"verification_mode": "executable"`.
 - [ ] **9f. Pin the policy.** `GRAPHITE_WALLET_PROFILE` set (the example sets `treasury`); never
   `GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1` unless the caller is the operator.
-- [ ] **9g. A single replica.** One Core per data directory (the lock enforces it) and no load balancer
-  across several: the rate limiter is per process (R-M12).
+- [ ] **9g. A single replica — scaling the Core out is unsupported.** One Core process, on one data
+  directory, behind one Caddy. The Core is single-tenant and single-process by design: it holds
+  `graphite.lock` and `.audit.jsonl.lock` on its data directory, and keeps the audit chain's head and
+  index, the semantic graph (earned evidence, baselines, quarantines) and the per-client rate limiter
+  (R-M12) in its own memory. A second Core on the same directory refuses to start (rehearsed by
+  `deploy/tests/run.sh`); a second Core on another directory is a second, disjoint audit trail, a
+  second set of quarantines and a second rate-limit budget behind the same name, so a load balancer
+  across several silently splits the record and multiplies every client's limit. The kit enforces it:
+  the compose Core has a fixed `container_name` and `deploy.replicas: 1` (`replicas: 2` or
+  `--scale graphite=2` is an error), and `graphite.service` is a plain unit, not a template. For
+  availability, restart fast (`restart: unless-stopped`, `Restart=on-failure`) and restore from backup
+  (9i); agents behind the guard fail closed while the Core is down.
 - [ ] **9h. Monitoring.** Prometheus with `deploy/prometheus/prometheus.example.yml` (the read key in
   `credentials_file`) and `graphite-alerts.yml`; node_exporter with `--collector.textfile.directory=<dir>`
   and `deploy/scripts/health-textfile.sh` every minute (`TEXTFILE_DIR=<dir>`); Grafana: Dashboards →
@@ -182,6 +194,8 @@ Pick one form: `deploy/compose/docker-compose.prod.yml` or `deploy/systemd/` (bo
   Before go-live and quarterly: restore the latest archive into a scratch directory on another host,
   `deploy/scripts/restore.sh --key-file <every audit key> --anchor-dir <anchors> <archive> <scratch dir>`,
   start a Core on it and check `/health`. Record the drill (date, archive, result).
+  After an audit key was lost and replaced (`graphite audit adopt-key`, [keys.md](keys.md)), both
+  scripts need `--lost-key <key id>` from then on: `audit verify` can no longer check that key's MACs.
 - [ ] **11. Real baselines.** Tier 3+ baselines with `sample_count ≥ 20` (R-P7) exist only after
   production traffic; until then confidence for programs without history stays at its floor and
   refusals of them are expected. Check progress on `GET /api/graph` (read key).
@@ -203,7 +217,8 @@ Pick one form: `deploy/compose/docker-compose.prod.yml` or `deploy/systemd/` (bo
 - [ ] **C. Logs.** The Core and Caddy log JSON to stdout (journald or Docker's json-file, rotated);
   ship them to your aggregator. Neither logs the bearer key or the RPC URLs.
 - [ ] **D. Upgrades.** [upgrade-rollback.md](upgrade-rollback.md): verify the new release (10e), take a
-  backup (9i), change `GRAPHITE_IMAGE` or the binary, restart, watch `/health` and the alerts for an hour.
+  backup (9i), change `GRAPHITE_IMAGE` and `GRAPHITE_IMAGE_DIGEST` (compose; both required, so a tag
+  alone does not render) or the binary, restart, watch `/health` and the alerts for an hour.
 - [ ] **E. Capacity.** Defaults: 30 requests/s per client, 32 verifications in flight, 1,024 connections,
   2 CPUs and 512 MiB (compose) or 1 GiB (systemd). Watch `GraphiteLoadShedding`; raise
   `GRAPHITE_MAX_CONCURRENT` only with CPU to match.

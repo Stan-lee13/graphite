@@ -719,6 +719,19 @@ const PROGRAM_ACCOUNT_HEADER: usize = 4 + 32;
 /// `UpgradeableLoaderState::ProgramData`: a u32 tag (3), the deploy slot
 /// (u64) and the upgrade authority (`Option<Pubkey>`: one byte, then 32).
 const PROGRAMDATA_HEADER: usize = 4 + 8 + 1 + 32;
+/// The loader-v4 program (Round 36, F-009).
+pub const LOADER_V4: &str = "LoaderV411111111111111111111111111111111111";
+/// `LoaderV4State`, `#[repr(C)]` at the start of the program account itself:
+/// the slot its code was last deployed (or retracted) at (u64), its authority
+/// or, once finalized, its next version (Pubkey), and its status (u64:
+/// Retracted 0, Deployed 1, Finalized 2).
+const LOADER_V4_HEADER: usize = 8 + 32 + 8;
+/// The first read covers either loader's program-account header.
+const PROGRAM_HEADER_READ: usize = if LOADER_V4_HEADER > PROGRAM_ACCOUNT_HEADER {
+    LOADER_V4_HEADER
+} else {
+    PROGRAM_ACCOUNT_HEADER
+};
 
 /// What the chain says about a program's code right now (roadmap R-M1).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -729,6 +742,15 @@ pub enum ProgramDeployment {
         programdata: String,
         deploy_slot: u64,
         upgrade_authority: Option<String>,
+    },
+    /// Owned by loader-v4 (Round 36, F-009): the code lives in the program
+    /// account, deployed at `deploy_slot`; `authority` may redeploy or
+    /// retract it, `None` once it is finalized. A retracted program cannot be
+    /// executed until it is redeployed.
+    LoaderV4 {
+        deploy_slot: u64,
+        authority: Option<String>,
+        retracted: bool,
     },
     /// Owned by another loader or a builtin's loader: its code cannot be
     /// replaced through the upgradeable loader.
@@ -745,6 +767,25 @@ pub fn decode_program_account(data: &[u8]) -> Option<String> {
     let mut key = [0u8; 32];
     key.copy_from_slice(&data[4..36]);
     Some(Pubkey::from_bytes(key).to_base58())
+}
+
+/// A loader-v4 program account's header: `(slot, authority, status)`, the
+/// authority `None` when the program is finalized. `None` for data that is
+/// short or whose status is not one of the three.
+pub fn decode_loader_v4_header(data: &[u8]) -> Option<(u64, Option<String>, u64)> {
+    if data.len() < LOADER_V4_HEADER {
+        return None;
+    }
+    let slot = u64::from_le_bytes(data[0..8].try_into().ok()?);
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&data[8..40]);
+    let status = u64::from_le_bytes(data[40..48].try_into().ok()?);
+    let authority = match status {
+        0 | 1 => Some(Pubkey::from_bytes(key).to_base58()),
+        2 => None,
+        _ => return None,
+    };
+    Some((slot, authority, status))
 }
 
 /// The deploy slot and upgrade authority of a loader-v3 `ProgramData` header.
@@ -2069,13 +2110,26 @@ impl SolanaRpcClient {
         programs: &[String],
     ) -> Result<Vec<ProgramDeployment>, RpcError> {
         let (_, accounts) = self
-            .get_multiple_accounts_sliced(programs, Some((0, PROGRAM_ACCOUNT_HEADER)))
+            .get_multiple_accounts_sliced(programs, Some((0, PROGRAM_HEADER_READ)))
             .await?;
         let mut out = Vec::with_capacity(programs.len());
         let mut programdata: Vec<String> = Vec::new();
         for (program, account) in programs.iter().zip(&accounts) {
             match account {
                 None => out.push(ProgramDeployment::Missing),
+                Some(a) if a.owner == LOADER_V4 => {
+                    let (deploy_slot, authority, status) = decode_loader_v4_header(&a.data)
+                        .ok_or_else(|| {
+                            RpcError::InvalidResponse(format!(
+                                "{program} is owned by loader-v4 but its account does not decode as LoaderV4State"
+                            ))
+                        })?;
+                    out.push(ProgramDeployment::LoaderV4 {
+                        deploy_slot,
+                        authority,
+                        retracted: status == 0,
+                    })
+                }
                 Some(a) if a.owner != UPGRADEABLE_LOADER => {
                     out.push(ProgramDeployment::NotUpgradeable {
                         owner: a.owner.clone(),

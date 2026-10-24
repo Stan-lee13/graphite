@@ -4,8 +4,9 @@
 // operator needs them in.
 
 import { api, type Health, type Metrics } from "../api";
+import { readBypass } from "../figures";
 import { usePolling } from "../usePolling";
-import { Empty, Fault, Figure, Freshness, PageHead, Section, Skeleton, State, fmt, pollFault } from "../ui";
+import { Empty, Fault, Figure, Freshness, PageHead, Section, Skeleton, State, fmt, pollFault, relTime } from "../ui";
 
 interface Counter {
   metric: string;
@@ -63,12 +64,15 @@ export function SystemView() {
   const metrics = usePolling<Metrics>(() => api.metrics(), 5000);
 
   const fault = pollFault(health, metrics);
-  if (fault) return <Fault error={fault} />;
+  if (fault) return <Fault error={fault} title="System" />;
   const h = health.data;
   const m = metrics.data;
   const loading = !h || !m;
 
-  const alarms = m ? GROUPS.flatMap((g) => g.counters).filter((c) => c.alarm && (m.get(c.metric) ?? 0) > 0) : [];
+  // Round 36: the last good /health stays on screen when the Core stops
+  // answering (under <Freshness>'s banner), but the Status figure is about
+  // now: a Core that is not answering is not "Operational".
+  const silent = health.error !== null;
 
   return (
     <>
@@ -77,7 +81,18 @@ export function SystemView() {
       <Freshness sources={[health, metrics]} />
 
       <div className="figures five">
-        <Figure label="Status" value={loading ? "—" : h.degraded ? "Degraded" : "Operational"} tone={loading ? undefined : h.degraded ? "warn" : "pass"} sub={h ? `${h.service} v${h.version}` : undefined} />
+        <Figure
+          label="Status"
+          value={loading ? "—" : silent ? "Not answering" : h.degraded ? "Degraded" : "Operational"}
+          tone={loading ? undefined : silent ? "block" : h.degraded ? "warn" : "pass"}
+          sub={
+            !h
+              ? undefined
+              : silent && health.updatedAt !== null
+                ? `last answered ${relTime(health.updatedAt)}, ${h.degraded ? "degraded" : "operational"}`
+                : `${h.service} v${h.version}`
+          }
+        />
         {/* Round 30: while loading, this said "verdicts are not being
             recorded" — a claim about a Core it had not heard from yet. */}
         <Figure
@@ -183,13 +198,20 @@ export function SystemView() {
           key={g.title}
           title={g.title}
           meta={
-            g.title === "Bypass signals" && m ? (
-              alarms.some((a) => g.counters.includes(a)) ? (
-                <State kind="block">attention</State>
-              ) : (
-                <State kind="pass">clear</State>
-              )
-            ) : undefined
+            g.title === "Bypass signals" && m
+              ? // Round 36: "clear" only when every counter was read and is
+                // zero; a counter missing from /metrics is unknown, not 0.
+                {
+                  alarm: <State kind="block">attention</State>,
+                  unknown: (
+                    <State kind="warn" title="Not every counter is in the Core's /metrics answer">
+                      unknown
+                    </State>
+                  ),
+                  clear: <State kind="pass">clear</State>,
+                  unread: undefined,
+                }[readBypass(m, g.counters.map((c) => c.metric)).state]
+              : undefined
           }
           flush
         >

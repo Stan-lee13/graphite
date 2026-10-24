@@ -3,7 +3,7 @@
  *
  * Round 19 (F-19-C2). The bridge used to hand SAK `new KeypairWallet(walletKeypair)`
  * — the wallet's secret key — and expose the resulting agent through
- * `getSakAgent()`. Every `sakAgent.methods.*` call and every SAK action tool
+ * `getSakAgent()` (Round 36: `getGatedWallet()`, for the caller's own agent). Every `sakAgent.methods.*` call and every SAK action tool
  * (the LangChain / Vercel AI / OpenAI tool adapters an LLM drives) then signed
  * and sent with that key through SAK's own `signOrSendTX` / `sendTx`, and
  * `signMessage` signed arbitrary bytes, all with no Graphite verdict anywhere
