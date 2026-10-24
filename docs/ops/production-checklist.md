@@ -23,6 +23,9 @@ and `gh` authenticated as a repository admin.
   Then delete or protect the stale branches (K-14): `git ls-remote --heads origin`, and for each one
   not in use, `git push origin --delete <branch>`.
   When a second maintainer exists: `gh api -X POST repos/Stan-lee13/graphite/rulesets --input .github/rulesets/main-review.json`.
+  (Round 38, D2-4: it lets the admin role bypass it through a pull request only, so importing it with
+  one maintainer no longer blocks every merge; each such merge is logged as a bypass. Delete that
+  `bypass_actors` entry once two maintainers review each other.)
 - [ ] **2. Private vulnerability reporting.**
   `gh api -X PUT repos/Stan-lee13/graphite/private-vulnerability-reporting`
   (or Settings → Security → Code security → Private vulnerability reporting → Enable).
@@ -54,17 +57,26 @@ and `gh` authenticated as a repository admin.
   (in `graphite-core/`): the holdout is 38 rows and every offline approval is `analysis_only`; say so
   next to any number quoted.
 
-## Release integrity (owner only — Round 34, R33-9)
+## Release integrity (owner only — Round 34, R33-9; Round 38, R37-8)
 
 A `v*` tag runs the tagged commit's own copy of `.github/workflows/release.yml`. The workflow's gate
-(`.github/scripts/release-gate.sh`) now requires the commit to be on `main`, its `CI gate` to have
-passed in a **push** run of `ci.yml` on `main` (GitHub Actions app 15368), and the tag to be SSH-signed
-by a key in `.github/allowed_signers` — but a tag on an unmerged branch runs that branch's copy of the
-workflow, which can drop the gate. Only repository settings close that, and only an admin can apply
-them. **Until R1–R4 are done, anyone with write access can still publish a release.**
+(`.github/scripts/release-gate.sh`) requires the commit to be on `main` and to descend from the commit
+that introduced the gate (`ad3f7ad`), its `CI gate` to have passed in a **push** run of `ci.yml` on
+`main` (GitHub Actions app 15368), and the tag to be SSH-signed by a key in `.github/allowed_signers`
+that is not in `.github/revoked_signers`. But a tag on an unmerged branch runs that branch's copy of
+the workflow, which can drop the gate, and a tag on a `main` commit older than the gate (`99948c6`, on
+`main` at 0.3.0-beta) runs a copy that never had one. `.github/workflows/release-guard.yml` runs from
+`main` on every `Release` run and cancels one that fails those checks, but it is a second line: it
+does not see a workflow under another name, cannot revoke an attestation, and an admin can disable
+it. Only repository settings close this, and only an admin can apply them. **Until R1 and R2 are
+done, anyone with write access can still publish a release with genuine provenance.**
 
-- [ ] **R1. Rulesets.** Item 1's two rulesets, plus the tag-creation ruleset (only a repository admin
-  may create a `v*` tag; `release-tags.json` keeps every tag immutable for everyone, admins included):
+Exactly what to apply, in order:
+
+- [ ] **R1. Three rulesets** — `main.json` (main: no force-push or deletion, every change by pull
+  request, the `CI gate` check from app 15368), `release-tags.json` (`v*` tags immutable for
+  everyone, admins included) and `release-tags-create.json` (only a repository admin creates a `v*`
+  tag):
   ```sh
   gh api -X POST repos/Stan-lee13/graphite/rulesets --input .github/rulesets/main.json
   gh api -X POST repos/Stan-lee13/graphite/rulesets --input .github/rulesets/release-tags.json
@@ -73,7 +85,8 @@ them. **Until R1–R4 are done, anyone with write access can still publish a rel
   ```
   Check: a collaborator with write (not admin) access runs `git push origin <commit>:refs/tags/v9.9.9-test`
   and is rejected.
-- [ ] **R2. A protected `release` environment** with a `v*` tag policy and you as required reviewer:
+- [ ] **R2. A protected `release` environment** (`.github/environments/release.json`): you as required
+  reviewer, and a single deployment policy, the tag pattern `v*`:
   ```sh
   me=$(gh api user --jq .id)
   gh api -X PUT repos/Stan-lee13/graphite/environments/release --input - <<EOF
@@ -86,19 +99,36 @@ them. **Until R1–R4 are done, anyone with write access can still publish a rel
     --jq '[.protection_rules[].type, .deployment_branch_policy]'   # required_reviewers, branch_policy; custom policies
   ```
   (Or Settings → Environments → New environment → `release` → Required reviewers: you; Deployment
-  branches and tags → Selected branches and tags → Add rule → Tag → `v*`.)
+  branches and tags → Selected branches and tags → Add rule → Tag → `v*`.) Every copy of
+  `release.yml` since Round 32, the pre-gate one included, publishes from this environment, so R2 is
+  what stops a pre-gate tag: approve a deployment only for a run whose gate job is named
+  `Release gate — version, main, signature and CI` (the pre-gate copy's is `Release gate — version
+  and CI`) and passed, and whose `Release guard` run is green.
 - [ ] **R3. Your release signing key in `.github/allowed_signers`.** The file is committed EMPTY on
   purpose: while it names no key, every release fails at the gate ("names no signer"). Sign tags with
   an SSH key (the same key can sign commits):
   ```sh
   git config --global gpg.format ssh
   git config --global user.signingkey ~/.ssh/id_ed25519.pub
-  printf '%s namespaces="git" %s\n' "$(git config user.email)" "$(cut -d' ' -f1,2 ~/.ssh/id_ed25519.pub)" \
-    >> .github/allowed_signers      # then commit it through a pull request to main
+  printf '%s namespaces="git",valid-before="%s" %s\n' "$(git config user.email)" "$(date -u -d '+1 year' +%Y%m%d)" \
+    "$(cut -d' ' -f1,2 ~/.ssh/id_ed25519.pub)" >> .github/allowed_signers   # then commit it through a pull request to main
   ```
-- [ ] **R4. Check the gate refuses.** After R1–R3: an unsigned annotated tag, or a signed tag on a
-  commit that is not on `main`, must stop at the `Release gate` job (and R1 already rejects the push
-  of such a tag from a non-admin).
+  `valid-after` / `valid-before` (Round 38, D2-5) bound when a key may sign a release; the gate judges
+  them at release time, not by the tag's own date. To **revoke** a key (lost, leaked, its holder
+  left): in one pull request, add its public key line to `.github/revoked_signers` (never remove a
+  line from it) and delete its line in `allowed_signers` or end it with `valid-before`. The guard
+  applies `main`'s lists to every release run, so a revocation merged to `main` also covers tags on
+  older commits.
+- [ ] **R4. Check the gate refuses.** After R1–R3: an unsigned annotated tag, a signed tag on a commit
+  that is not on `main`, or one on a commit older than `ad3f7ad` must stop at the `Release gate` job or
+  be cancelled by `Release guard` (and R1 already rejects the push of such a tag from a non-admin).
+- [ ] **R5. Read the drift check** (Round 38). Actions → Ruleset drift → Run workflow. It is red until
+  R1 and R2 are done, and green only while the three rulesets and the environment match the
+  committed files; it runs every Monday after that. It uses GITHUB_TOKEN, which cannot read who may
+  bypass a ruleset, so check that once by hand:
+  `gh api repos/Stan-lee13/graphite/rulesets/<id> --jq .bypass_actors` for each of the three:
+  `[]` for `main.json` and `release-tags.json`, the admin role (`actor_id` 5, `always`) only for
+  `release-tags-create.json`.
 
 ## Release (owner)
 

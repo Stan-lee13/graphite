@@ -123,8 +123,12 @@ Recorded, not hidden. Each is in `01-findings.md` or `02-roadmap-gap.md` with it
   GitHub private vulnerability reporting, then linking it from `.github/ISSUE_TEMPLATE/config.yml`;
 - an independent third-party audit (R-M4); deployment, TLS, DNS and monitoring (R-M6);
 - release integrity (Round 34, R33-9): the three rulesets, the protected `release` environment and a
-  key in `.github/allowed_signers` (R1–R4 in `docs/ops/production-checklist.md`); until then a release
-  cannot be cut at all, because the release gate fails closed;
+  key in `.github/allowed_signers` (R1–R4 in `docs/ops/production-checklist.md`). Until the owner
+  applies the rulesets and the environment, anyone with write access can still publish a release
+  with genuine provenance: the gate's empty signer list stops only the `release.yml` copies that
+  contain the gate, while a tag on a branch commit runs that branch's own copy and a tag on a main
+  commit older than the gate (`99948c6`) runs a copy with no gate at all (Round 37, R37-8; the
+  Round 38 release guard cancels such a run from `main`, a second line, not the stop);
 - whether to keep the Round 32–34 refusal defaults on the operator's traffic profile, after running
   `.github/workflows/live-mainnet.yml`.
 
