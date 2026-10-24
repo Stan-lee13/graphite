@@ -1332,7 +1332,7 @@ pub const MAX_PLAUSIBLE_FEE_LAMPORTS: u64 = 100_000_000;
 /// overhead) — 890,880 lamports for an empty account, 2,039,280 for a token
 /// account (F7). It bounds what an account creation may be said to cost a
 /// signer: lamports put into a new account beyond it are a transfer.
-fn rent_exempt_minimum(data_len: usize) -> i128 {
+pub fn rent_exempt_minimum(data_len: usize) -> i128 {
     const LAMPORTS_PER_BYTE_YEAR: i128 = 3_480;
     const EXEMPTION_THRESHOLD_YEARS: i128 = 2;
     const ACCOUNT_STORAGE_OVERHEAD: i128 = 128;
@@ -1492,14 +1492,16 @@ fn lamports_kept_by(
 /// is a cost to the payer only as above. A signer whose account another
 /// program owns after the transaction is still judged as a signer for its
 /// own losses; lamports it receives are its gain, not the user's.
-/// Whether a signer holds `d` (Round 38, R37-6): it is a signer, or on
-/// either side of the transaction it is a token account a signer owns, a
-/// native account whose recorded authority is a signer, or a mint whose mint,
-/// freeze or extension authority is a signer.
+/// Whether a signer holds `d` (Round 38, R37-6): it is a signer that held
+/// lamports before the transaction (a keypair funded and built in this
+/// transaction holds nothing yet), or on either side of the transaction it
+/// is a token account a signer owns, a native account whose recorded
+/// authority is a signer, or a mint whose mint, freeze or extension
+/// authority is a signer.
 fn signer_holds(d: &AccountDelta, signers: &std::collections::HashSet<&str>) -> bool {
     let is = |who: &str| signers.contains(who);
     let some = |who: &Option<String>| who.as_deref().is_some_and(is);
-    is(&d.pubkey)
+    (is(&d.pubkey) && d.lamports_before() > 0)
         || [d.before.as_ref(), d.after.as_ref()]
             .into_iter()
             .flatten()

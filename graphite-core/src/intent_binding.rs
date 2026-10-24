@@ -569,6 +569,7 @@ pub fn bind(input: &BindingInput<'_>) -> Binding {
         "approve" => bind_token_like(input, &[TokenOp::Approve], false),
         "burn" => bind_token_like(input, &[TokenOp::Burn], false),
         "swap" => bind_swap(input),
+        "create" => bind_create(input),
         "stake" => Binding::unbound(
             "a stake states an amount, and the Core decodes no stake program's amount: the stake is not tied to what was asked",
         ),
@@ -1542,6 +1543,119 @@ fn bind_swap(input: &BindingInput<'_>) -> Binding {
     Binding::Bound(format!(
         "{} spends {} of the {requested} base units of {in_text} requested and is held by the chain to at least {} of the {delivered} base units of {out_text} simulated ({bps} bps)",
         decoded.name, decoded.amount_in, decoded.min_out
+    ))
+}
+
+// ── Account creation (Round 38, R37-7) ──────────────────────────────────────
+
+/// A creation is held to the rent of what it creates (Round 38, R37-7).
+///
+/// `create` bound nothing, and L4 holds a signer's wallet to the located
+/// instruction's own `data.lamports` (R33-15) — a number whoever builds the
+/// transaction writes. A System `CreateAccount` putting 5 SOL into a
+/// zero-byte account the attacker's program owns was `executable_approved`.
+/// Read from Graphite's own diff, so a creation by CPI is held the same way:
+///
+/// - every account the transaction creates holds at most the rent-exempt
+///   minimum for its size, plus, in all, the SOL amount the request states;
+/// - no other account that is not a signer's own gains lamports, and no
+///   top-level System or token instruction moves a signer's value to one.
+fn bind_create(input: &BindingInput<'_>) -> Binding {
+    let stated = match input.params.and_then(|p| p.amount.as_ref()) {
+        None => 0u64,
+        Some(text) => {
+            let native = input
+                .params
+                .and_then(|p| p.input_token.as_ref())
+                .map_or(true, |t| {
+                    matches!(read_asset(t, "input token"), Ok(Asset::Native))
+                });
+            if !native {
+                return Binding::unbound(format!(
+                    "the request funds a creation with {text} of a token; the Core holds a creation to SOL"
+                ));
+            }
+            match parse_amount(text, 9) {
+                Ok(v) => v,
+                Err(e) => return Binding::unbound(e),
+            }
+        }
+    };
+    let ixs = match input.instructions {
+        Ok(ixs) => ixs,
+        Err(why) => {
+            return Binding::unbound(format!(
+                "the transaction's instructions are not readable ({why}), so what it creates cannot be held to its rent"
+            ))
+        }
+    };
+    let Some(diff) = input.diff else {
+        return Binding::unbound(
+            "no simulated state diff: what the creation funds was not measured, so it is not held to its rent",
+        );
+    };
+    let created =
+        |d: &crate::state_diff::AccountDelta| d.lamports_before() == 0 && d.lamports_after() > 0;
+    let mut beyond: i128 = 0;
+    let mut largest: Option<(String, i128, usize)> = None;
+    for d in diff.deltas.iter().filter(|d| created(d)) {
+        let size = d.after.as_ref().map_or(0, |s| s.data_len);
+        let excess = i128::from(d.lamports_after()) - crate::state_diff::rent_exempt_minimum(size);
+        if excess > 0 {
+            beyond += excess;
+            if largest.as_ref().is_none_or(|(_, e, _)| excess > *e) {
+                largest = Some((d.pubkey.clone(), excess, size));
+            }
+        }
+    }
+    if beyond > i128::from(stated) {
+        let (account, excess, size) = largest.expect("an excess has an account");
+        return Binding::mismatch(format!(
+            "the creation funds {account} with {excess} lamports beyond the rent-exempt minimum for its {size} bytes ({beyond} beyond rent in all; the request states {stated}): lamports put into a new account beyond its rent are a transfer"
+        ));
+    }
+    // What is not a creation: value leaving a signer for anyone else.
+    let own = |a: &str| {
+        signers_own(a, input.signers, diff)
+            || diff.deltas.iter().any(|d| d.pubkey == a && created(d))
+    };
+    for (i, ix) in ixs.iter().enumerate() {
+        let moved = if ix.program_id == SYSTEM_PROGRAM {
+            system_movement(ix)
+        } else if ix.program_id == SPL_TOKEN_PROGRAM || ix.program_id == SPL_TOKEN_2022_PROGRAM {
+            token_movement(ix)
+        } else {
+            None
+        };
+        match moved {
+            Some(Err(e)) => {
+                return Binding::unbound(format!("create: instruction {i} is unreadable ({e})"))
+            }
+            Some(Ok(m)) if input.signers.contains(&m.authority) && !own(&m.to) => {
+                return Binding::mismatch(format!(
+                    "create: instruction {i} ({}) moves {} from a signer to {}, which is neither a signer's account nor one the transaction creates",
+                    m.what, m.amount, m.to
+                ))
+            }
+            _ => {}
+        }
+    }
+    for d in &diff.deltas {
+        if !own(&d.pubkey) && d.lamport_delta() > 0 {
+            return Binding::mismatch(format!(
+                "create: {} gained {} lamports, and it is neither a signer's account nor one the transaction creates",
+                d.pubkey,
+                d.lamport_delta()
+            ));
+        }
+    }
+    Binding::Bound(format!(
+        "every account the transaction creates holds at most its rent-exempt minimum{}",
+        if stated > 0 {
+            format!(" plus, in all, the {stated} lamports the request states")
+        } else {
+            String::new()
+        }
     ))
 }
 

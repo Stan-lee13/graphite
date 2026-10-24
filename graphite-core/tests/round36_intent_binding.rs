@@ -744,13 +744,20 @@ fn stake_and_intents_that_state_nothing() {
         run("stake", params("1", FRIEND, "SOL"), &[], None),
         Binding::Unbound(_)
     ));
-    for intent in ["close", "revoke", "create", "claim", "configure"] {
+    for intent in ["close", "revoke", "claim", "configure"] {
         assert_eq!(
             run(intent, None, &[], None),
             Binding::NotApplicable,
             "{intent}"
         );
     }
+    // Re-pinned in Round 38 (R37-7): a creation is held to the rent of what
+    // it creates (`bind_create`), so without a simulated diff it is unbound,
+    // not "nothing to bind".
+    assert!(matches!(
+        run("create", None, &[], None),
+        Binding::Unbound(_)
+    ));
 }
 
 // ─── Swaps ──────────────────────────────────────────────────────────────────
