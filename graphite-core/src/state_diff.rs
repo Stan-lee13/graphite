@@ -1341,6 +1341,233 @@ fn rent_exempt_minimum(data_len: usize) -> i128 {
         * EXEMPTION_THRESHOLD_YEARS
 }
 
+const STAKE_PROGRAM: &str = "Stake11111111111111111111111111111111111111";
+const VOTE_PROGRAM: &str = "Vote111111111111111111111111111111111111111";
+/// The lockup of a stake account that locks nothing (`native_authorities`).
+const NO_LOCKUP: &str = "unix 0, epoch 0";
+
+/// The value `native_authorities` records for `what` on `snap`.
+fn native_authority<'a>(snap: &'a AccountSnapshot, what: &str) -> Option<&'a str> {
+    snap.native_authorities
+        .iter()
+        .find(|(w, _)| w == what)
+        .map(|(_, who)| who.as_str())
+}
+
+/// What kind of native account `owner` makes an account, for a finding.
+fn native_kind(owner: &str) -> &'static str {
+    match owner {
+        STAKE_PROGRAM => "stake",
+        VOTE_PROGRAM => "vote",
+        SYSTEM_PROGRAM => "nonce",
+        _ => "native",
+    }
+}
+
+/// The authorities of a native account the transaction created or
+/// initialized that no signer holds (Round 34, R33-14), each as
+/// "<what> <who>". Stake: the staker and the withdrawer, and the lockup
+/// custodian while a lockup is in force (it alone can lift it). Vote: the
+/// withdrawer, and each revenue collector unless it is the vote account
+/// itself; a vote state this build cannot decode is a stranger. Nonce: its
+/// authority. A stake account carrying exactly the authorities of one this
+/// transaction splits from (`split_sources`) introduces no one.
+fn created_authorities_not_signing(
+    after: &AccountSnapshot,
+    account: &str,
+    signers: &std::collections::HashSet<&str>,
+    split_sources: &[Vec<(String, String)>],
+) -> Vec<String> {
+    let signs = |who: &str| signers.contains(who);
+    let mut out = Vec::new();
+    match after.owner.as_str() {
+        STAKE_PROGRAM => {
+            if split_sources.contains(&after.native_authorities) {
+                return out;
+            }
+            let lockup_in_force = native_authority(after, "stake lockup") != Some(NO_LOCKUP);
+            for (what, who) in &after.native_authorities {
+                let judged = match what.as_str() {
+                    "stake staker" | "stake withdrawer" => true,
+                    "stake lockup custodian" => lockup_in_force,
+                    _ => false,
+                };
+                if judged && !signs(who) {
+                    out.push(format!("{what} {who}"));
+                }
+            }
+        }
+        VOTE_PROGRAM => {
+            for (what, who) in &after.native_authorities {
+                let ok = match what.as_str() {
+                    "vote authorized withdrawer" => signs(who),
+                    "vote inflation rewards collector" | "vote block revenue collector" => {
+                        signs(who) || who == account
+                    }
+                    // A vote state this build cannot decode.
+                    _ => false,
+                };
+                if !ok {
+                    out.push(format!("{what} {who}"));
+                }
+            }
+        }
+        SYSTEM_PROGRAM => {
+            for (what, who) in &after.native_authorities {
+                if what == "nonce authority" && !signs(who) {
+                    out.push(format!("{what} {who}"));
+                }
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+/// The signer that keeps the lamports `snap` holds, when one does (Round 34,
+/// R33-6/-7/-10): a token account (SPL Token or Token-2022) a signer owns,
+/// not frozen, whose delegate and close authority, if any, also sign; a
+/// stake account whose staker and withdrawer sign, with no lockup a
+/// non-signer controls; a nonce account whose authority signs. Lamports in
+/// any other account are not a signer's, whoever paid them in.
+fn lamports_kept_by(
+    snap: &AccountSnapshot,
+    signers: &std::collections::HashSet<&str>,
+) -> Option<String> {
+    let signs = |who: &str| signers.contains(who);
+    if snap.owner == SPL_TOKEN_PROGRAM || snap.owner == SPL_TOKEN_2022_PROGRAM {
+        let t = snap.token.as_ref()?;
+        let holds = signs(&t.owner)
+            && !t.is_frozen()
+            && t.delegate.as_deref().is_none_or(signs)
+            && t.close_authority.as_deref().is_none_or(signs);
+        return holds.then(|| t.owner.clone());
+    }
+    match snap.owner.as_str() {
+        STAKE_PROGRAM => {
+            let withdrawer = native_authority(snap, "stake withdrawer")?;
+            let staker = native_authority(snap, "stake staker")?;
+            let lockup_free = native_authority(snap, "stake lockup") == Some(NO_LOCKUP)
+                || native_authority(snap, "stake lockup custodian").is_some_and(signs);
+            (signs(withdrawer) && signs(staker) && lockup_free).then(|| withdrawer.to_string())
+        }
+        SYSTEM_PROGRAM => native_authority(snap, "nonce authority")
+            .filter(|a| signs(a))
+            .map(str::to_string),
+        _ => None,
+    }
+}
+
+/// What each signer lost of its own, in lamports (Round 34: R33-6, R33-7,
+/// R33-10). Positive is a loss nothing explains; zero or negative is none.
+///
+/// Until Round 34 L4 summed the signers' balance changes and subtracted
+/// every lamport that arrived in a token account a signer holds and the
+/// rent of every account the transaction created. Three ways that excused
+/// a drain, each reproduced by the Round 33 audit:
+///
+/// - **R33-7**: a co-signer's gain offset the user's loss. The user's 5 SOL
+///   sent to a fresh co-signing keypair, or to the relayer that pays the
+///   fee, netted to nothing. Now each signer's loss is its own; another
+///   signer's gain never reduces it, and lamports a signer keeps count
+///   toward THAT signer only.
+/// - **R33-6**: rent paid into a created account was credited whoever owned
+///   it — 7.30 SOL into a 1 MiB account another program owns. Lamports in an
+///   account a program owns are that program's. Now the rent of a created
+///   account is a signer's cost only when the declaration NAMES the account
+///   as one the instruction creates (`declared_creation`) and it ends up
+///   owned by the instruction's own program or a token program; lamports in
+///   an account a signer keeps (`lamports_kept_by`) count toward that
+///   signer. Everything else is a loss.
+/// - **R33-10**: every lamport arriving in a signer's token account was
+///   credited, wherever it came from: a pool's 1 SOL wSOL payout into the
+///   user's account offset 1 SOL sent from the user's wallet to an attacker.
+///   Now what arrives in signers' accounts is credited only beyond what left
+///   accounts no signer keeps (vaults, programs, strangers), so value paid
+///   IN to the user is never read as the user's own value staying put; and
+///   each signer is credited at most what it lost (min(wallet out, kept in)).
+///
+/// A created account that is itself a signer (a fresh keypair) is a signer
+/// in its own right: its gain is its own and offsets nobody's loss. Its rent
+/// is a cost to the payer only as above. A signer whose account another
+/// program owns after the transaction is still judged as a signer for its
+/// own losses; lamports it receives are its gain, not the user's.
+fn signer_lamport_losses(
+    changed: &[&AccountDelta],
+    signers: &std::collections::HashSet<&str>,
+    fee_payer: Option<&str>,
+    fee: i128,
+    declared_creation: &dyn Fn(&AccountDelta) -> bool,
+) -> std::collections::BTreeMap<String, i128> {
+    use std::collections::BTreeMap;
+    let mut out: BTreeMap<String, i128> = BTreeMap::new();
+    let mut kept_in: BTreeMap<String, i128> = BTreeMap::new();
+    let mut left_strangers: i128 = 0;
+    let mut creation_rent: i128 = 0;
+    for d in changed {
+        let lam = d.lamport_delta();
+        let is_signer = signers.contains(d.pubkey.as_str());
+        if is_signer {
+            let fee_paid = if fee_payer == Some(d.pubkey.as_str()) {
+                fee
+            } else {
+                0
+            };
+            *out.entry(d.pubkey.clone()).or_default() += -lam - fee_paid;
+        }
+        let gained_data = d.after.as_ref().is_some_and(|s| s.data_len > 0)
+            && d.before.as_ref().map(|s| s.data_len).unwrap_or(0) == 0;
+        let left_system = d.after.as_ref().is_some_and(|s| s.owner != SYSTEM_PROGRAM);
+        if lam > 0 {
+            let keeper = if is_signer {
+                None
+            } else {
+                d.after.as_ref().and_then(|s| lamports_kept_by(s, signers))
+            };
+            if let Some(h) = keeper {
+                *kept_in.entry(h).or_default() += lam;
+            } else if d.was_created() && (gained_data || left_system) && declared_creation(d) {
+                let rent = rent_exempt_minimum(d.after.as_ref().map_or(0, |s| s.data_len));
+                creation_rent += lam.min(rent);
+            }
+        } else if lam < 0 && !is_signer {
+            let kept_before = d
+                .before
+                .as_ref()
+                .and_then(|s| lamports_kept_by(s, signers))
+                .is_some();
+            if !kept_before {
+                left_strangers += -lam;
+            }
+        }
+    }
+    // What arrived in signers' accounts beyond what left accounts no signer
+    // keeps: only that can be the signers' own lamports changing form.
+    let mut kept_pool = (kept_in.values().sum::<i128>() - left_strangers).max(0);
+    // The fee payer first: it is the account that pays rent.
+    let mut order: Vec<String> = out.keys().cloned().collect();
+    if let Some(p) = fee_payer.filter(|p| out.contains_key(*p)) {
+        order.retain(|s| s != p);
+        order.insert(0, p.to_string());
+    }
+    let mut losses = BTreeMap::new();
+    for s in order {
+        let mut lost = out[&s];
+        if lost > 0 {
+            let kept = lost
+                .min(kept_in.get(&s).copied().unwrap_or(0))
+                .min(kept_pool);
+            kept_pool -= kept;
+            lost -= kept;
+            let rent = lost.min(creation_rent);
+            creation_rent -= rent;
+            lost -= rent;
+        }
+        losses.insert(s, lost);
+    }
+    losses
+}
+
 /// A complete pre/post picture of a transaction's effect on account state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
@@ -1573,6 +1800,62 @@ pub struct DeclaredEffects {
     /// stated it ([`security_class_line`]). `None` when no line stated it, or
     /// lines stated two different classes.
     pub security_class: Option<String>,
+    /// The located instruction's program, when the pipeline stated it
+    /// ([`instruction_program_line`], Round 34). The rent of an account the
+    /// declaration says this instruction creates is the signer's cost only
+    /// when the account ends up owned by this program or a token program —
+    /// never by "any program" (R33-6).
+    pub instruction_program: Option<String>,
+    /// What the located instruction's own data says it moves out of an
+    /// account, in lamports, where its layout states it
+    /// ([`lamport_amount_line`], Round 34, R33-15): (address, lamports).
+    pub lamport_amounts: Vec<(String, u64)>,
+}
+
+/// The prefix of the line the pipeline adds naming the located
+/// instruction's program (Round 34). Reserved like the class line.
+pub const INSTRUCTION_PROGRAM_LINE_PREFIX: &str = "graphite: the located instruction's program is ";
+
+/// The line naming `program` as the located instruction's program.
+pub fn instruction_program_line(program: &str) -> String {
+    format!("{INSTRUCTION_PROGRAM_LINE_PREFIX}{program}")
+}
+
+/// The prefix of the line the pipeline adds stating what the located
+/// instruction's data moves out of an account (Round 34, R33-15). Reserved
+/// like the class line.
+pub const LAMPORT_AMOUNT_LINE_PREFIX: &str =
+    "graphite: the located instruction's data moves lamports out of ";
+
+/// The line stating that the located instruction's data moves `lamports`
+/// out of `address`.
+pub fn lamport_amount_line(address: &str, lamports: u64) -> String {
+    format!("{LAMPORT_AMOUNT_LINE_PREFIX}{address}: {lamports}")
+}
+
+/// What a System instruction's data says it moves out of its first account,
+/// for the instructions whose layout states it: `Transfer` (u32 tag 2,
+/// lamports u64) and `CreateAccount` (tag 0, lamports u64, space, owner) —
+/// both debit `accounts[0]` by exactly that amount (Round 34, R33-15).
+pub fn system_lamport_debit(
+    program_id: &str,
+    data: &[u8],
+    accounts: &[String],
+) -> Option<(String, u64)> {
+    if program_id != SYSTEM_PROGRAM {
+        return None;
+    }
+    let tag = u32::from_le_bytes(data.get(0..4)?.try_into().ok()?);
+    let exact_len = match tag {
+        2 => 12,
+        0 => 52,
+        _ => return None,
+    };
+    if data.len() != exact_len {
+        return None;
+    }
+    let lamports = u64::from_le_bytes(data.get(4..12)?.try_into().ok()?);
+    Some((accounts.first()?.clone(), lamports))
 }
 
 /// The prefix of the line the pipeline adds to an instruction's declaration
@@ -1640,6 +1923,26 @@ impl DeclaredEffects {
             .is_some_and(|s| s.anywhere || names.iter().any(|n| s.accounts.contains(*n)))
     }
 
+    /// Whether `effect` is declared about an account known by any of `names`
+    /// BY NAME: a line that names no account does not count (Round 34,
+    /// R33-5). The signer judgements ask this — "transfers funds between the
+    /// protocol and the involved accounts" does not say a signer's wallet is
+    /// one of them.
+    pub fn covers_by_name(&self, effect: &str, names: &[&str]) -> bool {
+        self.scopes
+            .get(effect)
+            .is_some_and(|s| names.iter().any(|n| s.accounts.contains(*n)))
+    }
+
+    /// Whether some line declares a debit without naming any account
+    /// (Round 34, R33-5). For the signer judgements such a line is a
+    /// declaration Graphite cannot read: it says value moves and not whose.
+    /// Measured on the shipped manifests: 1,802 of 3,541 instructions carry
+    /// one, none beside a named debit (`tests/r30_declared_effects_census.rs`).
+    pub fn debit_names_no_account(&self) -> bool {
+        self.scopes.get("debit").is_some_and(|s| s.anywhere)
+    }
+
     /// Parse the manifest's prose (A2-01, 2026-09-29 audit: rebuilt).
     ///
     /// Three rules the substring match it replaces did not have:
@@ -1673,10 +1976,36 @@ impl DeclaredEffects {
     pub fn parse(expected_state_changes: &[String]) -> Self {
         // The pipeline's class line is not prose: it states nothing about
         // effects, so it neither makes a declaration non-silent nor counts as
-        // a line Graphite could not read.
-        let (class_lines, prose): (Vec<&String>, Vec<&String>) = expected_state_changes
+        // a line Graphite could not read. Nor are its program and amount
+        // lines (Round 34).
+        let (pipeline_lines, prose): (Vec<&String>, Vec<&String>) =
+            expected_state_changes.iter().partition(|l| {
+                l.starts_with(SECURITY_CLASS_LINE_PREFIX)
+                    || l.starts_with(INSTRUCTION_PROGRAM_LINE_PREFIX)
+                    || l.starts_with(LAMPORT_AMOUNT_LINE_PREFIX)
+            });
+        let class_lines: Vec<&String> = pipeline_lines
             .iter()
-            .partition(|l| l.starts_with(SECURITY_CLASS_LINE_PREFIX));
+            .copied()
+            .filter(|l| l.starts_with(SECURITY_CLASS_LINE_PREFIX))
+            .collect();
+        let mut programs = pipeline_lines
+            .iter()
+            .filter_map(|l| l.strip_prefix(INSTRUCTION_PROGRAM_LINE_PREFIX))
+            .map(|p| p.trim().to_string());
+        let first_program = programs.next();
+        let instruction_program = match first_program {
+            Some(p) if programs.all(|o| o == p) => Some(p),
+            _ => None,
+        };
+        let lamport_amounts: Vec<(String, u64)> = pipeline_lines
+            .iter()
+            .filter_map(|l| l.strip_prefix(LAMPORT_AMOUNT_LINE_PREFIX))
+            .filter_map(|rest| {
+                let (address, amount) = rest.split_once(": ")?;
+                Some((address.trim().to_string(), amount.trim().parse().ok()?))
+            })
+            .collect();
         let mut classes = class_lines.iter().map(|l| {
             l[SECURITY_CLASS_LINE_PREFIX.len()..]
                 .trim()
@@ -1691,6 +2020,8 @@ impl DeclaredEffects {
         let mut e = Self {
             absent: prose.is_empty(),
             security_class,
+            instruction_program,
+            lamport_amounts,
             ..Self::default()
         };
         let expected_state_changes = prose;
@@ -3677,27 +4008,19 @@ pub fn check_state_diff_with(input: &StateDiffCheck<'_>, relax: L4Relaxations) -
     // transaction's accounts", which they had not; they left the accounts
     // that fell, for accounts that rose.
     let mut gross_lamport_out: i128 = 0;
-    // What the transaction's SIGNERS lost, net (F7): each signer's balance
-    // change, its fee excepted, offset by what arrived in token accounts a
-    // signer holds and by the rent-exempt minimum of accounts the
-    // transaction created. This is the user's value, and the net is right
-    // for it: lamports a signer wraps into its own wSOL account are not lost.
-    let mut signer_net_loss: i128 = 0;
     let mut token_debit = false;
     // A token debit on a signer's account that a NAMED debit declaration does
     // not cover (F2, review of the 2026-09-29 audit's fix).
     let mut signer_debit_outside_scope: Option<String> = None;
+    // A token debit on a signer's account under a debit line that names no
+    // account, and no line naming this one (Round 34, R33-5).
+    let mut signer_debit_under_unscoped: Option<String> = None;
     // The first token account a signer holds that was debited, whatever the
     // declaration (R30: judged when the declaration cannot be read).
     let mut signer_token_debited: Option<String> = None;
-    // Lamports that left a signer's own wallet beyond the fee, under a
-    // declaration that debits only named accounts (W19).
-    let mut signer_lamports_outside_scope: i128 = 0;
-    // Of the signers' lamports that left, what stayed theirs or paid for an
-    // account the transaction created: lamports wrapped into a token account
-    // a signer holds, and the rent-exempt minimum of a created account
-    // (Round 32, W19: these are not a loss).
-    let mut signer_value_kept: i128 = 0;
+    // The signers whose account is a wallet (System-owned, no data, before
+    // the transaction) — the accounts W19 judges.
+    let mut signer_wallets: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
     // Who signed: the transaction's own privileges where Graphite has them,
     // else the resolved accounts' signer flags.
     let signers: std::collections::HashSet<&str> = match input.diff.transaction_privileges.as_ref()
@@ -3710,6 +4033,18 @@ pub fn check_state_diff_with(input: &StateDiffCheck<'_>, relax: L4Relaxations) -
             .map(|a| a.address.as_str())
             .collect(),
     };
+    // Round 34 (R33-14): the authorities of the stake accounts this
+    // transaction splits from — a staker that signs, lamports that fell. A
+    // created stake account carrying exactly these authorities was split
+    // off an account its signer already controls; it introduces no one.
+    let split_sources: Vec<Vec<(String, String)>> = changed
+        .iter()
+        .filter(|d| d.lamport_delta() < 0)
+        .filter_map(|d| d.before.as_ref())
+        .filter(|b| b.owner == STAKE_PROGRAM)
+        .filter(|b| native_authority(b, "stake staker").is_some_and(|s| signers.contains(s)))
+        .map(|b| b.native_authorities.clone())
+        .collect();
 
     for d in &changed {
         let acct = Some(d.pubkey.as_str());
@@ -4018,6 +4353,37 @@ pub fn check_state_diff_with(input: &StateDiffCheck<'_>, relax: L4Relaxations) -
                 ));
             }
         }
+        // Round 34 (R33-14): authorities written into a native account this
+        // transaction created or initialized. The comparison above needs a
+        // before AND an after, so a stake account created with a withdrawer
+        // nobody in the transaction controls — System CreateAccount of
+        // 100 SOL, then Stake Initialize — handed the 100 SOL to that key
+        // with no finding. Whoever a created stake, vote or nonce account
+        // names can take its lamports; each must sign. No declaration
+        // excuses it: "initializes accounts.stake with the stake authority"
+        // says an authority is written, not that a stranger may hold it.
+        if let Some(a) = d.after.as_ref() {
+            let fresh = d
+                .before
+                .as_ref()
+                .is_none_or(|b| b.native_authorities.is_empty());
+            if fresh && !a.native_authorities.is_empty() {
+                let strangers =
+                    created_authorities_not_signing(a, &d.pubkey, &signers, &split_sources);
+                if !strangers.is_empty() {
+                    findings.push(StateDiffFinding::critical(
+                        "CreatedAccountAuthorityNotSigner",
+                        acct,
+                        format!(
+                            "this {} account was created or initialized by the transaction with {}, which no signer of it holds — whoever does can take its {} lamports",
+                            native_kind(&a.owner),
+                            strangers.join(", "),
+                            a.lamports
+                        ),
+                    ));
+                }
+            }
+        }
 
         // Mint supply.
         match d.supply_delta() {
@@ -4041,57 +4407,22 @@ pub fn check_state_diff_with(input: &StateDiffCheck<'_>, relax: L4Relaxations) -
             _ => {}
         }
 
-        // Value movement, accumulated and judged once below. The fee payer's
-        // fee-sized outflow is expected on every transaction and is excluded.
+        // Value movement, accumulated and judged once below
+        // (`signer_lamport_losses`). The fee payer's fee-sized outflow is
+        // expected on every transaction and is excluded.
         let lam = d.lamport_delta();
         let fee = i128::from(fee_lamports);
-        let is_signer = signers.contains(d.pubkey.as_str());
-        if is_signer {
-            signer_net_loss += -lam - if is_fee_payer { fee } else { 0 };
-        } else if lam > 0 {
-            // A signer's value that only changed form: lamports arriving in a
-            // token account a signer holds (wrapping SOL), or funding an
-            // account this transaction created, up to the rent-exempt
-            // minimum of its data — rent a signer pays to own an account is
-            // a cost of the account, not a transfer of value away.
-            let held_by_signer = d
-                .after
+        if signers.contains(d.pubkey.as_str())
+            && d.before
                 .as_ref()
-                .and_then(|s| s.token.as_ref())
-                .is_some_and(|t| signers.contains(t.owner.as_str()));
-            if held_by_signer {
-                signer_net_loss -= lam;
-                signer_value_kept += lam;
-            } else if d.was_created() && (gained_data || left_system) {
-                let rent = rent_exempt_minimum(d.after.as_ref().map_or(0, |s| s.data_len));
-                signer_net_loss -= lam.min(rent);
-                signer_value_kept += lam.min(rent);
-            }
+                .is_some_and(|s| s.owner == SYSTEM_PROGRAM && s.data_len == 0)
+        {
+            signer_wallets.insert(d.pubkey.as_str());
         }
         if lam < 0 {
             let magnitude = -lam;
             if !(is_fee_payer && magnitude <= fee) {
                 gross_lamport_out += magnitude - if is_fee_payer { fee } else { 0 };
-            }
-            // W19 (external review): a debit declared about named accounts
-            // says nothing about the signer's own wallet. Round 32: the rent
-            // of accounts the transaction creates and lamports wrapped into
-            // the signer's own token accounts are netted out below, and what
-            // remains — a tip, a transfer a sibling makes — is Critical unless
-            // the operator relaxes it.
-            let own_wallet = d
-                .before
-                .as_ref()
-                .is_some_and(|s| s.owner == SYSTEM_PROGRAM && s.data_len == 0);
-            if declared.debit
-                && !declares("debit")
-                && own_wallet
-                && signers.contains(d.pubkey.as_str())
-            {
-                let beyond_fee = magnitude - if is_fee_payer { fee } else { 0 };
-                if beyond_fee > 0 {
-                    signer_lamports_outside_scope += beyond_fee;
-                }
             }
         }
         // F2: a closure that took a balance with it is a debit too.
@@ -4112,14 +4443,121 @@ pub fn check_state_diff_with(input: &StateDiffCheck<'_>, relax: L4Relaxations) -
             if owner.is_some_and(|o| signers.contains(o)) && signer_token_debited.is_none() {
                 signer_token_debited = Some(d.pubkey.clone());
             }
+            // Round 34 (R33-5): only a line that NAMES this account declares
+            // its debit. A line naming no account ("transfers funds between
+            // the protocol and the involved accounts") says nothing about
+            // whose tokens: for a signer's account it is judged as a
+            // declaration Graphite cannot read, below.
             if declared.debit
-                && !declares("debit")
+                && !declared.covers_by_name("debit", names)
                 && owner.is_some_and(|o| signers.contains(o))
-                && signer_debit_outside_scope.is_none()
             {
-                signer_debit_outside_scope = Some(d.pubkey.clone());
+                if declared.debit_names_no_account() {
+                    if signer_debit_under_unscoped.is_none() {
+                        signer_debit_under_unscoped = Some(d.pubkey.clone());
+                    }
+                } else if signer_debit_outside_scope.is_none() {
+                    signer_debit_outside_scope = Some(d.pubkey.clone());
+                }
             }
         }
+    }
+
+    // Round 34 (R33-6, R33-7, R33-10): what each signer lost, its own.
+    let fee = i128::from(fee_lamports);
+    let reviewed_creator = |owner: &str| {
+        owner == SPL_TOKEN_PROGRAM
+            || owner == SPL_TOKEN_2022_PROGRAM
+            || declared.instruction_program.as_deref() == Some(owner)
+    };
+    let losses = signer_lamport_losses(
+        &changed,
+        &signers,
+        input.fee_payer,
+        fee,
+        &|d: &AccountDelta| {
+            let names: &[&str] = names_of
+                .get(d.pubkey.as_str())
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            declared.covers_by_name("create", names)
+                && d.after.as_ref().is_some_and(|a| reviewed_creator(&a.owner))
+        },
+    );
+    let names_of_signer = |s: &str| -> Vec<&str> { names_of.get(s).cloned().unwrap_or_default() };
+    // W19 and its Round 34 sibling: a signer's wallet whose loss no debit
+    // line NAMING it declares. Under a declaration whose only debit lines
+    // name other accounts that is W19; under one with a line that names no
+    // account, it is a loss under a declaration Graphite cannot read (R33-5).
+    let (mut signer_lamports_outside_scope, mut signer_lamports_unscoped): (i128, i128) = (0, 0);
+    // R33-15: a wallet the located instruction's data debits by a stated
+    // amount, which lost more.
+    let mut beyond_stated: Vec<(String, u64, i128)> = Vec::new();
+    for (signer, unexplained) in &losses {
+        let names = names_of_signer(signer);
+        let named = declared.covers_by_name("debit", &names);
+        if let Some((_, amount)) = declared.lamport_amounts.iter().find(|(a, _)| a == signer) {
+            if named && *unexplained > i128::from(*amount) {
+                beyond_stated.push((signer.clone(), *amount, *unexplained));
+            }
+        }
+        if !declared.debit || named || !signer_wallets.contains(signer.as_str()) {
+            continue;
+        }
+        if *unexplained > 0 {
+            if declared.debit_names_no_account() {
+                signer_lamports_unscoped += unexplained;
+            } else {
+                signer_lamports_outside_scope += unexplained;
+            }
+        }
+    }
+    let signer_net_loss: i128 = losses.values().map(|u| (*u).max(0)).sum();
+    // The Round 30/32 rule for a declaration Graphite cannot read, applied
+    // to a debit line that names no account (R33-5).
+    let unscoped_relaxed = relax.unreadable_value_declarations && declared.class_moves_value();
+    let unscoped_class = match declared.security_class.as_deref() {
+        Some(c) if declared.class_moves_value() => format!(
+            "{c:?}{}",
+            if unscoped_relaxed {
+                " (GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS is on)"
+            } else {
+                " (GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS is off)"
+            }
+        ),
+        Some(c) => format!("{c:?}, not one that moves value"),
+        None => "not stated".to_string(),
+    };
+    if signer_lamports_unscoped > 0 {
+        let detail = format!(
+            "{signer_lamports_unscoped} lamports left a signer's own wallet beyond the fee, what stayed the signer's and the rent of accounts this instruction declares it creates; the manifest's debit names no account, so it does not say this wallet's lamports may leave, and a declaration Graphite cannot read does not excuse a signer's loss (security class {unscoped_class})"
+        );
+        findings.push(if unscoped_relaxed {
+            StateDiffFinding::warning("SignerLamportsUnderUnscopedDebit", None, detail)
+        } else {
+            StateDiffFinding::critical("SignerLamportsUnderUnscopedDebit", None, detail)
+        });
+    }
+    if let Some(account) = signer_debit_under_unscoped {
+        let detail = format!(
+            "a token account a signer owns was debited; the manifest's debit names no account, so it does not say this account's tokens may leave, and a declaration Graphite cannot read does not excuse a signer's loss (security class {unscoped_class})"
+        );
+        findings.push(if unscoped_relaxed {
+            StateDiffFinding::warning("SignerTokenDebitUnderUnscopedDebit", Some(&account), detail)
+        } else {
+            StateDiffFinding::critical("SignerTokenDebitUnderUnscopedDebit", Some(&account), detail)
+        });
+    }
+    for (signer, amount, lost) in beyond_stated {
+        let detail = format!(
+            "{lost} lamports left this signer's wallet beyond the fee, what stayed the signer's and the rent of accounts this instruction declares it creates; the located instruction's data debits it by {amount}, so {} lamports more left than the instruction states",
+            lost - i128::from(amount)
+        );
+        findings.push(if relax.signer_lamports_outside_declared_debit {
+            StateDiffFinding::warning("SignerLamportsBeyondDeclaredAmount", Some(&signer), detail)
+        } else {
+            StateDiffFinding::critical("SignerLamportsBeyondDeclaredAmount", Some(&signer), detail)
+        });
     }
 
     // W19 (Round 32): the signers' lamports that left beyond the fee, less
@@ -4129,11 +4567,12 @@ pub fn check_state_diff_with(input: &StateDiffCheck<'_>, relax: L4Relaxations) -
     // of them, and nothing else in L4 judged the loss — a primary declaring a
     // debit of `accounts.user_token` let a sibling empty the signer's SOL with
     // a warning. The operator can restore the warning
-    // (`L4Relaxations::signer_lamports_outside_declared_debit`).
-    let signer_lamports_unexplained = (signer_lamports_outside_scope - signer_value_kept).max(0);
-    if signer_lamports_unexplained > 0 {
+    // (`L4Relaxations::signer_lamports_outside_declared_debit`). Round 34:
+    // per signer, and only what stayed THAT signer's is netted out.
+    signer_lamports_outside_scope = signer_lamports_outside_scope.max(0);
+    if signer_lamports_outside_scope > 0 {
         let detail = format!(
-            "{signer_lamports_unexplained} lamports left a signer's own wallet beyond the fee and the rent of the accounts this transaction creates; the manifest declares a debit only of other accounts"
+            "{signer_lamports_outside_scope} lamports left a signer's own wallet beyond the fee, what stayed the signer's and the rent of accounts this instruction declares it creates; the manifest declares a debit only of other accounts"
         );
         findings.push(if relax.signer_lamports_outside_declared_debit {
             StateDiffFinding::warning("SignerLamportsOutsideDeclaredDebit", None, detail)
@@ -4228,7 +4667,7 @@ pub fn check_state_diff_with(input: &StateDiffCheck<'_>, relax: L4Relaxations) -
         // that declares no debit now blocks; the finding names the amount.
         if signer_net_loss > 0 {
             let detail = format!(
-                "the transaction's signers lose {signer_net_loss} lamports beyond the fee and the rent of the accounts it creates, but the manifest declares no debit"
+                "the transaction's signers lose {signer_net_loss} lamports beyond the fee, what stayed each signer's own and the rent of accounts this instruction declares it creates (counted per signer: one signer's gain does not offset another's loss), but the manifest declares no debit"
             );
             if strict {
                 findings.push(StateDiffFinding::critical(
@@ -5921,22 +6360,35 @@ mod w19_scope_tests {
     /// Control: what the signer's lamports bought that stays the signer's —
     /// the rent of an account the transaction creates, SOL wrapped into the
     /// signer's own token account — is not a loss, under the new default.
+    ///
+    /// Round 34 (R33-6) re-pin: the created token account used to be owned
+    /// by a key that does not sign (`token_account(None)` holds `[9; 32]`),
+    /// and its rent passed as the signer's own under the old rule that
+    /// credited the rent of ANY created account. That owner can close the
+    /// account and keep the rent, so it is a loss now (asserted below); the
+    /// control's created account is the signer's own.
     #[test]
     fn rent_for_a_created_account_and_wrapped_sol_are_not_a_w19_loss() {
         let created = "Crea7ed111111111111111111111111111111111111";
         let rent = u64::try_from(rent_exempt_minimum(TOKEN_ACCOUNT_LEN)).unwrap();
-        let pays_rent = AccountDelta {
+        let mut owned_by_wallet = token_account(None);
+        owned_by_wallet[32..64].copy_from_slice(
+            crate::solana_types::Pubkey::from_base58(WALLET)
+                .unwrap()
+                .as_bytes(),
+        );
+        let pays_rent = |data: &[u8]| AccountDelta {
             pubkey: created.to_string(),
             before: None,
             after: Some(AccountSnapshot::from_raw(
                 created,
                 rent,
                 SPL_TOKEN_PROGRAM,
-                &token_account(None),
+                data,
             )),
         };
         let r = report(
-            vec![wallet_spends(rent), pays_rent],
+            vec![wallet_spends(rent), pays_rent(&owned_by_wallet)],
             &w19_accounts(),
             SCOPED_DEBIT,
         );
@@ -5945,15 +6397,20 @@ mod w19_scope_tests {
             "{:?}",
             r.findings
         );
+        // The same rent into a token account somebody else owns.
+        let r = report(
+            vec![wallet_spends(rent), pays_rent(&token_account(None))],
+            &w19_accounts(),
+            SCOPED_DEBIT,
+        );
+        assert!(
+            codes(&r).contains(&"SignerLamportsOutsideDeclaredDebit"),
+            "{:?}",
+            r.findings
+        );
 
         // Wrapping: lamports arrive in a token account the signer owns.
         let wsol = "WSo1111111111111111111111111111111111111111";
-        let mut owned_by_wallet = token_account(None);
-        owned_by_wallet[32..64].copy_from_slice(
-            crate::solana_types::Pubkey::from_base58(WALLET)
-                .unwrap()
-                .as_bytes(),
-        );
         let wraps = AccountDelta {
             pubkey: wsol.to_string(),
             before: Some(AccountSnapshot::from_raw(
@@ -5981,18 +6438,8 @@ mod w19_scope_tests {
         );
 
         // What is left over beyond the rent is still the signer's loss.
-        let pays_rent_and_more = AccountDelta {
-            pubkey: created.to_string(),
-            before: None,
-            after: Some(AccountSnapshot::from_raw(
-                created,
-                rent,
-                SPL_TOKEN_PROGRAM,
-                &token_account(None),
-            )),
-        };
         let r = report(
-            vec![wallet_spends(rent + 7_000_000), pays_rent_and_more],
+            vec![wallet_spends(rent + 7_000_000), pays_rent(&owned_by_wallet)],
             &w19_accounts(),
             SCOPED_DEBIT,
         );
@@ -6003,6 +6450,555 @@ mod w19_scope_tests {
             .unwrap_or_else(|| panic!("{:?}", r.findings));
         assert!(f.detail.starts_with("7000000 "), "{}", f.detail);
         assert_eq!(f.severity, DiffSeverity::Critical);
+    }
+
+    // ── Round 34: the Round 33 audit's L4 findings, at the layer ───────────
+
+    const ATTACKER: &str = "9wDJULnQ6to8Z8kYqxJy9hrrwX8G4WmNy8G6pqm5m6X7";
+    const POOL: &str = "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx";
+    const UNSCOPED: &[&str] = &["transfers funds between the protocol and the involved accounts"];
+
+    fn system(who: &str, before: u64, after: u64) -> AccountDelta {
+        AccountDelta {
+            pubkey: who.to_string(),
+            before: (before > 0)
+                .then(|| AccountSnapshot::from_raw(who, before, SYSTEM_PROGRAM, &[])),
+            after: Some(AccountSnapshot::from_raw(who, after, SYSTEM_PROGRAM, &[])),
+        }
+    }
+
+    fn token_of(owner: &str, amount: u64) -> Vec<u8> {
+        let mut d = token_account(None);
+        d[32..64].copy_from_slice(
+            crate::solana_types::Pubkey::from_base58(owner)
+                .unwrap()
+                .as_bytes(),
+        );
+        d[64..72].copy_from_slice(&amount.to_le_bytes());
+        d
+    }
+
+    fn finding<'a>(r: &'a StateDiffReport, code: &str) -> &'a StateDiffFinding {
+        r.findings
+            .iter()
+            .find(|f| f.code == code)
+            .unwrap_or_else(|| panic!("no {code} in {:?}", r.findings))
+    }
+
+    /// R33-5: the signer's wallet −5 SOL, a stranger +5 SOL, under a
+    /// declaration whose only debit line names no account. That line used to
+    /// excuse every account's loss — W19 never fired, nor the no-debit rule.
+    #[test]
+    fn a_signers_loss_under_a_debit_line_naming_no_account_is_refused() {
+        let r = report(
+            vec![
+                system(WALLET, 10_000_000_000, 5_000_000_000),
+                system(ATTACKER, 1, 5_000_000_001),
+            ],
+            &w19_accounts(),
+            UNSCOPED,
+        );
+        let f = finding(&r, "SignerLamportsUnderUnscopedDebit");
+        assert_eq!(f.severity, DiffSeverity::Critical);
+        assert!(f.detail.starts_with("5000000000 "), "{}", f.detail);
+        assert!(r.blocked);
+    }
+
+    /// R33-5, tokens: a token account the signer owns debited under the same
+    /// line.
+    #[test]
+    fn a_signers_token_debit_under_a_debit_line_naming_no_account_is_refused() {
+        let user = AccountDelta {
+            pubkey: SOURCE.to_string(),
+            before: Some(AccountSnapshot::from_raw(
+                SOURCE,
+                2_039_280,
+                SPL_TOKEN_PROGRAM,
+                &token_of(WALLET, 1_000),
+            )),
+            after: Some(AccountSnapshot::from_raw(
+                SOURCE,
+                2_039_280,
+                SPL_TOKEN_PROGRAM,
+                &token_of(WALLET, 0),
+            )),
+        };
+        let r = report(vec![user], &w19_accounts(), UNSCOPED);
+        let f = finding(&r, "SignerTokenDebitUnderUnscopedDebit");
+        assert_eq!(f.severity, DiffSeverity::Critical);
+        assert_eq!(f.account.as_deref(), Some(SOURCE));
+    }
+
+    /// The pool side keeps "anywhere": a vault no signer owns paying out
+    /// under the same line is the line's, and raises nothing.
+    #[test]
+    fn a_vault_paying_out_under_a_debit_line_naming_no_account_is_not_a_signer_finding() {
+        let vault = AccountDelta {
+            pubkey: DEST.to_string(),
+            before: Some(AccountSnapshot::from_raw(
+                DEST,
+                2_039_280,
+                SPL_TOKEN_PROGRAM,
+                &token_of(POOL, 1_000),
+            )),
+            after: Some(AccountSnapshot::from_raw(
+                DEST,
+                2_039_280,
+                SPL_TOKEN_PROGRAM,
+                &token_of(POOL, 400),
+            )),
+        };
+        let accounts = [
+            named(DEST, "vault", false),
+            named(WALLET, "authority", true),
+        ];
+        let r = report(vec![vault], &accounts, UNSCOPED);
+        assert!(!r.blocked, "{:?}", r.findings);
+    }
+
+    /// The Round 30/32 opt-out for declarations Graphite cannot read covers
+    /// this one, for a class that moves value — and only then.
+    #[test]
+    fn the_unreadable_declaration_opt_out_relaxes_an_unscoped_debit_for_a_value_class() {
+        let relax = L4Relaxations {
+            unreadable_value_declarations: true,
+            ..Default::default()
+        };
+        let deltas = || {
+            vec![
+                system(WALLET, 10_000_000_000, 5_000_000_000),
+                system(ATTACKER, 1, 5_000_000_001),
+            ]
+        };
+        let withdraw: Vec<String> = UNSCOPED
+            .iter()
+            .map(|s| s.to_string())
+            .chain([security_class_line("withdraw")])
+            .collect();
+        let withdraw: Vec<&str> = withdraw.iter().map(String::as_str).collect();
+        let with_recipient = [
+            named(WALLET, "authority", true),
+            named(ATTACKER, "recipient", false),
+        ];
+        let r = report_with(deltas(), &with_recipient, &withdraw, relax);
+        assert_eq!(
+            finding(&r, "SignerLamportsUnderUnscopedDebit").severity,
+            DiffSeverity::Warning
+        );
+        assert!(!r.blocked, "{:?}", r.findings);
+        let inert: Vec<String> = UNSCOPED
+            .iter()
+            .map(|s| s.to_string())
+            .chain([security_class_line("inert")])
+            .collect();
+        let inert: Vec<&str> = inert.iter().map(String::as_str).collect();
+        let r = report_with(deltas(), &with_recipient, &inert, relax);
+        assert_eq!(
+            finding(&r, "SignerLamportsUnderUnscopedDebit").severity,
+            DiffSeverity::Critical
+        );
+        // The W19 opt-out does not reach it.
+        let r = report_with(
+            deltas(),
+            &with_recipient,
+            &withdraw,
+            L4Relaxations {
+                signer_lamports_outside_declared_debit: true,
+                ..Default::default()
+            },
+        );
+        assert!(r.blocked, "{:?}", r.findings);
+    }
+
+    /// R33-6: the wallet pays 7.30 SOL into a new 1 MiB account another
+    /// program owns, under a scoped token-debit declaration. Its rent is not
+    /// the signer's: W19 names all of it.
+    #[test]
+    fn rent_paid_into_a_created_account_another_program_owns_is_a_w19_loss() {
+        let created = "Crea7ed111111111111111111111111111111111111";
+        let rent = u64::try_from(rent_exempt_minimum(1 << 20)).unwrap();
+        let foreign = AccountDelta {
+            pubkey: created.to_string(),
+            before: None,
+            after: Some(AccountSnapshot::from_raw(
+                created,
+                rent,
+                ATTACKER,
+                &vec![0u8; 1 << 20],
+            )),
+        };
+        let r = report(
+            vec![wallet_spends(rent), foreign],
+            &w19_accounts(),
+            SCOPED_DEBIT,
+        );
+        let f = finding(&r, "SignerLamportsOutsideDeclaredDebit");
+        assert!(f.detail.starts_with(&format!("{rent} ")), "{}", f.detail);
+        assert_eq!(f.severity, DiffSeverity::Critical);
+    }
+
+    /// R33-6, no debit declared: the same rent is `UndeclaredSignerLamportDebit`;
+    /// the rent of an account the declaration NAMES as created, owned by
+    /// the instruction's own program, is the signer's cost.
+    #[test]
+    fn rent_is_a_signers_cost_only_for_an_account_the_declaration_names_and_its_program_owns() {
+        let created = "Crea7ed111111111111111111111111111111111111";
+        let program = "Prog111111111111111111111111111111111111111";
+        let rent = u64::try_from(rent_exempt_minimum(1 << 20)).unwrap();
+        let made = |owner: &str| AccountDelta {
+            pubkey: created.to_string(),
+            before: None,
+            after: Some(AccountSnapshot::from_raw(
+                created,
+                rent,
+                owner,
+                &vec![0u8; 1 << 20],
+            )),
+        };
+        let accounts = [
+            named(created, "position", false),
+            named(WALLET, "payer", true),
+        ];
+        let declared = [
+            "creates accounts.position".to_string(),
+            instruction_program_line(program),
+        ];
+        let declared: Vec<&str> = declared.iter().map(String::as_str).collect();
+        // Another program owns it.
+        let r = report(
+            vec![wallet_spends(rent), made(ATTACKER)],
+            &accounts,
+            &declared,
+        );
+        let f = finding(&r, "UndeclaredSignerLamportDebit");
+        assert!(f.detail.contains(&rent.to_string()), "{}", f.detail);
+        // The instruction's own program owns it.
+        let r = report(
+            vec![wallet_spends(rent), made(program)],
+            &accounts,
+            &declared,
+        );
+        assert!(
+            !codes(&r).contains(&"UndeclaredSignerLamportDebit"),
+            "{:?}",
+            r.findings
+        );
+        // Owned by the program, but the declaration does not name it.
+        let r = report(
+            vec![wallet_spends(rent), made(program)],
+            &accounts,
+            &[
+                "creates a new account".to_string(),
+                instruction_program_line(program),
+            ]
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        );
+        assert!(
+            codes(&r).contains(&"UndeclaredSignerLamportDebit"),
+            "{:?}",
+            r.findings
+        );
+    }
+
+    /// R33-7: a co-signer's gain does not offset the user's loss — a fresh
+    /// co-signer another program owns, and an existing relayer wallet.
+    #[test]
+    fn a_cosigners_gain_does_not_offset_the_users_loss() {
+        let cosigner = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
+        let accounts = [
+            named(WALLET, "payer", true),
+            named(cosigner, "relayer", true),
+            named(SOURCE, "mint", false),
+        ];
+        let declared = &["creates accounts.mint"];
+        // (a) fresh, handed to another program.
+        let fresh = AccountDelta {
+            pubkey: cosigner.to_string(),
+            before: None,
+            after: Some(AccountSnapshot::from_raw(
+                cosigner,
+                5_000_000_000,
+                ATTACKER,
+                &[],
+            )),
+        };
+        let r = report(
+            vec![wallet_spends(5_000_000_000), fresh],
+            &accounts,
+            declared,
+        );
+        let f = finding(&r, "UndeclaredSignerLamportDebit");
+        assert!(f.detail.contains("5000000000"), "{}", f.detail);
+        // (b) an existing wallet.
+        let r = report(
+            vec![
+                wallet_spends(5_000_000_000),
+                system(cosigner, 1_000_000_000, 6_000_000_000),
+            ],
+            &accounts,
+            declared,
+        );
+        let f = finding(&r, "UndeclaredSignerLamportDebit");
+        assert!(f.detail.contains("5000000000"), "{}", f.detail);
+        // Control: each moves nothing.
+        let r = report(
+            vec![system(cosigner, 1_000_000_000, 1_000_000_000)],
+            &accounts,
+            declared,
+        );
+        assert!(
+            !codes(&r).contains(&"UndeclaredSignerLamportDebit"),
+            "{:?}",
+            r.findings
+        );
+    }
+
+    /// R33-7: wrapped SOL counts toward the signer that holds it only.
+    #[test]
+    fn sol_wrapped_into_another_signers_account_is_not_the_payers() {
+        let cosigner = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
+        let wsol = "WSo1111111111111111111111111111111111111111";
+        let held = |amount: u64| {
+            AccountSnapshot::from_raw(
+                wsol,
+                2_039_280 + amount,
+                SPL_TOKEN_PROGRAM,
+                &token_of(cosigner, amount),
+            )
+        };
+        let wraps = AccountDelta {
+            pubkey: wsol.to_string(),
+            before: Some(held(0)),
+            after: Some(held(1_000_000_000)),
+        };
+        let accounts = [
+            named(SOURCE, "source", false),
+            named(WALLET, "authority", true),
+            named(cosigner, "relayer", true),
+        ];
+        let r = report(
+            vec![wallet_spends(1_000_000_000), wraps],
+            &accounts,
+            SCOPED_DEBIT,
+        );
+        let f = finding(&r, "SignerLamportsOutsideDeclaredDebit");
+        assert!(f.detail.starts_with("1000000000 "), "{}", f.detail);
+    }
+
+    /// R33-10: a pool's 1 SOL wSOL payout into the user's account is not the
+    /// user's own SOL changing form, and does not offset 1 SOL sent from the
+    /// user's wallet to someone else. (The wrap itself stays credited:
+    /// `rent_for_a_created_account_and_wrapped_sol_are_not_a_w19_loss`.)
+    #[test]
+    fn a_vaults_payout_into_the_signers_account_does_not_offset_a_wallet_drain() {
+        let wsol = "WSo1111111111111111111111111111111111111111";
+        let vault = "Vau1t11111111111111111111111111111111111111";
+        let snap = |key: &str, owner: &str, amount: u64| {
+            AccountSnapshot::from_raw(
+                key,
+                2_039_280 + amount,
+                SPL_TOKEN_PROGRAM,
+                &token_of(owner, amount),
+            )
+        };
+        let payout = AccountDelta {
+            pubkey: wsol.to_string(),
+            before: Some(snap(wsol, WALLET, 0)),
+            after: Some(snap(wsol, WALLET, 1_000_000_000)),
+        };
+        let pays = AccountDelta {
+            pubkey: vault.to_string(),
+            before: Some(snap(vault, POOL, 5_000_000_000)),
+            after: Some(snap(vault, POOL, 4_000_000_000)),
+        };
+        let r = report(
+            vec![
+                wallet_spends(1_000_000_000),
+                system(ATTACKER, 1, 1_000_000_001),
+                payout,
+                pays,
+            ],
+            &w19_accounts(),
+            SCOPED_DEBIT,
+        );
+        let f = finding(&r, "SignerLamportsOutsideDeclaredDebit");
+        assert!(f.detail.starts_with("1000000000 "), "{}", f.detail);
+    }
+
+    /// R33-14, at the layer: a nonce account created with an authority no
+    /// signer holds; and a stake account split off one the signer stakes,
+    /// carrying its authorities, introduces no one.
+    #[test]
+    fn a_created_native_accounts_authorities_must_sign() {
+        let nonce_key = "Nonce11111111111111111111111111111111111111";
+        let mut nonce = vec![0u8; 80];
+        nonce[4..8].copy_from_slice(&1u32.to_le_bytes());
+        nonce[8..40].copy_from_slice(
+            crate::solana_types::Pubkey::from_base58(ATTACKER)
+                .unwrap()
+                .as_bytes(),
+        );
+        let created = AccountDelta {
+            pubkey: nonce_key.to_string(),
+            before: None,
+            after: Some(AccountSnapshot::from_raw(
+                nonce_key,
+                1_447_680,
+                SYSTEM_PROGRAM,
+                &nonce,
+            )),
+        };
+        let r = report(vec![created], &w19_accounts(), SCOPED_DEBIT);
+        let f = finding(&r, "CreatedAccountAuthorityNotSigner");
+        assert!(
+            f.detail.contains("nonce authority") && f.detail.contains(ATTACKER),
+            "{}",
+            f.detail
+        );
+        assert_eq!(f.severity, DiffSeverity::Critical);
+
+        // A split: the source's staker signs; the new account carries its
+        // (cold) withdrawer, which does not sign.
+        let pk = |s: &str| {
+            *crate::solana_types::Pubkey::from_base58(s)
+                .unwrap()
+                .as_bytes()
+        };
+        let stake = |staker: &str, withdrawer: &str| {
+            let mut d = vec![0u8; 200];
+            d[0..4].copy_from_slice(&1u32.to_le_bytes());
+            d[12..44].copy_from_slice(&pk(staker));
+            d[44..76].copy_from_slice(&pk(withdrawer));
+            d
+        };
+        let (src, new) = (
+            "SrcStake1111111111111111111111111111111111",
+            "NewStake1111111111111111111111111111111111",
+        );
+        let split = |withdrawer: &str| {
+            vec![
+                AccountDelta {
+                    pubkey: src.to_string(),
+                    before: Some(AccountSnapshot::from_raw(
+                        src,
+                        10_000_000_000,
+                        STAKE_PROGRAM,
+                        &stake(WALLET, ATTACKER),
+                    )),
+                    after: Some(AccountSnapshot::from_raw(
+                        src,
+                        6_000_000_000,
+                        STAKE_PROGRAM,
+                        &stake(WALLET, ATTACKER),
+                    )),
+                },
+                AccountDelta {
+                    pubkey: new.to_string(),
+                    before: Some(AccountSnapshot::from_raw(
+                        new,
+                        2_282_880,
+                        STAKE_PROGRAM,
+                        &[0u8; 200],
+                    )),
+                    after: Some(AccountSnapshot::from_raw(
+                        new,
+                        6_002_282_880,
+                        STAKE_PROGRAM,
+                        &stake(WALLET, withdrawer),
+                    )),
+                },
+            ]
+        };
+        let declared = &[
+            "debits accounts.source by data.lamports",
+            "credits accounts.destination by data.lamports",
+        ];
+        let accounts = [
+            named(src, "source", false),
+            named(new, "destination", false),
+            named(WALLET, "authority", true),
+        ];
+        let r = report(split(ATTACKER), &accounts, declared);
+        assert!(
+            !codes(&r).contains(&"CreatedAccountAuthorityNotSigner"),
+            "{:?}",
+            r.findings
+        );
+        // The same split handing the new account to someone else.
+        let other = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
+        let r = report(split(other), &accounts, declared);
+        assert!(
+            codes(&r).contains(&"CreatedAccountAuthorityNotSigner"),
+            "{:?}",
+            r.findings
+        );
+    }
+
+    /// R33-15: a debit the located instruction's data states binds the
+    /// wallet to that amount.
+    #[test]
+    fn a_stated_lamport_debit_binds_the_wallet_to_its_amount() {
+        let bob = "B0b11111111111111111111111111111111111111111";
+        let accounts = [named(WALLET, "from", true), named(bob, "to", false)];
+        let declared = [
+            "debits accounts.from by data.amount lamports".to_string(),
+            "credits accounts.to by data.amount lamports".to_string(),
+            lamport_amount_line(WALLET, 1_000_000),
+        ];
+        let declared: Vec<&str> = declared.iter().map(String::as_str).collect();
+        let r = report(
+            vec![
+                system(WALLET, 20_000_000_000, 9_999_000_000),
+                system(bob, 1, 1_000_001),
+                system(ATTACKER, 1, 10_000_000_001),
+            ],
+            &accounts,
+            &declared,
+        );
+        let f = finding(&r, "SignerLamportsBeyondDeclaredAmount");
+        assert_eq!(f.severity, DiffSeverity::Critical);
+        assert!(
+            f.detail.contains("so 10000000000 lamports more"),
+            "{}",
+            f.detail
+        );
+        // Exactly the stated amount: nothing.
+        let r = report(
+            vec![wallet_spends(1_000_000), system(bob, 1, 1_000_001)],
+            &accounts,
+            &declared,
+        );
+        assert!(!r.blocked, "{:?}", r.findings);
+    }
+
+    /// The System layouts whose data states the debit, decoded exactly.
+    #[test]
+    fn system_transfer_and_create_account_state_their_debit() {
+        let accounts = vec![WALLET.to_string(), DEST.to_string()];
+        let mut transfer = vec![2u8, 0, 0, 0];
+        transfer.extend_from_slice(&7u64.to_le_bytes());
+        assert_eq!(
+            system_lamport_debit(SYSTEM_PROGRAM, &transfer, &accounts),
+            Some((WALLET.to_string(), 7))
+        );
+        let mut create = vec![0u8, 0, 0, 0];
+        create.extend_from_slice(&9u64.to_le_bytes());
+        create.extend_from_slice(&[0u8; 40]);
+        assert_eq!(
+            system_lamport_debit(SYSTEM_PROGRAM, &create, &accounts),
+            Some((WALLET.to_string(), 9))
+        );
+        transfer.push(0);
+        assert_eq!(
+            system_lamport_debit(SYSTEM_PROGRAM, &transfer, &accounts),
+            None
+        );
+        assert_eq!(
+            system_lamport_debit(SPL_TOKEN_PROGRAM, &create, &accounts),
+            None
+        );
     }
 }
 

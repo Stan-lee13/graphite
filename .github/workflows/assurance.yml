@@ -203,8 +203,14 @@ jobs:
         # Round 30), rounded down. This job adds every integration suite, so
         # it measures at least that; raise the floor to the first number this
         # job reports, and only ever upward.
+        # `--profile ci-test` (Round 34, R33-8): the release profile without
+        # LTO, as CI's test legs run. With thin LTO and one codegen unit,
+        # every one of the ~160 instrumented test binaries was re-optimized
+        # whole at link time — the cost that cancelled CI's Rust job at 60
+        # minutes — inside this job's 120. Source-based coverage counts
+        # regions of the source, not of the optimized code.
         run: |
-          cargo llvm-cov --release --all-features --lib --tests \
+          cargo llvm-cov --profile ci-test --all-features --lib --tests \
             --fail-under-lines 78 --summary-only --json --output-path coverage.json
       - name: Report the measured coverage
         # The JSON summary prints nothing to the log; the numbers a floor is

@@ -255,6 +255,169 @@ fn the_idl_rewritten_declarations_are_read_and_name_only_the_idls_accounts() {
     }
 }
 
+/// Round 34 (K-7): every seed instruction whose program has a committed
+/// on-chain IDL (`scripts/out/onchain_idls/<program>.json`) carries, in one of
+/// its layouts, as many account slots as the IDL names (nested groups
+/// flattened). Orca's `increaseLiquidityByTokenAmountsV2` had 15 where the
+/// IDL has 16 (a trailing `whirlpool_program`), so the slot the program reads
+/// was outside every layout.
+///
+/// The mismatches below are measured and pinned, not fixed: in each the
+/// on-chain IDL appends one account the manifest's layout lacks — Kamino's
+/// `instructionSysvarAccount` on ten administrative instructions, and Orca's
+/// `whirlpool_program` on every other instruction. Neither is unambiguous:
+/// the Orca manifest's `swapV2` layout was checked position-for-position
+/// against an executed mainnet transaction with 15 accounts and a tick-array
+/// tail, so whether the trailing program account is required (a newer program
+/// version) or rides in the remaining accounts cannot be read from the IDL
+/// alone, and the committed mainnet sample has no top-level Orca instruction
+/// to settle it. A new mismatch fails here, and so does fixing a pinned one
+/// (remove it from the list).
+#[test]
+fn every_instruction_with_an_onchain_idl_has_the_idls_slot_count() {
+    const ORCA: &str = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc";
+    const KLEND: &str = "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD";
+    const KNOWN: &[(&str, &str)] = &[
+        (KLEND, "idlMissingTypes"),
+        (KLEND, "initFarmsForReserve"),
+        (KLEND, "initGlobalConfig"),
+        (KLEND, "initLendingMarket"),
+        (KLEND, "initReserve"),
+        (KLEND, "updateGlobalConfig"),
+        (KLEND, "updateGlobalConfigAdmin"),
+        (KLEND, "updateLendingMarketOwner"),
+        (KLEND, "updateReserveConfig"),
+        (KLEND, "withdrawProtocolFee"),
+        (ORCA, "closeBundledPosition"),
+        (ORCA, "closePosition"),
+        (ORCA, "closePositionWithTokenExtensions"),
+        (ORCA, "collectFees"),
+        (ORCA, "collectFeesV2"),
+        (ORCA, "collectProtocolFees"),
+        (ORCA, "collectProtocolFeesV2"),
+        (ORCA, "collectReward"),
+        (ORCA, "collectRewardV2"),
+        (ORCA, "decreaseLiquidity"),
+        (ORCA, "decreaseLiquidityV2"),
+        (ORCA, "deletePositionBundle"),
+        (ORCA, "deleteTokenBadge"),
+        (ORCA, "idlInclude"),
+        (ORCA, "increaseLiquidity"),
+        (ORCA, "increaseLiquidityV2"),
+        (ORCA, "initializeAdaptiveFeeTier"),
+        (ORCA, "initializeConfig"),
+        (ORCA, "initializeConfigExtension"),
+        (ORCA, "initializeDynamicTickArray"),
+        (ORCA, "initializeFeeTier"),
+        (ORCA, "initializePool"),
+        (ORCA, "initializePoolV2"),
+        (ORCA, "initializePoolWithAdaptiveFee"),
+        (ORCA, "initializePositionBundle"),
+        (ORCA, "initializePositionBundleWithMetadata"),
+        (ORCA, "initializeReward"),
+        (ORCA, "initializeRewardV2"),
+        (ORCA, "initializeTickArray"),
+        (ORCA, "initializeTokenBadge"),
+        (ORCA, "lockPosition"),
+        (ORCA, "migrateRepurposeRewardAuthoritySpace"),
+        (ORCA, "openBundledPosition"),
+        (ORCA, "openPosition"),
+        (ORCA, "openPositionWithMetadata"),
+        (ORCA, "openPositionWithTokenExtensions"),
+        (ORCA, "repositionLiquidityV2"),
+        (ORCA, "resetPositionRange"),
+        (ORCA, "setAdaptiveFeeConstants"),
+        (ORCA, "setCollectProtocolFeesAuthority"),
+        (ORCA, "setConfigExtensionAuthority"),
+        (ORCA, "setConfigFeatureFlag"),
+        (ORCA, "setDefaultBaseFeeRate"),
+        (ORCA, "setDefaultFeeRate"),
+        (ORCA, "setDefaultProtocolFeeRate"),
+        (ORCA, "setDelegatedFeeAuthority"),
+        (ORCA, "setFeeAuthority"),
+        (ORCA, "setFeeRate"),
+        (ORCA, "setFeeRateByDelegatedFeeAuthority"),
+        (ORCA, "setInitializePoolAuthority"),
+        (ORCA, "setPresetAdaptiveFeeConstants"),
+        (ORCA, "setProtocolFeeRate"),
+        (ORCA, "setRewardAuthority"),
+        (ORCA, "setRewardAuthorityBySuperAuthority"),
+        (ORCA, "setRewardEmissions"),
+        (ORCA, "setRewardEmissionsSuperAuthority"),
+        (ORCA, "setRewardEmissionsV2"),
+        (ORCA, "setTokenBadgeAttribute"),
+        (ORCA, "setTokenBadgeAuthority"),
+        (ORCA, "swap"),
+        (ORCA, "swapV2"),
+        (ORCA, "transferLockedPosition"),
+        (ORCA, "twoHopSwap"),
+        (ORCA, "twoHopSwapV2"),
+        (ORCA, "updateFeesAndRewards"),
+    ];
+    let norm = |s: &str| {
+        s.chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .collect::<String>()
+            .to_lowercase()
+    };
+    fn count(accs: &serde_json::Value) -> usize {
+        accs.as_array()
+            .map(|a| {
+                a.iter()
+                    .map(|x| {
+                        if x.get("accounts").is_some() {
+                            count(&x["accounts"])
+                        } else {
+                            1
+                        }
+                    })
+                    .sum()
+            })
+            .unwrap_or(0)
+    }
+    let reg = load_seed_manifests();
+    let (mut compared, mut found) = (0usize, Vec::new());
+    for m in reg.list() {
+        let path = format!(
+            "{}/scripts/out/onchain_idls/{}.json",
+            env!("CARGO_MANIFEST_DIR"),
+            m.protocol.program_id
+        );
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let idl: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let Some(ixs) = idl["instructions"].as_array() else {
+            continue;
+        };
+        for ix in &m.instructions {
+            let Some(on_chain) = ixs.iter().find(|i| {
+                i["name"]
+                    .as_str()
+                    .is_some_and(|n| norm(n) == norm(&ix.name))
+            }) else {
+                continue;
+            };
+            compared += 1;
+            let slots = count(&on_chain["accounts"]);
+            if !ix.all_layouts().any(|l| l.len() == slots) {
+                found.push((m.protocol.program_id.clone(), ix.name.clone()));
+            }
+        }
+    }
+    found.sort();
+    let mut known: Vec<(String, String)> = KNOWN
+        .iter()
+        .map(|(p, n)| (p.to_string(), n.to_string()))
+        .collect();
+    known.sort();
+    assert!(compared > 2_800, "{compared} instructions compared");
+    assert_eq!(
+        found, known,
+        "the manifests whose slot count differs from their on-chain IDL changed"
+    );
+}
+
 /// Every `accounts.<name>` a shipped declaration references names an account
 /// of one of the instruction's layouts. A reference to no slot scopes its
 /// effect to nothing: Pump.fun's `buy_v2`/`sell_v2` named `associated_user`,
@@ -293,4 +456,77 @@ fn every_declared_account_reference_names_a_layout_account() {
         }
     }
     assert!(refs > 200, "{refs}");
+}
+
+/// Round 34 (R33-5): how many shipped declarations carry a debit line that
+/// names no account ("transfers funds between the protocol and the involved
+/// accounts"), counted with the real parser. Such a line says nothing about
+/// whose value moves: for the signer judgements it is read as a declaration
+/// Graphite cannot read (`DeclaredEffects::debit_names_no_account`), so a
+/// signer's loss under it is refused by default and relaxable only by
+/// `GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS` for a class that moves
+/// value. Pinned so a manifest change re-measures the rule.
+#[test]
+fn debit_lines_that_name_no_account_are_counted() {
+    use graphite_core::intent_grants::GRANTS;
+    let reg = load_seed_manifests();
+    let unscoped_line = |l: &String| {
+        let e = DeclaredEffects::parse(std::slice::from_ref(l));
+        e.debit && e.covers("debit", &[])
+    };
+    let named_line = |l: &String| {
+        let e = DeclaredEffects::parse(std::slice::from_ref(l));
+        e.debit && !e.covers("debit", &[])
+    };
+    let (mut total, mut lines, mut with_unscoped, mut only_unscoped) = (0, 0, 0, 0);
+    for m in reg.list() {
+        for ix in &m.instructions {
+            total += 1;
+            let n = ix
+                .expected_state_changes
+                .iter()
+                .filter(|l| unscoped_line(l))
+                .count();
+            lines += n;
+            if n > 0 {
+                with_unscoped += 1;
+                if !ix.expected_state_changes.iter().any(named_line) {
+                    only_unscoped += 1;
+                }
+            }
+        }
+    }
+    let mut grants_with_unscoped: Vec<String> = Vec::new();
+    for g in GRANTS {
+        let ix = reg
+            .get(g.program_id)
+            .and_then(|m| m.instructions.iter().find(|i| i.name == g.instruction))
+            .unwrap_or_else(|| panic!("{} {}", g.program_id, g.instruction));
+        if ix.expected_state_changes.iter().any(unscoped_line) {
+            grants_with_unscoped.push(format!("{}::{}", g.program_id, g.instruction));
+        }
+    }
+    eprintln!(
+        "[R33-5 census] instructions {total}, unscoped debit lines {lines}, instructions with one {with_unscoped}, with no named debit line beside it {only_unscoped}; grants {} of {}: {grants_with_unscoped:#?}",
+        grants_with_unscoped.len(),
+        GRANTS.len()
+    );
+    assert_eq!(
+        (
+            total,
+            lines,
+            with_unscoped,
+            only_unscoped,
+            grants_with_unscoped.len(),
+            GRANTS.len()
+        ),
+        // 13 of the 21 Round 30 grants, plus 5 of the 6 staking grants
+        // Round 34 added for R33-1 (Stake Pool WithdrawSol, WithdrawSolWithSlippage,
+        // WithdrawStake, WithdrawStakeWithSlippage, Marinade liquidUnstake;
+        // Stake Withdraw names its accounts). Under the R33-5 rule a signer's
+        // loss beneath these lines is refused until their declarations name
+        // the accounts they debit.
+        (3541, 1820, 1802, 1802, 18, 27),
+        "(instructions, unscoped debit lines, instructions with one, of them with no named debit, grants with one, grants)"
+    );
 }

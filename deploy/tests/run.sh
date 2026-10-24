@@ -13,9 +13,11 @@
 #            401 passthrough, 413 over the body limit, HSTS, no Server
 #            header, X-Forwarded-For spoofing does not escape the rate limit
 #   ops      health-textfile.sh, anchor-checkpoints.sh, backup.sh (hot and
-#            cold), restore.sh (lock refusal, checksum, stale-restore refusal,
-#            tamper refusal), rotate-keys.sh (env, file, audit key + verify),
-#            the compose entrypoint's secret handling
+#            cold, the archive MAC), restore.sh (lock refusal, --anchor-dir
+#            required, checksum naming the archive, MAC refusals, stale-restore
+#            refusal, tamper refusal), rotate-keys.sh (env, file, audit key +
+#            verify; owner and mode kept across a rotation, as root or with
+#            passwordless sudo), the compose entrypoint's secret handling
 #
 #   GRAPHITE_BIN CADDY_BIN PROMTOOL_BIN SHELLCHECK_BIN  default: from PATH
 #   (systemd-analyze and docker are used when present, reported when not)
@@ -125,12 +127,14 @@ cport="$(port)"
 
 # The Core is started and stopped through two small scripts, so backup.sh's
 # STOP_CMD/START_CMD can drive the same server the test does.
-mk_start() { # mk_start AUDIT_KEY_FILE -> $T/start.sh
+mk_start() { # mk_start AUDIT_KEY_FILE [PREVIOUS_AUDIT_KEY_FILE] -> $T/start.sh
+  local prev=""
+  [ -n "${2:-}" ] && prev="GRAPHITE_AUDIT_PREVIOUS_KEY_FILE='$2' "
   cat >"$T/start.sh" <<EOF
 #!/usr/bin/env bash
 GRAPHITE_API_KEY='$key' GRAPHITE_READ_API_KEY='$rkey' GRAPHITE_DATA_DIR='$T/data' \\
   GRAPHITE_REGISTRY_STATE='$T/data/registry_state.json' \\
-  GRAPHITE_AUDIT_KEY_FILE='$1' GRAPHITE_AUDIT_ANCHOR_DIR='$T/anchors' \\
+  GRAPHITE_AUDIT_KEY_FILE='$1' ${prev}GRAPHITE_AUDIT_ANCHOR_DIR='$T/anchors' \\
   GRAPHITE_AUDIT_ROTATE_BYTES=4096 GRAPHITE_TRUST_PROXY=1 GRAPHITE_RATE_LIMIT=5 \\
   GRAPHITE_WALLET_PROFILE=treasury RUST_LOG=warn \\
   '$G' server --host 127.0.0.1 --port $gport >>'$T/core.log' 2>&1 &
@@ -153,8 +157,8 @@ for _ in \$(seq 1 300); do kill -0 "\$p" 2>/dev/null || exit 0; sleep 0.1; done
 exit 1
 EOF
 chmod +x "$T/stop.sh"
-start_core() { # start_core AUDIT_KEY_FILE
-  mk_start "$1"
+start_core() { # start_core AUDIT_KEY_FILE [PREVIOUS_AUDIT_KEY_FILE]
+  mk_start "$1" "${2:-}"
   "$T/start.sh" || return 1
   pids+=("$(cat "$T/core.pid")")
 }
@@ -192,8 +196,14 @@ c="$(code -H "Authorization: Bearer $rkey" "$E/api/graph")"
 c="$(code -H "Authorization: Bearer $rkey" "$E/manifests")"
 [ "$c" = 200 ] && ok "edge: GET /manifests with the read key -> 200" || bad "edge: GET /manifests -> $c"
 head -c 1100000 /dev/zero | tr '\0' 'a' >"$T/big.json"
-c="$(code -X POST -H "Authorization: Bearer $key" -H 'Content-Type: application/json' --data-binary @"$T/big.json" "$E/verify")"
-[ "$c" = 413 ] && ok "edge: 1.1 MB body -> 413" || bad "edge: 1.1 MB body -> $c"
+# Thirty times, not once: when Caddy streamed the body, the Core's early 413
+# and close raced its writes and about a third came back 502 (Round 34). The
+# edge refuses a declared oversized body before proxying, so every one is 413.
+codes=""
+for _ in $(seq 1 30); do
+  codes="$codes $(code -X POST -H "Authorization: Bearer $key" -H 'Content-Type: application/json' --data-binary @"$T/big.json" "$E/verify")"
+done
+! tr ' ' '\n' <<<"$codes" | grep -v '^$' | grep -qvx 413 && ok "edge: 1.1 MB body -> 413 (30 of 30)" || bad "edge: 1.1 MB body ->$codes"
 # Caddy's own limit, measured against an upstream that accepts any body: the
 # Core enforces 1 MiB too, so only this shows the edge does.
 cat >"$T/sink.py" <<'EOF'
@@ -284,6 +294,8 @@ check "anchor-checkpoints.sh after a new verdict" "${A[@]}"
 check "backup.sh --hot while serving" "$deploy/scripts/backup.sh" --hot --key-file "$T/keys/audit-1.key" "$T/data" "$T/backups"
 hot="$(find "$T/backups" -name 'graphite-*.tar.gz' | head -n 1)"
 check "hot backup checksum" sh -c "cd \"$T/backups\" && sha256sum -c \"${hot##*/}.sha256\""
+grep -Eqx "hmac-sha256-v1 [0-9a-f]{64} ${hot##*/}" "$hot.mac" && [ "$(stat -c %a "$hot.mac")" = 600 ] &&
+  ok "backup writes a .mac of the archive (mode 600)" || bad "backup wrote no well-formed .mac"
 tar -tzf "$hot" | grep -q 'lock' && bad "backup contains lock files" || ok "backup leaves out lock files"
 expect_rc 1 "backup.sh refuses a cold backup without STOP_CMD/START_CMD" "$deploy/scripts/backup.sh" "$T/data" "$T/backups"
 sleep 1.1
@@ -304,17 +316,80 @@ cold="$(find "$T/backups" -name 'graphite-*.tar.gz' -newer "$hot" | head -n 1)"
 check "more verdicts after the backup" verify_n 4
 check "anchor a checkpoint newer than the backup" "${A[@]}"
 
-expect_rc 75 "restore.sh refuses while the server holds the lock" "$deploy/scripts/restore.sh" "$cold" "$T/data"
+# Every restore below names the keys and the anchors, as an operator must.
+R=("$deploy/scripts/restore.sh" --key-file "$T/keys/audit-1.key" --anchor-dir "$T/anchors")
+# The MAC and naming refusals run with ACCEPT_STALE_RESTORE=1, so the
+# stale-restore refusal (these archives predate the newest checkpoint) cannot
+# stand in for them.
+RS=(env ACCEPT_STALE_RESTORE=1 "${R[@]}")
+# mac_of KEY_FILE ARCHIVE — a .mac line as backup.sh writes it, computed here
+# independently of the scripts under test.
+mac_of() {
+  python3 -I - "$1" "$2" <<'EOF'
+import hashlib, hmac, os, sys
+key = open(sys.argv[1], "rb").read().strip()
+name = os.path.basename(sys.argv[2])
+m = hmac.new(key, b"graphite-backup-v1\n" + name.encode() + b"\n" + open(sys.argv[2], "rb").read(), hashlib.sha256)
+print(f"hmac-sha256-v1 {m.hexdigest()} {name}")
+EOF
+}
+cmp -s <(mac_of "$T/keys/audit-1.key" "$cold") "$cold.mac" && ok "backup's .mac is HMAC-SHA256(audit key, name + archive)" ||
+  bad "backup's .mac is not the documented HMAC"
+expect_rc 75 "restore.sh refuses while the server holds the lock" "${R[@]}" "$cold" "$T/data"
 check "stop the server" stop_core
 
+# Round 34 (D-6): without the anchors a rolled-back archive is undetectable.
+expect_rc 64 "restore.sh refuses without --anchor-dir" "$deploy/scripts/restore.sh" --key-file "$T/keys/audit-1.key" "$cold" "$T/restore-noanchor"
+[ ! -e "$T/restore-noanchor" ] && ok "the refused no-anchor restore wrote nothing" || bad "the refused no-anchor restore wrote $T/restore-noanchor"
+expect_rc 0 "restore.sh without --anchor-dir under ALLOW_NO_ANCHOR=1" env ALLOW_NO_ANCHOR=1 \
+  "$deploy/scripts/restore.sh" --key-file "$T/keys/audit-1.key" "$cold" "$T/restore-noanchor"
+
 cp "$cold" "$T/nosum.tar.gz"
-expect_rc 66 "restore.sh refuses an archive without its .sha256" "$deploy/scripts/restore.sh" "$T/nosum.tar.gz" "$T/data"
+cp "$cold.mac" "$T/nosum.tar.gz.mac"
+expect_rc 66 "restore.sh refuses an archive without its .sha256" "${R[@]}" "$T/nosum.tar.gz" "$T/data"
 cp "$cold" "$T/corrupt.tar.gz"
 (cd "$(dirname "$cold")" && sha256sum "${cold##*/}") | sed "s|${cold##*/}|corrupt.tar.gz|" >"$T/corrupt.tar.gz.sha256"
 printf 'x' | dd of="$T/corrupt.tar.gz" bs=1 seek=100 conv=notrunc 2>/dev/null
-expect_rc 1 "restore.sh refuses an archive that fails its checksum" "$deploy/scripts/restore.sh" "$T/corrupt.tar.gz" "$T/data"
+expect_rc 1 "restore.sh refuses an archive that fails its checksum" "${R[@]}" "$T/corrupt.tar.gz" "$T/data"
 
-# A tampered trail, packed as a well-formed archive with a matching checksum.
+# Round 34 (D-6): what the trail check never saw. The archive's other files
+# (here registry_state.json, which seeds the manifest registry) changed, the
+# archive re-packed and re-checksummed: `audit verify` passes (the trail is
+# untouched), so only the MAC can refuse it.
+mkdir -p "$T/swap"
+tar -C "$T/swap" -xzf "$cold"
+printf '{"submissions":[],"reviewers":{"attacker":{"reputation":1000000}}}\n' >"$T/swap/registry_state.json"
+tar -C "$T/swap" -czf "$T/backups/swapped.tar.gz" .
+(cd "$T/backups" && sha256sum swapped.tar.gz >swapped.tar.gz.sha256)
+sed "s| ${cold##*/}\$| swapped.tar.gz|" "$cold.mac" >"$T/backups/swapped.tar.gz.mac"
+expect_rc 0 "the swapped archive's trail still verifies (what audit verify cannot see)" "$G" audit verify --data-dir "$T/swap" --key-file "$T/keys/audit-1.key"
+expect_rc 1 "restore.sh refuses an archive whose non-trail files changed (MAC)" "${RS[@]}" "$T/backups/swapped.tar.gz" "$T/restore-swapped"
+rm -f "$T/backups/swapped.tar.gz.mac"
+expect_rc 66 "restore.sh refuses an archive with no .mac" "${RS[@]}" "$T/backups/swapped.tar.gz" "$T/restore-swapped"
+# A .sha256 naming ANOTHER archive in the same directory: `sha256sum -c`
+# checked that one and passed, whatever this archive held. Run as an unkeyed
+# archive (no .mac, ALLOW_UNKEYED_ARCHIVE=1), where the checksum is the only
+# integrity check left, so the MAC cannot stand in for the name check.
+cp "$cold.sha256" "$T/backups/swapped.tar.gz.sha256"
+expect_rc 1 "restore.sh refuses a .sha256 that names another archive" env ALLOW_UNKEYED_ARCHIVE=1 "${RS[@]}" \
+  "$T/backups/swapped.tar.gz" "$T/restore-swapped"
+[ ! -e "$T/restore-swapped" ] && ok "no refused archive was restored" || bad "a refused archive reached $T/restore-swapped"
+# The MAC is keyed: an intact archive whose .mac was made under a key the
+# restore is not given (anyone can compute a MAC under a key of their own).
+openssl rand -hex 32 >"$T/keys/unrelated.key"
+cp "$cold" "$T/backups/othermac.tar.gz"
+(cd "$T/backups" && sha256sum othermac.tar.gz >othermac.tar.gz.sha256)
+mac_of "$T/keys/unrelated.key" "$T/backups/othermac.tar.gz" >"$T/backups/othermac.tar.gz.mac"
+expect_rc 1 "restore.sh refuses a .mac made under a key it was not given" "${RS[@]}" "$T/backups/othermac.tar.gz" "$T/restore-wrongkey"
+# An unkeyed deployment's archive (no .mac) is restorable only on request.
+cp "$cold" "$T/backups/unkeyed.tar.gz"
+(cd "$T/backups" && sha256sum unkeyed.tar.gz >unkeyed.tar.gz.sha256)
+expect_rc 0 "restore.sh accepts an archive without a .mac under ALLOW_UNKEYED_ARCHIVE=1" env ALLOW_UNKEYED_ARCHIVE=1 ACCEPT_STALE_RESTORE=1 \
+  "${R[@]}" "$T/backups/unkeyed.tar.gz" "$T/restore-unkeyed"
+
+# A tampered trail, packed as a well-formed archive with a matching checksum
+# and a valid MAC (made with the key: what an insider holding the key could
+# produce), so the refusal below is `audit verify`'s own.
 mkdir -p "$T/tamper"
 tar -C "$T/tamper" -xzf "$cold"
 python3 - "$T/tamper" <<'EOF'
@@ -329,8 +404,8 @@ open(f, "w").write("".join(lines))
 EOF
 tar -C "$T/tamper" -czf "$T/tampered.tar.gz" .
 (cd "$T" && sha256sum tampered.tar.gz >tampered.tar.gz.sha256)
-expect_rc 1 "restore.sh refuses a tampered trail (audit verify fails)" \
-  "$deploy/scripts/restore.sh" --key-file "$T/keys/audit-1.key" "$T/tampered.tar.gz" "$T/data"
+mac_of "$T/keys/audit-1.key" "$T/tampered.tar.gz" >"$T/tampered.tar.gz.mac"
+expect_rc 1 "restore.sh refuses a tampered trail (audit verify fails)" "${R[@]}" "$T/tampered.tar.gz" "$T/data"
 # Refused before anything moved: the live directory was never set aside.
 ls -d "$T"/data.pre-restore-* >/dev/null 2>&1 && bad "a refused restore moved the data directory" || ok "refused restores left the data directory in place"
 expect_rc 1 "backup.sh keeps no backup of a trail that does not verify" \
@@ -338,24 +413,38 @@ expect_rc 1 "backup.sh keeps no backup of a trail that does not verify" \
 [ -z "$(find "$T/backups-bad" -name '*.tar.gz' 2>/dev/null)" ] && ok "no archive left behind for the broken trail" || bad "an archive of a broken trail was kept"
 expect_rc 0 "the live data still verifies after the refused restores" "$G" audit verify --data-dir "$T/data" --key-file "$T/keys/audit-1.key"
 
-expect_rc 1 "restore.sh refuses a stale restore against the newest anchored checkpoint" \
-  "$deploy/scripts/restore.sh" --key-file "$T/keys/audit-1.key" --anchor-dir "$T/anchors" "$cold" "$T/data"
-expect_rc 0 "restore.sh with ACCEPT_STALE_RESTORE=1" env ACCEPT_STALE_RESTORE=1 \
-  "$deploy/scripts/restore.sh" --key-file "$T/keys/audit-1.key" --anchor-dir "$T/anchors" "$cold" "$T/data"
+expect_rc 1 "restore.sh refuses a stale restore against the newest anchored checkpoint" "${R[@]}" "$cold" "$T/data"
+expect_rc 0 "restore.sh with ACCEPT_STALE_RESTORE=1" env ACCEPT_STALE_RESTORE=1 "${R[@]}" "$cold" "$T/data"
 ls -d "$T"/data.pre-restore-* >/dev/null 2>&1 && ok "previous data directory kept aside" || bad "previous data directory not kept"
 expect_rc 1 "the restored (older) trail fails the newer checkpoint, as it should" \
   "$G" audit verify --data-dir "$T/data" --key-file "$T/keys/audit-1.key" --checkpoint "$(find "$T/anchors" -name 'audit.jsonl-checkpoint-*' | LC_ALL=C sort | tail -n 1)"
 check "server starts on the restored directory" start_core "$T/keys/audit-1.key"
 
 echo "== key rotation"
-check "rotate-keys.sh audit-key" "$deploy/scripts/rotate-keys.sh" audit-key "$T/keys"
+rotate_out="$("$deploy/scripts/rotate-keys.sh" audit-key "$T/keys" 2>&1)" && ok "rotate-keys.sh audit-key" || bad "rotate-keys.sh audit-key"
+grep -q GRAPHITE_AUDIT_PREVIOUS_KEY_FILE <<<"$rotate_out" && ok "rotate-keys.sh audit-key says to set the previous key" || bad "rotate-keys.sh audit-key does not mention GRAPHITE_AUDIT_PREVIOUS_KEY_FILE"
 newkey="$(find "$T/keys" -name 'audit-2*.key' | head -n 1)"
 [ "$(stat -c %a "$newkey")" = 600 ] && ok "new audit key is mode 600" || bad "new audit key mode $(stat -c %a "$newkey")"
 check "stop for the key switch" stop_core
-check "server starts under the new audit key" start_core "$newkey"
+# Round 34 (R33-13): the new key alone does not continue a trail whose head
+# is MAC'd under another key; with the previous key the server checks the
+# head under it and writes a key-adoption record.
+expect_rc 1 "server refuses the new audit key without the previous key" start_core "$newkey"
+grep -q GRAPHITE_AUDIT_PREVIOUS_KEY_FILE "$T/core.log" && ok "the refusal names GRAPHITE_AUDIT_PREVIOUS_KEY_FILE" || bad "the refusal does not name the previous-key variable"
+check "server starts under the new audit key with the previous key" start_core "$newkey" "$T/keys/audit-1.key"
 check "verdicts under the new key" verify_n 2
 expect_rc 0 "rotate-keys.sh verify with old + new keys" "$deploy/scripts/rotate-keys.sh" verify "$T/data" "$T/keys/audit-1.key" "$newkey"
 expect_rc 2 "rotate-keys.sh verify with the new key only -> unprovable" "$deploy/scripts/rotate-keys.sh" verify "$T/data" "$newkey"
+# An unkeyed trail verified under a key: not covered (exit 4).
+mkdir -p "$T/unkeyed"
+env -u GRAPHITE_AUDIT_KEY_FILE "$G" quarantine add --data-dir "$T/unkeyed" --program 11111111111111111111111111111111 --reason "deploy test" >/dev/null 2>&1
+rc4=0
+out4="$("$deploy/scripts/rotate-keys.sh" verify "$T/unkeyed" "$newkey" 2>&1)" || rc4=$?
+if [ "$rc4" = 4 ] && grep -q "do not cover the trail" <<<"$out4"; then
+  ok "rotate-keys.sh verify of an unkeyed trail under a key -> not covered (exit 4)"
+else
+  bad "rotate-keys.sh verify of an unkeyed trail under a key (exit $rc4): $out4"
+fi
 
 printf 'A=1\nGRAPHITE_API_KEY=old\n# c\nGRAPHITE_READ_API_KEY=r\n' >"$T/test.env"
 check "rotate-keys.sh env" "$deploy/scripts/rotate-keys.sh" env "$T/test.env" GRAPHITE_API_KEY
@@ -367,6 +456,33 @@ expect_rc 64 "rotate-keys.sh env refuses a non-key variable" "$deploy/scripts/ro
 "$deploy/scripts/rotate-keys.sh" file "$T/keys/api_key" >/dev/null 2>&1
 grep -Eqx '[0-9a-f]{64}' "$T/keys/api_key" && ok "rotate-keys.sh file" || bad "rotate-keys.sh file"
 if "$deploy/scripts/rotate-keys.sh" env "$T/test.env" GRAPHITE_API_KEY 2>&1 | grep -Eq '[0-9a-f]{64}'; then bad "a secret was printed"; else ok "no secret printed"; fi
+
+# Round 34 (R33-19): a rotated secret keeps its owner. The compose stack reads
+# its secrets as the image's user (10001:10001); rotate-keys.sh runs under
+# sudo, and a file it wrote used to belong to root, so after the restart the
+# Core could not read its key and crash-looped. As root (or with passwordless
+# sudo, as on the CI runner) the fixtures belong to 10001:10001.
+asroot() {
+  if [ "$(id -u)" = 0 ]; then "$@"; elif sudo -n true 2>/dev/null; then sudo -n "$@"; else return 99; fi
+}
+if asroot true; then
+  printf '%s\n' "$(openssl rand -hex 32)" >"$T/keys/owned_secret"
+  printf 'GRAPHITE_API_KEY=old\n' >"$T/owned.env"
+  asroot chown 10001:10001 "$T/keys/owned_secret" "$T/owned.env"
+  asroot chmod 600 "$T/keys/owned_secret" "$T/owned.env"
+  check "rotate-keys.sh file, as root, on a 10001-owned secret" asroot "$deploy/scripts/rotate-keys.sh" file "$T/keys/owned_secret"
+  [ "$(stat -c '%u:%g %a' "$T/keys/owned_secret")" = "10001:10001 600" ] &&
+    ok "file: owner 10001:10001 and mode 600 kept" || bad "file: now $(stat -c '%u:%g %a' "$T/keys/owned_secret"), wanted 10001:10001 600"
+  check "rotate-keys.sh env, as root, on a 10001-owned env file" asroot "$deploy/scripts/rotate-keys.sh" env "$T/owned.env" GRAPHITE_API_KEY
+  [ "$(stat -c '%u:%g %a' "$T/owned.env")" = "10001:10001 600" ] &&
+    ok "env: owner 10001:10001 and mode 600 kept" || bad "env: now $(stat -c '%u:%g %a' "$T/owned.env"), wanted 10001:10001 600"
+  check "rotate-keys.sh file with an explicit UID:GID (a new secret)" asroot "$deploy/scripts/rotate-keys.sh" file "$T/keys/new_secret" 10001:10001
+  [ "$(stat -c '%u:%g %a' "$T/keys/new_secret")" = "10001:10001 600" ] &&
+    ok "file: a new secret takes the UID:GID given" || bad "file: new secret is $(stat -c '%u:%g %a' "$T/keys/new_secret")"
+  asroot chown -R "$(id -u):$(id -g)" "$T/keys" "$T"/owned.env*
+else
+  skipped+=("rotate-keys.sh owner preservation: not root and no passwordless sudo")
+fi
 
 echo "== compose entrypoint"
 # The Core's entrypoint script from the prod compose file, run against a

@@ -12,12 +12,23 @@ license = "MIT"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+# `float_roundtrip` (Round 34): the default float parser is best-effort and
+# reads back about one in ten arbitrary doubles one ULP off what serde_json
+# wrote (measured: 21,188 of 200,000 uniform values in [0, 1)). The audit
+# chain hashes a record's canonical JSON at write time and again from the
+# parsed line at verify time, so an honest record whose `confidence` did not
+# round-trip read as "content altered". With it, every double serde_json
+# writes parses back to itself.
+serde_json = { version = "1.0", features = ["float_roundtrip"] }
 thiserror = "2"
 sha2 = "0.11"
 bs58 = "0.5"
 curve25519-dalek = "5"
 hex = "0.4"
+# Wipes the audit MAC key from memory when it is dropped (Round 34, A-7).
+# Already in the tree through the ed25519/curve25519 stack; naming it adds
+# no crate.
+zeroize = "1"
 anyhow = "1"
 # default-features = false is REQUIRED: reqwest's default-tls feature
 # pulls native-tls → openssl-sys, which fails to build on systems without
@@ -74,6 +85,27 @@ rpc = ["dep:reqwest", "dep:tokio", "dep:webpki-root-certs"]
 strip = true
 lto = "thin"
 codegen-units = 1
+
+# Round 34 (R33-8): the profile CI's three test legs run under
+# (`cargo test --profile ci-test`). It IS the release profile — opt-level 3,
+# no debug assertions, no overflow checks, stripped — with one difference:
+# how the code is partitioned for code generation. `lto = "thin"` with
+# `codegen-units = 1` re-optimizes the whole dependency graph once per linked
+# binary, and the default leg links ~160 integration-test binaries, which took
+# 2,557 s of a 60-minute job and cancelled CI on main twice. Without LTO and
+# with 16 units each test binary links in a fraction of that. The semantics a
+# test observes (the code, the optimization level, the assertion and overflow
+# behaviour) are the shipped binary's; only inlining across crate boundaries
+# and unit boundaries can differ, which no test may depend on. The shipped
+# binary is still built with `--release` (Dockerfile, release.yml), and the
+# dashboard-e2e and deploy jobs test that exact build.
+[profile.ci-test]
+inherits = "release"
+lto = false
+codegen-units = 16
+opt-level = 3
+debug-assertions = false
+overflow-checks = false
 
 [dev-dependencies]
 proptest = "1.0"

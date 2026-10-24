@@ -1516,6 +1516,13 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
             .ok()
             .as_deref(),
         &data_dir,
+    )?
+    // Round 34: the previous key during an audit-key rotation.
+    .with_previous_key_value(
+        std::env::var(crate::durable::AUDIT_PREVIOUS_KEY_ENV)
+            .ok()
+            .as_deref(),
+        &data_dir,
     )?;
     let audit = match AuditLog::open_with_options(audit_path(&data_dir), audit_options) {
         Ok(log) => {

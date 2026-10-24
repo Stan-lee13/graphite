@@ -308,32 +308,37 @@ fn l5_failed_intent_mismatch_blocks_approval_at_high_confidence() {
 }
 
 /// External review R2: L5 requires the program to serve the intent, the rule
-/// Check 9 applies in L7. Kamino's `withdrawQueuedLiquidity` is a `withdraw`,
-/// which the `stake` intent declares (a stake account's own withdrawal), and
-/// its name uses the stake vocabulary ("withdraw") — so neither the class
-/// table nor the vocabulary refuses a "stake" label on it. Only the program
-/// does: Kamino Lending is not a staking program.
+/// Check 9 applies in L7. Drift's `addInsuranceFundStake` is a `transfer`,
+/// which the `stake` intent declares (a liquid-staking deposit is one), and
+/// its name uses the stake vocabulary ("stake") — so neither the class table
+/// nor the vocabulary refuses a "stake" label on it. Only the program does:
+/// Drift is not a staking program.
+///
+/// Round 34 (R33-1) re-pin: this test used Kamino's `withdrawQueuedLiquidity`
+/// (class `withdraw`) and asserted the stake intent declares it. A stake
+/// intent declares no withdrawal any more — that was the hole — so the
+/// program check is pinned on a class the stake intent still declares.
 #[test]
 fn l5_refuses_an_intent_the_program_does_not_serve_even_when_the_class_and_words_fit() {
     let core = GraphiteCore::new();
     let registry = graphite_core::manifest::load_seed_manifests();
-    let kamino = "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD";
+    let drift = "dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH";
     let ix = registry
-        .get(kamino)
+        .get(drift)
         .and_then(|m| {
             m.instructions
                 .iter()
-                .find(|i| i.name == "withdrawQueuedLiquidity")
+                .find(|i| i.name == "addInsuranceFundStake")
         })
-        .expect("Kamino withdrawQueuedLiquidity");
-    assert_eq!(ix.security_class(), "withdraw");
+        .expect("Drift addInsuranceFundStake");
+    assert_eq!(ix.security_class(), "transfer");
     assert_eq!(
         graphite_core::manifest::intent_declares_class("stake", ix.security_class()),
         Some(true),
         "the class table declares it under a stake intent"
     );
     let mut input = system_transfer(WalletProfile::Gaming);
-    input.program_id = kamino.to_string();
+    input.program_id = drift.to_string();
     input.instruction_discriminator = ix.discriminator.clone();
     input.account_addresses = (0..ix.accounts.len())
         .map(|i| {

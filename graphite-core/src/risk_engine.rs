@@ -896,8 +896,8 @@ fn assess_impl(
     // class (no manifest, or an instruction its manifest does not class) is
     // left to L5 and the trust tier, which see the difference between the two.
     if !input.proposed_intent_type.trim().is_empty() && !input.manifest_risk_class.is_empty() {
-        let intent = canonical_intent(input.proposed_intent_type.trim());
-        if crate::manifest::intent_declares_class(intent, &input.manifest_risk_class) != Some(true)
+        let intent = canonical_intent(&input.proposed_intent_type);
+        if crate::manifest::intent_declares_class(&intent, &input.manifest_risk_class) != Some(true)
         {
             return Ok(RiskVerdict::Blocked {
                 pattern: RiskPattern::PermissionEscalation,
@@ -1461,8 +1461,18 @@ impl RiskPattern {
 /// it removes the whole class rather than patching the two known sites; a new
 /// check that forgets the synonyms is no longer possible without bypassing
 /// this function deliberately.
-pub(crate) fn canonical_intent(intent_type: &str) -> &str {
-    match intent_type {
+///
+/// Round 34 (C-4): the SPELLING is normalised here too — surrounding
+/// whitespace trimmed, case folded — so every layer reads one word. It was
+/// normalised per layer: Check 9 read the raw string, Check 9b trimmed only,
+/// L5 and the grants trimmed and lowercased. So `"Stake"` was a stake intent
+/// to L5 and an unknown word to Check 9 (refused there as an intent-program
+/// mismatch) — the same declaration, judged as different words by different
+/// layers. A word outside the vocabulary comes back normalised and still
+/// declares nothing.
+pub(crate) fn canonical_intent(intent_type: &str) -> String {
+    let word = intent_type.trim().to_lowercase();
+    let canonical = match word.as_str() {
         "swap" | "trade" | "exchange" => "swap",
         "transfer" | "send" => "transfer",
         "stake" | "delegate" => "stake",
@@ -1481,7 +1491,8 @@ pub(crate) fn canonical_intent(intent_type: &str) -> &str {
         // them made "revoke" a valid declaration for an Approve, and an
         // unlimited ApproveChecked declared as "revoke" was approved.
         other => other,
-    }
+    };
+    canonical.to_string()
 }
 
 /// Whether `program_id` can legitimately serve `intent_type` (Check 9), with
@@ -1518,7 +1529,7 @@ fn program_supports_intent_with(
     intent_type: &str,
     is_swap: &dyn Fn(&str) -> bool,
 ) -> bool {
-    match canonical_intent(intent_type) {
+    match canonical_intent(intent_type).as_str() {
         "swap" => is_swap(program_id),
         "stake" => {
             program_id == "Stake11111111111111111111111111111111111111"

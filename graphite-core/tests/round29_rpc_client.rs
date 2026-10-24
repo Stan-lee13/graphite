@@ -351,11 +351,15 @@ fn token_2022_accounts_answer_the_frozen_question() {
 
 // ── R9 ──────────────────────────────────────────────────────────────────────
 
-/// A node that answers inner instructions in parsed form gives no index; the
-/// callee set is unknown, and now it says why.
+/// A node that answers inner instructions in parsed form gives no index.
+/// Round 29 named that as the reason the callee set was unknown. Round 35:
+/// Agave always answers so, and the parsed form is now read; what is still
+/// named is a parsed instruction Graphite does not rebuild to its bytes (here
+/// a `transfer` whose `info` is empty), whose callee is known and whose
+/// instruction is not.
 #[test]
 fn parsed_inner_instructions_are_named_as_the_reason_the_cpi_set_is_unknown() {
-    let sim = simulation_result_from_value_for_test(&serde_json::json!({
+    let mut sim = simulation_result_from_value_for_test(&serde_json::json!({
         "err": null, "logs": [], "unitsConsumed": 1000,
         "preBalances": [1, 2], "postBalances": [1, 2],
         "innerInstructions": [{"index": 0, "instructions": [
@@ -370,10 +374,21 @@ fn parsed_inner_instructions_are_named_as_the_reason_the_cpi_set_is_unknown() {
     assert!(
         sim.provider_anomalies
             .iter()
-            .any(|a| a.contains("parsed (jsonParsed) form")),
+            .any(|a| a.contains("does not rebuild") && a.contains("`transfer`")),
         "{:?}",
         sim.provider_anomalies
     );
+    let keys = vec![
+        "4cvyjjocbsVgYLsJGsy1UmVZHi4XYtagv38zezydqzSx".to_string(),
+        "11111111111111111111111111111111".to_string(),
+    ];
+    sim.resolve_reported_inner(&keys);
+    assert_eq!(
+        sim.inner_program_indexes,
+        Some(vec![1]),
+        "the callee is known"
+    );
+    assert!(sim.inner_instructions.is_none(), "the instruction is not");
 
     let compiled = simulation_result_from_value_for_test(&serde_json::json!({
         "err": null, "logs": [], "unitsConsumed": 1000,

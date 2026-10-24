@@ -441,20 +441,58 @@ fn a_rotated_key_verifies_with_both_keys_and_a_lost_key_cannot_continue_the_trai
     let log = keyed(&path, &old, 0);
     write_n(&log, 0, 4);
     close(log);
-    let log = keyed(&path, &new, 0);
+    // Round 34 (R33-13): re-pinned. Restarting under the new key alone used
+    // to resume onto a head MAC'd under any other key id — the same thing a
+    // rewrite under an invented key id looks like. A rotation now gives the
+    // writer the previous key, which checks the head under it and writes a
+    // key-adoption record; without it the start is refused.
+    let refused = keyed_with_previous(&path, &new, None).unwrap_err();
+    assert!(
+        refused
+            .to_string()
+            .contains("GRAPHITE_AUDIT_PREVIOUS_KEY_FILE"),
+        "{refused}"
+    );
+    let log = keyed_with_previous(&path, &new, Some(&old)).unwrap();
     write_n(&log, 4, 4);
     close(log);
 
+    // 4 records under the old key, the adoption record and 4 under the new.
     let both = verify(&path, &[old.clone(), new.clone()]);
     assert_eq!(both.integrity, Integrity::TamperEvident);
+    assert_eq!(both.exit_code(), 0);
     assert_eq!(
         both.key_ids_seen,
         vec![old.id().to_string(), new.id().to_string()]
     );
+    assert_eq!(both.key_adoptions, 1);
+    let ranges: Vec<(&str, u64, u64, &str)> = both
+        .key_ranges
+        .iter()
+        .map(|r| {
+            (
+                r.key_id.as_str(),
+                r.first_seq,
+                r.last_seq,
+                r.introduced_by.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        ranges,
+        vec![
+            (old.id(), 0, 3, "first_keyed_record"),
+            (new.id(), 4, 8, "adoption_checked")
+        ]
+    );
     let only_new = verify(&path, std::slice::from_ref(&new));
     assert_eq!(only_new.integrity, Integrity::CorruptionEvident);
-    assert_eq!((only_new.macs_verified, only_new.macs_unverified), (4, 4));
+    assert_eq!((only_new.macs_verified, only_new.macs_unverified), (5, 4));
     assert_eq!(only_new.exit_code(), 2);
+    // The previous key may stay configured: once the head is under the new
+    // key it is not consulted.
+    close(keyed_with_previous(&path, &new, Some(&old)).unwrap());
+    assert_eq!(verify(&path, &[old.clone(), new.clone()]).key_adoptions, 1);
 
     // The key is lost: the trail cannot be continued unkeyed (that would
     // be a silent downgrade), and a walk without it proves only the chain.
@@ -462,7 +500,23 @@ fn a_rotated_key_verifies_with_both_keys_and_a_lost_key_cannot_continue_the_trai
     assert!(err.to_string().contains("no key is configured"), "{err}");
     let none = verify(&path, &[]);
     assert_eq!(none.integrity, Integrity::CorruptionEvident);
-    assert_eq!(none.macs_unverified, 8);
+    assert_eq!(none.macs_unverified, 9);
+}
+
+fn keyed_with_previous(
+    path: &Path,
+    key: &AuditKey,
+    previous: Option<&AuditKey>,
+) -> std::io::Result<AuditLog> {
+    AuditLog::open_with_options(
+        path,
+        AuditOptions {
+            rotate_bytes: 0,
+            key: Some(key.clone()),
+            previous_key: previous.cloned(),
+            ..AuditOptions::default()
+        },
+    )
 }
 
 #[test]
@@ -703,4 +757,1215 @@ fn pruned_archives_leave_a_chain_that_starts_later_and_an_old_checkpoint_unconfi
         Some(CheckpointStatus::NotOnDisk { .. })
     ));
     assert_eq!(report.exit_code(), 2);
+}
+
+// ---------------------------------------------------------------------------
+// Round 34: one line grammar for the chain walk and every reader, MAC
+// downgrade, unsigned checkpoints, invented key ids, a walk beside a
+// rotating writer.
+// ---------------------------------------------------------------------------
+
+const VICTIM_TX: &str = "abababababababababababababababababababababababababababababababab";
+
+/// A forged approval of `VICTIM_TX`, built from a real line of the trail:
+/// it keeps that line's chain link, which no longer matches its content.
+fn forged_approval(template: &str) -> String {
+    let mut v: serde_json::Value = serde_json::from_str(template).unwrap();
+    v["transaction_sha256"] = VICTIM_TX.into();
+    v["audit_trail_id"] = "gr-forged".into();
+    v["approved"] = true.into();
+    v["decision"] = "executable_approved".into();
+    v["executable"] = true.into();
+    v.to_string()
+}
+
+/// What a reader in a fresh process answers for the victim.
+fn victim_seen_by_a_reader(path: &Path) -> Option<AuditRecord> {
+    let reader = AuditLog::open_read_only(path).unwrap();
+    let found = reader.find_verification(VerificationKey::TransactionSha256(VICTIM_TX));
+    reader.wait_for_index_jobs();
+    found
+}
+
+/// A keyed trail of `n` records across several archives.
+fn rotated_keyed_trail(tag: &str, byte: u8, n: usize) -> (PathBuf, AuditKey, Vec<PathBuf>) {
+    let dir = temp_dir(tag);
+    let path = audit_path(&dir);
+    let (_, key) = key_file(tag, byte);
+    let log = keyed(&path, &key, 1_500);
+    write_n(&log, 0, n);
+    close(log);
+    let archives: Vec<PathBuf> = archives_of(&path).into_iter().map(|(_, p)| p).collect();
+    assert!(archives.len() >= 2, "{archives:?}");
+    (path, key, archives)
+}
+
+fn name_of(p: &Path) -> String {
+    p.file_name().unwrap().to_string_lossy().into_owned()
+}
+
+/// `forged_approval` with a link recomputed to match its content (no MAC):
+/// a line the grammar alone does not refuse, so only the rule that a line
+/// without its newline is never read keeps it from the readers.
+fn resealed_forgery(template: &str) -> String {
+    let serde_json::Value::Object(mut map) =
+        serde_json::from_str(&forged_approval(template)).unwrap()
+    else {
+        panic!()
+    };
+    map.remove(CHAIN_FIELD);
+    let head = chain::ChainHead {
+        next_seq: 999,
+        prev: [7u8; 32],
+        keyed: false,
+    };
+    chain::seal(map, &head, None).0
+}
+
+#[test]
+fn a_forged_unterminated_line_in_an_archive_breaks_the_chain_and_is_never_read() {
+    let (path, key, archives) = rotated_keyed_trail("forged-unterminated", 21, 30);
+    let template = lines_of(&archives[0])[0].clone();
+    let mut bytes = std::fs::read(&archives[0]).unwrap();
+    bytes.extend_from_slice(resealed_forgery(&template).as_bytes());
+    std::fs::write(&archives[0], bytes).unwrap();
+
+    let report = verify(&path, std::slice::from_ref(&key));
+    assert_ne!(report.exit_code(), 0, "{report:?}");
+    let b = report.first_break.as_ref().expect("a break");
+    assert_eq!(b.file, name_of(&archives[0]), "{b:?}");
+    assert!(
+        victim_seen_by_a_reader(&path).is_none(),
+        "a reader resolved the victim to the forged approval"
+    );
+}
+
+/// The active file's final line without its newline is not judged (a write
+/// may be in flight) — and so it is never read either. A keyed writer does
+/// not resume onto it: it is a whole record without a MAC.
+#[test]
+fn a_forged_unterminated_tail_of_the_active_file_is_never_read() {
+    let (path, key, _) = rotated_keyed_trail("forged-active-tail", 39, 20);
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 20, 2);
+    close(log);
+    let template = lines_of(&path)[0].clone();
+    let mut bytes = std::fs::read(&path).unwrap();
+    bytes.extend_from_slice(resealed_forgery(&template).as_bytes());
+    std::fs::write(&path, bytes).unwrap();
+    let report = verify(&path, std::slice::from_ref(&key));
+    assert_eq!(report.exit_code(), 0, "{report:?}");
+    assert_eq!(report.unparseable_lines, 1);
+    assert!(victim_seen_by_a_reader(&path).is_none());
+    // The active file's counts are built at open and answered without a
+    // read-back: they must not count it either.
+    let reader = AuditLog::open_read_only(&path).unwrap();
+    assert_eq!(
+        reader.count_verifications(VerificationKey::TransactionSha256(VICTIM_TX)),
+        (0, 0)
+    );
+    drop(reader);
+    let err = AuditLog::open_with_options(
+        &path,
+        AuditOptions {
+            key: Some(key.clone()),
+            ..AuditOptions::default()
+        },
+    )
+    .expect_err("a keyed writer resumed onto an unkeyed forged tail");
+    assert!(err.to_string().contains("carries no MAC"), "{err}");
+}
+
+#[test]
+fn a_line_the_chain_cannot_parse_breaks_the_chain_and_is_never_read() {
+    let (path, key, archives) = rotated_keyed_trail("forged-1e400", 22, 30);
+    let mut lines = lines_of(&archives[0]);
+    let forged = forged_approval(&lines[0]).replacen('{', "{\"x\":1e400,", 1);
+    assert!(serde_json::from_str::<serde_json::Value>(&forged).is_err());
+    lines.insert(1, forged);
+    write_lines(&archives[0], &lines);
+
+    let report = verify(&path, std::slice::from_ref(&key));
+    assert_ne!(report.exit_code(), 0, "{report:?}");
+    let b = report.first_break.as_ref().expect("a break");
+    assert_eq!(
+        (b.file.clone(), b.line),
+        (name_of(&archives[0]), 2),
+        "{b:?}"
+    );
+    assert!(
+        victim_seen_by_a_reader(&path).is_none(),
+        "a reader resolved the victim to the forged approval"
+    );
+}
+
+#[test]
+fn a_duplicate_key_breaks_the_chain_and_the_record_stays_visible_or_is_named() {
+    let (path, key, archives) = rotated_keyed_trail("dup-key", 23, 30);
+    let mut lines = lines_of(&archives[0]);
+    assert!(lines[0].starts_with("{\"approved\":false,"), "{}", lines[0]);
+    lines[0] = lines[0].replacen("{\"approved\":", "{\"approved\":true,\"approved\":", 1);
+    write_lines(&archives[0], &lines);
+
+    let report = verify(&path, std::slice::from_ref(&key));
+    let reader = AuditLog::open_read_only(&path).unwrap();
+    let visible = reader
+        .find_verification(VerificationKey::AuditTrailId("gr-00000"))
+        .is_some();
+    reader.wait_for_index_jobs();
+    match &report.first_break {
+        // Named: verify does not exit 0, and points at the line.
+        Some(b) => {
+            assert_eq!(
+                (b.file.clone(), b.line),
+                (name_of(&archives[0]), 1),
+                "{b:?}"
+            );
+            assert_ne!(report.exit_code(), 0);
+        }
+        // Or visible to every reader, exactly as verify counted it.
+        None => assert!(
+            visible,
+            "verify accepted a record no reader can see: {report:?}"
+        ),
+    }
+}
+
+/// Recompute every line's link from genesis with no key, as a writer
+/// without the key would after editing the trail.
+fn rechain_all_without_key(lines: &mut [String]) {
+    let mut head = chain::ChainHead::genesis();
+    for line in lines.iter_mut() {
+        let serde_json::Value::Object(map) = serde_json::from_str(line).unwrap() else {
+            panic!()
+        };
+        let (sealed, next) = chain::seal(map, &head, None);
+        *line = sealed;
+        head = next;
+    }
+}
+
+#[test]
+fn a_trail_rewritten_without_macs_does_not_verify_under_its_key() {
+    let dir = temp_dir("downgrade");
+    let path = audit_path(&dir);
+    let (_, key) = key_file("downgrade", 24);
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 0, 8);
+    close(log);
+    let mut lines = lines_of(&path);
+    assert!(lines[2].contains("\"approved\":true"));
+    lines[2] = lines[2].replacen("\"approved\":true", "\"approved\":false", 1);
+    rechain_all_without_key(&mut lines);
+    write_lines(&path, &lines);
+
+    // The server restarts with its key. If it resumes, it MACs two records
+    // on top of the rewritten history.
+    if let Ok(log) = AuditLog::open_with_options(
+        &path,
+        AuditOptions {
+            key: Some(key.clone()),
+            ..AuditOptions::default()
+        },
+    ) {
+        write_n(&log, 8, 2);
+        close(log);
+    }
+    let report = verify(&path, std::slice::from_ref(&key));
+    assert_ne!(
+        report.exit_code(),
+        0,
+        "a rewritten, MAC-stripped trail verified under its key: {report:?}"
+    );
+}
+
+#[test]
+fn a_keyed_writer_refuses_to_resume_onto_an_unkeyed_head() {
+    let dir = temp_dir("unkeyed-head");
+    let path = audit_path(&dir);
+    let log = AuditLog::open(&path).unwrap();
+    write_n(&log, 0, 3);
+    close(log);
+    let (_, key) = key_file("unkeyed-head", 25);
+    let opened = AuditLog::open_with_options(
+        &path,
+        AuditOptions {
+            key: Some(key),
+            ..AuditOptions::default()
+        },
+    );
+    let err = opened.expect_err("a keyed writer resumed onto an unkeyed head");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    assert!(err.to_string().contains("adopt-key"), "{err}");
+}
+
+/// A checkpoint of the head of a trail truncated to five records, with its
+/// MAC removed or put under a key nobody holds.
+#[test]
+fn an_unsigned_checkpoint_or_one_under_an_unknown_key_is_not_confirmed() {
+    let dir = temp_dir("unsigned-checkpoint");
+    let path = audit_path(&dir);
+    let (_, key) = key_file("unsigned-checkpoint", 26);
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 0, 10);
+    let genuine = log.checkpoint().unwrap();
+    close(log);
+    let mut lines = lines_of(&path);
+    lines.truncate(5);
+    write_lines(&path, &lines);
+    let keys = std::slice::from_ref(&key);
+    let head = verify(&path, keys);
+    assert_eq!(
+        verify_audit_trail(&path, keys, Some(&genuine))
+            .unwrap()
+            .exit_code(),
+        1
+    );
+
+    let mut unsigned = genuine.clone();
+    unsigned.seq = 4;
+    unsigned.hash = head.head_hash.clone().unwrap();
+    unsigned.key_id = None;
+    unsigned.mac = None;
+    let mut unknown_key = unsigned.clone();
+    unknown_key.key_id = Some("00".repeat(8));
+    unknown_key.mac = Some("11".repeat(32));
+    for (name, cp) in [("unsigned", unsigned), ("unknown key", unknown_key)] {
+        let r = verify_audit_trail(&path, keys, Some(&cp)).unwrap();
+        assert_ne!(
+            r.checkpoint,
+            Some(CheckpointStatus::Confirmed),
+            "{name}: {r:?}"
+        );
+        assert_ne!(r.exit_code(), 0, "{name}: {r:?}");
+    }
+}
+
+/// The records from seq 5 on rewritten under a key id nobody holds, with
+/// MACs that cannot be checked: not the same thing as a rotation.
+fn invented_key_id_trail(tag: &str, byte: u8) -> (PathBuf, AuditKey) {
+    let dir = temp_dir(tag);
+    let path = audit_path(&dir);
+    let (_, key) = key_file(tag, byte);
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 0, 10);
+    close(log);
+    let mut lines = lines_of(&path);
+    assert!(lines[5].contains("\"approved\":true"));
+    lines[5] = lines[5].replacen("\"approved\":true", "\"approved\":false", 1);
+    rechain_without_key(&mut lines, 5);
+    for line in lines.iter_mut().skip(5) {
+        let mut v: serde_json::Value = serde_json::from_str(line).unwrap();
+        v[CHAIN_FIELD]["key_id"] = "deadbeefdeadbeef".into();
+        v[CHAIN_FIELD]["mac"] = "77".repeat(32).into();
+        *line = v.to_string();
+    }
+    write_lines(&path, &lines);
+    (path, key)
+}
+
+#[test]
+fn an_invented_key_id_is_a_break_not_a_rotation() {
+    let (path, key) = invented_key_id_trail("invented-key", 27);
+    let report = verify(&path, std::slice::from_ref(&key));
+    let b = report
+        .first_break
+        .as_ref()
+        .unwrap_or_else(|| panic!("an invented key id read as a rotation: {report:?}"));
+    assert_eq!(b.seq, Some(5), "{b:?}");
+    assert!(b.reason.contains("deadbeefdeadbeef"), "{b:?}");
+    assert_eq!(report.exit_code(), 1);
+}
+
+#[test]
+fn a_keyed_writer_refuses_to_resume_onto_a_head_under_an_unknown_key() {
+    let (path, key) = invented_key_id_trail("invented-key-resume", 28);
+    let opened = AuditLog::open_with_options(
+        &path,
+        AuditOptions {
+            key: Some(key),
+            ..AuditOptions::default()
+        },
+    );
+    let err =
+        opened.expect_err("a keyed writer resumed onto a head under a key id it cannot check");
+    assert!(err.to_string().contains("deadbeefdeadbeef"), "{err}");
+}
+
+/// `graphite audit verify` is documented as safe beside a running writer.
+/// A rotation between listing the archives and walking them made it report
+/// a break that is not there (exit 1), a prune an unreadable trail (exit 3).
+#[test]
+fn a_walk_beside_a_rotating_and_pruning_writer_reports_no_false_break() {
+    let dir = temp_dir("walk-beside-writer");
+    let path = audit_path(&dir);
+    let (_, key) = key_file("walk-beside-writer", 29);
+    let log = AuditLog::open_with_options(
+        &path,
+        AuditOptions {
+            rotate_bytes: 1,
+            max_archives: 6,
+            key: Some(key.clone()),
+            ..AuditOptions::default()
+        },
+    )
+    .unwrap();
+    write_n(&log, 0, 8);
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let writer = {
+        let log = log.clone();
+        let stop = stop.clone();
+        std::thread::spawn(move || {
+            let mut i = 8;
+            while !stop.load(Ordering::SeqCst) {
+                assert!(log.append(&rec(&format!("gr-{i:05}"), true)));
+                i += 1;
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+        })
+    };
+    let mut failures = Vec::new();
+    for _ in 0..150 {
+        match verify_audit_trail(&path, std::slice::from_ref(&key), None) {
+            Ok(r) if r.exit_code() == 0 => {}
+            Ok(r) => failures.push(format!("exit {}: {:?}", r.exit_code(), r.first_break)),
+            Err(e) => failures.push(format!("exit 3: {e}")),
+        }
+    }
+    stop.store(true, Ordering::SeqCst);
+    writer.join().unwrap();
+    close(log);
+    assert!(
+        failures.is_empty(),
+        "{} of 150 walks failed beside the writer: {:?}",
+        failures.len(),
+        &failures[..failures.len().min(3)]
+    );
+}
+
+/// The head after the last chained line of `path`.
+fn head_of(path: &Path) -> chain::ChainHead {
+    let last = lines_of(path).pop().unwrap();
+    let v: serde_json::Value = serde_json::from_str(&last).unwrap();
+    let link: ChainLink = serde_json::from_value(v[CHAIN_FIELD].clone()).unwrap();
+    chain::ChainHead {
+        next_seq: link.seq + 1,
+        prev: hex::decode(&link.hash).unwrap().try_into().unwrap(),
+        keyed: link.mac.is_some(),
+    }
+}
+
+/// Deterministic form of the walk beside a writer: the active file is
+/// rotated away, and a record written to a fresh one, while the walk is in
+/// the archives it listed. The first walk would see the chain jump from
+/// the last listed archive to the new active file; the listing changed, so
+/// the walk is repeated and finds one unbroken chain.
+#[test]
+fn a_rotation_during_the_walk_is_walked_again() {
+    let (path, key, _) = rotated_keyed_trail("rotation-mid-walk", 30, 20);
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 20, 2);
+    close(log);
+    let mut attempts = Vec::new();
+    let report = verify_audit_trail_with(
+        &path,
+        std::slice::from_ref(&key),
+        None,
+        &mut |attempt, file| {
+            attempts.push(attempt);
+            if (attempt, file) != (0, 1) {
+                return;
+            }
+            let head = head_of(&path);
+            let archive = path.with_file_name("audit.jsonl.9999999999999-999999");
+            std::fs::rename(&path, &archive).unwrap();
+            let serde_json::Value::Object(map) =
+                serde_json::to_value(rec("gr-after-rotation", true)).unwrap()
+            else {
+                panic!()
+            };
+            let (line, _) = chain::seal(map, &head, Some(&key));
+            std::fs::write(&path, format!("{line}\n")).unwrap();
+        },
+    )
+    .unwrap();
+    assert!(report.intact(), "{report:?}");
+    assert_eq!(report.exit_code(), 0);
+    assert_eq!(report.chained_records, 23);
+    assert!(attempts.contains(&1), "the walk was repeated");
+}
+
+/// The control for R33-4: an operator who adds a key to a trail that was
+/// never keyed adopts it explicitly, and the trail then verifies under the
+/// key. A trail keyed later by a pre-Round-34 writer (no adoption record)
+/// exits 4 under its key until the adoption is written.
+#[test]
+fn legitimate_key_adoption_via_the_marker_verifies() {
+    let dir = temp_dir("adopt");
+    let path = audit_path(&dir);
+    let log = AuditLog::open(&path).unwrap();
+    write_n(&log, 0, 3);
+    close(log);
+    let (_, key) = key_file("adopt", 32);
+    let keys = std::slice::from_ref(&key);
+
+    // A pre-Round-34 writer resumed onto the unkeyed head with a key.
+    let mut lines = lines_of(&path);
+    for i in 3..5 {
+        let serde_json::Value::Object(map) =
+            serde_json::to_value(rec(&format!("gr-{i:05}"), true)).unwrap()
+        else {
+            panic!()
+        };
+        let head = {
+            write_lines(&path, &lines);
+            head_of(&path)
+        };
+        lines.push(chain::seal(map, &head, Some(&key)).0);
+    }
+    write_lines(&path, &lines);
+    let before = verify(&path, keys);
+    assert!(before.first_break.is_none(), "{before:?}");
+    assert_eq!(
+        (before.unkeyed_records, before.unkeyed_adopted),
+        (3, 0),
+        "{before:?}"
+    );
+    assert_eq!(before.exit_code(), 4);
+    // Without keys the unkeyed records are what an unkeyed walk expects.
+    assert_eq!(verify(&path, &[]).exit_code(), 2);
+
+    // The adoption.
+    let log = AuditLog::open_with_options(
+        &path,
+        AuditOptions {
+            rotate_bytes: 0,
+            key: Some(key.clone()),
+            adopt_key: true,
+            ..AuditOptions::default()
+        },
+    )
+    .unwrap();
+    write_n(&log, 5, 2);
+    close(log);
+    let after = verify(&path, keys);
+    assert_eq!(after.exit_code(), 0, "{after:?}");
+    assert_eq!(after.integrity, Integrity::TamperEvident);
+    assert_eq!(
+        (
+            after.unkeyed_records,
+            after.unkeyed_adopted,
+            after.key_adoptions
+        ),
+        (3, 3, 1)
+    );
+    // Readers never return the adoption record as a verdict, and see every
+    // record the walk counted.
+    let reader = AuditLog::open_read_only(&path).unwrap();
+    assert_eq!(reader.read_tail_filtered(100, AuditSelector::All).2, 7);
+    // A server restart under the key resumes without another adoption.
+    close(keyed(&path, &key, 0));
+    assert_eq!(verify(&path, keys).key_adoptions, 1);
+
+    // And an unkeyed record after the adoption is a break.
+    let mut lines = lines_of(&path);
+    let serde_json::Value::Object(map) = serde_json::to_value(rec("gr-unkeyed", true)).unwrap()
+    else {
+        panic!()
+    };
+    lines.push(chain::seal(map, &head_of(&path), None).0);
+    write_lines(&path, &lines);
+    let r = verify(&path, keys);
+    assert!(
+        r.first_break
+            .as_ref()
+            .is_some_and(|b| b.reason.contains("without a MAC")),
+        "{r:?}"
+    );
+}
+
+/// A lost key: `adopt_key` without the previous key records the adoption
+/// as not checked, and the records under the lost key can then only be
+/// walked as chained (exit 2 under the new key).
+#[test]
+fn a_lost_key_is_adopted_as_not_checked() {
+    let dir = temp_dir("lost-key");
+    let path = audit_path(&dir);
+    let (_, lost) = key_file("lost-key-old", 33);
+    let (_, new) = key_file("lost-key-new", 34);
+    let log = keyed(&path, &lost, 0);
+    write_n(&log, 0, 3);
+    close(log);
+    let log = AuditLog::open_with_options(
+        &path,
+        AuditOptions {
+            rotate_bytes: 0,
+            key: Some(new.clone()),
+            adopt_key: true,
+            ..AuditOptions::default()
+        },
+    )
+    .unwrap();
+    write_n(&log, 3, 1);
+    close(log);
+    let r = verify(&path, std::slice::from_ref(&new));
+    assert!(r.first_break.is_none(), "{r:?}");
+    assert_eq!(r.exit_code(), 2);
+    assert_eq!(r.key_ranges.len(), 2);
+    assert!(!r.key_ranges[0].supplied);
+    let marker: serde_json::Value = serde_json::from_str(&lines_of(&path)[3]).unwrap();
+    assert_eq!(marker["audit_control"], "key_adoption");
+    assert_eq!(marker["previous_key_id"], lost.id());
+    assert_eq!(marker["previous_key_checked"], false);
+}
+
+/// Every line the real writer emits — verification, error and lifecycle
+/// records, with non-ASCII text, control characters, quotes, backslashes
+/// and many floats — is a valid chained record under the grammar, and its
+/// bytes are exactly what serde_json's own serialization of its parse
+/// gives: the line format the Round 30 writer used, so trails written
+/// before Round 34 keep verifying.
+#[test]
+fn every_line_the_writer_emits_is_canonical_and_verifies() {
+    let dir = temp_dir("canonical-writer");
+    let path = audit_path(&dir);
+    let (_, key) = key_file("canonical-writer", 35);
+    let log = keyed(&path, &key, 0);
+    let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
+    for i in 0..400 {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        let mut r = rec(&format!("gr-{i:05}"), i % 2 == 0);
+        r.confidence = (seed >> 11) as f64 / (1u64 << 53) as f64;
+        if i % 7 == 0 {
+            r.confidence = f64::from_bits(seed % 0x3ff0_0000_0000_0000);
+        }
+        r.instruction_name = format!("tränsfer \"{i}\" \\ \u{1} \u{7f} \u{2028} 😀");
+        assert!(log.append(&r));
+    }
+    assert!(log.append_error(&AuditErrorRecord {
+        timestamp: now_utc_rfc3339(),
+        program_id: "p\u{0}\n".into(),
+        instruction_name: "ünïcode".into(),
+        error: "bad \"input\"".into(),
+        error_type: "bad_request".into(),
+        status: 400,
+    }));
+    assert!(log.append_lifecycle(&LifecycleEventRecord {
+        event_type: LifecycleEvent::Signing,
+        timestamp: now_utc_rfc3339(),
+        content_hash: "ch".into(),
+        verdict_on_record: None,
+        verdict_on_record_key: None,
+        transaction_sha256: Some(VICTIM_TX.into()),
+        audit_trail_id: Some("gr-00001".into()),
+        transaction_signature: Some("sig".into()),
+        reported_by: Some("agent \t é".into()),
+        detail: Some("slot 1\r\n".into()),
+        observed_by_graphite: false,
+        sequence_anomalies: vec!["x".into()],
+    }));
+    close(log);
+    for line in lines_of(&path) {
+        let class = chain::classify_line(line.as_bytes());
+        assert!(
+            matches!(class, chain::LineClass::Chained(_)),
+            "{class:?}: {line}"
+        );
+        let reparsed: serde_json::Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(serde_json::to_string(&reparsed).unwrap(), line);
+    }
+    let r = verify(&path, std::slice::from_ref(&key));
+    assert_eq!(r.exit_code(), 0, "{r:?}");
+    assert_eq!(r.chained_records, 402);
+}
+
+/// R33-3, as a property: verify and every reader run over the same mutated
+/// line. Whenever verify exits 0, every reader sees exactly the records the
+/// walk counted; whatever verify says, no reader ever returns a record
+/// whose content differs from what was written.
+#[test]
+fn verify_and_every_reader_agree_on_every_mutated_line() {
+    let (path, key, archives) = rotated_keyed_trail("agree", 36, 24);
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 24, 2);
+    close(log);
+    let keys = std::slice::from_ref(&key);
+    let files = trail_files(&path);
+    let pristine: Vec<Vec<u8>> = files.iter().map(|f| std::fs::read(f).unwrap()).collect();
+    let tx = format!("{:0>64}", "gr-00000".len());
+    let originally_approved = |id: &str| id[3..].parse::<usize>().unwrap() % 3 != 0;
+
+    type Mutation = fn(&str) -> String;
+    let line_mutations: Vec<(&str, Mutation)> = vec![
+        ("duplicate key", |l| {
+            let (k, v) = if l.starts_with("{\"approved\":true") {
+                ("{\"approved\":", "false")
+            } else {
+                ("{\"approved\":", "true")
+            };
+            l.replacen(k, &format!("{k}{v},\"approved\":"), 1)
+        }),
+        ("whitespace", |l| l.replacen(',', ", ", 1)),
+        ("key order", |l| {
+            let v: serde_json::Value = serde_json::from_str(l).unwrap();
+            let map = v.as_object().unwrap();
+            let parts: Vec<String> = map
+                .iter()
+                .rev()
+                .map(|(k, v)| format!("{}:{}", serde_json::to_string(k).unwrap(), v))
+                .collect();
+            format!("{{{}}}", parts.join(","))
+        }),
+        ("big number", |l| l.replacen('{', "{\"x\":1e400,", 1)),
+        ("extra field", |l| l.replacen('{', "{\"aa\":1,", 1)),
+        ("unicode escape", |l| {
+            l.replacen("transfer", "\\u0074ransfer", 1)
+        }),
+        ("trailing garbage", |l| format!("{l} x")),
+        ("trailing space", |l| format!("{l} ")),
+        ("carriage return", |l| format!("{l}\r")),
+        ("verdict flipped", |l| {
+            if l.contains("\"approved\":true") {
+                l.replacen("\"approved\":true", "\"approved\":false", 1)
+            } else {
+                l.replacen("\"approved\":false", "\"approved\":true", 1)
+            }
+        }),
+        ("not json", |l| l[..l.len() / 2].to_string()),
+    ];
+    // (file, line index, mutation) — plus the newline removed from the end
+    // of an archive and of the active file.
+    let mut cases: Vec<(String, usize, Option<usize>)> = Vec::new();
+    for (fi, _) in files.iter().enumerate() {
+        for m in 0..line_mutations.len() {
+            cases.push((format!("file {fi} line 0"), fi, Some(m)));
+        }
+        cases.push((format!("file {fi} no final newline"), fi, None));
+    }
+    for (name, fi, m) in cases {
+        for (f, bytes) in files.iter().zip(&pristine) {
+            std::fs::write(f, bytes).unwrap();
+        }
+        let target = &files[fi];
+        match m {
+            Some(m) => {
+                let mut lines = lines_of(target);
+                lines[0] = (line_mutations[m].1)(&lines[0]);
+                write_lines(target, &lines);
+            }
+            None => {
+                let mut bytes = pristine[fi].clone();
+                assert_eq!(bytes.pop(), Some(b'\n'));
+                std::fs::write(target, bytes).unwrap();
+            }
+        }
+        let label = match m {
+            Some(m) => format!("{name}: {}", line_mutations[m].0),
+            None => name,
+        };
+        let report = verify(&path, keys);
+        let reader = AuditLog::open_read_only(&path).unwrap();
+        let (tail, _, total, _) = reader.read_tail_filtered(1000, AuditSelector::All);
+        let (approved, refused) =
+            reader.count_verifications(VerificationKey::TransactionSha256(&tx));
+        let mut found = 0u64;
+        for i in 0..26 {
+            let id = format!("gr-{i:05}");
+            if let Some(r) = reader.find_verification(VerificationKey::AuditTrailId(&id)) {
+                assert_eq!(
+                    r.approved,
+                    originally_approved(&id),
+                    "{label}: {id} altered"
+                );
+                found += 1;
+            }
+        }
+        for r in &tail {
+            assert_eq!(
+                r.approved,
+                originally_approved(&r.audit_trail_id),
+                "{label}: the tail returned an altered record"
+            );
+        }
+        reader.wait_for_index_jobs();
+        drop(reader);
+        if report.exit_code() == 0 {
+            assert_eq!(
+                (found, total as u64, (approved + refused) as u64),
+                (
+                    report.chained_records,
+                    report.chained_records,
+                    report.chained_records
+                ),
+                "{label}: verify exited 0 and the readers disagree: {report:?}"
+            );
+        } else {
+            let b = report.first_break.as_ref();
+            assert!(
+                b.is_some_and(|b| b.file == name_of(target)),
+                "{label}: {report:?}"
+            );
+        }
+        // An archive is never allowed to lose its last newline; the active
+        // file's last line in flight is not judged and not read.
+        if m.is_none() && fi + 1 < files.len() {
+            assert_ne!(report.exit_code(), 0, "{label}");
+        }
+        if m.is_some() {
+            assert_ne!(report.exit_code(), 0, "{label}: {report:?}");
+        }
+    }
+    let _ = archives;
+}
+
+/// An index is written beside the trail by whoever can write the data
+/// directory. One forged to point at a forged line is never an answer: the
+/// read-back applies the line grammar, not the index's word.
+#[test]
+fn a_forged_index_pointing_at_a_forged_line_is_never_an_answer() {
+    let (path, _key, archives) = rotated_keyed_trail("forged-index", 38, 30);
+    let mut lines = lines_of(&archives[0]);
+    let forged = forged_approval(&lines[0]);
+    let offset: u64 = lines[0].len() as u64 + 1;
+    lines.insert(1, forged);
+    write_lines(&archives[0], &lines);
+    let index_dir = path.with_file_name("audit.jsonl-index");
+    std::fs::create_dir_all(&index_dir).unwrap();
+    let (sha, len) = archive_index::file_sha256(&archives[0]).unwrap();
+    let key = format!("tx:{VICTIM_TX}");
+    let last: HashMap<String, u64> = [(key.clone(), offset)].into_iter().collect();
+    let counts: HashMap<String, (usize, usize)> = [(key, (1, 0))].into_iter().collect();
+    archive_index::write(
+        &archive_index::index_path(&index_dir, &archives[0]).unwrap(),
+        len,
+        &sha,
+        archive_index::IndexSource {
+            last: &last,
+            counts: &counts,
+            lifecycle: &HashMap::new(),
+        },
+    )
+    .unwrap();
+    let reader = AuditLog::open_read_only(&path).unwrap();
+    assert!(reader
+        .find_verification(VerificationKey::TransactionSha256(VICTIM_TX))
+        .is_none());
+    assert_eq!(
+        reader.count_verifications(VerificationKey::TransactionSha256(VICTIM_TX)),
+        (0, 0)
+    );
+    reader.wait_for_index_jobs();
+}
+
+#[test]
+fn a_dropped_key_is_wiped() {
+    let before = chain::KEYS_WIPED.with(|n| n.get());
+    let key = AuditKey::from_bytes(&[9u8; 32]).unwrap();
+    let copy = key.clone();
+    drop(key);
+    drop(copy);
+    assert_eq!(chain::KEYS_WIPED.with(|n| n.get()) - before, 2);
+}
+
+/// A line that is not JSON in the middle of the trail — a torn write the
+/// writer never resumed past, or garbage someone added — is a break; the
+/// crash the writer did resume past is not.
+#[test]
+fn a_torn_line_no_record_names_is_a_break() {
+    let dir = temp_dir("torn-unnamed");
+    let path = audit_path(&dir);
+    let (_, key) = key_file("torn-unnamed", 37);
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 0, 4);
+    close(log);
+    let mut lines = lines_of(&path);
+    let half = lines[1][..lines[1].len() / 2].to_string();
+    lines.insert(2, half);
+    write_lines(&path, &lines);
+    let r = verify(&path, std::slice::from_ref(&key));
+    let b = r.first_break.as_ref().expect("a break");
+    assert_eq!(b.line, 3, "{b:?}");
+    assert!(b.reason.contains("torn write"), "{b:?}");
+}
+
+// ---------------------------------------------------------------------------
+// Round 34 follow-up: a reader that holds the key checks MACs.
+// ---------------------------------------------------------------------------
+
+/// How a forged line's link claims to be MAC'd.
+#[derive(Clone, Copy, Debug)]
+enum ForgedMac {
+    /// No MAC at all.
+    None,
+    /// The trail's own key id, with a MAC that is not one.
+    UnderTheTrailKey,
+    /// A key id nobody holds.
+    Invented,
+}
+
+/// `content` sealed right after `after` (the line it is inserted behind):
+/// the next seq, `prev` = that line's hash, a hash that matches — a link
+/// that looks valid to anything that does not check the MAC.
+fn self_hashed_forgery(
+    after: &str,
+    content: serde_json::Map<String, serde_json::Value>,
+    mac: ForgedMac,
+    key: &AuditKey,
+) -> String {
+    let v: serde_json::Value = serde_json::from_str(after).unwrap();
+    let link: ChainLink = serde_json::from_value(v[CHAIN_FIELD].clone()).unwrap();
+    let head = chain::ChainHead {
+        next_seq: link.seq + 1,
+        prev: hex::decode(&link.hash).unwrap().try_into().unwrap(),
+        keyed: false,
+    };
+    let (line, _) = chain::seal(content, &head, None);
+    let mut v: serde_json::Value = serde_json::from_str(&line).unwrap();
+    match mac {
+        ForgedMac::None => {}
+        ForgedMac::UnderTheTrailKey => {
+            v[CHAIN_FIELD]["key_id"] = key.id().into();
+            v[CHAIN_FIELD]["mac"] = "5a".repeat(32).into();
+        }
+        ForgedMac::Invented => {
+            v[CHAIN_FIELD]["key_id"] = "c0ffeec0ffeec0ff".into();
+            v[CHAIN_FIELD]["mac"] = "5a".repeat(32).into();
+        }
+    }
+    let line = v.to_string();
+    assert!(
+        matches!(
+            chain::classify_line(line.as_bytes()),
+            chain::LineClass::Chained(_)
+        ),
+        "the forgery passes the grammar: canonical, and its hash matches"
+    );
+    line
+}
+
+fn map_of<T: serde::Serialize>(r: &T) -> serde_json::Map<String, serde_json::Value> {
+    let serde_json::Value::Object(m) = serde_json::to_value(r).unwrap() else {
+        panic!()
+    };
+    m
+}
+
+/// A forged approval of `VICTIM_TX` and a forged lifecycle row for it, each
+/// with a recomputed hash and a link that continues from the line before
+/// it, inserted into an archive and into the active file of a keyed trail.
+/// The walk breaks on them (exit 1); a reader that holds the key never
+/// returns, counts or indexes them. A reader without a key reads them: that
+/// trail is only corruption-evident to it (the documented limit).
+#[test]
+fn a_self_hashed_forgery_in_a_keyed_trail_is_never_read_by_a_reader_with_the_key() {
+    for (n, mac) in [
+        ForgedMac::None,
+        ForgedMac::UnderTheTrailKey,
+        ForgedMac::Invented,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let (path, key, archives) =
+            rotated_keyed_trail(&format!("self-hashed-{n}"), 50 + n as u8, 30);
+        let log = keyed(&path, &key, 0);
+        write_n(&log, 30, 3);
+        close(log);
+        let mut victim = rec("gr-forged", true);
+        victim.transaction_sha256 = Some(VICTIM_TX.into());
+        victim.decision = Some("executable_approved".into());
+        victim.executable = Some(true);
+        let row = LifecycleEventRecord {
+            event_type: LifecycleEvent::Submission,
+            timestamp: now_utc_rfc3339(),
+            content_hash: "ch-forged".into(),
+            verdict_on_record: None,
+            verdict_on_record_key: None,
+            transaction_sha256: Some(VICTIM_TX.into()),
+            audit_trail_id: Some("gr-forged".into()),
+            transaction_signature: Some("sig-forged".into()),
+            reported_by: Some("forger".into()),
+            detail: None,
+            observed_by_graphite: false,
+            sequence_anomalies: Vec::new(),
+        };
+        let mut lines = lines_of(&archives[0]);
+        let forged = self_hashed_forgery(&lines[0], map_of(&victim), mac, &key);
+        let archive_offset = lines[0].len() as u64 + 1;
+        lines.insert(1, forged);
+        write_lines(&archives[0], &lines);
+        let mut active = lines_of(&path);
+        let forged_row = self_hashed_forgery(&active[0], map_of(&row), mac, &key);
+        let forged_victim = self_hashed_forgery(&active[0], map_of(&victim), mac, &key);
+        active.insert(1, forged_row);
+        active.insert(1, forged_victim);
+        write_lines(&path, &active);
+        // An index that points at the archive's forgery, as whoever wrote
+        // the forgery could also write.
+        let index_dir = path.with_file_name("audit.jsonl-index");
+        std::fs::create_dir_all(&index_dir).unwrap();
+        let (sha, len) = archive_index::file_sha256(&archives[0]).unwrap();
+        let ikey = format!("tx:{VICTIM_TX}");
+        let last: HashMap<String, u64> = [(ikey.clone(), archive_offset)].into_iter().collect();
+        let counts: HashMap<String, (usize, usize)> = [(ikey, (1, 0))].into_iter().collect();
+        archive_index::write(
+            &archive_index::index_path(&index_dir, &archives[0]).unwrap(),
+            len,
+            &sha,
+            archive_index::IndexSource {
+                last: &last,
+                counts: &counts,
+                lifecycle: &HashMap::new(),
+            },
+        )
+        .unwrap();
+
+        let report = verify(&path, std::slice::from_ref(&key));
+        assert_eq!(report.exit_code(), 1, "{mac:?}: {report:?}");
+
+        // The server: a writer that holds the key.
+        let server = keyed(&path, &key, 0);
+        let tx = VerificationKey::TransactionSha256(VICTIM_TX);
+        assert!(
+            server.find_verification(tx).is_none(),
+            "{mac:?}: the keyed reader returned the forged approval"
+        );
+        assert_eq!(server.count_verifications(tx), (0, 0), "{mac:?}");
+        assert!(
+            server
+                .lifecycle_history(LifecycleKey {
+                    transaction_signature: Some("sig-forged"),
+                    ..LifecycleKey::default()
+                })
+                .is_empty(),
+            "{mac:?}: the keyed reader returned the forged lifecycle row"
+        );
+        let (_, _, total, _) = server.read_tail_filtered(1000, AuditSelector::All);
+        assert_eq!(total, 33, "{mac:?}: only the written records are counted");
+        for i in [0usize, 15, 32] {
+            let id = format!("gr-{i:05}");
+            assert!(
+                server
+                    .find_verification(VerificationKey::AuditTrailId(&id))
+                    .is_some(),
+                "{mac:?}: {id} is still found"
+            );
+        }
+        close(server);
+
+        // Without a key the reader cannot tell (corruption-evident only).
+        let keyless = AuditLog::open_read_only(&path).unwrap();
+        assert!(
+            keyless.find_verification(tx).is_some(),
+            "{mac:?}: documented limit: a reader without the key reads a self-hashed forgery"
+        );
+        keyless.wait_for_index_jobs();
+    }
+}
+
+/// A trail rotated K1 → K2 with a key-adoption record, read by a server
+/// that holds K2 alone: the records under K1 are vouched for by the checked
+/// adoption record and stay readable; a forgery under K1's id is the
+/// residual (admitted on the adoption's word, not checked). With K1 held as
+/// the previous key, it is checked and refused.
+#[test]
+fn records_under_a_rotated_out_key_stay_readable_when_an_adoption_vouches_for_it() {
+    let dir = temp_dir("vouched");
+    let path = audit_path(&dir);
+    let (_, old) = key_file("vouched-old", 60);
+    let (_, new) = key_file("vouched-new", 61);
+    let log = keyed(&path, &old, 0);
+    write_n(&log, 0, 4);
+    close(log);
+    close(keyed_with_previous(&path, &new, Some(&old)).unwrap());
+    let log = keyed(&path, &new, 0);
+    write_n(&log, 4, 2);
+    assert_eq!(log.read_tail_filtered(100, AuditSelector::All).2, 6);
+    assert!(log
+        .find_verification(VerificationKey::AuditTrailId("gr-00001"))
+        .is_some());
+    close(log);
+    // A forgery under the old key's id with a MAC that is not one.
+    let mut lines = lines_of(&path);
+    let mut victim = rec("gr-forged", true);
+    victim.transaction_sha256 = Some(VICTIM_TX.into());
+    let mut forged: serde_json::Value = serde_json::from_str(&self_hashed_forgery(
+        &lines[0],
+        map_of(&victim),
+        ForgedMac::UnderTheTrailKey,
+        &old,
+    ))
+    .unwrap();
+    assert_eq!(forged[CHAIN_FIELD]["key_id"], old.id());
+    forged[CHAIN_FIELD]["mac"] = "5a".repeat(32).into();
+    lines.insert(1, forged.to_string());
+    write_lines(&path, &lines);
+    let tx = VerificationKey::TransactionSha256(VICTIM_TX);
+    let with_both = keyed_with_previous(&path, &new, Some(&old)).unwrap();
+    assert!(with_both.find_verification(tx).is_none());
+    close(with_both);
+    let new_only = keyed(&path, &new, 0);
+    assert!(
+        new_only.find_verification(tx).is_some(),
+        "the documented residual: a record under a key this reader does not hold is admitted on a checked adoption's word"
+    );
+    close(new_only);
+}
+
+/// A torn write a pre-Round-34 writer resumed past: terminated by the
+/// writer, and the next record continues the chain from the record before
+/// it, with nothing naming the tear.
+fn historic_tear_trail(tag: &str, byte: u8) -> (PathBuf, AuditKey) {
+    let dir = temp_dir(tag);
+    let path = audit_path(&dir);
+    let (_, key) = key_file(tag, byte);
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 0, 5);
+    close(log);
+    let mut lines = lines_of(&path);
+    let half = lines[2][..lines[2].len() / 3].to_string();
+    lines.insert(2, half);
+    write_lines(&path, &lines);
+    (path, key)
+}
+
+#[test]
+fn a_historic_tear_is_a_break_until_the_operator_acknowledges_it() {
+    let (path, key) = historic_tear_trail("historic-tear", 62);
+    let keys = std::slice::from_ref(&key);
+    let before = verify(&path, keys);
+    assert_eq!(before.exit_code(), 1, "{before:?}");
+    assert!(before.other_break.is_none());
+    assert_eq!(before.unacknowledged_tears.len(), 1, "{before:?}");
+    let tear = before.unacknowledged_tears[0].clone();
+    assert_eq!((tear.line, tear.after_seq), (3, Some(1)));
+    // The walk went on past it: every record was checked.
+    assert_eq!(before.chained_records, 5);
+
+    let log = keyed(&path, &key, 0);
+    log.acknowledge_tear(&tear).unwrap();
+    close(log);
+    let after = verify(&path, keys);
+    assert_eq!(after.exit_code(), 0, "{after:?}");
+    assert_eq!((after.tears_acknowledged, after.unparseable_lines), (1, 1));
+    assert!(after.unacknowledged_tears.is_empty());
+    // The acknowledgement is a control record: no reader returns it.
+    let reader = keyed(&path, &key, 0);
+    assert_eq!(reader.read_tail_filtered(100, AuditSelector::All).2, 5);
+    close(reader);
+
+    // It names exactly those bytes: change one and it is a break again.
+    let mut lines = lines_of(&path);
+    let torn = lines[2].clone();
+    lines[2] = torn.replacen('{', "[", 1);
+    assert_ne!(lines[2], torn);
+    write_lines(&path, &lines);
+    let changed = verify(&path, keys);
+    assert_eq!(changed.exit_code(), 1, "{changed:?}");
+    assert_eq!(changed.unacknowledged_tears.len(), 1);
+}
+
+/// The control: a line that is JSON and breaks the chain is never a tear,
+/// so nothing can acknowledge it; and a second tear stays a break when only
+/// the first is acknowledged.
+#[test]
+fn only_a_tear_can_be_acknowledged_and_only_the_one_named() {
+    let (path, key) = historic_tear_trail("tear-control", 63);
+    let keys = std::slice::from_ref(&key);
+    let mut lines = lines_of(&path);
+    let second = lines[4][..lines[4].len() / 2].to_string();
+    lines.insert(5, second);
+    write_lines(&path, &lines);
+    let r = verify(&path, keys);
+    assert_eq!(r.unacknowledged_tears.len(), 2, "{r:?}");
+    let first = r.unacknowledged_tears[0].clone();
+    let log = keyed(&path, &key, 0);
+    log.acknowledge_tear(&first).unwrap();
+    close(log);
+    let r = verify(&path, keys);
+    assert_eq!(r.exit_code(), 1);
+    assert_eq!(r.unacknowledged_tears.len(), 1);
+    assert_eq!(r.first_break.as_ref().unwrap().line, 6, "{r:?}");
+
+    // An edited record is JSON: a break, and not a tear.
+    let (path, key) = historic_tear_trail("tear-control-json", 64);
+    let mut lines = lines_of(&path);
+    lines[4] = lines[4].replacen("transfer", "transfeR", 1);
+    write_lines(&path, &lines);
+    let r = verify(&path, std::slice::from_ref(&key));
+    assert_eq!(r.unacknowledged_tears.len(), 1, "only the torn line: {r:?}");
+    assert!(
+        r.other_break
+            .as_ref()
+            .is_some_and(|b| b.reason.contains("does not match its own chain hash")),
+        "{r:?}"
+    );
+}
+
+/// What checking every chained line's MAC costs a reader: a full scan of a
+/// 64 MiB keyed archive (the dashboard's first read, an index build, a count
+/// with no index), with and without the key. Prints the numbers and asserts
+/// only that both readers count the same records.
+#[test]
+#[ignore = "benchmark: writes a 64 MiB archive"]
+fn reader_mac_check_cost_on_a_64_mib_archive() {
+    use std::time::Instant;
+    let (_, key) = key_file("mac-cost", 70);
+    let mut body = String::with_capacity(DEFAULT_ROTATE_BYTES as usize + 4096);
+    let mut head = chain::ChainHead::genesis();
+    let mut n = 0usize;
+    while (body.len() as u64) < DEFAULT_ROTATE_BYTES {
+        let mut r = rec(&format!("gr-{n:08}"), !n.is_multiple_of(3));
+        r.transaction_sha256 = Some(format!("{n:064x}"));
+        let (line, next) = chain::seal(map_of(&r), &head, Some(&key));
+        body.push_str(&line);
+        body.push('\n');
+        head = next;
+        n += 1;
+    }
+    let mut runs = Vec::new();
+    for keyed_reader in [false, true] {
+        let dir = temp_dir(&format!("mac-cost-{keyed_reader}"));
+        std::fs::write(dir.join("audit.jsonl.1700000000000-000000"), &body).unwrap();
+        // No index can be written: every count scans the archive.
+        std::fs::write(dir.join("audit.jsonl-index"), b"x").unwrap();
+        let path = audit_path(&dir);
+        if keyed_reader {
+            // The active file continues the archive's chain.
+            let (line, _) = chain::seal(map_of(&rec("gr-active", true)), &head, Some(&key));
+            std::fs::write(&path, format!("{line}\n")).unwrap();
+        }
+        let log = if keyed_reader {
+            keyed(&path, &key, 0)
+        } else {
+            std::fs::write(&path, b"").unwrap();
+            AuditLog::open_read_only(&path).unwrap()
+        };
+        let t = Instant::now();
+        let total = log.read_tail_filtered(10, AuditSelector::All).2;
+        let scan = t.elapsed().as_secs_f64() * 1000.0;
+        let mut counts = Vec::new();
+        for _ in 0..3 {
+            let t = Instant::now();
+            let c = log.count_verifications(VerificationKey::TransactionSha256(&format!(
+                "{:064x}",
+                n / 2
+            )));
+            assert_eq!(c.0 + c.1, 1);
+            counts.push(t.elapsed().as_secs_f64() * 1000.0);
+        }
+        counts.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        runs.push((keyed_reader, total, scan, counts[1]));
+        log.wait_for_index_jobs();
+    }
+    assert_eq!(runs[0].1 + 1, runs[1].1, "both readers count every record");
+    eprintln!("reader MAC check over a 64 MiB keyed archive ({n} records):");
+    for (keyed_reader, total, scan, count) in runs {
+        eprintln!(
+            "  {}: full scan (read_tail_filtered) {scan:.0} ms over {total} records; count_verifications with no index {count:.0} ms (median of 3)",
+            if keyed_reader { "with the key   " } else { "without a key  " }
+        );
+    }
 }

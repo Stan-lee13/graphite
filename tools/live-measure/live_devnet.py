@@ -293,19 +293,25 @@ def run(args):
         # 3. evidence (operator seeding — what an operator does before a fresh Core
         #    approves anything)
         if args.seed_evidence:
+            # With the server's audit key (Round 35): the seeding commands
+            # write OperatorAction records, and a Core started with
+            # GRAPHITE_AUDIT_KEY_FILE refuses to continue a trail whose newest
+            # record carries no MAC (R33-4). An operator seeds the way the
+            # server runs: same data directory, same key.
+            seed_env = dict(os.environ, GRAPHITE_AUDIT_KEY_FILE=audit_key)
             cmds = [
                 [args.graphite, "evidence", "seed", "--data-dir", data_dir, "--program", SYSTEM_PROGRAM, "--simulation-matches", "3"],
                 [args.graphite, "evidence", "baseline", "--data-dir", data_dir, "--program", SYSTEM_PROGRAM,
                  "--mean-compute-units", "150", "--std-compute-units", "30", "--samples", "10"],
             ]
             for c in cmds:
-                r = subprocess.run(c, capture_output=True, text=True)
+                r = subprocess.run(c, capture_output=True, text=True, env=seed_env)
                 if r.returncode != 0:
                     step(report, "evidence", "FAILED", command=" ".join(c[1:4]), stderr=r.stderr[-400:])
                     report["defects"].append("operator evidence seeding failed")
                     return finish("DEFECTS")
             status = subprocess.run([args.graphite, "evidence", "show", "--data-dir", data_dir, "--program", SYSTEM_PROGRAM],
-                                    capture_output=True, text=True)
+                                    capture_output=True, text=True, env=seed_env)
             step(report, "evidence", "ok", evidence=(status.stdout or status.stderr)[-600:])
         else:
             step(report, "evidence", "not seeded")

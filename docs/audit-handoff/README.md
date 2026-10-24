@@ -13,7 +13,9 @@ Audit the commit the release tag `v0.3.0-beta` names, once it exists:
 
 ```sh
 git rev-parse 'v0.3.0-beta^{commit}'
-gh attestation verify graphite-0.3.0-beta-x86_64-unknown-linux-gnu.tar.gz --repo Stan-lee13/graphite
+gh attestation verify graphite-0.3.0-beta-x86_64-unknown-linux-gnu.tar.gz --repo Stan-lee13/graphite \
+  --signer-workflow Stan-lee13/graphite/.github/workflows/release.yml \
+  --source-ref refs/tags/v0.3.0-beta --deny-self-hosted-runners
 ```
 
 The tag is built by `.github/workflows/release.yml` (two independent builds,
@@ -38,7 +40,7 @@ before starting and record it in your report.
 
 Lower priority: the Python AI layer (advisory only; it never decides,
 `tests/ai_cannot_approve.rs`), the dashboard (read-only views), the runtime
-oracle (`runtime-oracle/`, a test harness).
+oracle (`tools/runtime-oracle/`, a test harness).
 
 Out of scope: the Solana runtime and programs themselves, RPC providers,
 third-party protocols' own security, the operator's infrastructure.
@@ -90,9 +92,9 @@ Toolchain: Rust 1.99.1 (CI and the container; MSRV 1.89), Node 22, Go
 # The Core: library, server and CLI
 cd graphite-core
 cargo build --release --locked --features server,cli
-cargo test --locked --release                                # ≥ 2237 tests (CI floor)
-cargo test --locked --release --no-default-features --lib    # ≥ 466
-cargo test --locked --release --no-default-features --features cli   # ≥ 1875
+cargo test --locked --release                                # CI holds each leg to a floor:
+cargo test --locked --release --no-default-features --lib    # see .github/workflows/ci.yml and
+cargo test --locked --release --no-default-features --features cli   # docs/CURRENT.md for the counts
 cargo clippy --locked --all-targets --all-features -- -D warnings
 
 # Run it (the server refuses to start without a key of 32+ characters)
@@ -162,18 +164,29 @@ From Round 30 §H:
 3. **The trail's limits.** Without an anchored checkpoint a keyed trail cannot show a dropped tail or
    a stale restore; anchor immutability is the operator's storage; the post-rename directory sync is
    fixed by inspection, not power-loss injection; a full disk was fault-injected, not filled.
-4. **The guard's reach.** Code loaded before it is out of reach; two guard processes with one key
-   share no ledger; the transfer cap counts the amount, not the fee; the devnet demo was not run live;
-   `deliveredAs: "wrapped_sol"` has no end-to-end fixture.
-5. **Withdrawals.** The Core does not judge a granted withdrawal's minimum outputs; Pump AMM
-   `withdraw` and `update_offer` grants rest on the shipped manifests' layouts, not IDLs.
-6. **Value-moving declarations.** 155 unreadable value-moving instructions warn rather than refuse
-   (R30-F-1's residual, an owner decision).
+4. **The guard's reach.** Code loaded before it is out of reach; `deliveredAs: "wrapped_sol"` has
+   no end-to-end fixture. (Two guards with one key, and the fee missing from the cap, were fixed in
+   Round 32: R32-P2-1, R32-P2-2. The one-guard-per-wallet lock reaches only guards on the same host
+   that share a pid namespace.)
+5. **Withdrawals.** Only three grants carry a minimum output Graphite can read (Raydium CLMM
+   `decrease_liquidity_v2`, Raydium CPMM `withdraw`, Pump AMM `withdraw`; an unbounded one is
+   refused since Round 32, R32-P1-4); the Meteora DLMM remove and claim grants carry none, so they
+   are not judged. Pump AMM `withdraw` and `update_offer` rest on the shipped manifests' layouts,
+   not IDLs.
+6. **Value-moving declarations.** Since Round 32 a signer's loss under an unreadable declaration is
+   refused by default (R32-P1-1; opt-out `GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS`), and so is
+   W19 (R32-P1-3; opt-out `GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT`). 139
+   value-moving instructions still have placeholder prose (no IDL in the repository), so they are
+   refused when they cost the signer value. The false-refusal cost of these defaults on real
+   traffic: W19 refused 1 of 200 replayed live mainnet transactions (0.5%, Round 32); the other
+   rates are measured by `.github/workflows/live-mainnet.yml`, not by the committed blocks, which
+   carry no state diffs.
 7. **Tests not run** in that round: the proptest suites under the risk mutants; `/health` with an
    RPC attached; the live-server SDK suites outside CI; the ignored live-network tests.
-8. **Fuzzing, mutation, coverage.** About two minutes per fuzz target locally, no differential
-   fuzzing against agave; a quarter of the risk engine's mutants run; three provisional 0.60
-   mutation floors; 78.42 % line coverage of the library's unit tests only.
+8. **Fuzzing, mutation, coverage.** Six fuzz targets run 30 minutes each on GitHub's runners (hosted
+   run 39798389463: 0 crashes); no differential fuzzing against agave; the mutation floors for the
+   state diff, artifact parser and simulation integrity are still provisional (0.60), unmeasured;
+   the line-coverage floor (78%) held on the hosted run.
 9. **The release evaluation** holdout is 38 rows; its false-refusal rate means almost nothing.
 10. **Single replica**: the rate limiter and caps are per process.
 11. **Ledger depth**: 294 files were pattern-scanned, not read by a person.
@@ -212,6 +225,7 @@ validated with their tools and a loopback test, not in a real deployment (`deplo
    does the release workflow's permission split and digest handling hold?
 9. **Residuals**: is any item in §6 worse than we describe, and which would you block a launch on?
 
-Send findings privately (GitHub private vulnerability reporting on the repository, or the contact in
-`SECURITY.md`), one per issue, with a reproduction where possible. We will answer each with its fix,
+Send findings privately to the contact in `SECURITY.md` (GitHub private vulnerability reporting is
+not enabled on the repository yet; it is an owner item in `docs/ops/production-checklist.md`), one
+per issue, with a reproduction where possible. We will answer each with its fix,
 its regression test and the deliberate revert that shows the test catches it, as every earlier round did.

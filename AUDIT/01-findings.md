@@ -653,11 +653,68 @@ The Round 29 risk-engine, registry, protocol-data and attack-suite fixes, which 
 break-test, were broken check by check in Round 30 (R30-F-3); the nine no test caught now have
 tests of their own.
 
+## Rounds 31–32: dependencies, then production readiness (2026-10-22)
+
+Round 31 updated every dependency (no finding; the holds are recorded with reasons in the core
+CHANGELOG). Round 32 worked the production-readiness gaps in four workstreams; report:
+[`../docs/round32-production-readiness-2026-10-22.md`](../docs/round32-production-readiness-2026-10-22.md).
+Each fix was reverted against its own test in its workstream (recorded in that report, not in the
+numbered break log below).
+
+| ID | Finding | Status | Test |
+|---|---|---|---|
+| R32-P1-1 | A signer's loss under an unreadable value-moving declaration only warned (R30-F-1's residual) | **Fixed**: refused by default; opt-out `GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS`; 16 declarations rewritten from IDLs | `tests/r30_declared_effects.rs`, `tests/r30_declared_effects_census.rs` |
+| R32-P1-2 | Pump.fun `buy_v2`/`sell_v2` named a slot the v2 layout calls `associated_base_user` | **Fixed**; every declaration must name a real account | `tests/r30_declared_effects_census.rs` |
+| R32-P1-3 | W19 only warned | **Fixed**: Critical by default, net of created accounts' rent and wrapped SOL; opt-out `GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT` (Round 33 found the netting too generous: R33-6, R33-7, R33-10) | `tests/r30_declared_effects.rs` |
+| R32-P1-4 | A granted withdrawal with all minimums zero kept its grant | **Fixed**: `UnboundedWithdrawal`; opt-out `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS` (Round 33: a dust minimum still passed, R33-11) | `tests/round30_grounded_intents.rs` |
+| R32-P2-1 | Two agent guards for one key each spent the whole aggregate allowance | **Fixed** on one host: a per-wallet lock (Round 33: R33-16, R33-17) | `integrations/agent-guard` tests |
+| R32-P2-2 | The guard's cap left out the network fee | **Fixed** | `integrations/agent-guard` tests |
+| R32-P2-3 | Lifecycle requests knew only `content_hash` | **Fixed**: `instruction_bind_key` accepted (R-M10) | `tests/round30_server_wire.rs` |
+| R32-P2-4 | The dashboard was never driven in a browser in CI | **Fixed**: the `dashboard-e2e` job (axe) | `.github/scripts/dashboard-e2e.sh` |
+| R32-P4-1…5 | No release pipeline, deployment kit or hand-off pack; a ci.yml shellcheck finding | **Fixed**: `release.yml`, `deploy/` (tested in CI), `docs/ops/production-checklist.md`, `docs/audit-handoff/` | `deploy/tests/run.sh` |
+| R32-L-1 | An executed transfer refused for a static key no instruction references | **Fixed** | `tests/round32_unreferenced_static_keys.rs` |
+
+## The Round 33 deep audit of `b473a31` (Round 34, 2026-10-23)
+
+An internal deep audit of the Round 31–32 merge found 1 P0, 9 P1, 13 P2 and about 30 P3. Round 34
+answered every one with five workstreams; each finding, its state, its test and its pinned-output
+effect are in [`../docs/round34-the-deep-audit-remediated-2026-10-23.md`](../docs/round34-the-deep-audit-remediated-2026-10-23.md).
+The breaks are B128 onward below.
+
+| ID | Finding | Status | Test |
+|---|---|---|---|
+| R33-1 (P0) | A stake intent executed a withdrawal of the user's stake to any account | **Fixed** | `tests/staking_withdrawal_destination.rs` |
+| R33-2 / R33-3 | The trail's verifier and readers accepted different lines (unterminated, unparseable, duplicate-key) | **Fixed** | `durable::chain_trail_tests` |
+| R33-4 / R33-12 / R33-13 | MAC stripping, unsigned checkpoints and invented key ids verified | **Fixed** (exit 4, adoption records) | `durable::chain_trail_tests`, `tests/round34_audit_adopt_key.rs` |
+| R33-5 (P0 by test) | A debit line naming no account excused a signer's loss | **Fixed** | `tests/signer_value_netting.rs` |
+| R33-6 / R33-7 / R33-10 | Foreign-owned rent, a co-signer's gain and a vault's payout offset a user's loss | **Fixed**: per-signer netting | `tests/signer_value_netting.rs`, `state_diff::w19_scope_tests` |
+| R33-8 | `main`'s CI timed out | **Fixed in code**; green on `main` to be measured after the push | `.github/scripts/ci-scripts.test.sh` |
+| R33-9 | A tag could publish a release | **Fixed in code**; rulesets and environment are owner steps | `.github/scripts/release-gate.test.sh` |
+| R33-11, R33-14, R33-15 | Dust minimums; created native authorities; amounts above a System transfer's own | **Fixed** (token amounts unbound: limitation) | `round30_grounded_intents`, `tests/signer_value_netting.rs` |
+| R33-16 … R33-20 | Guard lock directory and race; attestation commands; rotation ownership; Dependabot coverage | **Fixed** | guard tests, `deploy/tests/run.sh`, `.github/scripts/*` |
+| R33-21, DOC-5 … DOC-19 | Stale operator and audit documents | **Fixed**; the docs tests now scan `docs/ops/`, the hand-off pack and the grant proposal | `tests/docs_paths_resolve.rs`, `tests/docs_numbers_match_the_code.rs` |
+| R34-I-1 (found at integration) | The deploy kit's Caddy edge answered 502, not 413, to an oversized body (62 of 200), racing the Core's early 413 and close | **Fixed**: a declared `Content-Length` over 1 MiB is answered 413 at the edge | `deploy/tests/run.sh` (30 of 30 must be 413) |
+| P3 (S-3, S-5, A-6, A-7, G-3…G-7, C-4…C-6, K-7, D-6…D-9) | See the round report | **Fixed**, except C-6 (decision), A-7 Windows ACLs and K-7's 75 ambiguous mismatches (documented) | round report §B |
+
+## Round 35: Round 34 on real mainnet traffic (2026-10-23)
+
+The live-mainnet and live-devnet workflows ran on Round 34's code at the owner's request; every
+suite was run. Report:
+[`../docs/round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md`](../docs/round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md).
+The breaks are B153 onward below.
+
+| ID | Finding | Status | Test |
+|---|---|---|---|
+| R35-1 | `live-devnet` seeded evidence without the audit key; the keyed Core refused the unkeyed trail | **Fixed** (runner; `keys.md`) | `tools/live-measure/test_live_measure.py` |
+| R35-2 | `live-mainnet`'s two-block sample (493) was below the harness's 500 | **Fixed** (fetch tops up to 1,000) | `tools/live-measure/test_live_measure.py` |
+| R35-4 | Two audit-trail CLI tests raced their own subprocesses (a child holds a sibling's writer-lock descriptor until exec): 6/200 and 1/200 parallel failures | **Fixed** (forks and writer lifetimes serialized in the two test files; the product spawns no process) | `tests/round30_audit_chain.rs`, `tests/round34_audit_adopt_key.rs` |
+| R35-3 | Every transaction with a CPI was unapprovable on a real RPC: Agave reports inner instructions only in parsed form, Graphite read only the compiled form | **Fixed** (`src/parsed_inner.rs`; what is not rebuilt stays unknown) | `tests/round35_parsed_inner_instructions.rs`; `tools/inner-instruction-oracle` |
+
 ## Break log
 
 Every fix was reverted once, alone, with the tree otherwise unchanged, and its named test re-run; the fix was then restored and the tree checked clean. The harness is `graphite-audit-work/audit_breaks.py` (outside the repository): each break is an exact text edit validated against the current sources before it runs, and a break whose test still passes is reported MISSED.
 
-**125 breaks, 125 caught** (B01–B59 in Round 23, B60–B103 in Round 24, B104–B107 in Round 25, B108 in Round 26: the committed mainnet blocks catch a verdict change, B109–B111 in Round 27: upgrade detection, B112–B125 in Round 28: the archive index, the emission table and the contract gate). Round 29 adds B126 and B127, run outside that harness and recorded below; the other areas' own revert runs are listed in the Round 29 report §5 (all caught where run; the risk engine, registry, protocol data and attack suites were not break-tested) and are not counted here, plus the TypeScript breaks TSB1–TSB11 (11 of 11 caught; TSB6–TSB11 are Round 25's swap grounding, negation, wallet-owner filter, response bound and exact lamports). One test was vacuous on its first run and is recorded as such: B54 (A4-11) still passed with the lock removed, because the audit log's own file mutex makes the race need microsecond timing. The test now holds the window between the history read and the append open for one dedicated trail id (`cfg(test)` only), and fails without the lock. In Round 24, B62 and B99 were missed on their first run, because each test did not exercise the reverted rule; B62's test was re-pointed to one that does and B99's was strengthened with cases only the reverted step decides, and both were then caught. B15 is caught by the test process aborting (a stack overflow prints no FAILED line), which the harness counts only when the test was running.
+**156 numbered breaks, 156 caught** (B153–B156 in Round 35 and B128–B152 in Round 34, recorded at the end of the table; B01–B59 in Round 23, B60–B103 in Round 24, B104–B107 in Round 25, B108 in Round 26: the committed mainnet blocks catch a verdict change, B109–B111 in Round 27: upgrade detection, B112–B125 in Round 28: the archive index, the emission table and the contract gate). Round 29 adds B126 and B127, run outside that harness and recorded below; the other areas' own revert runs are listed in the Round 29 report §5 (all caught where run; the risk engine, registry, protocol data and attack suites were not break-tested) and are not counted here, plus the TypeScript breaks TSB1–TSB11 (11 of 11 caught; TSB6–TSB11 are Round 25's swap grounding, negation, wallet-owner filter, response bound and exact lamports). One test was vacuous on its first run and is recorded as such: B54 (A4-11) still passed with the lock removed, because the audit log's own file mutex makes the race need microsecond timing. The test now holds the window between the history read and the append open for one dedicated trail id (`cfg(test)` only), and fails without the lock. In Round 24, B62 and B99 were missed on their first run, because each test did not exercise the reverted rule; B62's test was re-pointed to one that does and B99's was strengthened with cases only the reverted step decides, and both were then caught. B15 is caught by the test process aborting (a stack overflow prints no FAILED line), which the harness counts only when the test was running.
 
 | Break | Finding | What was reverted | Test | Result |
 |---|---|---|---|---|
@@ -788,3 +845,50 @@ Every fix was reverted once, alone, with the tree otherwise unchanged, and its n
 | B125 | R-M2 | the CHANGELOG no longer names a break (`CHANGELOG.md`) | `contract_version_gate::the_contract_breaks_only_with_a_version_bump_and_a_changelog_entry` | caught |
 | B126 | Round 29 (M9, M11, RPC and state-diff LOW items) | `src/state_diff.rs` and `src/rpc_client.rs` reverted together to their pre-fix versions (not one fix alone) | `round29_rpc_client` (11 of 11 failed), `round29_state_diff` (15 of 17 failed; its two controls passed), `token2022_extensions::zero_padding_shorter_than_a_header_ends_the_region`, `round20_transfer_fee::an_undeclared_change_to_the_fee_terms_blocks` | caught (28 failures) |
 | B127 | Round 29 (M13, the contract gate) | `raw_natural_language` removed from `proposed-intent-v1.json` | `contract_version_gate`, in a checkout with no tags | caught |
+
+**Round 34 (B128–B152).** One break per Rust fix of the Round 33 findings, run in the integrated
+tree on one fresh build target with the scratch harness `run_breaks.py`: exact text edits, each
+validated before it runs, the file restored byte for byte and the tree checked unchanged
+afterwards. **25 of 25 caught.** B150 was missed on its first, mis-aimed run and caught once
+re-pointed, as recorded in its row. The workstreams' own earlier breaks ran in worktrees sharing a
+build directory, which can link another worktree's library into a test; they were not relied on.
+
+| # | Finding | What was reverted | Caught by | Result |
+|---|---|---|---|---|
+| B128 | R33-1 | INTENT_DECLARES: the stake intent declares the `withdraw` class again (`src/manifest.rs`) | `staking_withdrawal_destination::a_stake_intent_cannot_withdraw_the_users_stake_to_another_account` | caught |
+| B129 | R33-1 grant | Stake Withdraw grant: the `to == withdrawer` grounding dropped (any destination grounded) (`src/intent_grants.rs`) | `staking_withdrawal_destination::a_withdraw_intent_cannot_withdraw_the_users_stake_to_another_account` | caught |
+| B130 | R33-2 | verify_trail: an unterminated final line in an ARCHIVE is tolerated like the active file's (`src/durable/chain.rs`) | `lib::a_forged_unterminated_line_in_an_archive_breaks_the_chain_and_is_never_read` | caught |
+| B131 | R33-2/3 | classify_line: the canonical-bytes check is off (`src/durable/chain.rs`) | `lib::a_duplicate_key_breaks_the_chain_and_the_record_stays_visible_or_is_named, verify_and_every_reader_agree_on_every_mutated_line` | caught |
+| B132 | R33-2 readers | read_admitted_line_at: ungated (an indexed offset's line is read without the record gate) (`src/durable.rs`) | `lib::a_forged_index_pointing_at_a_forged_line_is_never_an_answer` | caught |
+| B133 | R33-2 keyed readers | RecordGate::authentic: a MAC under a held key is not verified (`src/durable/chain.rs`) | `lib::a_self_hashed_forgery_in_a_keyed_trail_is_never_read_by_a_reader_with_the_key` | caught |
+| B134 | R33-4 | TrailReport::exit_code: the exit-4 rule (unkeyed records not adopted, keys supplied) removed (`src/durable/chain.rs`) | `lib::a_trail_rewritten_without_macs_does_not_verify_under_its_key` | caught |
+| B135 | R33-4 | resume_head: a keyed writer resumes onto an unkeyed head (the refusal removed) (`src/durable/chain.rs`) | `lib::a_keyed_writer_refuses_to_resume_onto_an_unkeyed_head` | caught |
+| B136 | R33-12 | verify_trail: an unsigned checkpoint (or one under an unknown key) is Confirmed again (`src/durable/chain.rs`) | `lib::an_unsigned_checkpoint_or_one_under_an_unknown_key_is_not_confirmed` | caught |
+| B137 | R33-13 | verify_trail: a key-id switch with no key-adoption record is accepted whatever keys are held (`src/durable/chain.rs`) | `lib::an_invented_key_id_is_a_break_not_a_rotation` | caught |
+| B138 | A-6 | verify_audit_trail_with: the archive re-list after the walk removed (first walk always returned) (`src/durable.rs`) | `lib::a_rotation_during_the_walk_is_walked_again` | caught |
+| B139 | A-7 | AuditKey::drop: the key bytes are not zeroized (`src/durable/chain.rs`) | `lib::a_dropped_key_is_wiped` | caught |
+| B140 | tears | TearAcknowledgement::names: any acknowledgement matches any tear (`src/durable/chain.rs`) | `lib::a_historic_tear_is_a_break_until_the_operator_acknowledges_it, only_a_tear_can_be_acknowledged_and_only_the_one_named` | caught |
+| B141 | R33-5 | signer wallet judgement: a debit line naming no account (`anywhere`) excuses the signer's loss again (`src/state_diff.rs`) | `signer_value_netting::a_signers_wallet_drained_beside_a_withdrawal_that_names_no_account_is_refused` | caught |
+| B142 | R33-6 | signer_lamport_losses: the rent of ANY created account is credited (declared + owner check off) (`src/state_diff.rs`) | `signer_value_netting::rent_paid_into_an_account_another_program_owns_is_the_signers_loss` | caught |
+| B143 | R33-7 | no-debit rule: the signers' loss is netted across signers (a co-signer's gain offsets the user's loss) (`src/state_diff.rs`) | `signer_value_netting::a_fresh_cosigners_gain_does_not_offset_the_users_loss, a_relayers_gain_does_not_offset_the_users_loss` | caught |
+| B144 | R33-10 | signer_lamport_losses: outflows from accounts no signer keeps are not subtracted from the kept pool (`src/state_diff.rs`) | `lib::a_vaults_payout_into_the_signers_account_does_not_offset_a_wallet_drain` | caught |
+| B145 | R33-14 | check_state_diff_with: the created/initialized native-account authority check is off (`src/state_diff.rs`) | `signer_value_netting::a_created_stake_account_authorised_to_a_non_signer_is_refused` | caught |
+| B146 | R33-15 | verify: the `graphite:` lamport-amount line is not pushed into the declared effects (`src/verification.rs`) | `signer_value_netting::a_declared_wallet_debit_does_not_excuse_more_than_its_stated_amount` | caught |
+| B147 | R33-11 | unbounded(): only an ALL-zero minimum set is unbounded again (a single zero minimum passes) (`src/intent_grants.rs`) | `round30_grounded_intents::a_withdrawal_with_a_dust_minimum_is_not_bounded` | caught |
+| B148 | S-3 | L3: the program-baseline anchor is skipped when the shape's baseline judges (`src/verification.rs`) | `round30_trust_learning::a_shape_bootstrapped_at_the_program_edge_escapes_the_program_anchor` | caught |
+| B149 | S-5 | L3: the RPC's loadedAddresses are not compared with the self-resolved lookup accounts (`src/verification.rs`) | `simulator_loaded_addresses::a_simulator_that_reorders_the_loaded_addresses_is_not_believed` | caught |
+| B150 | C-4 | `canonical_intent` reads the raw word again (no trim, no lowercase). The first run reverted Check 9's match alone, which does not decide this test (Check 9b does), and was not caught; the break was re-pointed (`src/risk_engine.rs`) | `staking_withdrawal_destination::intent_case_is_judged_identically_in_every_layer` | caught (re-pointed; the first, mis-aimed break was missed) |
+| B151 | C-5 | PluginOrchestrator.plugins: back to a HashMap (per-map random layer order) (`src/plugin_orchestrator.rs`) | `lib::protocol_rules_come_in_one_order_in_every_orchestrator` | caught |
+| B152 | K-7 | increaseLiquidityByTokenAmountsV2: the 16th slot (whirlpool_program) removed (`protocols/orca-whirlpools.json`) | `r30_declared_effects_census::every_instruction_with_an_onchain_idl_has_the_idls_slot_count` | caught |
+
+**Round 35 (B153–B156).** R35-3's rebuild of Agave's parsed inner instructions. B153–B155 were
+run against `tools/inner-instruction-oracle` (the core's fixture test reads the same bytes); B156
+against the end-to-end tests. Each fix was restored and the file checked byte for byte.
+**4 of 4 caught.**
+
+| # | Finding | What was reverted | Caught by | Result |
+|---|---|---|---|---|
+| B153 | R35-3 | `parsed_inner`: a Token amount written big-endian (`src/parsed_inner.rs`) | `tools/inner-instruction-oracle` (`mintTo`: round trip differs) | caught |
+| B154 | R35-3 | `parsed_inner`: a multisig authority's signers dropped from the account list (`src/parsed_inner.rs`) | `tools/inner-instruction-oracle` (`closeAccount`, `setAuthority`: round trip differs) | caught |
+| B155 | R35-3 | `parsed_inner`: ATA `createIdempotent` rebuilt as `create` (`src/parsed_inner.rs`) | `tools/inner-instruction-oracle` (`createIdempotent`: round trip differs) | caught |
+| B156 | R35-3 | `verify_async`: the reported inner instructions not resolved before they are read (`src/verification.rs`) | `round35_parsed_inner_instructions::a_sweep_reported_in_agave_forms_is_seen_by_the_cpi_trace_rules`, `::the_simulation_gate_reads_a_parsed_report_and_still_refuses_one_it_cannot_rebuild` | caught |

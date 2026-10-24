@@ -5,6 +5,39 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 
 ## [0.3.0-beta] — unreleased (the contract since v0.2.0-beta)
 
+Round 35 (2026-10-23) — Round 34 on real mainnet traffic ([report](../docs/round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md)):
+
+- **Behaviour (no contract field changes):** the simulator's inner instructions are read in the forms Agave sends. Agave's `simulateTransaction` reports them only parsed (`{program, programId, parsed, stackHeight}`) or partially decoded (`{programId, accounts: [<address>…], data}`), never with `programIdIndex`, so on a real RPC every transaction that made a CPI was `VerificationIncomplete`. New `parsed_inner` module: System, SPL Token / Token-2022 and ATA instructions are rebuilt to their accounts and bytes; anything else parsed leaves the CPI tree unknown, as before. `rpc_client::SimulationResult` gains `inner_reported` and `resolve_reported_inner`; `InnerAccountRef` and `ReportedInnerInstruction` are new public types.
+- **Tooling:** `tools/inner-instruction-oracle` checks every rebuild against Agave's `solana-transaction-status` 4.3.2 parser (CI job `inner-instruction-oracle`). The live runners seed evidence under the server's audit key and fetch blocks until the sample holds 1,000 transactions.
+
+Round 34 (2026-10-23) — the Round 33 deep audit remediated ([report](../docs/round34-the-deep-audit-remediated-2026-10-23.md)):
+
+- **Behaviour (stricter; no contract field changes):**
+  - A `stake` intent no longer declares any withdrawal. Staking withdrawals are `withdraw` grants:
+    - Stake `Withdraw` to the `withdrawer`;
+    - Stake Pool `WithdrawSol`/`WithdrawStake` and their slippage forms, to/for the `user_transfer_authority`;
+    - Marinade `liquidUnstake` to `getMsolFromAuthority` (R33-1).
+  - `UnboundedWithdrawal` fires on any zero minimum (R33-11).
+  - L4 adds `SignerLamportsUnderUnscopedDebit`, `SignerTokenDebitUnderUnscopedDebit` (R33-5), `CreatedAccountAuthorityNotSigner` (R33-14) and `SignerLamportsBeyondDeclaredAmount` (R33-15), and nets losses per signer (R33-6/7/10).
+  - A mature shape baseline must also pass its program anchor (S-3).
+  - The simulator's `loadedAddresses` must match Graphite's own resolution (S-5).
+  - One `canonical_intent` for every layer (C-4).
+  - Plugins are ordered (C-5).
+  - Orca `increaseLiquidityByTokenAmountsV2` gains `whirlpool_program` (K-7).
+- **Audit trail:**
+  - One line grammar (canonical bytes plus a hash that recomputes), shared by `audit verify` and every reader. With a key, readers require a valid MAC (R33-2/3).
+  - `audit verify` exit 4: keys supplied but not covering (R33-4/12).
+  - `graphite audit adopt-key` and `graphite audit acknowledge-tear`; key changes are chained adoption records; `GRAPHITE_AUDIT_PREVIOUS_KEY_FILE` (R33-13).
+  - Verify re-walks when archives rotate during it (A-6).
+  - Keys are zeroized (A-7).
+  - The archive index format moves to version 2; old indexes are rebuilt.
+  - `serde_json`'s `float_roundtrip` feature is enabled: without it, about 1 in 10 floats read back one ULP off, and an honest record verified as altered.
+- **Operator:**
+  - see `docs/ops/keys.md` for the rotation restart, `adopt-key` and `acknowledge-tear`;
+  - backups carry a `.mac` that `restore.sh` requires, with `--anchor-dir`;
+  - releases need a signed tag on `main`.
+- **CI:** the Rust job is split into `rust-lint` and a `rust-test` matrix under a new `[profile.ci-test]` (release semantics; LTO off and 16 codegen units).
+
 Round 32 (2026-10-22) — production readiness ([report](../docs/round32-production-readiness-2026-10-22.md)):
 
 - **Safer L4 defaults (operator-facing).** Three refusals are now the default, each with a strict-parsed opt-out that the server logs at startup (`.env.example`):

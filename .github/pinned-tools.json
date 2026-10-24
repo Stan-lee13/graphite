@@ -1,0 +1,102 @@
+{
+  "_comment": [
+    "Round 34 (R33-20): tools pinned by hand in the workflows, which no Dependabot ecosystem reads.",
+    "`reviewed` is the date the pin was last set or checked against upstream; bump it when you re-check.",
+    "Every `pinned_in` text must occur verbatim in its file (CI, pinned-tools.py check-pins), so a bump",
+    "in a workflow without this list fails CI. The weekly workflow pinned-tools.yml runs `report`: it",
+    "fails when a newer upstream release exists or a pin is older than max_age_days."
+  ],
+  "max_age_days": 90,
+  "tools": [
+    {
+      "name": "caddy",
+      "use": "deploy tests: the Caddyfile is validated and run by this release (the production edge is the caddy image in deploy/compose, which Dependabot's docker-compose entry tracks)",
+      "version": "v2.11.7",
+      "reviewed": "2026-10-22",
+      "source": { "github": "caddyserver/caddy" },
+      "pinned_in": [{ "file": ".github/workflows/ci.yml", "text": "CADDY_VERSION: v2.11.7" }]
+    },
+    {
+      "name": "prometheus (promtool)",
+      "use": "deploy tests: alert rules, their unit tests and the dashboard queries",
+      "version": "v3.15.1",
+      "reviewed": "2026-10-22",
+      "source": { "github": "prometheus/prometheus" },
+      "pinned_in": [
+        { "file": ".github/workflows/ci.yml", "text": "PROMETHEUS_TAG: v3.15.1" },
+        { "file": ".github/workflows/ci.yml", "text": "PROMETHEUS_COMMIT: bae3eced0a5369e050e83ea73bc381d7c4b1a719" }
+      ]
+    },
+    {
+      "name": "agave (solana-test-validator)",
+      "use": "live-devnet: the local validator the gated transfer runs against",
+      "version": "v4.2.2",
+      "reviewed": "2026-10-22",
+      "source": { "github": "anza-xyz/agave" },
+      "pinned_in": [
+        { "file": ".github/workflows/live-devnet.yml", "text": "AGAVE_VERSION: v4.2.2" },
+        { "file": ".github/workflows/live-devnet.yml", "text": "AGAVE_SHA256: 5fc8684f7430038105fde953d4308ed56addf627f658daa61709f345448247ee" }
+      ]
+    },
+    {
+      "name": "cargo-audit",
+      "use": "CI supply-chain job: the RUSTSEC gate",
+      "version": "0.22.2",
+      "reviewed": "2026-09-16",
+      "source": { "crate": "cargo-audit" },
+      "pinned_in": [{ "file": ".github/workflows/ci.yml", "text": "cargo install cargo-audit --locked --version 0.22.2" }]
+    },
+    {
+      "name": "cargo-cyclonedx",
+      "use": "release: the crate SBOM",
+      "version": "0.5.9",
+      "reviewed": "2026-10-22",
+      "source": { "crate": "cargo-cyclonedx" },
+      "pinned_in": [{ "file": ".github/workflows/release.yml", "text": "cargo install cargo-cyclonedx --locked --version 0.5.9" }]
+    },
+    {
+      "name": "cargo-fuzz",
+      "use": "assurance: fuzz smoke and long runs",
+      "version": "0.13.2",
+      "reviewed": "2026-10-21",
+      "source": { "crate": "cargo-fuzz" },
+      "pinned_in": [{ "file": ".github/workflows/assurance.yml", "text": "CARGO_FUZZ_VERSION: 0.13.2" }]
+    },
+    {
+      "name": "cargo-mutants",
+      "use": "assurance: mutation-score floors",
+      "version": "27.1.0",
+      "reviewed": "2026-10-21",
+      "source": { "crate": "cargo-mutants" },
+      "pinned_in": [{ "file": ".github/workflows/assurance.yml", "text": "CARGO_MUTANTS_VERSION: 27.1.0" }]
+    },
+    {
+      "name": "cargo-llvm-cov",
+      "use": "assurance: the line-coverage floor",
+      "version": "0.9.1",
+      "reviewed": "2026-10-21",
+      "source": { "crate": "cargo-llvm-cov" },
+      "pinned_in": [{ "file": ".github/workflows/assurance.yml", "text": "CARGO_LLVM_COV_VERSION: 0.9.1" }]
+    },
+    {
+      "name": "fuzz nightly toolchain",
+      "use": "assurance: the dated nightly cargo-fuzz builds with (no upstream 'latest' to compare; age only)",
+      "version": "nightly-2026-10-22",
+      "reviewed": "2026-10-22",
+      "source": { "none": "dated nightly" },
+      "pinned_in": [{ "file": ".github/workflows/assurance.yml", "text": "FUZZ_TOOLCHAIN: nightly-2026-10-22" }]
+    },
+    {
+      "name": "rust toolchain",
+      "use": "every Rust job and the Dockerfile's builder image (bump together; the image digest is Dependabot's docker entry)",
+      "version": "1.99.1",
+      "reviewed": "2026-10-22",
+      "source": { "github": "rust-lang/rust" },
+      "pinned_in": [
+        { "file": ".github/workflows/ci.yml", "text": "toolchain: 1.99.1" },
+        { "file": ".github/workflows/release.yml", "text": "rust:1.99.1-bookworm@sha256:48b7f435b8fc6378ce43b44f15e3a47fd8919b2825f835c39bd4bd3da50af5b8" },
+        { "file": "Dockerfile", "text": "FROM rust:1.99.1-bookworm@sha256:48b7f435b8fc6378ce43b44f15e3a47fd8919b2825f835c39bd4bd3da50af5b8 AS builder" }
+      ]
+    }
+  ]
+}

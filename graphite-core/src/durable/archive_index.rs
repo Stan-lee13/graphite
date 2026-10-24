@@ -57,7 +57,12 @@ use sha2::{Digest, Sha256};
 
 const MAGIC: &[u8; 8] = b"GRAIDX\0\0";
 /// The format version. A file with any other version is rebuilt.
-pub(super) const VERSION: u32 = 1;
+///
+/// 2 (Round 34): the same layout, built under the line grammar
+/// (`chain::RecordGate`). A version-1 index may hold the offset of a line
+/// the grammar refuses — a forged line the old parse indexed — so every
+/// version-1 index is rebuilt rather than trusted.
+pub(super) const VERSION: u32 = 2;
 const HEADER_LEN: u64 = 72;
 const VERIFICATION_ENTRY: u64 = 56;
 const LIFECYCLE_ENTRY: u64 = 40;

@@ -53,8 +53,18 @@ function build() {
 }
 
 function verdict(bound: BoundTransaction, codes: UnobservedCode[] = INHERENT, approved = true): VerificationResult {
+  // Round 34 (G-5): a Round 30+ verdict carries the Core's decision, which
+  // the guard now requires, and its layers. Computed as the Core does.
+  const decision = !approved
+    ? "blocked"
+    : codes.every((c) => INHERENT.includes(c))
+      ? "executable_approved"
+      : "analysis_only";
   return {
     approved,
+    decision,
+    executable: decision === "executable_approved",
+    layers: [],
     confidence: 0.64,
     breakdown: [],
     trust_tier: "OfficialManifest",

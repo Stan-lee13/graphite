@@ -226,6 +226,41 @@ applies to decompressed chunks — 65 KB inflating to 64 MiB is refused at 32 Mi
 the rate limiter at its million-bucket bound (452 ns per check, measured); `audit_trail_id`
 spoofing (a fabricated id resolves to nothing and is never rescued by a coarser key).
 
+## The Round 33 Deep Audit, Remediated (2026-10-23; Round 34)
+
+Internal engineering work, not an independent audit. Report:
+`docs/round34-the-deep-audit-remediated-2026-10-23.md`.
+
+- **A stake intent executed a withdrawal of the user's stake to any account (R33-1, P0).**
+  Reproduced as `executable_approved` for Stake Withdraw and Marinade `liquidUnstake` paying a
+  stranger. A `stake` intent no longer declares a withdrawal. Staking withdrawals are grounded
+  `withdraw` grants, paid to the instruction's own signing key.
+- **A debit line that names no account switched off W19 and the signer debit checks for about half
+  the registry (R33-5, P0 by end-to-end test).** A granted CLMM withdrawal plus a sibling draining
+  the signer passed L4, L5 and L7. Such a line is now unreadable for the signer's judgement.
+  Signer netting is per signer: no co-signer's gain, foreign-owned rent or vault payout offsets a
+  user's loss (R33-6/7/10).
+- **The audit trail's verifier and readers accepted different lines (R33-2, R33-3).** A forged
+  approval appended without a newline, or with `1e400` or a duplicate key, was read by L8 while
+  `audit verify` exited 0. There is now one line grammar, used everywhere, and keyed readers check
+  MACs.
+- **A keyed trail could be downgraded by stripping its MACs (R33-4); an unsigned checkpoint was
+  Confirmed (R33-12); an invented key id read as a rotation (R33-13).** Each is now a non-zero
+  exit, with an explicit operator command for the legitimate case.
+- **A tag pushed from a branch could publish a release (R33-9).** The gate now requires an
+  SSH-signed tag on `main` and a CI gate from a push run on `main`. Applying the rulesets and the
+  protected environment is the owner's.
+- Also fixed:
+  - created native accounts with foreign authorities (R33-14);
+  - System transfers above their stated amount (R33-15);
+  - dust withdrawal minimums (R33-11);
+  - the guard's lock directory and takeover race (R33-16/17);
+  - attestation-verify commands (R33-18);
+  - rotation ownership (R33-19);
+  - Dependabot coverage (R33-20);
+  - stale operator documents (R33-21);
+  - the P3 items.
+
 ## Production Readiness (2026-10-22; Rounds 31–32)
 
 Internal engineering work, not an independent audit. Report:
@@ -252,7 +287,8 @@ Internal engineering work, not an independent audit. Report:
   cap (R32-P2-2).
 - **Release and deployment (R32-P4).** A release workflow with a reproducible double build, SBOMs,
   digest-pinned images and provenance attestations; a deployment kit tested in CI; live mainnet and
-  devnet workflows (0 defects on their first runs).
+  devnet workflows. Their first runs reported no defect by count; reading the mainnet run row by
+  row then found one false refusal, R32-L-1, fixed in the same round.
 
 ## The Forensic Audit of `29e4356`, Remediated (2026-10-22; Round 30)
 
@@ -692,7 +728,7 @@ These are documented scope boundaries, not hidden vulnerabilities:
 - **An archive's index costs one read of the archive per process, and a new one a parse.** Since Round 28 (R-M11) every L8 and lifecycle lookup, and every count of the recorded verdicts for a digest, answers from indexes: the active file's (Rounds 9, 12, 22) and each rotated archive's persisted index (`<log>-index/`). An archive's index is checked against the archive's SHA-256 once per process, which is one read of the archive, and an archive without a usable index is parsed once to build one. Measured on three 64 MiB archives: a count took 822 ms by scanning and takes 2.2 ms indexed, a check of the three after a restart takes 1.8 s, and a build from a parse 6.7 s. The server does both in the background at start, and rotation writes the new archive's index without a parse, so a lookup pays them only when it arrives first. An index that cannot be written (a read-only index directory) leaves that archive scanned on every lookup, as before Round 28. The index files take about a quarter of the archives' space. The lifecycle-sequence check (Round 12) consults the active file and, when the active file holds no rows for the transaction, the newest archive only: a lifecycle that straddles two rotations is checked against an incomplete history, and the row says nothing about rows it did not see.
 - **Lifecycle sequence findings are about the trail, not the chain.** `duplicate`, `out of order`, `unpreceded` and `signature conflict` are computed from the rows on record; a caller that never reports a stage produces no row and no finding. Only `signature conflict` implies a false report; the others are gaps or retries.
 - **L8's inclusion evidence is as independent as the RPCs it is given.** The bytes behind a signature are bound to it and cannot be substituted without the fee payer's key (Round 11). Whether the signature landed is what `getSignatureStatuses` says, and Round 12 stops taking that at face value: a `processed` status draws no positive conclusion, an RPC that contradicts itself (slot or outcome differ between its two answers) draws none, a malformed status is `Unavailable`, and with `GRAPHITE_RPC_WITNESS_URL` an approval is reported executed only when two independent endpoints agree — while either endpoint's sighting of a BLOCKED transaction alarms. What remains: two RPCs that agree on a false inclusion (the same provider behind two URLs, or a shared upstream) are two views of one lie; a light-client inclusion proof is not built. Without a witness, `inclusion_witness: null` says so on every reconciliation.
-- **A body over the 1 MiB limit may be answered with a reset.** The server answers 413 and closes without draining past the limit; a client still uploading may see a connection reset rather than the status. Refusals below the limit are drained and readable.
+- **A body over the 1 MiB limit may be answered with a reset.** The server answers 413 and closes without draining past the limit; a client still uploading may see a connection reset rather than the status. Refusals below the limit are drained and readable. Behind the deployment kit's Caddy edge (Round 34), a body that declares a `Content-Length` over 1 MiB is answered 413 by Caddy before it is proxied; a chunked body without one is still cut off at the limit.
 - **Without the chain's bytes, L8 attribution is only as exact as the caller's keys.** An RPC that does not serve `getTransaction`, a pruned ledger, or no RPC leaves the join on `audit_trail_id` → `transaction_sha256` → `content_hash`; the last is ambiguous by construction and the response says `attribution: content_hash`. The bridge always supplies the first two.
 - **A permitted durable-nonce transaction has no clock.** With `GRAPHITE_ALLOW_DURABLE_NONCE=1`, a verified nonce transaction is executable as verified *if submitted before the nonce advances*; the missing expiry is the operator's recorded tradeoff, and the opt-in is process-wide.
 - **`fdatasync` proves the device acknowledged, not the platter.** A storage device with a lying write cache is outside what any userspace program can verify.

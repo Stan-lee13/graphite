@@ -19,6 +19,11 @@
 #
 # Re-checked 2026-10-21 (Round 30): the same four, same path; each entry now
 # carries a review-by date the gate enforces.
+#
+# The 1.x hold is recorded for Dependabot too (Round 34, D-7, 2026-10-22): a
+# semver-major ignore of @solana/web3.js in .github/dependabot.yml, for this
+# package and the SAK adapter, so the weekly run stops offering 3.x as a
+# routine bump. The decision is re-opened by the review-by dates below.
 GHSA-528h-pc64-c93x@stream-json  review-by:2027-01-20  # moderate  stream-json <=3.4.0: pick/ignore/filter/replace filters are O(depth^2) (DoS). stream-json is required only by jayson/lib/utils.js (its server-side request stream parser), which the browser client web3.js loads never requires: the guard process never loads stream-json.
 GHSA-hqr4-qq8f-hg3x@stream-json  review-by:2027-01-20  # moderate  stream-json <=3.5.0: the JSONC parser re-scans accumulated comments per chunk (DoS). Same path as above: never loaded by the guard.
 GHSA-mjw6-4jj6-33hc@stream-json  review-by:2027-01-20  # moderate  stream-json <3.6.0: prototype pollution in Assembler (this.current[this.key] on plain objects). The serious one of the three, in a process holding a key — and the reason moderate is now gated. Same path as above: jayson's client never requires stream-json, so no RPC answer reaches Assembler.

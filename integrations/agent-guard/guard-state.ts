@@ -27,9 +27,9 @@
  * file, so two guards signing for the same key with different state files
  * (or none) each spent the whole allowance: the limit held per process, not
  * per wallet. Every guard now also takes a lock named for its wallet's
- * public key in a directory every guard on the host shares
- * (`GRAPHITE_GUARD_LOCK_DIR`, default `<tmpdir>/graphite-guard`), and a
- * second guard for the same wallet refuses to start while the first runs.
+ * public key in a directory every guard of this OS user on the host shares
+ * (`GRAPHITE_GUARD_LOCK_DIR`; the default is `defaultWalletLockDir`'s), and
+ * a second guard for the same wallet refuses to start while the first runs.
  * `GRAPHITE_GUARD_ALLOW_SHARED_WALLET=1` lets it start, logged as the limits
  * holding per guard. The lock names its owner by pid, so it sees only
  * processes that share the directory AND a pid namespace: guards on other
@@ -38,31 +38,80 @@
  * and their spend is not counted. One guard per wallet across hosts is the
  * operator's to arrange.
  *
+ * The lock is held, not just taken (Round 34). Node has no flock, fcntl lock
+ * or LockFileEx without a native addon, and the guard loads none, so a lock
+ * is a file, and a file can be deleted under its owner: a temp cleaner
+ * (systemd-tmpfiles ages /tmp entries out after 10 days; macOS and Windows
+ * Storage Sense clean their temp directories too) or an operator. The next
+ * guard for the wallet then started with a full allowance while the first
+ * kept spending. Now:
+ *
+ *   - the default directory is one no temp cleaner sweeps:
+ *     `$XDG_RUNTIME_DIR/graphite-guard`, else `/run/graphite-guard` where this
+ *     user can write, else `$XDG_STATE_HOME` (or `~/.local/state`)
+ *     `/graphite-guard`; on Windows `%LOCALAPPDATA%\graphite-guard`;
+ *   - the lock file holds the owner's pid AND a random token, and the guard
+ *     remembers its inode. Before every reservation and every submission it
+ *     re-reads it (`assertHeld`): a lock that is gone, is another file, or
+ *     says something else refuses the spend. A guard that lost its lock stops
+ *     spending — the guard that took the wallet after it cannot know it
+ *     exists — and only a restart takes a lock again;
+ *   - a crashed owner's lock is taken over by moving it aside under a unique
+ *     name and removing it only if it is still the same file with the same
+ *     content; anything else is put back. Two guards that judge the same
+ *     lock stale no longer both take the wallet (each deleted the other's
+ *     fresh lock);
+ *   - the directory must be a real directory (not a symbolic link) owned by
+ *     this user with mode 0700 — an existing one is checked, not assumed —
+ *     and every file this code creates is opened O_EXCL|O_NOFOLLOW under a
+ *     random name. On Windows the owner and mode are not checked: it has
+ *     neither, and %LOCALAPPDATA% is the user's own.
+ *
+ * A directory each OS user owns means one guard per wallet per user: guards
+ * for one wallet under two users are not seen by each other.
+ *
  * Without the variable, the same state is kept in memory, as before, and the
  * startup log says a restart forgets it.
  */
 import {
   closeSync,
+  constants as fsConstants,
   existsSync,
+  fstatSync,
   fsyncSync,
   linkSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
+  readSync,
   renameSync,
   unlinkSync,
   writeSync,
+  accessSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { randomBytes } from "node:crypto";
+import { homedir } from "node:os";
+import { isAbsolute, join } from "node:path";
 
-/** Every lock this process holds, by path; released when the process exits. */
-const HELD = new Set<string>();
+/** Opened with this, a path that is a symbolic link fails (ELOOP) instead of being followed. */
+const O_NOFOLLOW = fsConstants.O_NOFOLLOW ?? 0;
+
+/** A lock this process took: where, what it wrote, and which file it is. */
+interface HeldLock {
+  readonly path: string;
+  readonly content: string;
+  readonly dev: bigint;
+  readonly ino: bigint;
+}
+
+/** Every lock this process holds; released when the process exits. */
+const HELD = new Set<HeldLock>();
 let exitHooked = false;
 
 /** Environment variable naming the guard's state file. */
 export const GUARD_STATE_FILE_ENV = "GRAPHITE_GUARD_STATE_FILE";
-/** The directory every guard on a host shares for its per-wallet locks (Round 32). */
+/** The directory every guard of a user on a host shares for its per-wallet locks (Round 32). */
 export const GUARD_LOCK_DIR_ENV = "GRAPHITE_GUARD_LOCK_DIR";
 /** "1": a guard may sign for a wallet another running guard holds (Round 32). */
 export const GUARD_ALLOW_SHARED_WALLET_ENV = "GRAPHITE_GUARD_ALLOW_SHARED_WALLET";
@@ -144,49 +193,127 @@ function pidAlive(pid: number): boolean {
   }
 }
 
+/** A random hex string, for tokens and private file names. */
+function randomHex(): string {
+  return randomBytes(16).toString("hex");
+}
+
+/** What a lock file holds and which file it is, or null when there is none at `path`. */
+function readLock(path: string): { content: string; dev: bigint; ino: bigint } | null {
+  let fd: number;
+  try {
+    fd = openSync(path, fsConstants.O_RDONLY | O_NOFOLLOW);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw new GuardStateError(`the lock ${path} could not be read: ${(e as Error).message}.`);
+  }
+  try {
+    const st = fstatSync(fd, { bigint: true });
+    if (!st.isFile()) throw new GuardStateError(`the lock ${path} is not a regular file.`);
+    const buf = Buffer.alloc(256);
+    const n = readSync(fd, buf, 0, buf.length, 0);
+    return { content: buf.subarray(0, n).toString("utf8").trim(), dev: st.dev, ino: st.ino };
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** The pid a lock names: its first field (a lock from before Round 34 is the pid alone). */
+function lockOwner(content: string): number {
+  return Number(content.split(/\s+/)[0]);
+}
+
+/**
+ * Remove the lock at `path` only if it is still `expected` (the same file
+ * with the same content). It is renamed aside under a unique name first —
+ * atomically, so no other process can be between the check and the removal
+ * — and re-read there; a file that is not `expected` (another guard's lock
+ * that replaced it since it was read) is linked back into place.
+ */
+function removeIfSame(path: string, expected: { content: string; dev: bigint; ino: bigint }): void {
+  const aside = `${path}.${randomHex()}.aside`;
+  try {
+    renameSync(path, aside);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw e;
+  }
+  let moved: { content: string; dev: bigint; ino: bigint } | null = null;
+  try {
+    moved = readLock(aside);
+  } catch {
+    // not a lock file: not the one expected, so it goes back
+  }
+  if (!(moved && moved.dev === expected.dev && moved.ino === expected.ino && moved.content === expected.content)) {
+    try {
+      // Back where it was, the same file: its owner's `assertHeld` still
+      // passes. EEXIST means a third process took the path meanwhile; the
+      // moved lock's owner then finds its lock gone and stops spending.
+      linkSync(aside, path);
+    } catch {
+      // see above
+    }
+  }
+  unlinkSync(aside);
+}
+
 /**
  * Take the lock at `lockPath` for this process, or throw `GuardStateError`
  * with `held(owner)` while another live process (or this one) holds it.
  *
- * The pid is written to a private file first and linked into place, so the
- * lock never exists without its owner in it: a second process that finds it
- * always reads a pid, never an empty file it would take for a crash's.
+ * The pid and a random token are written to a private file first (O_EXCL,
+ * O_NOFOLLOW, a random name) and linked into place, so the lock never exists
+ * without its owner in it: a second process that finds it always reads a
+ * pid, never an empty file it would take for a crash's.
  */
-function acquirePidLock(lockPath: string, held: (owner: number) => string): void {
-  const tmp = `${lockPath}.${process.pid}.${Date.now()}.tmp`;
-  const fd = openSync(tmp, "w", 0o600);
+function acquirePidLock(lockPath: string, held: (owner: number) => string): HeldLock {
+  const token = randomHex();
+  const content = `${process.pid} ${token}`;
+  const tmp = `${lockPath}.${token}.tmp`;
+  let mine: { dev: bigint; ino: bigint };
   try {
-    writeSync(fd, String(process.pid));
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
+    const fd = openSync(tmp, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | O_NOFOLLOW, 0o600);
+    try {
+      writeSync(fd, content);
+      fsyncSync(fd);
+      const st = fstatSync(fd, { bigint: true });
+      mine = { dev: st.dev, ino: st.ino };
+    } finally {
+      closeSync(fd);
+    }
+  } catch (e) {
+    throw new GuardStateError(`the lock ${lockPath} could not be created: ${(e as Error).message}. REFUSING TO START.`);
   }
   try {
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 8; attempt++) {
       try {
         linkSync(tmp, lockPath);
-        HELD.add(lockPath);
+        const lock: HeldLock = Object.freeze({ path: lockPath, content, ...mine });
+        HELD.add(lock);
         if (!exitHooked) {
           exitHooked = true;
           process.once("exit", () => {
-            for (const path of [...HELD]) releasePidLock(path);
+            for (const l of [...HELD]) releasePidLock(l);
           });
         }
-        return;
+        return lock;
       } catch (e) {
         if ((e as NodeJS.ErrnoException).code !== "EEXIST") {
           throw new GuardStateError(`the lock ${lockPath} could not be created: ${(e as Error).message}. REFUSING TO START.`);
         }
-        const owner = Number(readFileSync(lockPath, "utf8").trim());
-        // This process holds it when it took it and has not released it. The
-        // same pid with no hold here is an earlier incarnation that crashed
-        // (in a container the guard is often pid 1 every time).
-        const heldHere = owner === process.pid && HELD.has(lockPath);
-        const heldElsewhere = owner !== process.pid && Number.isSafeInteger(owner) && owner > 0 && pidAlive(owner);
-        if (heldHere || heldElsewhere) throw new GuardStateError(held(owner));
-        // The owner is gone (a crash): the lock is stale.
-        unlinkSync(lockPath);
       }
+      const current = readLock(lockPath);
+      if (current === null) continue; // released meanwhile: try again
+      const owner = lockOwner(current.content);
+      // This process holds it when it is one of the locks it took. The same
+      // pid in a file this process did not take is an earlier incarnation
+      // that crashed (in a container the guard is often pid 1 every time).
+      const heldHere = [...HELD].some((l) => l.path === lockPath && l.dev === current.dev && l.ino === current.ino);
+      const heldElsewhere = owner !== process.pid && Number.isSafeInteger(owner) && owner > 0 && pidAlive(owner);
+      if (heldHere || heldElsewhere) throw new GuardStateError(held(owner));
+      // The owner is gone (a crash): the lock is stale. Remove exactly that
+      // file, never one another contender has put there since.
+      removeIfSame(lockPath, current);
     }
     throw new GuardStateError(`the lock ${lockPath} could not be taken. REFUSING TO START.`);
   } finally {
@@ -199,12 +326,74 @@ function acquirePidLock(lockPath: string, held: (owner: number) => string): void
 }
 
 /** Drop a lock this process holds. Idempotent; never removes another process's. */
-function releasePidLock(lockPath: string): void {
-  if (!HELD.delete(lockPath)) return;
+function releasePidLock(lock: HeldLock): void {
+  if (!HELD.delete(lock)) return;
   try {
-    if (readFileSync(lockPath, "utf8").trim() === String(process.pid)) unlinkSync(lockPath);
+    removeIfSame(lock.path, lock);
   } catch {
-    // already gone
+    // already gone, or not ours to remove
+  }
+}
+
+/**
+ * Refuse unless the lock this process took is still in place: the same file
+ * (device and inode) with the same pid and token in it.
+ */
+function assertLockHeld(lock: HeldLock, what: string): void {
+  let current: { content: string; dev: bigint; ino: bigint } | null;
+  let unreadable: string | null = null;
+  try {
+    current = readLock(lock.path);
+  } catch (e) {
+    current = null;
+    unreadable = (e as Error).message;
+  }
+  const why =
+    current === null
+      ? unreadable !== null
+        ? `it cannot be read (${unreadable})`
+        : "it is gone (a temp cleaner or an operator deleted it?)"
+      : current.dev !== lock.dev || current.ino !== lock.ino
+        ? "another file is in its place"
+        : current.content !== lock.content
+          ? `it now reads ${JSON.stringify(current.content.slice(0, 80))}`
+          : null;
+  if (why === null) return;
+  throw new GuardStateError(
+    `${what} ${lock.path} is no longer this guard's: ${why}. Another guard may have started for this wallet with ` +
+      "its own allowance, and this one cannot know. REFUSING TO SPEND; restart this guard to take the lock again.",
+  );
+}
+
+/**
+ * Refuse unless `dir` is a real directory (not a symbolic link) owned by
+ * `euid` with no access for anyone else (mode 0700). On Windows only the
+ * first is checked: there is no uid or mode to compare.
+ */
+export function assertPrivateDirectory(dir: string, euid: number | undefined = process.geteuid?.()): void {
+  let st;
+  try {
+    st = lstatSync(dir);
+  } catch (e) {
+    throw new GuardStateError(`the lock directory ${dir} could not be read: ${(e as Error).message}. REFUSING TO START.`);
+  }
+  if (st.isSymbolicLink()) {
+    throw new GuardStateError(`the lock directory ${dir} is a symbolic link. Name the directory itself. REFUSING TO START.`);
+  }
+  if (!st.isDirectory()) throw new GuardStateError(`the lock directory ${dir} is not a directory. REFUSING TO START.`);
+  if (process.platform === "win32" || euid === undefined) return;
+  if (st.uid !== euid) {
+    throw new GuardStateError(
+      `the lock directory ${dir} is owned by uid ${st.uid}, not this user (uid ${euid}): another user could remove ` +
+        "or plant this guard's locks. Use a directory of this user's. REFUSING TO START.",
+    );
+  }
+  const mode = st.mode & 0o777;
+  if (mode !== 0o700) {
+    throw new GuardStateError(
+      `the lock directory ${dir} has mode 0${mode.toString(8)}, not 0700: other users could remove or plant this ` +
+        `guard's locks. \`chmod 700 ${dir}\`, or use another directory. REFUSING TO START.`,
+    );
   }
 }
 
@@ -215,15 +404,18 @@ function releasePidLock(lockPath: string): void {
 export class WalletLock {
   readonly #wallet: string;
   readonly #path: string | null;
+  #held: HeldLock | null;
 
-  private constructor(wallet: string, path: string | null) {
+  private constructor(wallet: string, path: string | null, held: HeldLock | null) {
     this.#wallet = wallet;
     this.#path = path;
+    this.#held = held;
   }
 
   /**
-   * Take the lock for `wallet` in `dir` (created, private, if missing).
-   * Throws `GuardStateError` while another running guard holds it.
+   * Take the lock for `wallet` in `dir` (created, private, if missing; an
+   * existing one must already be private). Throws `GuardStateError` while
+   * another running guard holds it.
    */
   static take(wallet: string, dir: string): WalletLock {
     if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(wallet)) {
@@ -231,12 +423,15 @@ export class WalletLock {
     }
     if (dir.trim() === "") throw new GuardStateError(`${GUARD_LOCK_DIR_ENV} is empty. REFUSING TO START.`);
     try {
+      // The mode applies to directories this creates; an existing one is
+      // checked below, never assumed.
       mkdirSync(dir, { recursive: true, mode: 0o700 });
     } catch (e) {
       throw new GuardStateError(`the lock directory ${dir} could not be created: ${(e as Error).message}. REFUSING TO START.`);
     }
+    assertPrivateDirectory(dir);
     const path = join(dir, `wallet-${wallet}.lock`);
-    acquirePidLock(
+    const held = acquirePidLock(
       path,
       (owner) =>
         `another guard (process ${owner}) is running for wallet ${wallet} (${path}). Each guard keeps its own ` +
@@ -244,12 +439,12 @@ export class WalletLock {
         `guard, or set ${GUARD_ALLOW_SHARED_WALLET_ENV}=1 to run both with limits that hold per guard, not per ` +
         "wallet. REFUSING TO START.",
     );
-    return new WalletLock(wallet, path);
+    return new WalletLock(wallet, path, held);
   }
 
   /** No lock: the operator allowed a shared wallet (`GRAPHITE_GUARD_ALLOW_SHARED_WALLET=1`). */
   static shared(wallet: string): WalletLock {
-    return new WalletLock(wallet, null);
+    return new WalletLock(wallet, null, null);
   }
 
   /** For the startup log. */
@@ -257,12 +452,26 @@ export class WalletLock {
     return this.#path === null
       ? `[Graphite] wallet lock: NONE — ${GUARD_ALLOW_SHARED_WALLET_ENV}=1: other guards may sign for ${this.#wallet}, ` +
           "and the spend limits hold per guard, not per wallet"
-      : `[Graphite] wallet lock: ${this.#path} — one guard per wallet on this host`;
+      : `[Graphite] wallet lock: ${this.#path} — one guard per wallet on this host, re-checked before every spend`;
+  }
+
+  /**
+   * Refuse (`GuardStateError`) unless this guard still holds its wallet's
+   * lock (Round 34): the same file, with this guard's pid and token in it.
+   * Nothing to check for a shared wallet; a closed lock is not held.
+   */
+  assertHeld(): void {
+    if (this.#path === null) return;
+    if (this.#held === null) throw new GuardStateError(`the wallet lock ${this.#path} was released. REFUSING TO SPEND.`);
+    assertLockHeld(this.#held, "the wallet lock");
   }
 
   /** Release the lock. Idempotent. */
   close(): void {
-    if (this.#path !== null) releasePidLock(this.#path);
+    if (this.#held !== null) {
+      releasePidLock(this.#held);
+      this.#held = null;
+    }
   }
 }
 Object.freeze(WalletLock.prototype);
@@ -270,6 +479,70 @@ Object.freeze(WalletLock);
 
 /** Where a guard's wallet lock lives, or that the operator waived it. */
 export type WalletLockPlan = { shared: true } | { shared: false; dir: string };
+
+/** Whether this process may create entries in `dir` (it exists and is writable). */
+function writableDir(dir: string): boolean {
+  try {
+    accessSync(dir, fsConstants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The wallet-lock directory when neither the configuration nor
+ * `GRAPHITE_GUARD_LOCK_DIR` names one (Round 34): a directory no temp
+ * cleaner sweeps, never the system temp directory.
+ *
+ *   1. Windows: `%LOCALAPPDATA%\graphite-guard` (none set refuses to start).
+ *   2. `$XDG_RUNTIME_DIR/graphite-guard` (a per-user runtime tmpfs that
+ *      systemd-tmpfiles does not age; it is emptied at reboot, when no guard
+ *      runs, and when the user's last session ends — which the re-check
+ *      before every spend catches).
+ *   3. `/run/graphite-guard`, where this user can create or write it.
+ *   4. `$XDG_STATE_HOME/graphite-guard`, else `~/.local/state/graphite-guard`
+ *      (macOS included). Not emptied at reboot: a lock left by a crash names
+ *      a pid that may later be some other process's, and then a guard
+ *      refuses to start naming the file, until it is removed.
+ *
+ * Relative XDG values are ignored, as the XDG specification says.
+ */
+export function defaultWalletLockDir(
+  env: Record<string, string | undefined> = process.env,
+  o: { platform?: NodeJS.Platform; canWrite?: (dir: string) => boolean; homedir?: () => string } = {},
+): string {
+  const platform = o.platform ?? process.platform;
+  const canWrite = o.canWrite ?? writableDir;
+  const home = o.homedir ?? homedir;
+  const absolute = (v: string | undefined) => (v !== undefined && v !== "" && isAbsolute(v) ? v : undefined);
+  if (platform === "win32") {
+    const local = env.LOCALAPPDATA;
+    if (local !== undefined && local !== "") return join(local, "graphite-guard");
+    throw new GuardStateError(
+      `%LOCALAPPDATA% is not set, so there is no default wallet-lock directory. Set ${GUARD_LOCK_DIR_ENV} to a ` +
+        "directory of this user's that nothing cleans. REFUSING TO START.",
+    );
+  }
+  const runtime = absolute(env.XDG_RUNTIME_DIR);
+  if (runtime !== undefined) return join(runtime, "graphite-guard");
+  if (canWrite("/run/graphite-guard") || canWrite("/run")) return "/run/graphite-guard";
+  const state = absolute(env.XDG_STATE_HOME);
+  if (state !== undefined) return join(state, "graphite-guard");
+  let h: string;
+  try {
+    h = home();
+  } catch {
+    h = "";
+  }
+  if (!isAbsolute(h)) {
+    throw new GuardStateError(
+      `there is no runtime, /run or home directory for the wallet lock. Set ${GUARD_LOCK_DIR_ENV} to a directory ` +
+        "of this user's that nothing cleans. REFUSING TO START.",
+    );
+  }
+  return join(h, ".local", "state", "graphite-guard");
+}
 
 /**
  * The wallet lock the configuration (or, where it is silent, the
@@ -290,7 +563,7 @@ export function walletLockPlan(
     shared = raw === "1";
   }
   if (shared) return { shared: true };
-  return { shared: false, dir: config.lockDir ?? env[GUARD_LOCK_DIR_ENV] ?? join(tmpdir(), "graphite-guard") };
+  return { shared: false, dir: config.lockDir ?? env[GUARD_LOCK_DIR_ENV] ?? defaultWalletLockDir(env) };
 }
 
 /** Take the lock `plan` names for `wallet` (none, when the operator waived it). */
@@ -301,7 +574,7 @@ export function takeWalletLock(wallet: string, plan: WalletLockPlan): WalletLock
 export class GuardState {
   readonly #path: string | null;
   #fd: number | null = null;
-  #lockPath: string | null = null;
+  #held: HeldLock | null = null;
   readonly #unresolved = new Map<string, UnresolvedSubmission>();
   readonly #reserved = new Map<string, ReservedSpend>();
   #next = 0;
@@ -349,13 +622,23 @@ export class GuardState {
   }
 
   #lock(lockPath: string): void {
-    acquirePidLock(
+    this.#held = acquirePidLock(
       lockPath,
       (owner) =>
         `${lockPath} is held by process ${owner}, which is running. One guard per state file: two would ` +
         "each spend the whole aggregate allowance. REFUSING TO START.",
     );
-    this.#lockPath = lockPath;
+  }
+
+  /**
+   * Refuse (`GuardStateError`) unless this process still holds the state
+   * file's lock (Round 34): the same file, with its pid and token in it.
+   * In-memory state has no lock.
+   */
+  assertHeld(): void {
+    if (this.#path === null) return;
+    if (this.#held === null) throw new GuardStateError(`${this.#path} is closed. REFUSING TO SPEND.`);
+    assertLockHeld(this.#held, "the state file's lock");
   }
 
   #replay(text: string): void {
@@ -383,7 +666,6 @@ export class GuardState {
   /** Rewrite the file with exactly the live state: a temporary file, fsync'd, renamed over it. */
   #compact(): void {
     const path = this.#path as string;
-    const now = Date.now();
     const lines: Line[] = [
       ...[...this.#unresolved].map(([key, u]) => ({
         v: 1 as const, t: "unresolved" as const, key, signature: u.signature, lvbh: u.lastValidBlockHeight, at: u.at,
@@ -392,15 +674,27 @@ export class GuardState {
         v: 1 as const, t: "reserve" as const, id: r.id, lamports: r.lamports.toString(), at: r.at,
       })),
     ];
-    const tmp = `${path}.${process.pid}.${now}.tmp`;
-    const fd = openSync(tmp, "w", 0o600);
+    // Round 34: a random name, created exclusively and never through a
+    // symbolic link. `<path>.<pid>.<now>.tmp` could be predicted, and a
+    // symlink planted there had this write go wherever it pointed.
+    const tmp = `${path}.${randomHex()}.tmp`;
+    const fd = openSync(tmp, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | O_NOFOLLOW, 0o600);
     try {
-      for (const line of lines) writeSync(fd, `${JSON.stringify(line)}\n`);
-      fsyncSync(fd);
-    } finally {
-      closeSync(fd);
+      try {
+        for (const line of lines) writeSync(fd, `${JSON.stringify(line)}\n`);
+        fsyncSync(fd);
+      } finally {
+        closeSync(fd);
+      }
+      renameSync(tmp, path);
+    } catch (e) {
+      try {
+        unlinkSync(tmp);
+      } catch {
+        // renamed, or never written
+      }
+      throw e;
     }
-    renameSync(tmp, path);
   }
 
   #append(line: Line): void {
@@ -462,9 +756,9 @@ export class GuardState {
       }
       this.#fd = null;
     }
-    if (this.#lockPath !== null) {
-      releasePidLock(this.#lockPath);
-      this.#lockPath = null;
+    if (this.#held !== null) {
+      releasePidLock(this.#held);
+      this.#held = null;
     }
   }
 }

@@ -50,6 +50,22 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
 
+  # The inner-instruction oracle (Round 35) pins Agave's parser crate
+  # (solana-transaction-status) at the version mainnet RPCs run; a PR that
+  # moves it is a change of the referee and is reviewed as one.
+  - package-ecosystem: cargo
+    directory: /tools/inner-instruction-oracle
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: bincode
+        update-types: ["version-update:semver-major"]
+    groups:
+      inner-instruction-oracle:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
   # The cargo-fuzz crate (Round 30) has its own lockfile, outside the core's
   # build; without this entry its libfuzzer-sys pin never moved.
   - package-ecosystem: cargo
@@ -98,6 +114,15 @@ updates:
       # from a later major would typecheck APIs the runtime does not have.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+      # @solana/web3.js stays on 1.x (Round 34, D-7; reviewed 2026-10-22).
+      # 2.x/3.x is a different API across the guard's public types (the
+      # Connection, PublicKey, the transaction classes); the move is planned
+      # work, not a weekly bump. The 1.x line's four moderate advisories and
+      # why none is reachable are in .github/npm-audit/agent-guard.allow,
+      # whose review-by date (2027-01-20) re-opens this decision. Remove this
+      # ignore in the change that migrates.
+      - dependency-name: "@solana/web3.js"
+        update-types: ["version-update:semver-major"]
     groups:
       agent-guard:
         patterns: ["*"]
@@ -112,6 +137,15 @@ updates:
       # @types/node follows the Node major CI and the docs run (22 LTS): types
       # from a later major would typecheck APIs the runtime does not have.
       - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # @solana/web3.js stays on 1.x (Round 34, D-7; reviewed 2026-10-22).
+      # 2.x/3.x is a different API across the guard's public types (the
+      # Connection, PublicKey, the transaction classes); the move is planned
+      # work, not a weekly bump. The 1.x line's four moderate advisories and
+      # why none is reachable are in .github/npm-audit/agent-guard.allow,
+      # whose review-by date (2027-01-20) re-opens this decision. Remove this
+      # ignore in the change that migrates.
+      - dependency-name: "@solana/web3.js"
         update-types: ["version-update:semver-major"]
     groups:
       sak:
@@ -177,6 +211,21 @@ updates:
   # (W23, external review).
   - package-ecosystem: docker
     directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+
+  # Round 34 (R33-20): the production compose file pins its own images by
+  # digest — caddy (the internet-facing TLS edge) and python (the AI layer) —
+  # and the `docker` entry above reads only the Dockerfile, so neither digest
+  # was ever offered a bump. The Core's image there is ${GRAPHITE_IMAGE}, set
+  # per deployment to a verified release, which Dependabot cannot and should
+  # not move. Tools pinned by hand in the workflows (Caddy and promtool for
+  # the deploy tests, Agave, cargo-audit, cargo-cyclonedx, the assurance
+  # tools) have no ecosystem here: .github/pinned-tools.json lists them and
+  # .github/workflows/pinned-tools.yml reports the stale ones every week.
+  - package-ecosystem: docker-compose
+    directory: /deploy/compose
     schedule:
       interval: weekly
     open-pull-requests-limit: 2

@@ -23,10 +23,10 @@
      from the verify key. Unset disables `/admin/*`.
 
    Leave `GRAPHITE_DEV_MODE`, `GRAPHITE_ALLOW_PERMISSIVE_PROFILES`,
-   `GRAPHITE_ALLOW_DURABLE_NONCE` and the three L4 relaxations
+   `GRAPHITE_ALLOW_DURABLE_NONCE`, the two L4 relaxations
    (`GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS`,
-   `GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT`,
-   `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS`) unset unless you have read what each
+   `GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT`) and the intent-grant
+   relaxation `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS` unset unless you have read what each
    one opens in `.env.example`.
 
 3. **Validate, then start:**

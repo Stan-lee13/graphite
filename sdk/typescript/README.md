@@ -56,7 +56,8 @@ verifyTransactionDigest(bytes, result); // the bytes you sign are the bytes it v
 artifact-bound and simulated, carries a residual beyond `program_semantics` and
 `inner_instructions`, or reports a failed layer is not executable whatever `decision` says;
 a `decision` this SDK does not know is not executable; a server older than Round 30 (no
-`decision`) is judged by the recomputation alone. `verify` refuses a response whose
+`decision`) is judged by the recomputation alone here — the agent guard, which signs,
+refuses such a response outright since Round 34. `verify` refuses a response whose
 `executable: true` its own fields contradict. An operator who has deliberately accepted a
 residual (the agent guard's `ResidualPolicy`) makes that decision in their own code, by
 name, and logs it — `isExecutable` never does.
@@ -65,6 +66,13 @@ name, and logs it — `isExecutable` never does.
 64-bit key for the described instruction, which audit and lifecycle records bind to. The
 transaction's identity is `scope.transaction_sha256`. `content_hash` is deprecated and
 stays for one minor version; `instructionBindKey(result)` reads either.
+
+**Duplicate keys are refused (Round 34).** Every response is read with `parseJsonStrict`:
+an object that names the same key twice, at any depth (`{"approved": false, …,
+"approved": true}`, or the same key spelled with an escape), throws `DuplicateKeyError`.
+`JSON.parse` keeps the last of the two silently, while the Go SDK refuses them; two readers
+of one response must not see two verdicts in it. Keys are compared as `JSON.parse` sees
+them, so case matters here (Go also folds case, because its decoder does).
 
 ## Send the bytes, require `artifact_bound`
 
@@ -113,14 +121,17 @@ accepted it by name — the reference is `ResidualPolicy` in
 ## Send the bytes you sent to the trail, too
 
 `recordLifecycleEvent({ event_type: "signing" | "submission" | "confirmation" |
-"finalization", content_hash, audit_trail_id, transaction_sha256, ... })` puts a stage
+"finalization", instruction_bind_key, audit_trail_id, transaction_sha256, ... })` puts a stage
 the caller performed on Graphite's append-only trail (`POST /audit/event`); it resolves
 only on `recorded: true` and returns `verdict_on_record` — what the trail says about the
 verification the event names — with `verdict_on_record_key`, the key it was resolved by.
-Send the exact keys: `content_hash` alone names every transaction carrying that
-instruction. Record `signing` before you submit and refuse to submit if it is not
+Send the exact keys: `instruction_bind_key` alone names every transaction carrying that
+instruction. Since Round 32 the Core accepts `instruction_bind_key` in lifecycle and L8
+requests; `content_hash` is the same key under its deprecated name, and when both are
+sent they must be equal. The client sends whichever you give under both names, which
+every Core accepts. Record `signing` before you submit and refuse to submit if it is not
 recorded, if the verdict on record is not `approved`, or if it was not resolved by
-`audit_trail_id`. `verifyExecution({ signature, content_hash, transaction_sha256,
+`audit_trail_id`. `verifyExecution({ signature, instruction_bind_key, transaction_sha256,
 audit_trail_id })` runs L8 after submission and returns the reconciliation with
 `attribution` (`chain` when L8 joined on the bytes behind the signature) and
 `caller_keys_disagree`; `discrepancy: true` is `BlockedButExecuted`;

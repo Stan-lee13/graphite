@@ -10,7 +10,7 @@ Brief description of what this PR changes.
 - [ ] Performance
 
 ## Verification Checklist
-- [ ] `cargo test --release` passes (0 failures), and so do `--no-default-features --lib` and `--no-default-features --features cli`
+- [ ] `cargo test --profile ci-test` (what CI runs: the release profile without LTO) or `cargo test --release` passes (0 failures), and so do `--no-default-features --lib` and `--no-default-features --features cli`
 - [ ] `cargo clippy --all-targets --all-features -- -D warnings` passes (0 warnings); `cargo fmt --all -- --check` clean
 - [ ] SAK integration `npm test` passes and `npm run emit:corpus` shows no fixture drift (if TypeScript touched)
 - [ ] A security fix carries its reproduction as a test, and the fix was reverted once to show the test fails without it

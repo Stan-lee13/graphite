@@ -245,7 +245,10 @@ test("wallet: a guard in another live process holds the wallet; a dead one's loc
   writeFileSync(lock, "2147483646");
   const g = await guardFor(wallet, { walletLockDir: dir });
   try {
-    assert.equal(readFileSync(lock, "utf8"), String(process.pid));
+    // Round 34: the lock holds the owner's pid and a random token (was the
+    // pid alone), so a lock rewritten by another guard of the same pid is
+    // told apart from this one's.
+    assert.match(readFileSync(lock, "utf8"), new RegExp(`^${process.pid} [0-9a-f]{32}$`));
   } finally {
     await g.close();
   }

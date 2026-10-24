@@ -65,6 +65,16 @@
 		path /manifests /api/*
 	}
 
+	# A declared body over 1 MiB is refused here, before anything is
+	# proxied. Streamed, it raced the Core's own early 413 and close: when the
+	# Core closed first, Caddy's write broke and the client saw a 502 (62 of
+	# 200 oversized POSTs, Round 34). The pattern is exactly "Content-Length >
+	# 1048576" (leading zeros allowed); a chunked body without one is cut off
+	# by request_body above.
+	@oversize header_regexp Content-Length ^0*(?:[1-9]\d{7,}|[2-9]\d{6}|1[1-9]\d{5}|10[5-9]\d{4}|1049\d{3}|1048[6-9]\d{2}|10485[89]\d|104857[7-9])$
+	handle @oversize {
+		respond 413
+	}
 	handle @verify {
 		reverse_proxy {$GRAPHITE_UPSTREAM:127.0.0.1:7331} {
 			transport http {

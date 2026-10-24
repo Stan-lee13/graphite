@@ -1,0 +1,31 @@
+[package]
+name = "graphite-inner-instruction-oracle"
+version = "0.1.0"
+edition = "2021"
+description = "Checks Graphite's rebuild of parsed inner instructions against Agave's own instruction parser"
+license = "MIT"
+publish = false
+
+# Its own workspace and lockfile, like tools/runtime-oracle: Agave's parser
+# crate is the reference Graphite is judged against, never a dependency of the
+# shipped binary or of `graphite-core/Cargo.lock`.
+[workspace]
+
+[dependencies]
+graphite-core = { path = "../../graphite-core", default-features = false }
+# The parser `simulateTransaction` runs every inner instruction through
+# (`parse_ui_instruction`), at the version mainnet RPCs run.
+# Agave gates the whole crate behind this feature.
+solana-transaction-status = { version = "=4.3.2", features = ["agave-unstable-api"] }
+# The types that parser takes, at the versions it resolves to.
+solana-message = "4.6.0"
+solana-pubkey = "4.4.0"
+solana-program-option = "3.1.0"
+# The programs' own instruction encoders: the reference bytes.
+spl-token-2022-interface = "3.1.2"
+solana-system-interface = { version = "3.3.0", features = ["bincode"] }
+bincode = "1.3.3"
+serde_json = "1.0"
+
+[profile.release]
+opt-level = 3

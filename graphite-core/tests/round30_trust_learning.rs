@@ -408,8 +408,13 @@ fn seed_reviewed(core: &mut GraphiteCore) {
 #[tokio::test]
 async fn a_verify_key_holder_cannot_raise_a_programs_evidence() {
     let core = core_at(&cluster(Arc::default()));
+    // Round 34 (R33-15): the mock simulates a 1,000,000-lamport transfer
+    // whatever the bytes say. This request said 1,000, so L4 now refuses it
+    // (`SignerLamportsBeyondDeclaredAmount`: the wallet lost more than the
+    // primary's data states) and its confidence differed from `after`'s for
+    // that reason alone. It states what the mock moves.
     let before = core
-        .verify_async(&describe(1_000, WalletProfile::Gaming))
+        .verify_async(&describe(1_000_000, WalletProfile::Gaming))
         .await
         .unwrap();
     assert!(!before.approved, "{}", before.summary);
@@ -753,6 +758,72 @@ async fn the_pipeline_judges_by_the_shape_once_mature() {
     assert_eq!(l3.status, LayerStatus::Passed, "{}", l3.reason);
     assert!(
         l3.reason.contains("this transaction shape's baseline"),
+        "{}",
+        l3.reason
+    );
+}
+
+/// Round 34 (S-3): a shape's baseline is bootstrapped from observations the
+/// program's band let through. Ten of them at that band's upper edge give the
+/// shape a band centred on the edge, and once the shape is mature it alone
+/// judged: a transaction twice as far from the program's centre as the
+/// program allows passed L3. The program's band still anchors the shape's.
+#[tokio::test]
+async fn a_shape_bootstrapped_at_the_program_edge_escapes_the_program_anchor() {
+    let knobs: Shared = Arc::default();
+    let mut core = core_at(&cluster(Arc::clone(&knobs)));
+    seed_reviewed(&mut core);
+    // The program's reviewed band: centred on 100,000 CU, spread floored at
+    // 25% (25,000), so at the 2σ threshold it admits up to 150,000.
+    let mut program = ComputeBaseline::default();
+    for _ in 0..50 {
+        graphite_core::simulation_integrity::update_baseline(&mut program, 100_000, 2, 0);
+    }
+    core.seed_simulation_baseline(SYSTEM, program).unwrap();
+    // Ten distinct transfers at 148,000 CU: inside the program's band.
+    knobs.lock().unwrap().units = 148_000;
+    for i in 0..MIN_SAMPLES {
+        let r = core
+            .verify_async(&describe(9_000_000 + i, WalletProfile::Gaming))
+            .await
+            .unwrap();
+        let l3 = layer(&r, "L3");
+        assert_eq!(
+            l3.status,
+            LayerStatus::Passed,
+            "bootstrap {i}: {}",
+            l3.reason
+        );
+    }
+    let shapes = core.shape_baselines(SYSTEM);
+    assert_eq!(shapes.len(), 1, "{shapes:?}");
+    assert_eq!(shapes[0].1.sample_count, MIN_SAMPLES, "the shape is mature");
+    // Control: the edge itself still passes, judged by both.
+    let r = core
+        .verify_async(&describe(9_100_000, WalletProfile::Gaming))
+        .await
+        .unwrap();
+    assert_eq!(
+        layer(&r, "L3").status,
+        LayerStatus::Passed,
+        "{}",
+        layer(&r, "L3").reason
+    );
+    // 200,000 CU: 4σ from the program's centre, 1.4σ from the shape's.
+    knobs.lock().unwrap().units = 200_000;
+    let r = core
+        .verify_async(&describe(9_200_000, WalletProfile::Gaming))
+        .await
+        .unwrap();
+    let l3 = layer(&r, "L3");
+    assert_ne!(
+        l3.status,
+        LayerStatus::Passed,
+        "a value outside the program's band passed on the shape's alone: {}",
+        l3.reason
+    );
+    assert!(
+        l3.reason.contains("FLAGGED") && l3.reason.contains("the program's baseline"),
         "{}",
         l3.reason
     );
