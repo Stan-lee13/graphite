@@ -327,7 +327,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool, user, user_base_token_account, user_quote_token_account, pool_base_token_account, pool_quote_token_account, protocol_fee_recipient_token_account, coin_creator_vault_ata, user_volume_accumulator",
-    "credits the output token account with the received amount for the swap"
+    "transfers quote tokens from accounts.user_quote_token_account to accounts.pool_quote_token_account",
+    "credits accounts.protocol_fee_recipient_token_account with the protocol's share of the quote tokens",
+    "credits accounts.coin_creator_vault_ata with the coin creator's share of the quote tokens",
+    "transfers base tokens from accounts.pool_base_token_account to accounts.user_base_token_account"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -511,7 +514,13 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool, user, user_base_token_account, user_quote_token_account, pool_base_token_account, pool_quote_token_account, protocol_fee_recipient_token_account, coin_creator_vault_ata, user_volume_accumulator",
-    "credits the output token account with the received amount for the swap"
+    "transfers quote tokens from accounts.user_quote_token_account to accounts.pool_quote_token_account",
+    "credits accounts.protocol_fee_recipient_token_account with the protocol's share of the quote tokens",
+    "credits accounts.coin_creator_vault_ata with the coin creator's share of the quote tokens",
+    "transfers base tokens from accounts.pool_base_token_account to accounts.user_base_token_account",
+    "creates accounts.protocol_fee_recipient_token_account when it does not exist yet",
+    "creates accounts.coin_creator_vault_ata when it does not exist yet",
+    "creates accounts.user_volume_accumulator when it does not exist yet"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -751,7 +760,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: user, user_volume_accumulator",
-    "closes the position or account and transfers remaining funds back to the user"
+    "closes accounts.user_volume_accumulator, sends its lamports to accounts.user"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -1532,7 +1541,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool, user, user_base_token_account, user_quote_token_account, pool_base_token_account, pool_quote_token_account, protocol_fee_recipient_token_account, coin_creator_vault_ata",
-    "credits the output token account with the received amount for the swap"
+    "transfers base tokens from accounts.user_base_token_account to accounts.pool_base_token_account",
+    "transfers quote tokens from accounts.pool_quote_token_account to accounts.user_quote_token_account",
+    "credits accounts.protocol_fee_recipient_token_account with the protocol's share of the quote tokens",
+    "credits accounts.coin_creator_vault_ata with the coin creator's share of the quote tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -2232,7 +2244,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool, lp_mint, user_base_token_account, user_quote_token_account, user_pool_token_account, pool_base_token_account, pool_quote_token_account",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "debits accounts.user_pool_token_account by data.lp_token_amount_in",
+    "burns data.lp_token_amount_in of accounts.lp_mint from accounts.user_pool_token_account",
+    "transfers base tokens from accounts.pool_base_token_account to accounts.user_base_token_account",
+    "transfers quote tokens from accounts.pool_quote_token_account to accounts.user_quote_token_account"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

@@ -89,9 +89,10 @@
     }
    ],
    "expected_state_changes": [
-    "swaps tokens through routed DEX venues",
-    "debits user source token account",
-    "credits user destination token account"
+    "transfers data.in_amount from accounts.user_source_token_account through the routed venues",
+    "credits accounts.user_destination_token_account with the routed output",
+    "credits accounts.destination_token_account with the routed output when it is passed",
+    "credits accounts.platform_fee_account with the platform's share when it is passed"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -214,9 +215,10 @@
     }
    ],
    "expected_state_changes": [
-    "swaps tokens through routed DEX venues with shared accounts",
-    "debits user source token account",
-    "credits user destination token account"
+    "transfers data.in_amount from accounts.source_token_account to accounts.program_source_token_account",
+    "swaps through the routed venues from accounts.program_source_token_account to accounts.program_destination_token_account",
+    "transfers the routed output from accounts.program_destination_token_account to accounts.destination_token_account",
+    "credits accounts.platform_fee_account with the platform's share when it is passed"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -1382,9 +1384,9 @@
     }
    ],
    "expected_state_changes": [
-    "swaps tokens through routed DEX venues",
-    "debits user source token account",
-    "credits user destination token account"
+    "transfers data.in_amount from accounts.user_source_token_account through the routed venues",
+    "credits accounts.user_destination_token_account with the routed output",
+    "credits accounts.destination_token_account with the routed output when it is passed"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -1500,9 +1502,9 @@
     }
    ],
    "expected_state_changes": [
-    "swaps tokens through routed DEX venues with shared accounts",
-    "debits user source token account",
-    "credits user destination token account"
+    "transfers data.in_amount from accounts.source_token_account to accounts.program_source_token_account",
+    "swaps through the routed venues from accounts.program_source_token_account to accounts.program_destination_token_account",
+    "transfers the routed output from accounts.program_destination_token_account to accounts.destination_token_account"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

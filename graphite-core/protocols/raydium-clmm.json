@@ -108,7 +108,11 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: nft_owner, position_nft_mint, position_nft_account, personal_position",
-    "closes the position or account and transfers remaining funds back to the user"
+    "closes accounts.personal_position, sends its lamports to accounts.nft_owner",
+    "debits accounts.position_nft_account by the position NFT",
+    "burns the position NFT of accounts.position_nft_mint from accounts.position_nft_account",
+    "closes accounts.position_nft_account, sends its lamports to accounts.nft_owner",
+    "closes accounts.position_nft_mint under Token-2022, sends its lamports to accounts.nft_owner"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
@@ -1202,7 +1206,8 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: personal_position, pool_state, token_vault_0, token_vault_1, tick_array_lower, tick_array_upper, recipient_token_account_0, recipient_token_account_1",
-    "withdraws funds and transfers them out of the pool to the involved accounts"
+    "transfers tokens from accounts.token_vault_0 to accounts.recipient_token_account_0",
+    "transfers tokens from accounts.token_vault_1 to accounts.recipient_token_account_1"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
@@ -2493,7 +2498,8 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool_state, input_token_account, output_token_account, input_vault, output_vault, observation_state, tick_array",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.input_token_account to accounts.input_vault",
+    "transfers the output tokens from accounts.output_vault to accounts.output_token_account"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
@@ -2670,7 +2676,8 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool_state, input_token_account, output_token_account, input_vault, output_vault, observation_state",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.input_token_account to accounts.input_vault",
+    "transfers the output tokens from accounts.output_vault to accounts.output_token_account"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"

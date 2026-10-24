@@ -377,7 +377,10 @@
     "pool_pc_token_account",
     "user_source_token_account",
     "user_dest_token_account",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.user_source_token_account to the pool",
+    "transfers tokens into or out of accounts.pool_coin_token_account",
+    "transfers tokens into or out of accounts.pool_pc_token_account",
+    "transfers the output tokens from the pool to accounts.user_dest_token_account"
    ],
    "allowed_cpis": [],
    "risk_rules": [],
@@ -651,7 +654,10 @@
     "pool_pc_token_account",
     "user_source_token_account",
     "user_dest_token_account",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.user_source_token_account to the pool",
+    "transfers tokens into or out of accounts.pool_coin_token_account",
+    "transfers tokens into or out of accounts.pool_pc_token_account",
+    "transfers the output tokens from the pool to accounts.user_dest_token_account"
    ],
    "allowed_cpis": [],
    "risk_rules": [],
@@ -855,7 +861,10 @@
     "pool_pc_token_account",
     "user_source_token_account",
     "user_dest_token_account",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.user_source_token_account to the pool",
+    "transfers tokens into or out of accounts.pool_coin_token_account",
+    "transfers tokens into or out of accounts.pool_pc_token_account",
+    "transfers the output tokens from the pool to accounts.user_dest_token_account"
    ],
    "allowed_cpis": [],
    "risk_rules": [],
@@ -932,7 +941,10 @@
     "pool_pc_token_account",
     "user_source_token_account",
     "user_dest_token_account",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.user_source_token_account to the pool",
+    "transfers tokens into or out of accounts.pool_coin_token_account",
+    "transfers tokens into or out of accounts.pool_pc_token_account",
+    "transfers the output tokens from the pool to accounts.user_dest_token_account"
    ],
    "allowed_cpis": [],
    "risk_rules": [],

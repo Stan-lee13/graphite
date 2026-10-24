@@ -641,7 +641,9 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: state, msolMint, liqPoolSolLegPda, liqPoolMsolLeg, treasuryMsolAccount, getMsolFrom, transferSolTo",
-    "withdraws funds and transfers them out of the pool to the involved accounts"
+    "transfers data.msolAmount of mSOL from accounts.getMsolFrom to accounts.liqPoolMsolLeg",
+    "credits accounts.treasuryMsolAccount with the treasury's share of the mSOL",
+    "transfers the withdrawn SOL from accounts.liqPoolSolLegPda to accounts.transferSolTo"
    ],
    "allowed_cpis": [
     "Stake11111111111111111111111111111111111111",
