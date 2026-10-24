@@ -6,7 +6,7 @@ Graphite is a transaction verification engine — security bugs in the verificat
 
 **Do NOT open a public issue for security vulnerabilities.**
 
-Instead, email: victorstanley13@gmail.com with:
+Instead, email: stanleyvic13@gmail.com with:
 - A clear description of the vulnerability
 - The affected component (core engine, SAK integration, SDK, AI layer)
 - Steps to reproduce or proof of concept
