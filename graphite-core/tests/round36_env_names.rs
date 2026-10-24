@@ -156,6 +156,12 @@ fn a_near_miss_of_a_core_name_refuses_to_start() {
     }
 }
 
+/// Re-pinned in Round 38 (R37-15). This test pinned that an unknown
+/// `GRAPHITE_*` name further than two edits from a Core name only warns
+/// ("GRAPHITE_MY_DEPLOY_SCRIPT_TAG" started the server). That is how
+/// `GRAPHITE_HIGH_ASSURANCE`, `GRAPHITE_AUDIT_KEY` and `GRAPHITE_WITNESS_URL`
+/// — misspellings of protective switches — started a server without them.
+/// Every component's names are listed, so an unknown one now refuses.
 #[test]
 fn known_and_unrelated_names_start() {
     let all: Vec<&str> = CORE_ENV_NAMES
@@ -163,11 +169,42 @@ fn known_and_unrelated_names_start() {
         .chain(COMPONENT_ENV_NAMES)
         .copied()
         .collect();
-    assert_eq!(check_env_names(all.iter().copied()), Ok(vec![]));
-    let w = check_env_names(["GRAPHITE_MY_DEPLOY_SCRIPT_TAG", "PATH", "HOME"]).unwrap();
-    assert_eq!(w.len(), 1, "{w:?}");
-    assert!(w[0].contains("GRAPHITE_MY_DEPLOY_SCRIPT_TAG"));
+    assert_eq!(check_env_names(all.iter().copied()), Ok(()));
+    assert_eq!(check_env_names(["PATH", "HOME", "SOLANA_RPC_URL"]), Ok(()));
+    let err = check_env_names(["GRAPHITE_MY_DEPLOY_SCRIPT_TAG", "PATH", "HOME"]).unwrap_err();
+    assert!(
+        err.contains("GRAPHITE_MY_DEPLOY_SCRIPT_TAG") && err.contains("REFUSING TO START"),
+        "{err}"
+    );
     assert_eq!(unknown_env_names(["SOLANA_RPC_URL"]), vec![]);
+}
+
+/// R37-15: the protective switches' misspellings the auditor named, each
+/// more than two edits from its name, and typos in the prefix itself.
+#[test]
+fn a_misspelled_protective_switch_refuses_to_start_however_far_off() {
+    for typo in [
+        "GRAPHITE_HIGH_ASSURANCE",
+        "GRAPHITE_AUDIT_KEY",
+        "GRAPHITE_WITNESS_URL",
+    ] {
+        let err = check_env_names([typo]).expect_err(typo);
+        assert!(
+            err.contains(typo) && err.contains("REFUSING TO START"),
+            "{err}"
+        );
+    }
+    for (typo, meant) in [
+        ("GRAPHTIE_AUDIT_KEY_FILE", "GRAPHITE_AUDIT_KEY_FILE"),
+        ("GRAPHIT_L8_HIGH_ASSURANCE", "GRAPHITE_L8_HIGH_ASSURANCE"),
+        ("GRAPHITERPC_WITNESS_URL", "GRAPHITE_RPC_WITNESS_URL"),
+    ] {
+        let err = check_env_names([typo]).expect_err(typo);
+        assert!(
+            err.contains(meant) && err.contains("REFUSING TO START"),
+            "{err}"
+        );
+    }
 }
 
 /// The server itself refuses, before it touches the data directory.

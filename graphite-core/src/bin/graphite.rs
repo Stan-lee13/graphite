@@ -453,6 +453,13 @@ enum RegistryAction {
         #[arg(long)]
         state: Option<PathBuf>,
     },
+    /// Check every acceptance record from its own contents: exit 0 all
+    /// verified, 1 one failed, 2 one predates retained signatures
+    VerifyRecords {
+        /// Registry state file (default: registry_state.json)
+        #[arg(long)]
+        state: Option<PathBuf>,
+    },
     /// Register a reviewer identity with a demonstrated reputation (G5)
     RegisterReviewer {
         /// Registry state file (default: registry_state.json)
@@ -616,6 +623,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             RegistryAction::Reviewers { state } => {
                 graphite_core::cli::run(graphite_core::cli::CliCommand::Registry {
                     action: graphite_core::cli::RegistryAction::Reviewers { state },
+                })
+            }
+            RegistryAction::VerifyRecords { state } => {
+                graphite_core::cli::run(graphite_core::cli::CliCommand::Registry {
+                    action: graphite_core::cli::RegistryAction::VerifyRecords { state },
                 })
             }
             RegistryAction::RegisterReviewer {

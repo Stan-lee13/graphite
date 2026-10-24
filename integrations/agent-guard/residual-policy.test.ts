@@ -42,7 +42,19 @@ test("the inherent residuals are exactly the two the core marks inherent", () =>
   assert.deepEqual([...INHERENT_UNOBSERVED].sort(), [...INHERENT].sort());
   // And they are in the code list, as is everything else the core emits.
   for (const c of INHERENT) assert.ok(UNOBSERVED_CODES.includes(c));
-  assert.equal(UNOBSERVED_CODES.length, 16);
+  // 17 since Round 38: `program_deployments` (R37-16).
+  assert.equal(UNOBSERVED_CODES.length, 17);
+});
+
+// Round 38 (R37-16): a deployment the Core could not read is a residual
+// like any other observation that did not happen: refused by default.
+test("Round 38 (R37-16): program_deployments is a known, non-inherent code — refused by default", () => {
+  assert.ok(UNOBSERVED_CODES.includes("program_deployments"));
+  assert.equal(INHERENT_UNOBSERVED.has("program_deployments"), false);
+  assert.throws(
+    () => new ResidualPolicy().assertExecutable(bound([...INHERENT, "program_deployments"]), "t"),
+    (e: Error) => e.message.includes("program_deployments"),
+  );
 });
 
 // Re-pinned in Round 38 (G2-5). This test ended by pinning that an operator

@@ -389,7 +389,8 @@ export type UnobservedCode =
   | "other_instructions"
   | "fee_payer_blockhash_signers"
   | "no_real_effects"
-  | "intent_parameters";
+  | "intent_parameters"
+  | "program_deployments";
 
 /** Every code, in the core's declaration order. */
 export const UNOBSERVED_CODES: readonly UnobservedCode[] = [
@@ -409,6 +410,7 @@ export const UNOBSERVED_CODES: readonly UnobservedCode[] = [
   "fee_payer_blockhash_signers",
   "no_real_effects",
   "intent_parameters",
+  "program_deployments",
 ] as const;
 
 /**

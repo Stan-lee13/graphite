@@ -760,7 +760,7 @@ jobs:
           # Every *.test.ts in the directory, so a test file cannot sit in
           # the repository looking like a gate without ever running.
           npm test 2>&1 | tee "$RUNNER_TEMP/agent-guard.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/agent-guard.log" 329
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/agent-guard.log" 330
           # The guard and the Rust Core are two implementations of one
           # agreement: the guard serializes a transaction and describes its
           # instructions, the Core reads both and decides whether they agree.

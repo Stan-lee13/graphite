@@ -391,8 +391,11 @@ documented as a limitation, or recorded as an owner decision; the report is
 - **A protocol upgrade is noticed (R-M1).** With an RPC, a manifested program redeployed, or
   handed to a new upgrade authority, since Graphite last saw it is reported on the verdict, on
   `/health` and in the metrics; `GRAPHITE_QUARANTINE_ON_UPGRADE=1` also withdraws it from trust
-  until the operator reviews the manifest. Limits: the first sighting is the baseline, and
-  evidence earned on the old code is not reset by an upgrade.
+  until the operator reviews the manifest. Limits as of Rounds 26–27: the first sighting was the
+  baseline, and evidence earned on the old code was not reset by an upgrade. Both are superseded:
+  since Round 30 (G-04) an upgrade withdraws the program's evidence, and a first sighting whose
+  deployment is newer than its evidence withdraws it too; since Round 38 (R37-16) a deployment
+  that cannot be read is the `program_deployments` residual, not a log line.
 - **Advisories published after Round 24 fixed** in the Rust lockfile (`quinn-proto`, `rustls`) and
   by npm overrides (SAK adapter, dashboard).
 

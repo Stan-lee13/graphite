@@ -498,7 +498,8 @@
                   "other_instructions",
                   "fee_payer_blockhash_signers",
                   "no_real_effects",
-                  "intent_parameters"
+                  "intent_parameters",
+                  "program_deployments"
                 ]
               },
               "minItems": 1,
@@ -621,7 +622,8 @@
                   "other_instructions",
                   "fee_payer_blockhash_signers",
                   "no_real_effects",
-                  "intent_parameters"
+                  "intent_parameters",
+                  "program_deployments"
                 ]
               },
               "minItems": 1,

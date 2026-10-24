@@ -266,6 +266,11 @@ pub enum CliCommand {
 pub enum RegistryAction {
     /// List registered reviewers (G5 identities) and the acceptance log.
     Reviewers { state: Option<PathBuf> },
+    /// Check every acceptance record from its own contents (Round 36, F-008;
+    /// Round 38, V-5: `verify_offline` had no caller outside a unit test).
+    /// Exit 0 when every record verifies, 1 when one does not, 2 when none
+    /// fails and one predates retained signatures and cannot be checked.
+    VerifyRecords { state: Option<PathBuf> },
     /// Register a reviewer identity with a demonstrated reputation score
     /// (operator-verified stake/GitHub claim in Phase 2).
     RegisterReviewer {
@@ -841,6 +846,13 @@ fn release_eval_root() -> Option<PathBuf> {
 }
 
 pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
+    // Round 38 (Round 37, V-2): the CLI reads the same variables the server
+    // does (`GRAPHITE_DATA_DIR`, `GRAPHITE_AUDIT_KEY_FILE`, the L4 opt-outs),
+    // and a misspelled one is a decision it never sees either.
+    let env_names: Vec<String> = std::env::vars_os()
+        .filter_map(|(k, _)| k.into_string().ok())
+        .collect();
+    crate::operator_boundary::check_env_names(env_names.iter().map(String::as_str))?;
     match command {
         CliCommand::Verify { input, profile } => {
             // The SERVER'S durable semantic graph, registry and boundary
@@ -1922,6 +1934,21 @@ fn run_execution(
         ))
         .map_err(|e| format!("{source}: {e}"))?;
     }
+    // Round 38 (Round 37, V-3): `GRAPHITE_L8_HIGH_ASSURANCE` was the server's
+    // alone, so the same reconciliation read `executed` here on one provider's
+    // word where the server would have withheld it. Honoured the same way:
+    // a conclusion needs an independent witness that agrees, and with none
+    // configured the check refuses to run rather than run at an assurance the
+    // operator did not choose.
+    if crate::operator_boundary::env_flag(
+        "GRAPHITE_L8_HIGH_ASSURANCE",
+        std::env::var("GRAPHITE_L8_HIGH_ASSURANCE").ok().as_deref(),
+    )? {
+        if !core.has_inclusion_witness() {
+            return Err("GRAPHITE_L8_HIGH_ASSURANCE=1 needs an independent witness: pass --witness-url or set GRAPHITE_RPC_WITNESS_URL".into());
+        }
+        core.set_require_independent_witness(true);
+    }
 
     // Read the same audit trail the server writes, so the CLI reconciles
     // against the real record rather than a second source of truth. Read
@@ -2577,6 +2604,37 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
                     "  {} v{} — {:?} — source {}",
                     rec.program_id, rec.version_label, rec.trust_tier, rec.source
                 );
+            }
+            Ok(())
+        }
+        RegistryAction::VerifyRecords { state } => {
+            let path = registry_state_path(state);
+            let engine = load_registry(&path)?;
+            let (mut failed, mut unproven) = (0usize, 0usize);
+            for rec in engine.records() {
+                let outcome = rec.verify_offline();
+                let label = match &outcome {
+                    Ok(()) => "verified".to_string(),
+                    Err(e) if rec.signing_domain.is_none() || rec.manifest.is_none() => {
+                        unproven += 1;
+                        format!("UNPROVEN: {e}")
+                    }
+                    Err(e) => {
+                        failed += 1;
+                        format!("FAILED: {e}")
+                    }
+                };
+                println!("  {} v{}: {label}", rec.program_id, rec.version_label);
+            }
+            println!(
+                "{} record(s): {failed} failed, {unproven} unproven",
+                engine.records().len()
+            );
+            if failed > 0 {
+                std::process::exit(1);
+            }
+            if unproven > 0 {
+                std::process::exit(2);
             }
             Ok(())
         }

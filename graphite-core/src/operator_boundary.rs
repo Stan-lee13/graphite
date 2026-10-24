@@ -185,14 +185,17 @@ fn edit_distance(a: &str, b: &str, max: usize) -> usize {
 /// one letter short of `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS` was simply
 /// never read: the operator believed a decision was configured that the
 /// Core never saw.
+///
+/// Round 38 (R37-15): a name outside the `GRAPHITE_` prefix is a near-miss
+/// too when it is within two edits of a Core name — `GRAPHTIE_AUDIT_KEY_FILE`
+/// was not even logged.
 pub fn unknown_env_names<'a>(
     names: impl IntoIterator<Item = &'a str>,
 ) -> Vec<(String, Option<&'static str>)> {
     let mut out = Vec::new();
     for name in names {
         let upper = name.to_ascii_uppercase();
-        if !upper.starts_with("GRAPHITE_")
-            || name.starts_with(AI_LAYER_ENV_PREFIX)
+        if name.starts_with(AI_LAYER_ENV_PREFIX)
             || CORE_ENV_NAMES.contains(&name)
             || COMPONENT_ENV_NAMES.contains(&name)
         {
@@ -202,31 +205,47 @@ pub fn unknown_env_names<'a>(
             .iter()
             .copied()
             .find(|core| *core == upper || edit_distance(&upper, core, 2) <= 2);
-        out.push((name.to_string(), near));
+        if upper.starts_with("GRAPHITE_") || near.is_some() {
+            out.push((name.to_string(), near));
+        }
     }
     out.sort();
     out
 }
 
-/// Refuse a near-miss of a Core variable; name every other unknown one.
-/// The server calls this before it reads anything else.
-pub fn check_env_names<'a>(
-    names: impl IntoIterator<Item = &'a str>,
-) -> Result<Vec<String>, String> {
-    let mut warnings = Vec::new();
-    for (name, near) in unknown_env_names(names) {
-        match near {
-            Some(core) => {
-                return Err(format!(
-                    "{name} is set, and no Graphite component reads it; did you mean {core}? The Core would have run as if it were unset. REFUSING TO START."
-                ))
-            }
-            None => warnings.push(format!(
-                "{name} is set and no Graphite component reads it"
-            )),
-        }
+/// Refuse to start over any name [`unknown_env_names`] reports.
+/// The server and the CLI call this before they read anything else.
+///
+/// Round 38 (R37-15): only a near-miss within two edits refused; every other
+/// unknown `GRAPHITE_*` name was logged and the server started without it.
+/// The protective switches are the ones a misspelling hurts —
+/// `GRAPHITE_L8_HIGH_ASSURANCE` without its `L8_` (no witness requirement),
+/// `GRAPHITE_AUDIT_KEY_FILE` without its `_FILE` (no MACs),
+/// `GRAPHITE_RPC_WITNESS_URL` without its `RPC_` — and each is more than two
+/// edits away (`tests/round36_env_names.rs` spells them out). Every Graphite component's names are listed
+/// (`tests/round36_env_names.rs` keeps the lists complete), so a name no
+/// component reads is a mistake, whatever it is a mistake for.
+pub fn check_env_names<'a>(names: impl IntoIterator<Item = &'a str>) -> Result<(), String> {
+    let unknown = unknown_env_names(names);
+    if unknown.is_empty() {
+        return Ok(());
     }
-    Ok(warnings)
+    let listed: Vec<String> = unknown
+        .iter()
+        .map(|(name, near)| match near {
+            Some(core) => format!("{name} (did you mean {core}?)"),
+            None => name.clone(),
+        })
+        .collect();
+    Err(format!(
+        "{} set, and no Graphite component reads {}: {}. The Core would have run as if {} unset; remove {} or correct {}. REFUSING TO START.",
+        if listed.len() == 1 { "a variable is" } else { "variables are" },
+        if listed.len() == 1 { "it" } else { "them" },
+        listed.join(", "),
+        if listed.len() == 1 { "it were" } else { "they were" },
+        if listed.len() == 1 { "it" } else { "them" },
+        if listed.len() == 1 { "its name" } else { "their names" },
+    ))
 }
 
 /// Parse `GRAPHITE_WALLET_PROFILE`. Accepts the four built-in names, or

@@ -288,6 +288,7 @@ var unobservedCodes = []string{
 	UnobservedInnerInstructions, UnobservedArtifactUnparsed, UnobservedAccountIdentityUnparsed,
 	UnobservedInstructionNotLocated, UnobservedNoArtifact, UnobservedOtherInstructions,
 	UnobservedFeePayerBlockhashSigners, UnobservedNoRealEffects, UnobservedIntentParameters,
+	UnobservedProgramDeployments,
 }
 
 // ─── the verdict ───

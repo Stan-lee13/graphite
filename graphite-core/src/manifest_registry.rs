@@ -339,6 +339,45 @@ impl RegistryRecord {
         if self.signer.is_none() && self.attesters.is_empty() {
             return Err("the record names no signer and no attester".to_string());
         }
+        // Round 38 (Round 37, V-5): the signatures were checked and the
+        // record's own claims about them were not. A record whose source,
+        // tier or attester list says more than its signatures support is
+        // not the record the registry wrote.
+        let mut distinct: Vec<&str> = self.attesters.iter().map(String::as_str).collect();
+        distinct.sort_unstable();
+        distinct.dedup();
+        if distinct.len() != self.attesters.len() {
+            return Err("the record names the same attester twice".to_string());
+        }
+        match (self.source.as_str(), &self.signer) {
+            ("signed", Some(_)) | ("community", None) => {}
+            (source, signer) => {
+                return Err(format!(
+                    "the record's source is {source:?} and it {} a signer",
+                    if signer.is_some() {
+                        "names"
+                    } else {
+                        "names no"
+                    }
+                ))
+            }
+        }
+        let needed = crate::semantic_graph_store::thresholds::COMMUNITY_VERIFIED as usize;
+        match self.trust_tier {
+            TrustTier::BattleTested => {
+                return Err(
+                    "the record claims BattleTested, which no registry submission reaches"
+                        .to_string(),
+                )
+            }
+            TrustTier::CommunityVerified if distinct.len() < needed => {
+                return Err(format!(
+                    "the record claims CommunityVerified with {} attester(s); it takes {needed}",
+                    distinct.len()
+                ))
+            }
+            _ => {}
+        }
         if let Some(signer) = &self.signer {
             let sig = self
                 .signature_hex
@@ -1343,6 +1382,21 @@ mod tests {
         let mut domain = record.clone();
         domain.signing_domain = Some("graphite-manifest-registry-v0".to_string());
         assert!(domain.verify_offline().is_err());
+        // Round 38 (Round 37, V-5): what the record claims about its
+        // signatures is held to them. Each of these left every signature
+        // valid and passed.
+        let mut tier = record.clone();
+        tier.trust_tier = TrustTier::CommunityVerified;
+        assert!(tier
+            .verify_offline()
+            .unwrap_err()
+            .contains("CommunityVerified with 0 attester(s)"));
+        let mut battle = record.clone();
+        battle.trust_tier = TrustTier::BattleTested;
+        assert!(battle.verify_offline().is_err());
+        let mut source = record.clone();
+        source.source = "community".to_string();
+        assert!(source.verify_offline().unwrap_err().contains("source"));
         // A record from before Round 36 is unverifiable, and says so.
         let mut old = record;
         old.signing_domain = None;

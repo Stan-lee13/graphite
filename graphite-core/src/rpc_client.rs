@@ -757,6 +757,12 @@ pub enum ProgramDeployment {
     NotUpgradeable { owner: String },
     /// No account at that address.
     Missing,
+    /// The account was read and its deployment does not decode (Round 38,
+    /// R37-16): `why`. One such entry used to fail the whole batch, so a
+    /// single odd account switched upgrade detection off for every program
+    /// in the transaction; it now stands for itself, and the verdict says
+    /// the deployment was not read.
+    Unreadable { why: String },
 }
 
 /// The ProgramData address a loader-v3 `Program` account names.
@@ -2117,37 +2123,40 @@ impl SolanaRpcClient {
         for (program, account) in programs.iter().zip(&accounts) {
             match account {
                 None => out.push(ProgramDeployment::Missing),
-                Some(a) if a.owner == LOADER_V4 => {
-                    let (deploy_slot, authority, status) = decode_loader_v4_header(&a.data)
-                        .ok_or_else(|| {
-                            RpcError::InvalidResponse(format!(
-                                "{program} is owned by loader-v4 but its account does not decode as LoaderV4State"
-                            ))
-                        })?;
-                    out.push(ProgramDeployment::LoaderV4 {
-                        deploy_slot,
-                        authority,
-                        retracted: status == 0,
-                    })
-                }
+                Some(a) if a.owner == LOADER_V4 => match decode_loader_v4_header(&a.data) {
+                    Some((deploy_slot, authority, status)) => {
+                        out.push(ProgramDeployment::LoaderV4 {
+                            deploy_slot,
+                            authority,
+                            retracted: status == 0,
+                        })
+                    }
+                    None => out.push(ProgramDeployment::Unreadable {
+                        why: format!(
+                            "{program} is owned by loader-v4 but its account does not decode as LoaderV4State"
+                        ),
+                    }),
+                },
                 Some(a) if a.owner != UPGRADEABLE_LOADER => {
                     out.push(ProgramDeployment::NotUpgradeable {
                         owner: a.owner.clone(),
                     })
                 }
-                Some(a) => {
-                    let address = decode_program_account(&a.data).ok_or_else(|| {
-                        RpcError::InvalidResponse(format!(
+                Some(a) => match decode_program_account(&a.data) {
+                    Some(address) => {
+                        programdata.push(address.clone());
+                        out.push(ProgramDeployment::Upgradeable {
+                            programdata: address,
+                            deploy_slot: 0,
+                            upgrade_authority: None,
+                        });
+                    }
+                    None => out.push(ProgramDeployment::Unreadable {
+                        why: format!(
                             "{program} is owned by the upgradeable loader but its account is not a Program"
-                        ))
-                    })?;
-                    programdata.push(address.clone());
-                    out.push(ProgramDeployment::Upgradeable {
-                        programdata: address,
-                        deploy_slot: 0,
-                        upgrade_authority: None,
-                    });
-                }
+                        ),
+                    }),
+                },
             }
         }
         if programdata.is_empty() {
@@ -2158,28 +2167,29 @@ impl SolanaRpcClient {
             .await?;
         let mut headers = headers.into_iter();
         for entry in out.iter_mut() {
-            if let ProgramDeployment::Upgradeable {
+            let ProgramDeployment::Upgradeable {
                 programdata,
                 deploy_slot,
                 upgrade_authority,
             } = entry
-            {
-                let header = headers.next().flatten().ok_or_else(|| {
-                    RpcError::InvalidResponse(format!("ProgramData {programdata} does not exist"))
-                })?;
-                if header.owner != UPGRADEABLE_LOADER {
-                    return Err(RpcError::InvalidResponse(format!(
-                        "ProgramData {programdata} is not owned by the upgradeable loader"
-                    )));
+            else {
+                continue;
+            };
+            let read = match headers.next().flatten() {
+                None => Err(format!("ProgramData {programdata} does not exist")),
+                Some(h) if h.owner != UPGRADEABLE_LOADER => Err(format!(
+                    "ProgramData {programdata} is not owned by the upgradeable loader"
+                )),
+                Some(h) => decode_programdata_header(&h.data).ok_or_else(|| {
+                    format!("ProgramData {programdata} does not decode as the loader's ProgramData")
+                }),
+            };
+            match read {
+                Ok((slot, authority)) => {
+                    *deploy_slot = slot;
+                    *upgrade_authority = authority;
                 }
-                let (slot, authority) =
-                    decode_programdata_header(&header.data).ok_or_else(|| {
-                        RpcError::InvalidResponse(format!(
-                            "ProgramData {programdata} does not decode as the loader's ProgramData"
-                        ))
-                    })?;
-                *deploy_slot = slot;
-                *upgrade_authority = authority;
+                Err(why) => *entry = ProgramDeployment::Unreadable { why },
             }
         }
         Ok(out)
