@@ -171,7 +171,10 @@ export interface ExecuteParams {
    * `now` (default `performance.now`, a monotonic clock a wall-clock change
    * cannot move) taken BEFORE the verification was asked for, so the age is
    * never under-counted. Immediately before signing, a verdict older than
-   * `maxMs` is refused with `StaleVerdict` and nothing is signed.
+   * `maxMs` is refused with `StaleVerdict` and nothing is signed. Round 38
+   * (G2-3): and again immediately before the send, after the signing was
+   * recorded on the trail (a Core round trip): a verdict that aged past the
+   * bound there is refused, signed but not sent.
    */
   verdictAge?: { requestedAt: number; maxMs: number; now?: () => number };
 }
@@ -201,14 +204,21 @@ export const MAX_MAX_VERDICT_AGE_MS = 600_000;
 export class StaleVerdict extends Error {
   readonly ageMs: number;
   readonly maxMs: number;
-  constructor(label: string, ageMs: number, maxMs: number) {
+  /** Round 38 (G2-3): refused at the send, after signing; the signed bytes were dropped, never sent. */
+  readonly signed: boolean;
+  constructor(label: string, ageMs: number, maxMs: number, signed = false) {
     super(
       `[Graphite] ${label}: the verdict is ${Math.round(ageMs)} ms old, over the ${maxMs} ms bound ` +
-        "(GRAPHITE_MAX_VERDICT_AGE_MS). Nothing was signed or sent; repeat the request for a fresh verdict.",
+        "(GRAPHITE_MAX_VERDICT_AGE_MS). " +
+        (signed
+          ? "The transaction was signed, but nothing was sent: the signed bytes were dropped"
+          : "Nothing was signed or sent") +
+        "; repeat the request for a fresh verdict.",
     );
     this.name = "StaleVerdict";
     this.ageMs = ageMs;
     this.maxMs = maxMs;
+    this.signed = signed;
   }
 }
 
@@ -309,18 +319,22 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
     if (answer !== true) throw new ConfirmationDeclined(label, "declined");
   }
 
+  // The verdict's age bound (Round 35, F-017), checked where it is called.
+  const assertFresh = (signed: boolean) => {
+    if (!p.verdictAge) return;
+    const { requestedAt, maxMs } = p.verdictAge;
+    const age = (p.verdictAge.now ?? (() => performance.now()))() - requestedAt;
+    if (!Number.isFinite(age) || !Number.isSafeInteger(maxMs) || maxMs < 1 || age > maxMs) {
+      throw new StaleVerdict(label, Number.isFinite(age) ? age : Number.POSITIVE_INFINITY, maxMs, signed);
+    }
+  };
+
   // 2. The one signing path: digest and signer set re-derived over this
   //    object, compared against what Graphite hashed.
   p.beforeSign?.();
   // Round 35 (F-017): the verdict's age, with nothing awaited between this
   // check and the digest recomputation inside `signApproved`.
-  if (p.verdictAge) {
-    const { requestedAt, maxMs } = p.verdictAge;
-    const age = (p.verdictAge.now ?? (() => performance.now()))() - requestedAt;
-    if (!Number.isFinite(age) || !Number.isSafeInteger(maxMs) || maxMs < 1 || age > maxMs) {
-      throw new StaleVerdict(label, Number.isFinite(age) ? age : Number.POSITIVE_INFINITY, maxMs);
-    }
-  }
+  assertFresh(false);
   const raw = await p.bound.signApproved(scope.transaction_sha256, p.signers);
   log(
     `[Graphite] ${label}: transaction matches the approved digest ` +
@@ -380,6 +394,11 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
   //    ambiguously still leaves the caller holding it. It used to be thrown
   //    away with the error, and a retry built and signed a second transfer.
   const signature = firstSignatureOf(raw);
+  // Round 38 (G2-3): the age again, after the signing's round trip to the
+  // Core and with nothing awaited between here and the send (`beforeSubmit`
+  // is synchronous). The check before signing alone let a verdict that aged
+  // past the bound while the trail answered be sent.
+  assertFresh(true);
   if (p.beforeSubmit) {
     try {
       p.beforeSubmit(signature);

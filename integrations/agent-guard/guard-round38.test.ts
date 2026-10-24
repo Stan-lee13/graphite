@@ -411,3 +411,78 @@ test("G2-2: an unresolved swap recorded under an earlier version's route-specifi
     await h.close();
   }
 });
+
+// ---------------------------------------------------------------------------
+// G2-3: the verdict's age, immediately before the send.
+
+test("G2-3 (repro): the verdict's age is checked again immediately before the send, after the signing is recorded", async () => {
+  const calls: string[] = [];
+  let clock = 1_000;
+  let submitted = 0;
+  const fakes = {
+    sendRawTransaction: async (raw: Uint8Array) => (calls.push("send"), firstSignatureOf(raw)),
+    confirmTransaction: async () => (calls.push("confirm"), { value: { err: null } }),
+    // The Core's answer to the signing event takes past the bound.
+    recordLifecycleEvent: async (e: { event_type: string }) => {
+      calls.push(`record:${e.event_type}`);
+      clock += 150_001;
+      return receipt(e.event_type);
+    },
+    verifyExecution: async () => {
+      calls.push("l8");
+      throw new Error("unreachable");
+    },
+  };
+  const bound = boundTransfer();
+  await assert.rejects(
+    executeBoundTransaction({
+      bound,
+      verification: verdictFor(bound),
+      signers: [payer],
+      connection: fakes,
+      graphite: fakes as never,
+      policy: new ResidualPolicy([]),
+      reportedBy: "test",
+      label: "transfer",
+      log: () => {},
+      beforeSubmit: () => {
+        submitted++;
+      },
+      verdictAge: { requestedAt: 1_000, maxMs: 150_000, now: () => clock },
+    }),
+    (e: unknown) => {
+      assert.ok(e instanceof StaleVerdict, String(e));
+      assert.match((e as Error).message, /150001 ms old, over the 150000 ms bound.*signed, but nothing was sent/);
+      assert.equal(toolRefusalOf(e).refusedBy, "stale-verdict");
+      return true;
+    },
+  );
+  assert.deepEqual(calls, ["record:signing"], "signed and recorded, never sent");
+  assert.equal(submitted, 0, "never recorded as in flight either");
+});
+
+test("G2-3: through the guard — a slow signing record ages the verdict past the bound; nothing is sent and the reservation comes back", async () => {
+  const h = await harness({ spendPolicy: TWO_SOL, config: { maxVerdictAgeMs: 1_500, confirmTimeoutMs: 1_000 } });
+  try {
+    const record = h.core.respond.get("POST /audit/event")!;
+    let slow = true;
+    h.core.respond.set("POST /audit/event", (body) => {
+      // A Core that takes 1.7 s to answer the signing event (a synchronous
+      // sleep: this process, the guard included, waits as a slow Core makes it).
+      if (slow && (body as { event_type: string }).event_type === "signing") {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1_700);
+      }
+      return record(body);
+    });
+    await assert.rejects(h.agent.executeTransfer(REQUEST), StaleVerdict);
+    assert.equal(sent(h), 0, "nothing was sent");
+    assert.deepEqual(trail(h).map((e) => e.event_type), ["signing"], "signed, never submitted");
+    // Not in flight, and its reservation returned: the same request executes
+    // under an allowance that holds one.
+    slow = false;
+    assert.equal((await h.agent.executeTransfer(REQUEST)).executed, true);
+    assert.equal(sent(h), 1);
+  } finally {
+    await h.close();
+  }
+});
