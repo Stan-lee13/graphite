@@ -885,7 +885,7 @@ jobs:
           NODE_OPTIONS: --test-reporter=tap
         run: |
           npm test 2>&1 | tee "$RUNNER_TEMP/dashboard.log"
-          bash ../.github/scripts/test-count.sh tap "$RUNNER_TEMP/dashboard.log" 31
+          bash ../.github/scripts/test-count.sh tap "$RUNNER_TEMP/dashboard.log" 35
       - name: Build
         run: npm run build
       # Round 29 (audit 2026-10-20, D6): what the build ships. No source
