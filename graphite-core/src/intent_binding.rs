@@ -1424,9 +1424,8 @@ fn swapping_wallet<'a>(
         .iter()
         .map(|s| (s, wallet_effect(diff, s)))
         .collect();
-    let moved = |e: &WalletEffect| {
-        e.wrapped_sol_delta != 0 || e.token_delta.values().any(|d| *d != 0)
-    };
+    let moved =
+        |e: &WalletEffect| e.wrapped_sol_delta != 0 || e.token_delta.values().any(|d| *d != 0);
     let movers: Vec<&String> = effects
         .iter()
         .filter(|(_, e)| moved(e))
@@ -2017,14 +2016,21 @@ mod tests {
         };
         let one = [withdraw(1_000_000_000)];
         assert!(matches!(run(&one, Some("1"), None), Binding::Bound(_)));
-        assert!(matches!(run(&one, Some("1"), Some("SOL")), Binding::Bound(_)));
+        assert!(matches!(
+            run(&one, Some("1"), Some("SOL")),
+            Binding::Bound(_)
+        ));
         let all = [withdraw(250_000_000_000)];
         assert!(matches!(
             run(&all, Some("1"), None),
             Binding::Mismatch { .. }
         ));
         assert!(matches!(
-            run(&one, Some("1"), Some("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")),
+            run(
+                &one,
+                Some("1"),
+                Some("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
+            ),
             Binding::Mismatch { .. }
         ));
         // Nothing stated, nothing to compare; no stake Withdraw, as before.

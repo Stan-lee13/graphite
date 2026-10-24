@@ -766,7 +766,10 @@ fn jupiter_swap(
         ),
     );
     ixs.push(primary);
-    c.set(&dst, acct(RENT, TOKEN, token_account(out_mint, receiver, 0)));
+    c.set(
+        &dst,
+        acct(RENT, TOKEN, token_account(out_mint, receiver, 0)),
+    );
     let mut kept = gross;
     match beside {
         Beside::Memo => ixs.push(ix(MEMO, &[(OWNER, true, false)], b"swap".to_vec())),
@@ -1274,7 +1277,15 @@ async fn a_relayed_swap_is_bound_to_the_wallet_that_swaps() {
         Beside::Relayed,
     );
     let p = primary_of(&ixs, JUPITER);
-    let r = verify(c, RELAYER, &ixs, p, "swap", swap_request("1", MINT_Y, MINT_X)).await;
+    let r = verify(
+        c,
+        RELAYER,
+        &ixs,
+        p,
+        "swap",
+        swap_request("1", MINT_Y, MINT_X),
+    )
+    .await;
     record("relayed", &r);
     assert!(
         !names(&r, "IntentMismatch") && !names(&r, "SwapUnderbounded"),
@@ -1301,7 +1312,15 @@ async fn a_relayer_taking_the_owners_swap_output_is_not_bound() {
         Beside::RelayerTakesOutput,
     );
     let p = primary_of(&ixs, JUPITER);
-    let r = verify(c, RELAYER, &ixs, p, "swap", swap_request("1", MINT_Y, MINT_X)).await;
+    let r = verify(
+        c,
+        RELAYER,
+        &ixs,
+        p,
+        "swap",
+        swap_request("1", MINT_Y, MINT_X),
+    )
+    .await;
     record("relayer takes output", &r);
     assert_ne!(
         r.decision,
@@ -1331,7 +1350,15 @@ async fn a_relayer_taking_the_owners_lamports_beside_a_swap_is_not_bound() {
         Beside::RelayerTakesLamports(9_000_000),
     );
     let p = primary_of(&ixs, JUPITER);
-    let r = verify(c, RELAYER, &ixs, p, "swap", swap_request("1", MINT_Y, MINT_X)).await;
+    let r = verify(
+        c,
+        RELAYER,
+        &ixs,
+        p,
+        "swap",
+        swap_request("1", MINT_Y, MINT_X),
+    )
+    .await;
     record("relayer takes lamports", &r);
     assert_ne!(
         r.decision,
@@ -1357,11 +1384,7 @@ const TREE: &str = "Tree111111111111111111111111111111111111111";
 /// owner's compressed NFT handed to the attacker), `Some(false)` a memo.
 fn sol_transfer(sibling: Option<bool>) -> (Cluster, Vec<Ix>) {
     let mut c = Cluster::default();
-    for (p, owner) in [
-        (SYSTEM, NATIVE_LOADER),
-        (MEMO, LOADER),
-        (FOREIGN, LOADER),
-    ] {
+    for (p, owner) in [(SYSTEM, NATIVE_LOADER), (MEMO, LOADER), (FOREIGN, LOADER)] {
         c.set(p, program_account(owner));
     }
     c.set(OWNER, acct(10 * SOL, SYSTEM, vec![]));
@@ -1382,7 +1405,11 @@ fn sol_transfer(sibling: Option<bool>) -> (Cluster, Vec<Ix>) {
             c.after(TREE, acct(SOL, FOREIGN, leaf));
             ixs.push(ix(
                 FOREIGN,
-                &[(TREE, false, true), (OWNER, true, false), (ATTACKER, false, false)],
+                &[
+                    (TREE, false, true),
+                    (OWNER, true, false),
+                    (ATTACKER, false, false),
+                ],
                 vec![163, 52, 200, 231, 140, 3, 69, 186],
             ));
         }

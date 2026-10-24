@@ -7082,11 +7082,7 @@ mod w19_scope_tests {
         assert!(!r.blocked, "{:?}", r.findings);
         // A sibling takes one more rent's worth to someone else.
         let r = report(
-            vec![
-                wallet_spends(2 * rent),
-                made,
-                system(ATTACKER, 1, rent + 1),
-            ],
+            vec![wallet_spends(2 * rent), made, system(ATTACKER, 1, rent + 1)],
             &accounts,
             &declared,
         );
