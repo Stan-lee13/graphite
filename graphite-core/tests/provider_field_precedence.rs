@@ -56,25 +56,56 @@ fn serve_simulation(extra: &str) -> String {
     let addr = listener.local_addr().unwrap();
     std::thread::spawn(move || {
         while let Ok((mut stream, _)) = listener.accept() {
-            let mut buf = vec![0u8; 65536];
-            let n = stream.read(&mut buf).unwrap_or(0);
-            let body = String::from_utf8_lossy(&buf[..n]).to_string();
+            let body = read_request(&mut stream);
             let payload = if body.contains("simulateTransaction") {
                 sim.clone()
             } else {
                 accounts.clone()
             };
+            // One request per connection, said so: without `Connection: close`
+            // the client may reuse a connection this loop has already dropped
+            // (CI run 40120795450: "request error" on the pre-state fetch).
             let _ = stream.write_all(
                 format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                     payload.len(),
                     payload
                 )
                 .as_bytes(),
             );
+            let _ = stream.flush();
         }
     });
     format!("http://{addr}")
+}
+
+/// The whole request: headers, then `Content-Length` bytes of body. A single
+/// `read` can return the headers alone, and a body not yet read cannot be told
+/// to be a `simulateTransaction`.
+fn read_request(stream: &mut std::net::TcpStream) -> String {
+    let mut buf = Vec::new();
+    let mut chunk = [0u8; 8192];
+    loop {
+        let text = String::from_utf8_lossy(&buf).to_string();
+        if let Some(end) = text.find("\r\n\r\n") {
+            let want = text[..end]
+                .lines()
+                .find_map(|l| {
+                    let (k, v) = l.split_once(':')?;
+                    k.eq_ignore_ascii_case("content-length")
+                        .then(|| v.trim().parse::<usize>().ok())
+                        .flatten()
+                })
+                .unwrap_or(0);
+            if buf.len() >= end + 4 + want {
+                return text;
+            }
+        }
+        match stream.read(&mut chunk) {
+            Ok(0) | Err(_) => return String::from_utf8_lossy(&buf).to_string(),
+            Ok(n) => buf.extend_from_slice(&chunk[..n]),
+        }
+    }
 }
 
 fn fixture() -> serde_json::Value {
