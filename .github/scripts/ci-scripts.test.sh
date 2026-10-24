@@ -149,7 +149,7 @@ echo "== mutation_floor.py (F-015)"
 # The shapes cargo-mutants 27.1.0 writes. A shard killed by the step timeout
 # leaves outcomes.json with total_mutants EQUAL to the outcomes recorded and
 # end_time null; only mutants.json, written before the first mutant runs,
-# holds the shard's own count. Run 40083338181 scored 15 such shards as
+# holds the shard's own count. Run 40083338181 scored 16 such shards as
 # complete.
 floor="$root/graphite-core/scripts/mutation_floor.py"
 shard() { # shard DIR LISTED CAUGHT MISSED UNVIABLE END_TIME

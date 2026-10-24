@@ -17,7 +17,7 @@ The shard's count is read from `mutants.json`, written beside
 `outcomes.json` before the first mutant runs. `outcomes.json`'s own
 `total_mutants` is NOT that count: cargo-mutants 27.1.0 raises it as each
 outcome lands, so on a shard killed by the step timeout it equals the
-outcomes recorded, and 15 of the 17 killed shards of run 40083338181 were
+outcomes recorded, and 16 of the 18 killed shards of run 40083338181 were
 scored as if complete. An interrupted run also leaves `end_time` null.
 """
 import os
