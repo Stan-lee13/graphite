@@ -566,7 +566,10 @@ transaction under the stated threat model, and no external party has yet tried.
 - **Pre-signature verification has a window.** The chain moves between
   verification and execution; the blockhash bounds that window to about a
   minute for ordinary transactions, and a permitted durable nonce removes the
-  bound.
+  bound. The agent guard builds no durable-nonce transaction and, since Round
+  35 (F-017), signs no verdict older than `GRAPHITE_MAX_VERDICT_AGE_MS`
+  (default 150 s); another signer under a Core with
+  `GRAPHITE_ALLOW_DURABLE_NONCE=1` has only its own bound.
 - **The manifest set covers a slice of the chain.** Measured 2026-09-27
   over three days: 84–87% of verified transactions call a primary program with
   no manifest; 71% of the drainer heuristic's refusals are of programs signed
@@ -606,8 +609,13 @@ transaction under the stated threat model, and no external party has yet tried.
 - **The agent guard's public API is still web3.js 1.x.** It builds legacy, v0
   (lookup tables, Round 22) and v1 (R-P8, compiled and signed through
   `@solana/kit`), but `GraphiteGuard`'s `Connection` and public types are
-  web3.js 1.x, whose own RPC reads are not bounded the way the guard's raw
-  JSON-RPC reads are (`readJsonBounded`, Round 25). Roadmap R-M15.
+  web3.js 1.x. Since Round 35 (F-014) its RPC requests are bounded like the
+  guard's raw JSON-RPC reads (`readJsonBounded`, Round 25): every one goes
+  through `boundedRpcFetch` (configured URL only, no redirect, a deadline over
+  headers and body, `GRAPHITE_RPC_TIMEOUT_MS`, default 30 s; 32 MiB; no 429
+  retry), and the guard's connections open no websocket (confirmation polls
+  over HTTP; subscriptions are refused). What remains of R-M15 is the public
+  type: a migration of the API off web3.js 1.x.
 - **Manifests are grounded where programs were seen running.** 383 of the 3,195
   manifest instructions of the Round 22 registry have been observed executing (three block samples plus
   2,998 per-program transactions); the rest are grounded in their programs'
@@ -828,7 +836,8 @@ CI's test-count gate holds each leg at these floors (`rust-test` matrix in
 Clippy `-D warnings` (all three feature legs) and fmt clean on the integrated tree;
 the release build (`--features server,cli`, thin LTO) builds.
 
-TypeScript (Round 34, run as CI runs them): agent guard 301; SolanaAgentKit adapter 9;
+TypeScript (Round 34, run as CI runs them; the four guard packages re-run in Round 35):
+agent guard 316 (301 before Round 35's transport, verdict-age and spend tests and Round 36's F-003 guard tests); SolanaAgentKit adapter 9;
 MCP server 9; Vercel AI adapter 11; TypeScript SDK 66 (62 hermetic, 4 against a live
 server — run in CI's container job); `emit:corpus` and `emit:artifact-fixture` with no
 drift. Not touched in Round 34 and not re-run: dashboard 31, production build OK; Go

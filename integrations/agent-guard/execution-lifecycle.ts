@@ -166,10 +166,51 @@ export interface ExecuteParams {
    * during the send cannot lose it. A throw aborts: nothing is sent.
    */
   beforeSubmit?: (signature: string) => void;
+  /**
+   * The verdict's age bound (Round 35, F-017). `requestedAt` is a reading of
+   * `now` (default `performance.now`, a monotonic clock a wall-clock change
+   * cannot move) taken BEFORE the verification was asked for, so the age is
+   * never under-counted. Immediately before signing, a verdict older than
+   * `maxMs` is refused with `StaleVerdict` and nothing is signed.
+   */
+  verdictAge?: { requestedAt: number; maxMs: number; now?: () => number };
 }
 
 /** How long a confirmation hook may take before it counts as declined (Round 30). */
 export const DEFAULT_CONFIRM_TIMEOUT_MS = 120_000;
+
+/**
+ * The oldest verdict the guard signs by default (Round 35, F-017): the
+ * default confirmation window (`DEFAULT_CONFIRM_TIMEOUT_MS`) plus 30 s for
+ * the verification's own round trip and the steps around it.
+ *
+ * Every transaction the guard builds is bounded by its blockhash as well
+ * (about 60–90 s of blocks); the guard refuses durable-nonce transactions at
+ * build, and the Core refuses them unless GRAPHITE_ALLOW_DURABLE_NONCE=1.
+ * This bound is the guard's own, on the verdict rather than the transaction,
+ * so it holds whatever the transaction's lifetime.
+ */
+export const DEFAULT_MAX_VERDICT_AGE_MS = 150_000;
+/** The largest bound an operator may set (ten minutes). */
+export const MAX_MAX_VERDICT_AGE_MS = 600_000;
+
+/**
+ * The verdict is older than the deployment signs (Round 35, F-017): the chain
+ * it was judged against has moved on. Nothing was signed or sent; ask again.
+ */
+export class StaleVerdict extends Error {
+  readonly ageMs: number;
+  readonly maxMs: number;
+  constructor(label: string, ageMs: number, maxMs: number) {
+    super(
+      `[Graphite] ${label}: the verdict is ${Math.round(ageMs)} ms old, over the ${maxMs} ms bound ` +
+        "(GRAPHITE_MAX_VERDICT_AGE_MS). Nothing was signed or sent; repeat the request for a fresh verdict.",
+    );
+    this.name = "StaleVerdict";
+    this.ageMs = ageMs;
+    this.maxMs = maxMs;
+  }
+}
 
 /** The person (or the caller's hook) did not confirm: nothing was signed or sent. */
 export class ConfirmationDeclined extends Error {
@@ -271,6 +312,15 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
   // 2. The one signing path: digest and signer set re-derived over this
   //    object, compared against what Graphite hashed.
   p.beforeSign?.();
+  // Round 35 (F-017): the verdict's age, with nothing awaited between this
+  // check and the digest recomputation inside `signApproved`.
+  if (p.verdictAge) {
+    const { requestedAt, maxMs } = p.verdictAge;
+    const age = (p.verdictAge.now ?? (() => performance.now()))() - requestedAt;
+    if (!Number.isFinite(age) || !Number.isSafeInteger(maxMs) || maxMs < 1 || age > maxMs) {
+      throw new StaleVerdict(label, Number.isFinite(age) ? age : Number.POSITIVE_INFINITY, maxMs);
+    }
+  }
   const raw = await p.bound.signApproved(scope.transaction_sha256, p.signers);
   log(
     `[Graphite] ${label}: transaction matches the approved digest ` +

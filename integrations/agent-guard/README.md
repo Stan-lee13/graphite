@@ -78,7 +78,7 @@ submitted — and nothing is signed under a residual the operator has not accept
   (`program_semantics`, `inner_instructions`). Every other code — `no_state_diff`,
   `simulation_failed`, `not_simulated`, `privileges_from_caller`, `privileges_absent`,
   `lookup_tables_unresolved`, `artifact_unparsed`, `account_identity_unparsed`,
-  `instruction_not_located` — **refuses execution** unless the operator names it in
+  `instruction_not_located`, `intent_parameters` (Round 36) — **refuses execution** unless the operator names it in
   `GRAPHITE_ACCEPT_UNOBSERVED` (comma-separated) or `create({ acceptUnobserved })`. A
   typo in that list is a startup error; a Core that reports no codes (pre-Round-9) is
   refused. The codes accepted for an execution are recorded on
@@ -132,6 +132,11 @@ submitted — and nothing is signed under a residual the operator has not accept
   more than the requested amount of the requested token (plus 0.01 SOL for fees and rent),
   spend no other token, and deliver the requested token (`assertSwapEffectMatches`), before
   the Core is asked. A request that says what it receives but not what it spends is refused.
+  Since Round 36 (F-003) the swap intent sent to the Core names the grounded MINTS
+  (`"SOL"` for the native mint), not the symbols as written: the Core binds the stated
+  amount and tokens to the bytes, reads a token only as `"SOL"` or a base58 mint, and
+  names whatever it could not bind `intent_parameters` — a non-inherent residual the
+  residual policy refuses unless the operator names it in `GRAPHITE_ACCEPT_UNOBSERVED`.
 - **A request that negates or cancels what it names is refused** (`assertAffirmative`):
   "Don't send 1 SOL to …", "Never swap …", "Cancel the transfer …", "Hold off …", "Please
   refrain …". Grounding establishes what a request names; this establishes that it asks
@@ -297,6 +302,35 @@ submitted — and nothing is signed under a residual the operator has not accept
 - **Transport (Round 29, M3).** `SOLANA_RPC_URL` is held to the Core's rule (https://, or
   http:// to loopback), and no RPC request follows a redirect. The AI layer's answer is
   read through a 64 KiB bound.
+  - *Every RPC request is bounded (Round 35, F-014).* The guard's raw JSON-RPC reads were
+    bounded since Round 25, but web3.js's `Connection` — blockhashes, lookup tables, the
+    advisory simulation, `sendRawTransaction` and the confirmation and repeat-check polls —
+    called `fetch` with no deadline and read the answer whole: an RPC that never answered
+    held `executeTransfer` open indefinitely (a hung send never reached the
+    outcome-unknown path), any answer size was accepted, and a 429 was retried five times
+    inside one call. Every request now goes through `boundedRpcFetch` (`rpc-transport.ts`):
+    the configured URL only, no redirect, one deadline over the headers and the whole body
+    (`GRAPHITE_RPC_TIMEOUT_MS` / `rpcTimeoutMs`, default 30 s, at most 120 s; a malformed
+    value refuses to start), 32 MiB at most, no 429 retry. A send that times out is
+    `SubmissionOutcomeUnknown`: its reservation is kept and the repeat waits for it.
+  - *No websocket (Round 35, F-014).* web3.js opens `ws(s)://<host>:<port + 1>` for every
+    subscription and for its own `confirmTransaction` — an endpoint the transport rule never
+    checked. The guard has confirmed by polling over HTTP since Round 29; the connection
+    `getConnection()` hands out is now a `BoundedConnection` too: its `confirmTransaction`
+    polls `getSignatureStatuses` / `getBlockHeight` through the bounded transport (same
+    signature and answer), and every subscription method (`onSignature`, `onAccountChange`,
+    `onLogs`, …) throws `RpcTransportRefusal` before a socket exists. It is still a
+    web3.js 1.x `Connection` (R-M15 is not a migration off web3.js); a caller who needs
+    subscriptions builds its own, outside the guard's policy.
+- **A verdict is signed young (Round 35, F-017).** Immediately before the digest is
+  recomputed and the bytes signed, a verdict older than `GRAPHITE_MAX_VERDICT_AGE_MS` /
+  `maxVerdictAgeMs` (default 150 s, at most 600 s), counted on a monotonic clock from
+  before the verification was asked for, is refused with `StaleVerdict`: nothing signed,
+  the reservation returned. A confirmation hook slower than the bound is answered too late
+  to sign (the guard warns at startup when `confirmTimeoutMs` is not below it). The guard
+  never builds a durable-nonce transaction whatever the Core permits
+  (`GRAPHITE_ALLOW_DURABLE_NONCE` is the Core's), so this bound and the blockhash both
+  hold for everything it signs.
 - **Version 0 through lookup tables (Round 22).** `BoundTransaction.build({ version: 0,
   addressLookupTables })` compiles a v0 message reading accounts through tables the
   caller has already fetched; `executeSwap` does so when the payload names

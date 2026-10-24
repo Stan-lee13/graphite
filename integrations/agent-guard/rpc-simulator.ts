@@ -49,6 +49,13 @@ import {
   MAX_LOADED_ACCOUNTS_DATA_SIZE_BYTES,
   type V1Limits,
 } from "./kit-artifact.js";
+import {
+  BoundedConnection,
+  boundedRpcFetch,
+  capturedFetch,
+  DEFAULT_RPC_TIMEOUT_MS,
+  MAX_RPC_RESPONSE_BYTES,
+} from "./rpc-transport.js";
 
 /** The block cost model charges loaded account data in 32 KiB pages. */
 export const LOADED_DATA_PAGE_BYTES = 32 * 1024;
@@ -151,32 +158,34 @@ export function assertEverySignatureSlotEmpty(wire: Uint8Array): void {
  * everything that went through a web3.js `Connection` — the advisory
  * simulation, blockhashes, lookup tables, submission — used web3.js's
  * default fetch, which follows them: an RPC answering 307 sent the request to
- * a location the transport rule never saw.
+ * a location the transport rule never saw. Round 35 (F-014): the guard's
+ * connections no longer use this; they use `boundedRpcFetch`, which refuses
+ * redirects too and adds a deadline and a body bound. Kept for callers.
  */
 export const noRedirectFetch: typeof globalThis.fetch = (input, init) =>
   capturedFetch(input, { ...(init ?? {}), redirect: "error" });
 
-/**
- * The process's `fetch`, captured when this module loads (Round 30). Every
- * request the guard makes to the RPC and the AI layer goes through it, so a
- * tool or plugin loaded later that reassigns `globalThis.fetch` does not get
- * to answer the simulations and submissions the guard decides on. Code loaded
- * BEFORE this module is outside what this can help with; isolating the key
- * from that is a separate signing process's job.
- */
-export const capturedFetch: typeof globalThis.fetch = globalThis.fetch.bind(globalThis);
+export { capturedFetch, MAX_RPC_RESPONSE_BYTES };
 
-/** A web3.js Connection that never follows a redirect (Round 29, M3). */
-export function connectionWithoutRedirects(rpcUrl: string): Connection {
-  return new Connection(rpcUrl, { commitment: "confirmed", fetch: noRedirectFetch });
+/**
+ * A web3.js Connection that never follows a redirect (Round 29, M3), and
+ * since Round 35 (F-014) is bounded: a deadline over every request and its
+ * whole answer, a body bound, no 429 retries and no websocket
+ * (`BoundedConnection`).
+ */
+export function connectionWithoutRedirects(rpcUrl: string, timeoutMs: number = DEFAULT_RPC_TIMEOUT_MS): Connection {
+  return new BoundedConnection(rpcUrl, { timeoutMs });
 }
 
 export class RpcSimulator {
   #connection: Connection;
   #rpcUrl: string;
-  constructor(rpcUrl: string) {
+  /** Every raw request goes through the bounded transport (Round 35, F-014). */
+  #fetch: typeof globalThis.fetch;
+  constructor(rpcUrl: string, timeoutMs: number = DEFAULT_RPC_TIMEOUT_MS) {
     this.#rpcUrl = rpcUrl;
-    this.#connection = connectionWithoutRedirects(rpcUrl);
+    this.#connection = connectionWithoutRedirects(rpcUrl, timeoutMs);
+    this.#fetch = boundedRpcFetch(rpcUrl, { timeoutMs });
   }
 
   /**
@@ -211,7 +220,7 @@ export class RpcSimulator {
       },
     });
     assertEverySignatureSlotEmpty(draft);
-    const response = await capturedFetch(this.#rpcUrl, {
+    const response = await this.#fetch(this.#rpcUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -223,8 +232,6 @@ export class RpcSimulator {
           { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed" },
         ],
       }),
-      redirect: "error",
-      signal: AbortSignal.timeout(30_000),
     });
     if (!response.ok) {
       throw new Error(`[RpcSimulator] v1 sizing simulation: HTTP ${response.status}`);
@@ -393,12 +400,10 @@ export class RpcSimulator {
   }
 
   async #rpc<T>(method: string, params: unknown[]): Promise<T> {
-    const response = await capturedFetch(this.#rpcUrl, {
+    const response = await this.#fetch(this.#rpcUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-      redirect: "error",
-      signal: AbortSignal.timeout(30_000),
     });
     if (!response.ok) throw new Error(`[RpcSimulator] ${method}: HTTP ${response.status}. REFUSING.`);
     const body = (await readJsonBounded(response)) as { error?: { message?: string }; result?: T };
@@ -413,14 +418,6 @@ export class RpcSimulator {
 Object.freeze(RpcSimulator.prototype);
 Object.freeze(RpcSimulator);
 
-/**
- * The most bytes one RPC answer may carry: the Core's own bound
- * (`rpc_client::MAX_RPC_RESPONSE_BYTES`, 32 MiB). External review
- * (2026-10-16): the guard parsed whatever an RPC sent with
- * `response.json()`, so a hostile or broken endpoint could hand the signing
- * process an answer of any size.
- */
-export const MAX_RPC_RESPONSE_BYTES = 32 * 1024 * 1024;
 
 /**
  * Read a JSON answer, refusing one larger than `max` bytes before it is

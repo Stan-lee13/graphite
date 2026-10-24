@@ -324,6 +324,148 @@ export interface MockRpc extends Loopback {
   };
 }
 
+/**
+ * How the hostile front answers one JSON-RPC method (Round 35, F-014):
+ *   forward       pass the request to the honest stand-in and its answer back
+ *   hang          accept the request and never answer
+ *   trickle       answer 200 at once, then one byte of body every 50 ms, forever
+ *   huge          the honest answer, padded past 32 MiB, streamed without a length
+ *   redirect      307 to `redirectTo` (another host)
+ *   rate-limit    429, every time
+ *   deliver-hang  pass the request on (a transaction lands) and never answer
+ */
+export type FrontMode = "forward" | "hang" | "trickle" | "huge" | "redirect" | "rate-limit" | "deliver-hang";
+
+export interface HostileFront {
+  /** The URL the guard is given. */
+  url: string;
+  /** Requests seen, by JSON-RPC method. */
+  counts: Map<string, number>;
+  /** Behaviour per method; a method not named is forwarded. */
+  modes: Map<string, FrontMode>;
+  redirectTo?: string;
+  /**
+   * Websocket upgrade requests seen, on the front's own port and on the next
+   * one (web3.js's default websocket endpoint is `ws://host:<port + 1>`).
+   */
+  upgrades: number;
+  close(): Promise<void>;
+}
+
+/**
+ * A slow, hostile or broken RPC in front of an honest stand-in (Round 35,
+ * F-014): per method, it forwards, hangs, trickles, oversizes, redirects or
+ * rate-limits. It also listens on its port + 1 and records every websocket
+ * upgrade either port receives. Loopback only.
+ */
+export async function mockHostileRpcFront(upstream: string): Promise<HostileFront> {
+  const timers = new Set<ReturnType<typeof setInterval>>();
+  const front: HostileFront = {
+    url: "",
+    counts: new Map(),
+    modes: new Map(),
+    upgrades: 0,
+    close: async () => {},
+  };
+  const handler = (req: IncomingMessage, res: ServerResponse) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (c: Buffer) => chunks.push(c));
+    req.on("end", () => {
+      const text = Buffer.concat(chunks).toString("utf8");
+      let method = "?";
+      try {
+        method = (JSON.parse(text) as { method?: string }).method ?? "?";
+      } catch {
+        /* not JSON-RPC */
+      }
+      front.counts.set(method, (front.counts.get(method) ?? 0) + 1);
+      const mode = front.modes.get(method) ?? "forward";
+      const upstreamAnswer = () =>
+        fetch(upstream, { method: "POST", headers: { "content-type": "application/json" }, body: text }).then(
+          async (r) => ({ status: r.status, body: await r.text() }),
+        );
+      switch (mode) {
+        case "hang":
+          return;
+        case "deliver-hang":
+          void upstreamAnswer().catch(() => {});
+          return;
+        case "trickle": {
+          res.writeHead(200, { "content-type": "application/json" });
+          res.write('{"jsonrpc":"2.0",');
+          const t = setInterval(() => res.write(" "), 50);
+          timers.add(t);
+          res.on("close", () => clearInterval(t));
+          return;
+        }
+        case "redirect":
+          res.writeHead(307, { location: front.redirectTo ?? "http://127.0.0.1:1/" });
+          res.end();
+          return;
+        case "rate-limit":
+          res.writeHead(429, { "content-type": "application/json" });
+          res.end('{"error":"too many requests"}');
+          return;
+        case "huge":
+          void upstreamAnswer().then(({ body }) => {
+            res.writeHead(200, { "content-type": "application/json" });
+            res.write(body.replace(/}\s*$/, ',"pad":"'));
+            const mib = Buffer.alloc(1024 * 1024, 0x61);
+            let left = 33;
+            const pump = () => {
+              while (left > 0) {
+                left -= 1;
+                if (!res.write(mib)) return void res.once("drain", pump);
+              }
+              res.end('"}');
+            };
+            pump();
+          });
+          return;
+        default:
+          void upstreamAnswer().then(
+            ({ status, body }) => {
+              res.writeHead(status, { "content-type": "application/json" });
+              res.end(body);
+            },
+            () => {
+              res.writeHead(502);
+              res.end();
+            },
+          );
+      }
+    });
+  };
+  const onUpgrade = (_req: IncomingMessage, socket: import("node:stream").Duplex) => {
+    front.upgrades += 1;
+    socket.destroy();
+  };
+  // A port P whose neighbour P + 1 is free too.
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const server = createServer(handler);
+    server.on("upgrade", onUpgrade);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    const sidecar = createServer((_q, r) => r.end());
+    sidecar.on("upgrade", onUpgrade);
+    const ok = await new Promise<boolean>((resolve) => {
+      sidecar.once("error", () => resolve(false));
+      sidecar.listen(port + 1, "127.0.0.1", () => resolve(true));
+    });
+    if (!ok) {
+      await closer(server)();
+      continue;
+    }
+    front.url = `http://127.0.0.1:${port}`;
+    front.close = async () => {
+      for (const t of timers) clearInterval(t);
+      await Promise.all([closer(server)(), closer(sidecar)()]);
+    };
+    return front;
+  }
+  throw new Error("no free port pair for the hostile RPC front");
+}
+
 export interface MockService extends Loopback {
   /** Replace the JSON answer for a route, e.g. `POST /parse`. */
   answer: Map<string, { status: number; body: unknown }>;
