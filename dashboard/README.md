@@ -190,6 +190,9 @@ that is down — in the sidebar, in a banner, and on every panel.
   (see `docs/phase2-plan.md` Feature 7).
 - Every request has a 15 s deadline (headers and body), so a Core that
   accepts a request and never answers cannot stall a view's polling.
+- Every answer is read up to 32 MiB, by its declared length and as it
+  streams (Round 38, G2-6; `/manifests`, the largest, is about 4.6 MB). A
+  larger one is not read, and the view reports the answer as unreadable.
 - Errors are surfaced in the UI, never silently swallowed: a source that
   has delivered keeps its last good payload on screen under a banner naming
   the failure and the data's age; every view shows when its data was last

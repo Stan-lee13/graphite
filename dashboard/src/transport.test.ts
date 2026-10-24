@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import * as transport from "./transport.ts";
 import { fetchFromCore, insecureBaseReason, isLoopbackHost } from "./transport.ts";
 
 const LOCAL_PAGE = "http://127.0.0.1:5173";
@@ -139,4 +140,54 @@ test("an empty base on a page with no origin names the real problem", () => {
   assert.doesNotMatch(why, /"" is not a URL/);
   assert.match(why, /no web origin/);
   assert.match(insecureBaseReason("nope", LOCAL_PAGE) ?? "", /"nope" is not a URL/);
+});
+
+// Round 38 (G2-6): the body was read with `resp.text()`, whatever its size,
+// so a Core (or anything answering for it) could hand the console a body of
+// any size. It is now read up to a bound, declared or streamed, and a larger
+// one is a failed request. Read off the module so this runs (and fails) on a
+// console that predates the bound.
+const bound = transport as unknown as { MAX_RESPONSE_BYTES?: number; ResponseTooLarge?: new (...a: never[]) => Error };
+
+test("an answer over the size bound is refused, whether its length is declared or it is streamed", async () => {
+  assert.equal(bound.MAX_RESPONSE_BYTES, 32 * 1024 * 1024, "the default bound");
+  const max = 1024;
+  const declared = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "application/json", "content-length": String(max + 1) });
+    res.end("x".repeat(max + 1));
+  });
+  const streamed = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" }); // chunked: no length to read
+    const t = setInterval(() => res.write("y".repeat(256)), 5);
+    res.on("close", () => clearInterval(t));
+  });
+  const exact = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end("z".repeat(max));
+  });
+  for (const server of [declared, streamed, exact]) {
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  }
+  const url = (server: typeof declared) => `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/graph`;
+  try {
+    for (const server of [declared, streamed]) {
+      const started = Date.now();
+      await assert.rejects(
+        (fetchFromCore as (...a: unknown[]) => Promise<unknown>)(url(server), {}, 5_000, max),
+        (e: unknown) => {
+          assert.ok(bound.ResponseTooLarge && e instanceof bound.ResponseTooLarge, String(e));
+          assert.match((e as Error).message, /over the 1024-byte bound/);
+          return true;
+        },
+      );
+      assert.ok(Date.now() - started < 4_000, "refused at the bound, not at the deadline");
+    }
+    const ok = await (fetchFromCore as (...a: unknown[]) => Promise<{ text: string }>)(url(exact), {}, 5_000, max);
+    assert.equal(ok.text.length, max, "a body at the bound is read whole");
+  } finally {
+    for (const server of [declared, streamed, exact]) {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }
 });

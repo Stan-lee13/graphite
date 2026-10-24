@@ -85,6 +85,7 @@ export async function fetchFromCore(
   url: string,
   headers: Record<string, string>,
   timeoutMs: number = REQUEST_TIMEOUT_MS,
+  maxBytes: number = MAX_RESPONSE_BYTES,
 ): Promise<CoreResponse> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
@@ -92,11 +93,59 @@ export async function fetchFromCore(
     const resp = await fetch(url, { headers, redirect: "error", signal: ctl.signal });
     // The body is read under the same deadline: a Core that sends its
     // headers and then stalls mid-body is as stuck as one that never answers.
-    const text = await resp.text();
+    // Round 38 (G2-6): and up to a bound, declared or streamed.
+    const text = await readBounded(resp, maxBytes, ctl);
     return { ok: resp.ok, status: resp.status, text };
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * The most bytes one Core answer may carry (Round 38, G2-6): the bound the
+ * guard holds its RPC answers to, and the Core its own (32 MiB). The body
+ * was read with `resp.text()`, so whatever answered for the Core could hand
+ * the console a body of any size and hold the tab's memory with it.
+ */
+export const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
+
+/** A Core answer larger than `MAX_RESPONSE_BYTES`: not read, the request failed. */
+export class ResponseTooLarge extends Error {
+  constructor(how: string, max: number) {
+    super(`The Core's answer is over the ${max}-byte bound (${how}); it was not read.`);
+    this.name = "ResponseTooLarge";
+  }
+}
+
+/** The body as text, refused past `max` bytes: a declared length first, then as it streams. */
+async function readBounded(resp: Response, max: number, ctl: AbortController): Promise<string> {
+  const declared = resp.headers.get("content-length");
+  if (declared !== null && Number(declared) > max) {
+    ctl.abort();
+    throw new ResponseTooLarge(`it declares ${declared} bytes`, max);
+  }
+  if (!resp.body) return "";
+  const reader = resp.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel().catch(() => {});
+      ctl.abort();
+      throw new ResponseTooLarge("as it streamed", max);
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    all.set(c, at);
+    at += c.byteLength;
+  }
+  return new TextDecoder().decode(all);
 }
 
 /**

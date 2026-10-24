@@ -20,7 +20,7 @@ import {
   checkTop,
   checkViolations,
 } from "./shape";
-import { fetchFromCore, insecureBaseReason, type CoreResponse } from "./transport";
+import { fetchFromCore, insecureBaseReason, ResponseTooLarge, type CoreResponse } from "./transport";
 
 export { normaliseBase, storageGet, storageSet, type Connection } from "./connection";
 
@@ -318,7 +318,9 @@ async function request(path: string, conn: Connection = getConnection()): Promis
     // A5-04: a redirect rejects here and is reported as no response; so does
     // a request that outlives its deadline (Round 29, D3).
     resp = await fetchFromCore(`${conn.base}${path}`, authHeaders(conn.key));
-  } catch {
+  } catch (e) {
+    // Round 38 (G2-6): an answer over the size bound came, and is not read.
+    if (e instanceof ResponseTooLarge) throw new ApiError("malformed", path, undefined, e.message);
     throw new ApiError("network", path);
   }
   if (resp.ok) return resp;
