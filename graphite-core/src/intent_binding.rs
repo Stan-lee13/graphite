@@ -1326,12 +1326,10 @@ fn keeps_value(
                             }
                         }
                     }
-                    Some(6) => {
-                        if account(ix, 1).is_some_and(|a| signer(&a)) {
-                            return Err(Binding::mismatch(format!(
-                                "{what}: instruction {i} (SetAuthority) hands an authority a signer holds to someone else beside it"
-                            )));
-                        }
+                    Some(6) if account(ix, 1).is_some_and(|a| signer(&a)) => {
+                        return Err(Binding::mismatch(format!(
+                            "{what}: instruction {i} (SetAuthority) hands an authority a signer holds to someone else beside it"
+                        )));
                     }
                     _ => {}
                 }
@@ -1567,9 +1565,7 @@ fn bind_create(input: &BindingInput<'_>) -> Binding {
             let native = input
                 .params
                 .and_then(|p| p.input_token.as_ref())
-                .map_or(true, |t| {
-                    matches!(read_asset(t, "input token"), Ok(Asset::Native))
-                });
+                .is_none_or(|t| matches!(read_asset(t, "input token"), Ok(Asset::Native)));
             if !native {
                 return Binding::unbound(format!(
                     "the request funds a creation with {text} of a token; the Core holds a creation to SOL"
