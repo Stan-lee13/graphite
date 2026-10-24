@@ -1165,6 +1165,12 @@ pub struct WalletEffect {
     pub wrapped_sol_delta: i128,
     /// Every other mint's net change across the wallet's token accounts.
     pub token_delta: BTreeMap<String, i128>,
+    /// Round 38 (R37-1): every lamport leaving the wallet and the token
+    /// accounts it owns, rent and the fee included. Rent moved between the
+    /// wallet and its own accounts (an associated token account created, a
+    /// wSOL account closed to the wallet) nets out here, so for a swap that
+    /// pays out SOL `-lamports_out` is what reached the signer, less the fee.
+    pub lamports_out: i128,
 }
 
 /// The same reading as the guard's `walletEffectOf`: a token account the
@@ -1174,13 +1180,20 @@ pub fn wallet_effect(diff: &StateDiff, wallet: &str) -> WalletEffect {
     for d in &diff.deltas {
         if d.pubkey == wallet {
             e.sol_out += i128::from(d.lamports_before()) - i128::from(d.lamports_after());
+            e.lamports_out += i128::from(d.lamports_before()) - i128::from(d.lamports_after());
         }
         for (snap, sign) in [(d.before.as_ref(), 1i128), (d.after.as_ref(), -1i128)] {
-            let Some(t) = snap.and_then(|s| s.token.as_ref()) else {
+            let Some(s) = snap else {
+                continue;
+            };
+            let Some(t) = s.token.as_ref() else {
                 continue;
             };
             if t.owner != wallet {
                 continue;
+            }
+            if d.pubkey != wallet {
+                e.lamports_out += sign * i128::from(s.lamports);
             }
             let amount = i128::from(t.amount);
             if t.mint == NATIVE_MINT {
@@ -1214,6 +1227,145 @@ fn slippage(params: Option<&ExtractedParameters>) -> Result<u64, Binding> {
 /// Whether `min_out` is within `bps` of `simulated`: min × 10⁴ ≥ simulated × (10⁴ − bps).
 fn within_slippage(min_out: u64, simulated: i128, bps: u64) -> bool {
     i128::from(min_out) * 10_000 >= simulated * i128::from(10_000 - bps)
+}
+
+/// Whether `account` is a signer's own: a signer itself, or a token account a
+/// signer owns before or after the simulation. An account the simulation did
+/// not observe is nobody's the Core can vouch for.
+fn signers_own(account: &str, signers: &[String], diff: &StateDiff) -> bool {
+    if signers.iter().any(|s| s == account) {
+        return true;
+    }
+    diff.deltas.iter().any(|d| {
+        d.pubkey == account
+            && [d.before.as_ref(), d.after.as_ref()]
+                .into_iter()
+                .flatten()
+                .any(|s| s.token.as_ref().is_some_and(|t| signers.contains(&t.owner)))
+    })
+}
+
+/// Round 38 (R37-1): nothing beside a swap or a withdrawal takes value from a
+/// signer.
+///
+/// Round 36 tied a swap to its request by the route's decoded amounts and the
+/// fee payer's NET change, and a withdrawal by its recipient's net credit. A
+/// sibling could move value out of the same accounts and leave every net
+/// inside its bound: the route paid 100 into the signer's account, a
+/// `TransferChecked` beside it sent 49.6 of it on, and the 50.4 left still met
+/// the minimum of 50 (`executable_approved`). Two rules, both from Graphite's
+/// own reading:
+///
+/// - Every top-level System, SPL Token or Token-2022 instruction that moves
+///   value under a signer's authority sends it to a signer's own account
+///   (transfers, account creation, `CloseAccount`); one that hands a signer's
+///   account to someone else (`Approve`, `SetAuthority`) or destroys value
+///   (`Burn`) is a mismatch. These are read from the bytes.
+/// - No account outside the signers' own and `route`'s gains lamports or a
+///   token of `mints`. This is read from the diff, so a skim done by CPI from
+///   any program is caught the same way.
+fn keeps_value(
+    what: &str,
+    ixs: &[Ix],
+    route: &[&Ix],
+    signers: &[String],
+    diff: &StateDiff,
+    mints: &[String],
+) -> Result<(), Binding> {
+    let own = |a: &str| signers_own(a, signers, diff);
+    let signer = |a: &str| signers.iter().any(|s| s == a);
+    for (i, ix) in ixs.iter().enumerate() {
+        if route.iter().any(|r| std::ptr::eq(*r, ix)) {
+            continue;
+        }
+        let token_program =
+            ix.program_id == SPL_TOKEN_PROGRAM || ix.program_id == SPL_TOKEN_2022_PROGRAM;
+        let moved = if ix.program_id == SYSTEM_PROGRAM {
+            system_movement(ix)
+        } else if token_program {
+            token_movement(ix)
+        } else {
+            None
+        };
+        match moved {
+            Some(Err(e)) => {
+                return Err(Binding::unbound(format!(
+                    "{what}: instruction {i} beside it is unreadable ({e})"
+                )))
+            }
+            Some(Ok(m)) if signer(&m.authority) => {
+                let op = match &m.kind {
+                    MovementKind::Token { op, .. } => Some(*op),
+                    MovementKind::Lamports => None,
+                };
+                if op == Some(TokenOp::Burn) {
+                    return Err(Binding::mismatch(format!(
+                        "{what}: instruction {i} ({}) burns {} of a signer's tokens beside it",
+                        m.what, m.amount
+                    )));
+                }
+                if !own(&m.to) {
+                    return Err(Binding::mismatch(format!(
+                        "{what}: instruction {i} ({}) moves {} from a signer to {}, which is not a signer's own account",
+                        m.what, m.amount, m.to
+                    )));
+                }
+            }
+            Some(Ok(_)) => {}
+            None if token_program => {
+                // CloseAccount { }: [account, destination, owner];
+                // SetAuthority { .. }: [account, current authority].
+                match ix.data.first() {
+                    Some(9) => {
+                        if let (Some(dest), Some(owner)) = (account(ix, 1), account(ix, 2)) {
+                            if signer(&owner) && !own(&dest) {
+                                return Err(Binding::mismatch(format!(
+                                    "{what}: instruction {i} (CloseAccount) sends a signer's account's lamports to {dest}, which is not a signer's own account"
+                                )));
+                            }
+                        }
+                    }
+                    Some(6) => {
+                        if account(ix, 1).is_some_and(|a| signer(&a)) {
+                            return Err(Binding::mismatch(format!(
+                                "{what}: instruction {i} (SetAuthority) hands an authority a signer holds to someone else beside it"
+                            )));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            None => {}
+        }
+    }
+    let in_route = |a: &str| route.iter().any(|r| r.accounts.iter().any(|x| x == a));
+    for d in &diff.deltas {
+        if in_route(&d.pubkey) || own(&d.pubkey) {
+            continue;
+        }
+        if d.lamport_delta() > 0 {
+            return Err(Binding::mismatch(format!(
+                "{what}: {} gained {} lamports, and it is neither a signer's account nor one of the route's",
+                d.pubkey,
+                d.lamport_delta()
+            )));
+        }
+        let amount = |s: Option<&crate::state_diff::AccountSnapshot>, mint: &str| {
+            s.and_then(|s| s.token.as_ref())
+                .filter(|t| t.mint == mint)
+                .map_or(0, |t| i128::from(t.amount))
+        };
+        for mint in mints {
+            let gained = amount(d.after.as_ref(), mint) - amount(d.before.as_ref(), mint);
+            if gained > 0 {
+                return Err(Binding::mismatch(format!(
+                    "{what}: {} gained {gained} base units of {mint}, and it is neither a signer's account nor one of the route's",
+                    d.pubkey
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn bind_swap(input: &BindingInput<'_>) -> Binding {
@@ -1312,19 +1464,33 @@ fn bind_swap(input: &BindingInput<'_>) -> Binding {
             "no simulated state diff: what the swap spends and delivers was not measured, so neither is tied to the request",
         );
     };
+    if let Err(b) = keeps_value(
+        decoded.name,
+        ixs,
+        &[ix],
+        input.signers,
+        diff,
+        &[in_mint.clone(), out_mint.clone()],
+    ) {
+        return b;
+    }
     let effect = wallet_effect(diff, wallet);
+    // Round 38 (R37-1): what leaves the wallet is held to what the ROUTE
+    // spends, not to the request: a route spending 0.001 of a 1 SOL request
+    // beside a transfer of the rest is not a 1 SOL swap.
     if in_mint == NATIVE_MINT {
-        if effect.sol_out > i128::from(requested) + SWAP_SOL_OVERHEAD_LAMPORTS as i128 {
+        if effect.sol_out > i128::from(decoded.amount_in) + SWAP_SOL_OVERHEAD_LAMPORTS as i128 {
             return Binding::mismatch(format!(
-                "the request spends {amount_text} SOL; the simulation takes {} lamports out of the wallet, more than {requested} plus {SWAP_SOL_OVERHEAD_LAMPORTS} for fees and rent",
-                effect.sol_out
+                "{} spends {} lamports; the simulation takes {} lamports out of the wallet, more than that plus {SWAP_SOL_OVERHEAD_LAMPORTS} for fees and rent (the request: {amount_text} SOL)",
+                decoded.name, decoded.amount_in, effect.sol_out
             ));
         }
     } else {
         let spent = -effect.token_delta.get(&in_mint).copied().unwrap_or(0);
-        if spent > i128::from(requested) {
+        if spent > i128::from(decoded.amount_in) {
             return Binding::mismatch(format!(
-                "the request spends {requested} base units of {in_mint}; the simulation takes {spent}"
+                "{} spends {} base units of {in_mint}; the simulation takes {spent} (the request: {requested})",
+                decoded.name, decoded.amount_in
             ));
         }
         if effect.sol_out > SWAP_SOL_OVERHEAD_LAMPORTS as i128 {
@@ -1343,7 +1509,10 @@ fn bind_swap(input: &BindingInput<'_>) -> Binding {
         }
     }
     let delivered = if out_mint == NATIVE_MINT {
-        effect.wrapped_sol_delta
+        // SOL may arrive wrapped, or be unwrapped to the wallet beside the
+        // route (the signer's own `CloseAccount`, which `keeps_value`
+        // allows): every lamport that reached the signer, less the fee.
+        effect.wrapped_sol_delta.max(-effect.lamports_out)
     } else {
         effect.token_delta.get(&out_mint).copied().unwrap_or(0)
     };
@@ -1378,15 +1547,30 @@ fn bind_swap(input: &BindingInput<'_>) -> Binding {
 
 // ── Withdrawals (F-004) ─────────────────────────────────────────────────────
 
+/// What rides beside a withdrawal (Round 38, R37-1): the transaction's
+/// top-level instructions, the signers, and the withdrawing program.
+pub struct WithdrawalContext<'a> {
+    pub instructions: Result<&'a [Ix], &'a str>,
+    pub signers: &'a [String],
+    pub program_id: &'a str,
+}
+
 /// A granted withdrawal's minimum outputs against what the simulation
 /// delivered (Round 36, F-004). `minimums` are `(name, value, recipient
 /// account)`. A minimum is held to `slippage` of the recipient's simulated
 /// token credit; a withdrawal with no minimum the chain enforces is unbound.
+///
+/// Round 38 (R37-1): the credit is net, so a sibling that moved part of it
+/// on left the remainder inside the bound (a CLMM `decrease_liquidity_v2`
+/// paying 500 beside a `TransferChecked` of 96 to someone else was
+/// `executable_approved` at a minimum of 400). `keeps_value` now holds what
+/// rides beside it.
 pub fn bind_withdrawal(
     instruction: &str,
     minimums: &[(&str, u64, String)],
     params: Option<&ExtractedParameters>,
     diff: Option<&StateDiff>,
+    beside: &WithdrawalContext<'_>,
 ) -> Binding {
     if minimums.is_empty() {
         return Binding::unbound(format!(
@@ -1408,6 +1592,34 @@ pub fn bind_withdrawal(
             "no simulated state diff: what {instruction} delivers was not measured, so its minimum outputs cannot be held to it"
         ));
     };
+    let ixs = match beside.instructions {
+        Ok(ixs) => ixs,
+        Err(why) => {
+            return Binding::unbound(format!(
+                "{instruction}: the transaction's instructions are not readable ({why}), so what rides beside the withdrawal cannot be held"
+            ))
+        }
+    };
+    let route: Vec<&Ix> = ixs
+        .iter()
+        .filter(|ix| ix.program_id == beside.program_id)
+        .collect();
+    let mints: Vec<String> = minimums
+        .iter()
+        .filter_map(|(_, _, recipient)| {
+            let d = diff.deltas.iter().find(|d| &d.pubkey == recipient)?;
+            Some(d.after.as_ref()?.token.as_ref()?.mint.clone())
+        })
+        .collect();
+    if let Err(b) = keeps_value(instruction, ixs, &route, beside.signers, diff, &mints) {
+        return match b {
+            Binding::Mismatch { reason, .. } => Binding::Mismatch {
+                pattern: WITHDRAWAL_UNDERBOUNDED,
+                reason,
+            },
+            other => other,
+        };
+    }
     let mut held = Vec::new();
     for (name, min, recipient) in minimums {
         let Some(delta) = diff.deltas.iter().find(|d| &d.pubkey == recipient) else {

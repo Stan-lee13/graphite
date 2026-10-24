@@ -9604,28 +9604,31 @@ impl GraphiteCore {
         let binding_diff = observed_diff
             .as_ref()
             .filter(|d| d.provenance == crate::state_diff::DiffProvenance::RpcSimulated);
+        let (instructions, signers) = binding_instructions(
+            input,
+            artifact_message.as_ref(),
+            resolved_lookups.as_ref().and_then(|r| r.as_ref().ok()),
+        );
         let intent_binding = match &withdrawal_minimums {
             Some(minimums) => crate::intent_binding::bind_withdrawal(
                 &instruction_name,
                 minimums,
                 input.proposed_intent.extracted_parameters.as_ref(),
                 binding_diff,
-            ),
-            None => {
-                let (instructions, signers) = binding_instructions(
-                    input,
-                    artifact_message.as_ref(),
-                    resolved_lookups.as_ref().and_then(|r| r.as_ref().ok()),
-                );
-                crate::intent_binding::bind(&crate::intent_binding::BindingInput {
-                    canonical_intent: &declared_intent,
-                    params: input.proposed_intent.extracted_parameters.as_ref(),
+                &crate::intent_binding::WithdrawalContext {
                     instructions: instructions.as_deref().map_err(|e| e.as_str()),
                     signers: &signers,
-                    diff: binding_diff,
-                    mint_decimals: &binding_mint_decimals,
-                })
-            }
+                    program_id: &input.program_id,
+                },
+            ),
+            None => crate::intent_binding::bind(&crate::intent_binding::BindingInput {
+                canonical_intent: &declared_intent,
+                params: input.proposed_intent.extracted_parameters.as_ref(),
+                instructions: instructions.as_deref().map_err(|e| e.as_str()),
+                signers: &signers,
+                diff: binding_diff,
+                mint_decimals: &binding_mint_decimals,
+            }),
         };
         let mut intent_unbound: Option<String> = None;
         let risk_summary = match intent_binding {
