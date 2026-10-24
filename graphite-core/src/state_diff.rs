@@ -1492,6 +1492,31 @@ fn lamports_kept_by(
 /// is a cost to the payer only as above. A signer whose account another
 /// program owns after the transaction is still judged as a signer for its
 /// own losses; lamports it receives are its gain, not the user's.
+/// Whether a signer holds `d` (Round 38, R37-6): it is a signer, or on
+/// either side of the transaction it is a token account a signer owns, a
+/// native account whose recorded authority is a signer, or a mint whose mint,
+/// freeze or extension authority is a signer.
+fn signer_holds(d: &AccountDelta, signers: &std::collections::HashSet<&str>) -> bool {
+    let is = |who: &str| signers.contains(who);
+    let some = |who: &Option<String>| who.as_deref().is_some_and(is);
+    is(&d.pubkey)
+        || [d.before.as_ref(), d.after.as_ref()]
+            .into_iter()
+            .flatten()
+            .any(|s| {
+                s.token.as_ref().is_some_and(|t| is(&t.owner))
+                    || s.native_authorities.iter().any(|(_, who)| is(who))
+                    || s.mint
+                        .as_ref()
+                        .is_some_and(|m| some(&m.mint_authority) || some(&m.freeze_authority))
+                    || s.token2022_powers.as_ref().is_some_and(|p| {
+                        p.extension_authorities.iter().any(|(_, who)| some(who))
+                            || p.permanent_delegate.as_ref().is_some_and(some)
+                            || p.close_authority.as_ref().is_some_and(some)
+                    })
+            })
+}
+
 fn signer_lamport_losses(
     changed: &[&AccountDelta],
     signers: &std::collections::HashSet<&str>,
@@ -4053,7 +4078,22 @@ pub fn check_state_diff_with(input: &StateDiffCheck<'_>, relax: L4Relaxations) -
             .get(d.pubkey.as_str())
             .map(Vec::as_slice)
             .unwrap_or(&[]);
-        let declares = |effect: &str| declared.covers(effect, names);
+        // Round 38 (R37-6): for an account a signer holds, an effect is
+        // declared only by a line that names it. Round 34 moved the debit and
+        // create judgements to `covers_by_name` (R33-5) and left these on
+        // `covers`, so "updates protocol configuration or authority", a line
+        // that names no account, excused a delegate granted on the signer's
+        // own token account, an owner or close authority handed away, or the
+        // signer's account closed. Pool and vault accounts keep `covers`: a
+        // program's own state is what such a line is about.
+        let held = signer_holds(d, &signers);
+        let declares = |effect: &str| {
+            if held {
+                declared.covers_by_name(effect, names)
+            } else {
+                declared.covers(effect, names)
+            }
+        };
         let is_fee_payer = input.fee_payer == Some(d.pubkey.as_str());
 
         // A write to an account the transaction did not mark writable is
