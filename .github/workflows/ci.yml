@@ -776,7 +776,7 @@ jobs:
           npm ci --ignore-scripts
           npm run typecheck
           npm test 2>&1 | tee "$RUNNER_TEMP/vercel-ai.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/vercel-ai.log" 11
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/vercel-ai.log" 12
       - name: MCP server typecheck + tests
         working-directory: integrations/mcp-server
         run: |
@@ -785,7 +785,7 @@ jobs:
           npm ci --ignore-scripts
           npm run typecheck
           npm test 2>&1 | tee "$RUNNER_TEMP/mcp-server.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/mcp-server.log" 9
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/mcp-server.log" 10
       - name: SAK adapter typecheck + tests
         working-directory: integrations/solana-agent-kit
         run: |
@@ -800,7 +800,7 @@ jobs:
           npm ci --ignore-scripts
           npm run typecheck
           npm test 2>&1 | tee "$RUNNER_TEMP/sak.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sak.log" 9
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sak.log" 10
 
   go:
     name: Go SDK — fmt, vet, tests

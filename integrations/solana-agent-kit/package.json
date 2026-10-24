@@ -4,7 +4,7 @@
   "engines": {
     "node": ">=22"
   },
-  "description": "Solana Agent Kit adapter for Graphite: the verified paths are @graphite/agent-guard's; SAK gets a wallet that cannot sign.",
+  "description": "Solana Agent Kit adapter for Graphite: the verified paths are @graphite/agent-guard's; SAK agents are built on a wallet that cannot sign.",
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -12,11 +12,11 @@
   },
   "dependencies": {
     "@solana/web3.js": "^1.99.0",
-    "bs58": "^6.0.0",
-    "solana-agent-kit": "^2.0.10"
+    "bs58": "^6.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "solana-agent-kit": "^2.0.10",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   },
@@ -29,7 +29,9 @@
     "ip-address": "10.7.4",
     "qs": "6.16.1",
     "@modelcontextprotocol/sdk": "^1.32.1",
-    "proxy-addr": "2.0.8"
+    "proxy-addr": "2.0.8",
+    "zod": "4.6.7",
+    "@openai/zod": "npm:zod@4.6.7"
   },
   "license": "MIT"
 }
