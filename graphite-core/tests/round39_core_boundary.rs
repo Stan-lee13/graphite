@@ -10,6 +10,10 @@
 //!   host and passed on that host's answer.
 //! - R39-CB-6: `graphite audit verify` of a directory holding no trail
 //!   exited 2 ("no chained record") instead of 3 (nothing could be read).
+//!
+//! Every test here drives the server or `healthcheck`, which need the
+//! `server` feature; CI's default leg runs them.
+#![cfg(feature = "server")]
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};

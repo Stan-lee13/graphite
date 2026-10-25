@@ -3026,14 +3026,20 @@ fn rss_kib() -> u64 {
 /// history of unkeyed records a key adoption covers. `TrailFacts::covered`
 /// keeps one `(seq, 16-byte hash)` per covered record for the life of the
 /// process (the server computes it at start), so the memory grows with the
-/// unkeyed history, not with anything bounded. The trail is opened in a
-/// fresh child process (this test, re-run with `CB5_OPEN`), so what earlier
-/// steps allocated and freed does not hide what the reader holds. Run with
-/// `cargo test --lib keyed_reader_memory -- --ignored --nocapture`.
+/// unkeyed history, not with anything bounded. It takes two runs, so what
+/// writing the history allocated and freed does not hide what the reader
+/// holds: `cargo test --lib keyed_reader_memory -- --ignored --nocapture`
+/// writes the trail and prints the second command, which opens it in a
+/// fresh process (`CB5_OPEN`) and reports. The Core's sources spawn no
+/// process (`tests/ai_layer_isolation.rs`), this test included.
 #[cfg(target_os = "linux")]
 #[test]
-#[ignore]
+#[ignore = "measurement in two runs: cargo test --lib keyed_reader_memory -- --ignored --nocapture, then the command it prints"]
 fn keyed_reader_memory_for_an_adopted_unkeyed_history() {
+    let n: u64 = std::env::var("CB5_RECORDS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(300_000);
     if let Ok(dir) = std::env::var("CB5_OPEN") {
         let path = audit_path(Path::new(&dir));
         let key = AuditKey::from_bytes(&[77u8; 32]).unwrap();
@@ -3042,14 +3048,15 @@ fn keyed_reader_memory_for_an_adopted_unkeyed_history() {
         let server = keyed(&path, &key, 0);
         let opened = t.elapsed();
         let after = rss_kib();
-        println!("CB5 {before} {after} {}", opened.as_millis());
         close(server);
+        eprintln!(
+            "R39-CB-5: {n} unkeyed records under a key adoption: a keyed writer opened in {:.1} s, its resident memory {before} KiB -> {after} KiB ({:.0} bytes per covered record)",
+            opened.as_secs_f64(),
+            after.saturating_sub(before) as f64 * 1024.0 / n as f64
+        );
+        std::fs::remove_dir_all(&dir).ok();
         return;
     }
-    let n: u64 = std::env::var("CB5_RECORDS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(300_000);
     let dir = temp_dir("r39-cb-5");
     let path = audit_path(&dir);
     {
@@ -3088,34 +3095,9 @@ fn keyed_reader_memory_for_an_adopted_unkeyed_history() {
     .unwrap();
     close(adopt);
     let size = std::fs::metadata(&archive).unwrap().len();
-    let out = std::process::Command::new(std::env::current_exe().unwrap())
-        .args([
-            "--exact",
-            "durable::chain_trail_tests::keyed_reader_memory_for_an_adopted_unkeyed_history",
-            "--ignored",
-            "--nocapture",
-            "--test-threads=1",
-        ])
-        .env("CB5_OPEN", &dir)
-        .output()
-        .unwrap();
-    let text = String::from_utf8_lossy(&out.stdout);
-    let line = text
-        .lines()
-        .find_map(|l| l.split_once("CB5 ").map(|(_, rest)| rest))
-        .unwrap_or_else(|| panic!("the child did not report: {text}"));
-    let v: Vec<u64> = line
-        .split_whitespace()
-        .map(|x| x.parse().unwrap())
-        .collect();
-    let grown = v[1].saturating_sub(v[0]);
     eprintln!(
-        "R39-CB-5: {n} unkeyed records ({} MiB, in an archive) under a key adoption: a keyed writer opened in {:.1} s, its resident memory {} KiB -> {} KiB ({:.0} bytes per covered record)",
+        "R39-CB-5: {n} unkeyed records ({} MiB, in an archive) written under a key adoption. Measure the reader in a fresh process:\n  CB5_OPEN={} CB5_RECORDS={n} cargo test --lib keyed_reader_memory -- --ignored --nocapture",
         size >> 20,
-        v[2] as f64 / 1000.0,
-        v[0],
-        v[1],
-        grown as f64 * 1024.0 / n as f64
+        dir.display()
     );
-    std::fs::remove_dir_all(&dir).ok();
 }
