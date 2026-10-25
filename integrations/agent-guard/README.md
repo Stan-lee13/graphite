@@ -300,6 +300,11 @@ submitted — and nothing is signed under a residual the operator has not accept
     a native addon, and the guard loads none. The default sits in the user's own profile,
     whose ACL admits the user, SYSTEM and the Administrators only; a `GRAPHITE_GUARD_LOCK_DIR`
     named on Windows must be kept private by the operator. The startup log says so.
+    Round 40: CI runs this package's typecheck and tests on Windows (`agent-guard-windows`
+    in `.github/workflows/ci.yml`). `guard-round40.test.ts` holds what Windows does check — a
+    link or a file as the lock directory, a directory or a link as the state file — and that
+    owner and access are not; the tests that need POSIX modes or uids skip there with their
+    reason (`posix-only.ts`), and the job allows exactly that many skips.
   - *Held, not just taken (Round 34).* Node cannot hold an flock/fcntl/LockFileEx lock
     without a native addon, so the lock is a file holding the owner's pid and a random
     token. The guard remembers its inode and re-reads it before every reservation, before

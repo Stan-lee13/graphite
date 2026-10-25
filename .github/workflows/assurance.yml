@@ -108,61 +108,123 @@ jobs:
       # lists the missed ones that were triaged by hand.
       # Round 36 (F-015): the first hosted run (40059300806) put 235, 199,
       # 324 and 1,004 mutants (`cargo mutants --list --file`) into six shards,
-      # and every shard hit the six-hour limit before scoring. Each shard now
-      # holds about 40 mutants; the suites and floor for each file are chosen
+      # and every shard hit the six-hour limit before scoring. Round 36 cut
+      # each shard to about 40 mutants; the suites and floor for each file are chosen
       # in the "Select" step below. A shard that cannot finish is reported
       # INCOMPLETE by mutation_floor.py, never scored on the part that ran:
       # it counts the shard's mutants from mutants.json, because the second
       # run (40083338181) showed outcomes.json's total_mutants is only the
       # outcomes recorded so far, and 16 killed shards were scored on it.
-      # At ~9 minutes a mutant (one rebuild each), about 35 fit the step's
-      # 330 minutes; 18 of 44 shards of ~41 were killed by it.
+      # Round 40 (F-015, re-sharded): run 40083338181 measured one rebuild per
+      # mutant at 6 to 9 minutes (--in-place, the selected suites), and about
+      # 35 mutants fitting the 330-minute step, so its baseline (one build and
+      # one run of the suites before the first mutant) took about 15 minutes.
+      # Its shards held ~41 mutants and 18 of 44 were killed. Every shard now
+      # holds at most 20 (`--sharding slice`, ceil(listed / shards)), so the
+      # worst case is 15 + 20 x 9 = 195 of the step's 330 minutes (135 to
+      # spare; at 6 minutes a mutant, 135 used and 195 to spare). Shards per
+      # file, from
+      # `cargo mutants --list --file F` at Round 40: risk_engine 235 -> 12,
+      # simulation_integrity 199 -> 10, tx_artifact 324 -> 17, state_diff
+      # 1,015 -> 51 (90 jobs; GitHub allows 256 per matrix). The "Plan" step
+      # lists the shard before anything is built and fails at once, naming
+      # the file, if a shard has grown past 24 (15 + 24 x 9 = 231 minutes,
+      # still 99 inside the step) or is empty: add shards here, in a reviewed
+      # change. ci-scripts.test.sh checks that every file's shards are
+      # 0..N-1, each once. The suites, the floors and mutation_floor.py's
+      # completeness check are unchanged.
       matrix:
         include:
-          - { file: src/risk_engine.rs, shard: 0/6 }
-          - { file: src/risk_engine.rs, shard: 1/6 }
-          - { file: src/risk_engine.rs, shard: 2/6 }
-          - { file: src/risk_engine.rs, shard: 3/6 }
-          - { file: src/risk_engine.rs, shard: 4/6 }
-          - { file: src/risk_engine.rs, shard: 5/6 }
-          - { file: src/simulation_integrity.rs, shard: 0/5 }
-          - { file: src/simulation_integrity.rs, shard: 1/5 }
-          - { file: src/simulation_integrity.rs, shard: 2/5 }
-          - { file: src/simulation_integrity.rs, shard: 3/5 }
-          - { file: src/simulation_integrity.rs, shard: 4/5 }
-          - { file: src/tx_artifact.rs, shard: 0/8 }
-          - { file: src/tx_artifact.rs, shard: 1/8 }
-          - { file: src/tx_artifact.rs, shard: 2/8 }
-          - { file: src/tx_artifact.rs, shard: 3/8 }
-          - { file: src/tx_artifact.rs, shard: 4/8 }
-          - { file: src/tx_artifact.rs, shard: 5/8 }
-          - { file: src/tx_artifact.rs, shard: 6/8 }
-          - { file: src/tx_artifact.rs, shard: 7/8 }
-          - { file: src/state_diff.rs, shard: 0/25 }
-          - { file: src/state_diff.rs, shard: 1/25 }
-          - { file: src/state_diff.rs, shard: 2/25 }
-          - { file: src/state_diff.rs, shard: 3/25 }
-          - { file: src/state_diff.rs, shard: 4/25 }
-          - { file: src/state_diff.rs, shard: 5/25 }
-          - { file: src/state_diff.rs, shard: 6/25 }
-          - { file: src/state_diff.rs, shard: 7/25 }
-          - { file: src/state_diff.rs, shard: 8/25 }
-          - { file: src/state_diff.rs, shard: 9/25 }
-          - { file: src/state_diff.rs, shard: 10/25 }
-          - { file: src/state_diff.rs, shard: 11/25 }
-          - { file: src/state_diff.rs, shard: 12/25 }
-          - { file: src/state_diff.rs, shard: 13/25 }
-          - { file: src/state_diff.rs, shard: 14/25 }
-          - { file: src/state_diff.rs, shard: 15/25 }
-          - { file: src/state_diff.rs, shard: 16/25 }
-          - { file: src/state_diff.rs, shard: 17/25 }
-          - { file: src/state_diff.rs, shard: 18/25 }
-          - { file: src/state_diff.rs, shard: 19/25 }
-          - { file: src/state_diff.rs, shard: 20/25 }
-          - { file: src/state_diff.rs, shard: 21/25 }
-          - { file: src/state_diff.rs, shard: 22/25 }
-          - { file: src/state_diff.rs, shard: 23/25 }
-          - { file: src/state_diff.rs, shard: 24/25 }
+          - { file: src/risk_engine.rs, shard: 0/12 }
+          - { file: src/risk_engine.rs, shard: 1/12 }
+          - { file: src/risk_engine.rs, shard: 2/12 }
+          - { file: src/risk_engine.rs, shard: 3/12 }
+          - { file: src/risk_engine.rs, shard: 4/12 }
+          - { file: src/risk_engine.rs, shard: 5/12 }
+          - { file: src/risk_engine.rs, shard: 6/12 }
+          - { file: src/risk_engine.rs, shard: 7/12 }
+          - { file: src/risk_engine.rs, shard: 8/12 }
+          - { file: src/risk_engine.rs, shard: 9/12 }
+          - { file: src/risk_engine.rs, shard: 10/12 }
+          - { file: src/risk_engine.rs, shard: 11/12 }
+          - { file: src/simulation_integrity.rs, shard: 0/10 }
+          - { file: src/simulation_integrity.rs, shard: 1/10 }
+          - { file: src/simulation_integrity.rs, shard: 2/10 }
+          - { file: src/simulation_integrity.rs, shard: 3/10 }
+          - { file: src/simulation_integrity.rs, shard: 4/10 }
+          - { file: src/simulation_integrity.rs, shard: 5/10 }
+          - { file: src/simulation_integrity.rs, shard: 6/10 }
+          - { file: src/simulation_integrity.rs, shard: 7/10 }
+          - { file: src/simulation_integrity.rs, shard: 8/10 }
+          - { file: src/simulation_integrity.rs, shard: 9/10 }
+          - { file: src/tx_artifact.rs, shard: 0/17 }
+          - { file: src/tx_artifact.rs, shard: 1/17 }
+          - { file: src/tx_artifact.rs, shard: 2/17 }
+          - { file: src/tx_artifact.rs, shard: 3/17 }
+          - { file: src/tx_artifact.rs, shard: 4/17 }
+          - { file: src/tx_artifact.rs, shard: 5/17 }
+          - { file: src/tx_artifact.rs, shard: 6/17 }
+          - { file: src/tx_artifact.rs, shard: 7/17 }
+          - { file: src/tx_artifact.rs, shard: 8/17 }
+          - { file: src/tx_artifact.rs, shard: 9/17 }
+          - { file: src/tx_artifact.rs, shard: 10/17 }
+          - { file: src/tx_artifact.rs, shard: 11/17 }
+          - { file: src/tx_artifact.rs, shard: 12/17 }
+          - { file: src/tx_artifact.rs, shard: 13/17 }
+          - { file: src/tx_artifact.rs, shard: 14/17 }
+          - { file: src/tx_artifact.rs, shard: 15/17 }
+          - { file: src/tx_artifact.rs, shard: 16/17 }
+          - { file: src/state_diff.rs, shard: 0/51 }
+          - { file: src/state_diff.rs, shard: 1/51 }
+          - { file: src/state_diff.rs, shard: 2/51 }
+          - { file: src/state_diff.rs, shard: 3/51 }
+          - { file: src/state_diff.rs, shard: 4/51 }
+          - { file: src/state_diff.rs, shard: 5/51 }
+          - { file: src/state_diff.rs, shard: 6/51 }
+          - { file: src/state_diff.rs, shard: 7/51 }
+          - { file: src/state_diff.rs, shard: 8/51 }
+          - { file: src/state_diff.rs, shard: 9/51 }
+          - { file: src/state_diff.rs, shard: 10/51 }
+          - { file: src/state_diff.rs, shard: 11/51 }
+          - { file: src/state_diff.rs, shard: 12/51 }
+          - { file: src/state_diff.rs, shard: 13/51 }
+          - { file: src/state_diff.rs, shard: 14/51 }
+          - { file: src/state_diff.rs, shard: 15/51 }
+          - { file: src/state_diff.rs, shard: 16/51 }
+          - { file: src/state_diff.rs, shard: 17/51 }
+          - { file: src/state_diff.rs, shard: 18/51 }
+          - { file: src/state_diff.rs, shard: 19/51 }
+          - { file: src/state_diff.rs, shard: 20/51 }
+          - { file: src/state_diff.rs, shard: 21/51 }
+          - { file: src/state_diff.rs, shard: 22/51 }
+          - { file: src/state_diff.rs, shard: 23/51 }
+          - { file: src/state_diff.rs, shard: 24/51 }
+          - { file: src/state_diff.rs, shard: 25/51 }
+          - { file: src/state_diff.rs, shard: 26/51 }
+          - { file: src/state_diff.rs, shard: 27/51 }
+          - { file: src/state_diff.rs, shard: 28/51 }
+          - { file: src/state_diff.rs, shard: 29/51 }
+          - { file: src/state_diff.rs, shard: 30/51 }
+          - { file: src/state_diff.rs, shard: 31/51 }
+          - { file: src/state_diff.rs, shard: 32/51 }
+          - { file: src/state_diff.rs, shard: 33/51 }
+          - { file: src/state_diff.rs, shard: 34/51 }
+          - { file: src/state_diff.rs, shard: 35/51 }
+          - { file: src/state_diff.rs, shard: 36/51 }
+          - { file: src/state_diff.rs, shard: 37/51 }
+          - { file: src/state_diff.rs, shard: 38/51 }
+          - { file: src/state_diff.rs, shard: 39/51 }
+          - { file: src/state_diff.rs, shard: 40/51 }
+          - { file: src/state_diff.rs, shard: 41/51 }
+          - { file: src/state_diff.rs, shard: 42/51 }
+          - { file: src/state_diff.rs, shard: 43/51 }
+          - { file: src/state_diff.rs, shard: 44/51 }
+          - { file: src/state_diff.rs, shard: 45/51 }
+          - { file: src/state_diff.rs, shard: 46/51 }
+          - { file: src/state_diff.rs, shard: 47/51 }
+          - { file: src/state_diff.rs, shard: 48/51 }
+          - { file: src/state_diff.rs, shard: 49/51 }
+          - { file: src/state_diff.rs, shard: 50/51 }
     defaults:
       run:
         working-directory: graphite-core
@@ -208,17 +270,38 @@ jobs:
           esac
           echo "floor=$floor" >> "$GITHUB_OUTPUT"
           echo "tests=$tests" >> "$GITHUB_OUTPUT"
+      - name: Plan (the shard fits the step)
+        # Round 40 (F-015): the shard's own mutant list, before anything is
+        # built (`--list` reads the source; no build, no test). A shard past
+        # 24 mutants cannot be relied on to finish inside the Mutate step at
+        # the measured 9 minutes a mutant, so it fails here in seconds,
+        # naming the file to re-shard, instead of being killed after 330
+        # minutes and reported INCOMPLETE. An empty shard fails too.
+        env:
+          FILE: ${{ matrix.file }}
+          SHARD: ${{ matrix.shard }}
+          MAX_PER_SHARD: 24
+        run: |
+          set -euo pipefail
+          n="$(cargo mutants --list --file "$FILE" --shard "$SHARD" --sharding slice | wc -l)"
+          echo "$FILE shard $SHARD: $n mutants (at most $MAX_PER_SHARD)"
+          if [ "$n" -eq 0 ] || [ "$n" -gt "$MAX_PER_SHARD" ]; then
+            echo "::error::$FILE shard $SHARD lists $n mutants; each shard must hold 1..$MAX_PER_SHARD to finish inside the Mutate step: add shards for $FILE in .github/workflows/assurance.yml"
+            exit 1
+          fi
       - name: Mutate
         # cargo-mutants exits non-zero when a mutant is missed; the floor
         # step below judges the run from the outcomes file, so that exit is
         # recorded here rather than fatal. The step stops short of the job's
         # limit so the floor step always runs: on an unfinished shard it
-        # reports INCOMPLETE rather than nothing (Round 36).
+        # reports INCOMPLETE rather than nothing (Round 36). `--sharding
+        # slice` is 27.1.0's default, named so the Plan step above and this
+        # step cannot split the file differently.
         timeout-minutes: 330
         run: |
           set +e
           cargo mutants --in-place --no-shuffle --timeout 300 \
-            --file "${{ matrix.file }}" --shard "${{ matrix.shard }}" \
+            --file "${{ matrix.file }}" --shard "${{ matrix.shard }}" --sharding slice \
             -- ${{ steps.select.outputs.tests }}
           echo "cargo-mutants exit: $?"
       - name: Enforce the mutation-score floor

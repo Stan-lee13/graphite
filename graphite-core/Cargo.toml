@@ -7,8 +7,12 @@ edition = "2021"
 rust-version = "1.89"
 description = "Graphite — Transaction verification for Solana AI agents"
 license = "MIT"
-# Publishable: no `publish = false`. Whether this crate goes to crates.io is
-# the owner's decision (2026-09-29 audit, A6-15).
+# Not published to crates.io (Round 40, decided; 2026-09-29 audit A6-15,
+# production checklist 10c). Releases are the signed tag's container image,
+# binaries and SBOMs from .github/workflows/release.yml, which never runs
+# `cargo publish`; this key makes an accidental `cargo publish` from a
+# workstation fail instead of shipping a crate nobody reviewed as a release.
+publish = false
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

@@ -36,6 +36,7 @@ import { GraphiteGuard, PriorSubmissionUnresolved, SubmissionOutcomeUnknown, swa
 import { GuardState } from "./guard-state.js";
 import { ResidualPolicy } from "./residual-policy.js";
 import { mockApprovingCore, mockRpc, mockService, tokenAccountData } from "./loopback-mocks.js";
+import { posixOnly } from "./posix-only.js";
 import { raydiumAmmV4Data } from "./swap-fixtures.js";
 import { associatedTokenAddress, SPL_TOKEN_PROGRAM } from "./swap-envelope.js";
 import { RAYDIUM_AMM_V4 } from "./swap-instructions.js";
@@ -349,7 +350,7 @@ async function swapHarnessWithState(wallet: Keypair, stateFile: string, dir: str
 // ---------------------------------------------------------------------------
 // R39-CLIENTS-6: the state file's location.
 
-test("R39-CLIENTS-6 (repro): a state file another user could replace refuses to start", { skip: process.platform === "win32" }, () => {
+test("R39-CLIENTS-6 (repro): a state file another user could replace refuses to start", { skip: posixOnly("group/world-writable modes (chmod); on Windows only the kinds are checked, in guard-round40.test.ts") }, () => {
   const root = privateTmp();
   try {
     // The directory: group- or world-writable.
@@ -378,7 +379,7 @@ test("R39-CLIENTS-6 (repro): a state file another user could replace refuses to 
   }
 });
 
-test("R39-CLIENTS-6 (control): a private directory, or one only its owner writes, opens", { skip: process.platform === "win32" }, () => {
+test("R39-CLIENTS-6 (control): a private directory, or one only its owner writes, opens", { skip: posixOnly("chmod 0700/0755 and the created file's 0600 mode; Windows has no mode bits") }, () => {
   const root = privateTmp();
   try {
     for (const mode of [0o700, 0o755]) {
@@ -435,7 +436,10 @@ function crashChild(args: string[]): Promise<{ pid: number; kill: () => Promise<
   });
 }
 
-test("crash: a guard SIGKILLed mid-submission leaves its spend counted and its submission unresolved; the next guard does not rebuild it", { skip: process.platform === "win32" }, async () => {
+// Round 40: no longer skipped on Windows. It needs no mode or uid: a killed
+// process's locks and state file are what the Windows job is there to run
+// (process.kill(pid, "SIGKILL") terminates the process there too).
+test("crash: a guard SIGKILLed mid-submission leaves its spend counted and its submission unresolved; the next guard does not rebuild it", async () => {
   const dir = privateTmp();
   try {
     const wallet = Keypair.generate();

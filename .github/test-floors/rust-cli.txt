@@ -1,0 +1,48 @@
+# Per-binary floors for the `cli` leg of CI's rust-test job (Round 40, D2-8).
+# Read by .github/scripts/test-count.sh (5th argument): every binary listed must
+# run and pass at least its floor, so deleting tests from one security suite
+# fails CI even when another suite grew. Lines are `<floor> <binary>`, the binary
+# as cargo names it. The floors are the counts of a full run of this leg at
+# 1ae2066 with the Round 40 assurance changes
+# (`cargo test --locked --profile ci-test` with this leg's flags);
+# lower one only in a reviewed change that says why. The suites listed are the
+# security-critical ones (ci-scripts.test.sh names the patterns and fails when one
+# is neither floored here nor named below as not in this leg).
+595 unittests src/lib.rs
+2 tests/ai_layer_isolation.rs
+20 tests/cert_revalidation_attacks.rs
+2 tests/docs_match_the_registry.rs
+8 tests/docs_numbers_match_the_code.rs
+1 tests/docs_paths_resolve.rs
+3 tests/exploit_corpus_tests.rs
+1 tests/mainnet_conformance.rs
+102 tests/novel_attacks.rs
+18 tests/p0_validation_attacks.rs
+15 tests/real_exploit_tests.rs
+17 tests/real_onchain_exploits.rs
+102 tests/real_world_attacks.rs
+6 tests/regression_corpus.rs
+3 tests/round30_audit_chain.rs
+8 tests/round30_execution_decision.rs
+2 tests/round30_fuzz_findings.rs
+14 tests/round30_grounded_intents.rs
+3 tests/round34_audit_adopt_key.rs
+1 tests/round35_parsed_inner_instructions.rs
+5 tests/round36_env_names.rs
+4 tests/round38_audit_cli.rs
+3 tests/round39_conformance_corpus.rs
+2 tests/round39_manifest_expected_address.rs
+6 tests/round39_registry_gate_dilution.rs
+1 tests/round40_surface_conformance.rs
+# not in this leg: tests/round30_decision_fixtures.rs (cfg(feature = "rpc"))
+# not in this leg: tests/round30_l8_assurance.rs (cfg(feature = "rpc"))
+# not in this leg: tests/round30_server_wire.rs (cfg(feature = "server"))
+# not in this leg: tests/round30_trust_learning.rs (cfg(feature = "rpc"))
+# not in this leg: tests/round32_unreferenced_static_keys.rs (cfg(feature = "rpc"))
+# not in this leg: tests/round36_intent_binding.rs (cfg(feature = "rpc"))
+# not in this leg: tests/round38_create_funding.rs (cfg(feature = "rpc"))
+# not in this leg: tests/round38_sibling_skims.rs (cfg(feature = "rpc"))
+# not in this leg: tests/round38_unscoped_authority.rs (cfg(feature = "rpc"))
+# not in this leg: tests/round39_core_boundary.rs (cfg(feature = "server"))
+# not in this leg: tests/round39_decision_campaigns.rs (cfg(feature = "rpc"))
+# not in this leg: tests/round39_lookup_table_campaign.rs (cfg(feature = "rpc"))
