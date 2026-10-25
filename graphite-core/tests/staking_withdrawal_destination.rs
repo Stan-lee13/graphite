@@ -349,7 +349,7 @@ impl Fixture {
             (false, true) => 2,
             (false, false) => 3,
         };
-        let mut insert = |a: Acct, accounts: &mut Vec<Acct>| {
+        let insert = |a: Acct, accounts: &mut Vec<Acct>| {
             if accounts.iter().any(|k| k.key == a.key) {
                 return;
             }
