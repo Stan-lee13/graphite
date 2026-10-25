@@ -637,14 +637,37 @@ function effectForSummary(effect: WalletEffect): ConfirmationSummary["walletEffe
 }
 
 /**
- * What makes two swaps the same request (Round 38, G2-2): the wallet, the
- * input mint, the output mint and the amount in. Not the route: the same
- * swap through Jupiter and through Raydium is one request, and after one of
- * them failed ambiguously the other is a repeat until the first cannot land.
- * The `v2` names this form; a key without it is the route-specific form of
- * Rounds 30-37 (`legacySwapKeyMatcher`).
+ * What makes two swaps the same request (Round 38, G2-2; Round 39,
+ * R39-CLIENTS-7): the wallet, the input mint, the output mint and the amount
+ * the REQUEST spends (`canonicalDecimal`). Not the route, nor the route's own
+ * amount in: the same swap through Jupiter and through Raydium, or through a
+ * route that spends a base unit less, is one request, and after one of them
+ * failed ambiguously the others are a repeat until the first cannot land.
+ * The `v3` names this form; `swap:v2` is Round 38's (the route's amount in)
+ * and a key with neither is the route-specific form of Rounds 30-37; a state
+ * file holding either still holds back the swap it names.
  */
-export function swapRequestKey(wallet: string, inputMint: string, outputMint: string, amountIn: bigint): string {
+export function swapRequestKey(wallet: string, inputMint: string, outputMint: string, amount: string): string {
+  return `swap:v3:${wallet}:${inputMint}:${outputMint}:${canonicalDecimal(amount)}`;
+}
+
+/**
+ * Round 39 (R39-CLIENTS-7): the amount of a swap REQUEST, as one spelling.
+ * Round 38's key (`swap:v2`) named the route's decoded amount in, which the
+ * route chooses and may set below what the request allows: after an
+ * outcome-unknown swap of 1 SOL, the same request through a route spending
+ * 999,999,999 lamports was a different key, and both were built and sent.
+ * The request's own amount is the request's (a transfer's key has always
+ * been its grounded lamports): "1", "1.0" and "01.00" are one amount.
+ */
+export function canonicalDecimal(text: string): string {
+  const m = /^0*([0-9]+?)(?:\.([0-9]*?)0*)?$/.exec(text);
+  if (!m) throw new Error(`[Graphite] ${JSON.stringify(text)} is not a decimal amount`);
+  return m[2] ? `${m[1]}.${m[2]}` : m[1];
+}
+
+/** The Round 38 key (`swap:v2`, the route's amount in): a state file may still hold one. */
+function v2SwapKey(wallet: string, inputMint: string, outputMint: string, amountIn: bigint): string {
   return `swap:v2:${wallet}:${inputMint}:${outputMint}:${amountIn}`;
 }
 
@@ -654,9 +677,16 @@ export function swapRequestKey(wallet: string, inputMint: string, outputMint: st
  * back the same swap on any route (it names no wallet, so on any wallet that
  * reads the file: the stricter reading).
  */
-function legacySwapKeyMatcher(inputMint: string, outputMint: string, amountIn: bigint): (key: string) => boolean {
+function legacySwapKeyMatcher(
+  wallet: string,
+  inputMint: string,
+  outputMint: string,
+  amountIn: bigint,
+): (key: string) => boolean {
   const tail = `:${inputMint}:${outputMint}:${amountIn}`;
-  return (key) => key.endsWith(tail) && /^swap:[1-9A-HJ-NP-Za-km-z]{32,44}:/.test(key) && key.split(":").length === 5;
+  const v2 = v2SwapKey(wallet, inputMint, outputMint, amountIn);
+  return (key) =>
+    key === v2 || (key.endsWith(tail) && /^swap:[1-9A-HJ-NP-Za-km-z]{32,44}:/.test(key) && key.split(":").length === 5);
 }
 
 /**
@@ -1690,8 +1720,9 @@ export class GraphiteGuard {
     // and not its route — this wallet spending this amount of this mint for
     // that one. The key named the route program, so after an outcome-unknown
     // swap the same swap through another route was not a repeat, and both
-    // could land.
-    const key = swapRequestKey(this.#walletPublicKey, groundedSwap.input.mint, groundedSwap.output.mint, decoded.amountIn);
+    // could land. Round 39 (R39-CLIENTS-7): the amount is the request's, not
+    // the route's amount in, which a route may set a base unit lower.
+    const key = swapRequestKey(this.#walletPublicKey, groundedSwap.input.mint, groundedSwap.output.mint, groundedSwap.amountText);
     const releaseClaim = this.#claim(key);
     try {
       return await this.#executeSwapClaimed(naturalLanguage, payload, options, proposedIntent, intentType, groundedSwap, decoded, key);
@@ -1712,7 +1743,7 @@ export class GraphiteGuard {
   ): Promise<ExecutionOutcome> {
     await this.#assertNoUnresolvedSubmission(
       key,
-      legacySwapKeyMatcher(groundedSwap.input.mint, groundedSwap.output.mint, decoded.amountIn),
+      legacySwapKeyMatcher(this.#walletPublicKey, groundedSwap.input.mint, groundedSwap.output.mint, decoded.amountIn),
     );
     const swapIntent: ProposedIntent = {
       intent_type: intentType,
