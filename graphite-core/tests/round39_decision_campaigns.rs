@@ -18,7 +18,7 @@
 //! False refusals: honest pool swaps through the venues users reach directly,
 //! and a census of every swap declaration, naming what refuses them.
 //!
-//! Every attack runs twice: under the Core's defaults, and with EVERY operator
+//! Every attack runs three times: under the Core's defaults, with EVERY operator
 //! waiver the Core has turned on at once (`Waivers::All`): the two
 //! `L4Relaxations` fields (`GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS`,
 //! `GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT`),
@@ -26,7 +26,10 @@
 //! the most permissive profile `GRAPHITE_ALLOW_PERMISSIVE_PROFILES` admits
 //! (`Custom { 0.0, Unknown }`), the operator-bootstrap observation policy, and
 //! no plugins. No waiver may turn a skim, or an authority, delegate, close or
-//! freeze change, into `executable_approved`.
+//! freeze change, into `executable_approved`. Round 40 (bootstrap) added the
+//! third run, `Waivers::Imported`: the defaults after `graphite evidence
+//! import-census`, under the built-in Gaming profile with no custom bar — the
+//! state in which Round 39's "confidence precondition" is met by default.
 //!
 //! Everything is a loopback socket; no public endpoint is contacted.
 
@@ -527,13 +530,25 @@ enum Waivers {
     None,
     /// Every operator waiver and opt-out at once.
     All,
+    /// Round 40 (bootstrap): the Core's production defaults after
+    /// `graphite evidence import-census` (the embedded census imported,
+    /// `census_import::import_embedded_into`), under the BUILT-IN Gaming
+    /// profile — no custom bar. The import lifts a manifested program's
+    /// confidence to 0.59, past Gaming's 0.55, so Round 39's "confidence
+    /// precondition" is met under the defaults.
+    Imported,
+    /// Round 40: the production defaults under a built-in `profile`, with
+    /// the census imported (`true`) or on a fresh Core (`false`).
+    Builtin(bool, WalletProfile),
 }
 
-const BOTH: [Waivers; 2] = [Waivers::None, Waivers::All];
+/// Every configuration each campaign runs under (Round 40 added
+/// `Imported`).
+const CONFIGS: [Waivers; 3] = [Waivers::None, Waivers::All, Waivers::Imported];
 
 fn core_for(endpoint: String, waivers: Waivers) -> (GraphiteCore, WalletProfile) {
     let mut core = match waivers {
-        Waivers::None => GraphiteCore::new(),
+        Waivers::None | Waivers::Imported | Waivers::Builtin(..) => GraphiteCore::new(),
         // Plugins only veto; with none registered nothing can veto.
         Waivers::All => GraphiteCore::new_without_plugins(),
     };
@@ -543,7 +558,14 @@ fn core_for(endpoint: String, waivers: Waivers) -> (GraphiteCore, WalletProfile)
         max_retries: 0,
         ..Default::default()
     }));
+    if matches!(waivers, Waivers::Imported | Waivers::Builtin(true, _)) {
+        let plan = graphite_core::census_import::import_embedded_into(&mut core)
+            .expect("the embedded census imports");
+        assert!(!plan.imports.is_empty(), "the census imported nothing");
+    }
     let profile = match waivers {
+        Waivers::Imported => WalletProfile::Gaming,
+        Waivers::Builtin(_, profile) => profile,
         Waivers::None => WalletProfile::Custom {
             min_confidence: 0.40,
             min_trust_tier: TrustTier::OfficialManifest,
@@ -685,8 +707,9 @@ fn statuses(r: &VerificationResult) -> String {
 
 fn record(tag: &str, r: &VerificationResult) {
     eprintln!(
-        "[R39 {tag}] decision={:?} | {} | risk: {} | unobserved: {:?}",
+        "[R39 {tag}] decision={:?} confidence={:.4} | {} | risk: {} | unobserved: {:?}",
         r.decision,
+        r.confidence,
         statuses(r),
         risk(r),
         r.scope.unobserved_codes()
@@ -1223,7 +1246,7 @@ async fn swap_y_to_sol(beside: Beside, waivers: Waivers) -> VerificationResult {
 /// a different finding; a harness that refused them would prove nothing.
 #[tokio::test]
 async fn campaign1_honest_swaps_are_executable_with_and_without_waivers() {
-    for w in BOTH {
+    for w in CONFIGS {
         assert_executable(
             &format!("honest Y->X {w:?}"),
             &swap_y_to_x(Beside::Nothing, w).await,
@@ -1259,7 +1282,7 @@ async fn campaign1_a_swap_skimmed_beside_it_is_never_executable_under_any_waiver
         ),
     ];
     let mut out = Outcomes::default();
-    for w in BOTH {
+    for w in CONFIGS {
         for (tag, beside) in cases {
             let r = swap_y_to_x(beside, w).await;
             out.refused(&format!("swap Y->X, {tag}, {w:?}"), &r);
@@ -1272,7 +1295,7 @@ async fn campaign1_a_swap_skimmed_beside_it_is_never_executable_under_any_waiver
 /// the attacker's wSOL account.
 #[tokio::test]
 async fn campaign1_a_wrapped_sol_skim_is_never_executable_under_any_waiver() {
-    for w in BOTH {
+    for w in CONFIGS {
         let r = swap_y_to_sol(Beside::WrappedSolSkim(4 * SOL), w).await;
         assert_not_executable(&format!("swap Y->SOL, wSOL skim, {w:?}"), &r);
     }
@@ -1293,7 +1316,7 @@ async fn campaign1_a_wrapped_sol_skim_is_never_executable_under_any_waiver() {
 async fn round39_sol_into_an_attacker_closable_account_beside_a_swap() {
     let mut out = Outcomes::default();
     let mut unnamed = Vec::new();
-    for w in BOTH {
+    for w in CONFIGS {
         for (tag, r) in [
             (
                 format!("swap Y->X, SOL to closable, {w:?}"),
@@ -1608,7 +1631,7 @@ async fn withdraw_with(beside: WithBeside, waivers: Waivers) -> VerificationResu
 
 #[tokio::test]
 async fn campaign2_an_honest_stake_withdrawal_is_executable_with_and_without_waivers() {
-    for w in BOTH {
+    for w in CONFIGS {
         assert_executable(
             &format!("honest stake withdrawal {w:?}"),
             &withdraw_with(WithBeside::Nothing, w).await,
@@ -1629,7 +1652,7 @@ async fn campaign2_a_withdrawal_with_anything_beside_it_is_never_executable_unde
         ("hidden CPI", WithBeside::HiddenCpi(30 * SOL)),
     ];
     let mut out = Outcomes::default();
-    for w in BOTH {
+    for w in CONFIGS {
         for (tag, beside) in cases {
             let r = withdraw_with(beside, w).await;
             out.refused(&format!("stake withdrawal, {tag}, {w:?}"), &r);
@@ -1684,7 +1707,7 @@ async fn round39_what_keeps_value_calls_the_signers_own_beside_a_withdrawal() {
     ];
     let mut out = Outcomes::default();
     let mut unnamed = Vec::new();
-    for w in BOTH {
+    for w in CONFIGS {
         for (tag, beside) in bound {
             let r = withdraw_with(beside, w).await;
             let tag = format!("stake withdrawal, {tag}, {w:?}");
@@ -1991,7 +2014,7 @@ fn update_offer(beside: GrantBeside) -> (Cluster, Vec<Ix>) {
 /// cannot reach an executable verdict, and this test says so when it can.
 #[tokio::test]
 async fn campaign2_a_granted_claim_and_close_alone_are_executable() {
-    for w in BOTH {
+    for w in CONFIGS {
         let (c, ixs) = dlmm_claim(GrantBeside::Nothing);
         let r = verify(c, OWNER, &ixs, 0, "claim", None, w).await;
         assert_executable(&format!("DLMM claim_fee alone {w:?}"), &r);
@@ -2014,7 +2037,7 @@ async fn campaign2_a_granted_claim_and_close_alone_are_executable() {
 /// is still the owner's own, and the withdrawal stays executable.
 #[tokio::test]
 async fn round39_a_withdrawal_beside_the_owners_own_wrap_is_executable() {
-    for w in BOTH {
+    for w in CONFIGS {
         let r = withdraw_with(WithBeside::OwnWrap(5 * SOL), w).await;
         assert_executable(&format!("stake withdrawal, own wrap, {w:?}"), &r);
     }
@@ -2038,7 +2061,7 @@ async fn round39_a_withdrawal_beside_the_owners_own_wrap_is_executable() {
 async fn campaign2_a_claim_close_or_configure_with_a_skim_beside_it_is_never_executable() {
     let mut out = Outcomes::default();
     let mut unnamed = Vec::new();
-    for w in BOTH {
+    for w in CONFIGS {
         for (tag, beside) in [
             ("token skim", GrantBeside::TokenSkim(300)),
             ("stranger", GrantBeside::Stranger(3 * SOL)),
@@ -2144,7 +2167,7 @@ fn create_with(beside: CreateBeside) -> (Cluster, Vec<Ix>) {
 #[tokio::test]
 async fn round39_what_rides_beside_a_creation_is_held_to_the_payer() {
     let mut o = Outcomes::default();
-    for w in BOTH {
+    for w in CONFIGS {
         let (c, ixs) = create_with(CreateBeside::Nothing);
         let r = verify(c, OWNER, &ixs, 0, "create", None, w).await;
         assert_executable(&format!("rent-only creation {w:?}"), &r);
@@ -2332,7 +2355,7 @@ async fn swap_with_plugins(
 /// about the vetoes below.)
 #[tokio::test]
 async fn campaign12_a_plugin_that_finds_nothing_leaves_an_honest_swap_executable() {
-    for w in BOTH {
+    for w in CONFIGS {
         for f in FAMILIES {
             let r = swap_with_plugins(Beside::Nothing, w, vec![plugin(f, Act::NoFinding)]).await;
             assert_executable(&format!("{f:?} NoFinding {w:?}"), &r);
@@ -2359,7 +2382,7 @@ async fn campaign12_a_plugin_that_finds_nothing_leaves_an_honest_swap_executable
 #[tokio::test]
 async fn campaign12_a_plugin_block_of_any_shape_refuses_under_any_waiver() {
     let mut o = Outcomes::default();
-    for w in BOTH {
+    for w in CONFIGS {
         for f in FAMILIES {
             for a in [Act::Block, Act::BlockEmpty, Act::BlockWarning] {
                 let r = swap_with_plugins(Beside::Nothing, w, vec![plugin(f, a)]).await;
@@ -2379,7 +2402,7 @@ async fn campaign12_a_plugin_block_of_any_shape_refuses_under_any_waiver() {
 #[tokio::test]
 async fn round39_a_crashing_plugin_of_any_family_refuses() {
     let mut o = Outcomes::default();
-    for w in BOTH {
+    for w in CONFIGS {
         for f in FAMILIES {
             let r = swap_with_plugins(Beside::Nothing, w, vec![plugin(f, Act::Panic)]).await;
             o.refused(&format!("{f:?} Panic {w:?}"), &r);
@@ -2395,7 +2418,7 @@ async fn round39_a_crashing_plugin_of_any_family_refuses() {
 #[tokio::test]
 async fn campaign12_no_plugin_output_lifts_a_refusal() {
     let mut o = Outcomes::default();
-    for w in BOTH {
+    for w in CONFIGS {
         for beside in [Beside::OutputSkim(30_000_000), Beside::OwnerChange] {
             for a in [Act::NoFinding, Act::Note] {
                 let plugins: Vec<PluginKind> = FAMILIES.iter().map(|f| plugin(*f, a)).collect();
@@ -2439,7 +2462,7 @@ impl ProtocolPlugin for Rules {
 #[tokio::test]
 async fn campaign12_protocol_rules_for_an_unmanifested_program_approve_nothing() {
     let mut o = Outcomes::default();
-    for w in BOTH {
+    for w in CONFIGS {
         let mut c = Cluster::default();
         base_programs(&mut c);
         c.set(OWNER, acct(100 * SOL, SYSTEM, vec![]));
@@ -2721,7 +2744,7 @@ fn pool_swap(s: &PoolSwap) -> (Cluster, Vec<Ix>) {
 async fn round39_honest_pool_swaps_and_the_declarations_that_refuse_them() {
     let mut wrong = Vec::new();
     for s in POOL_SWAPS {
-        for w in BOTH {
+        for w in CONFIGS {
             let (c, ixs) = pool_swap(s);
             let r = verify(
                 c,
@@ -2867,3 +2890,190 @@ fn round39_swap_declaration_census() {
 /// aggregator instruction") declare none Graphite can read. Pinned so a
 /// manifest change re-measures it.
 const MEASURED_SWAP_CENSUS: &[(&str, usize)] = &[("b", 8), ("d", 93), ("e", 14)];
+
+// ─── Round 40 (bootstrap): what the census import changes ──────────────────
+
+const RECIPIENT: &str = "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T";
+
+/// An honest System transfer of `lamports` from the owner to RECIPIENT.
+fn sol_transfer(lamports: u64) -> (Cluster, Vec<Ix>) {
+    let mut c = Cluster::default();
+    base_programs(&mut c);
+    c.set(OWNER, acct(10 * SOL, SYSTEM, vec![]));
+    c.set(RECIPIENT, acct(SOL, SYSTEM, vec![]));
+    c.after(OWNER, acct(10 * SOL - FEE - lamports, SYSTEM, vec![]));
+    c.after(RECIPIENT, acct(SOL + lamports, SYSTEM, vec![]));
+    let t = ix(
+        SYSTEM,
+        &[(OWNER, true, true), (RECIPIENT, false, true)],
+        system_transfer(lamports),
+    );
+    (c, vec![t])
+}
+
+/// An honest SPL Token `TransferChecked` of `amount` MINT_X (6 decimals)
+/// from the owner's token account to RECIPIENT's.
+fn token_transfer(amount: u64) -> (Cluster, Vec<Ix>) {
+    let mut c = Cluster::default();
+    base_programs(&mut c);
+    let (src, dst) = (ata(OWNER, MINT_X), ata(RECIPIENT, MINT_X));
+    c.set(OWNER, acct(10 * SOL, SYSTEM, vec![]));
+    c.set(
+        MINT_X,
+        acct(1_461_600, TOKEN, mint(10_000 * 1_000_000, Some(MINT_Z))),
+    );
+    c.set(
+        &src,
+        acct(RENT, TOKEN, token_account(MINT_X, OWNER, 500 * 1_000_000)),
+    );
+    c.set(&dst, acct(RENT, TOKEN, token_account(MINT_X, RECIPIENT, 0)));
+    c.after(OWNER, acct(10 * SOL - FEE, SYSTEM, vec![]));
+    c.after(
+        &src,
+        acct(
+            RENT,
+            TOKEN,
+            token_account(MINT_X, OWNER, 500 * 1_000_000 - amount),
+        ),
+    );
+    c.after(
+        &dst,
+        acct(RENT, TOKEN, token_account(MINT_X, RECIPIENT, amount)),
+    );
+    let t = ix(
+        TOKEN,
+        &[
+            (&src, false, true),
+            (MINT_X, false, false),
+            (&dst, false, true),
+            (OWNER, true, false),
+        ],
+        transfer_checked(amount, 6),
+    );
+    (c, vec![t])
+}
+
+fn transfer_request(amount: &str, to: &str, asset: &str) -> Option<ExtractedParameters> {
+    Some(ExtractedParameters {
+        amount: Some(amount.to_string()),
+        destination: Some(to.to_string()),
+        input_token: Some(asset.to_string()),
+        ..Default::default()
+    })
+}
+
+async fn honest_transfers(w: Waivers) -> [(&'static str, VerificationResult); 2] {
+    let (c, ixs) = sol_transfer(SOL);
+    let sol = verify(
+        c,
+        OWNER,
+        &ixs,
+        0,
+        "transfer",
+        transfer_request("1", RECIPIENT, "SOL"),
+        w,
+    )
+    .await;
+    let (c, ixs) = token_transfer(100 * 1_000_000);
+    let token = verify(
+        c,
+        OWNER,
+        &ixs,
+        0,
+        "transfer",
+        transfer_request("100", RECIPIENT, MINT_X),
+        w,
+    )
+    .await;
+    [
+        ("System SOL transfer", sol),
+        ("SPL Token TransferChecked", token),
+    ]
+}
+
+/// The benign control: on a fresh Core, under the built-in Gaming profile,
+/// an honest System transfer and an honest SPL Token transfer are refused on
+/// confidence (0.44 < 0.55); after the census import, the SAME requests
+/// against the SAME mock cluster are `executable_approved` at the confidence
+/// `standalone_standing` predicts. The import is the only difference.
+#[tokio::test]
+async fn round40_honest_transfers_are_executable_after_the_import_and_not_before() {
+    let fresh = honest_transfers(Waivers::Builtin(false, WalletProfile::Gaming)).await;
+    let imported = honest_transfers(Waivers::Builtin(true, WalletProfile::Gaming)).await;
+    let mut predicted = GraphiteCore::new();
+    graphite_core::census_import::import_embedded_into(&mut predicted).unwrap();
+    for (((tag, before), (_, after)), program) in
+        fresh.iter().zip(imported.iter()).zip([SYSTEM, TOKEN])
+    {
+        record(&format!("{tag}, fresh Core, Gaming"), before);
+        assert_ne!(
+            before.decision,
+            ExecutionDecision::ExecutableApproved,
+            "{tag}: executable on a fresh Core"
+        );
+        assert!(
+            (before.confidence - 0.44).abs() < 1e-9,
+            "{tag}: fresh confidence {}",
+            before.confidence
+        );
+        assert!(
+            names(before, "onfidence"),
+            "{tag}: a fresh Core refuses it on confidence: {}",
+            statuses(before)
+        );
+        assert_executable(&format!("{tag}, census imported, Gaming"), after);
+        let (tier, confidence) = predicted.standalone_standing(program, None);
+        assert_eq!(tier, TrustTier::OfficialManifest, "{tag}");
+        assert!(
+            (after.confidence - confidence).abs() < 1e-9 && (confidence - 0.59).abs() < 1e-9,
+            "{tag}: confidence {} after the import, predicted {confidence}",
+            after.confidence
+        );
+    }
+}
+
+/// The import opens the weakest built-in profile only: the other three
+/// require a tier above OfficialManifest (TradingBot SimulationValidated,
+/// Treasury CommunityVerified, Enterprise BattleTested), and on a fresh Core
+/// the import earns HeuristicInferred in the graph, so the verdict tier stays
+/// OfficialManifest. Even the honest controls are refused under them — so an
+/// attack refused under Gaming is refused under them as well.
+#[tokio::test]
+async fn round40_the_import_does_not_open_the_stricter_built_in_profiles() {
+    for profile in [
+        WalletProfile::TradingBot,
+        WalletProfile::Treasury,
+        WalletProfile::Enterprise,
+    ] {
+        for (tag, r) in honest_transfers(Waivers::Builtin(true, profile)).await {
+            record(&format!("{tag}, census imported, {profile:?}"), &r);
+            assert_ne!(
+                r.decision,
+                ExecutionDecision::ExecutableApproved,
+                "{tag} under {profile:?}"
+            );
+            assert_eq!(r.trust_tier, "OfficialManifest", "{tag} under {profile:?}");
+        }
+    }
+}
+
+/// After the import, the campaigns' honest controls clear Gaming's floor on
+/// confidence: the precondition Round 39 recorded as unmet on a fresh Core
+/// is met, so the `Imported` rows above test the gates behind it.
+#[tokio::test]
+async fn round40_after_the_import_the_confidence_precondition_is_met() {
+    let floor = graphite_core::policy_engine::WEAKEST_BUILTIN_MIN_CONFIDENCE;
+    for (tag, r) in [
+        (
+            "honest swap Y->X",
+            swap_y_to_x(Beside::Nothing, Waivers::Imported).await,
+        ),
+        (
+            "honest stake withdrawal",
+            withdraw_with(WithBeside::Nothing, Waivers::Imported).await,
+        ),
+    ] {
+        record(tag, &r);
+        assert!(r.confidence >= floor, "{tag}: {}", r.confidence);
+    }
+}

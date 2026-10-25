@@ -11,6 +11,7 @@
 //! a `VerificationResult` with confidence score, risk assessment, and policy decision.
 
 pub mod account_resolution;
+pub mod census_import;
 pub mod confidence_engine;
 pub mod durable;
 pub mod intent_binding;

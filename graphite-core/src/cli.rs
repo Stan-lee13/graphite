@@ -385,6 +385,20 @@ pub enum EvidenceAction {
         mean_account_writes: f64,
         mean_cpi_hops: f64,
     },
+    /// Round 40 (bootstrap): seed each program's HistoricalVolume from the
+    /// committed, measured mainnet census (`protocols/battle_tested_evidence.json`)
+    /// instead of typed numbers. See `census_import`.
+    ImportCensus {
+        data_dir: Option<PathBuf>,
+        /// A census file to check against the compiled-in copy (default: the
+        /// compiled-in copy itself).
+        census: Option<PathBuf>,
+        /// Restrict the import to these programs (default: every record).
+        programs: Vec<String>,
+        /// Print what would be imported, and the resulting tier and
+        /// confidence per program, without writing anything.
+        dry_run: bool,
+    },
     /// Show what the graph currently holds for a program.
     Show {
         data_dir: Option<PathBuf>,
@@ -2562,6 +2576,174 @@ impl OperatorTrail {
 const NO_SERVER_HOLDS_THIS_DIRECTORY: &str =
     "No server holds this data directory (this command took its lock); the next one started on it loads this change.";
 
+/// `graphite evidence import-census` (Round 40, bootstrap): seed each
+/// program's HistoricalVolume from the committed, measured census
+/// (`census_import`), recording every import on the audit trail as
+/// `evidence seed` does. `--dry-run` reads the data directory without its
+/// lock and writes nothing.
+fn run_import_census(
+    data_dir: Option<PathBuf>,
+    census_path: Option<PathBuf>,
+    programs: Vec<String>,
+    dry_run: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::census_import::{self as ci, Census};
+
+    let (census, source) = match &census_path {
+        Some(path) => {
+            let bytes = std::fs::read(path)
+                .map_err(|e| format!("the census file {} cannot be read: {e}", path.display()))?;
+            let census = Census::from_file_bytes(&bytes)
+                .map_err(|e| format!("refusing the census file {}: {e}", path.display()))?;
+            (
+                census,
+                format!(
+                    "file {}, identical to the copy compiled into this build",
+                    path.display()
+                ),
+            )
+        }
+        None => (
+            Census::embedded().map_err(|e| format!("the compiled-in census: {e}"))?,
+            "the copy compiled into this build".to_string(),
+        ),
+    };
+    let programs = programs
+        .iter()
+        .map(|p| program_id_arg(p))
+        .collect::<Result<Vec<_>, _>>()?;
+    let dir = data_dir_path(data_dir);
+
+    let print_plan = |plan: &ci::ImportPlan| {
+        println!(
+            "CENSUS  {} sha256={}  ({source})",
+            ci::CENSUS_FILE,
+            plan.census_sha256
+        );
+        println!(
+            "        {} record(s): {} to import, {} skipped{}",
+            census.records().len(),
+            plan.imports.len(),
+            plan.skipped.len(),
+            if plan.not_selected > 0 {
+                format!(", {} not selected (--program)", plan.not_selected)
+            } else {
+                String::new()
+            }
+        );
+        println!();
+        for i in &plan.imports {
+            println!("IMPORT  {}  ({})", i.program_id, i.name);
+            println!(
+                "  census       {} successful transactions over {}s, slots {}..{}, measured_at {}",
+                i.census_transactions,
+                i.window_seconds,
+                i.oldest_slot,
+                i.newest_slot,
+                ci::utc(i.measured_at_unix)
+            );
+            println!(
+                "  evidence     battle_tested {} -> {}   (every other field carried over; no signature asserted)",
+                i.previous_volume, i.census_transactions
+            );
+            println!(
+                "  graph tier   {} -> {:?}   (recomputed from that evidence, not set - P7)",
+                i.previous_graph_tier
+                    .map(|t| format!("{t:?}"))
+                    .unwrap_or_else(|| "(no record)".to_string()),
+                i.graph_tier
+            );
+            println!(
+                "  verdict      tier {:?} -> {:?}; standalone confidence {:.4} -> {:.4}",
+                i.before.verdict_tier,
+                i.after.verdict_tier,
+                i.before.confidence,
+                i.after.confidence
+            );
+        }
+        for s in &plan.skipped {
+            println!("SKIP    {}  ({}): {}", s.program_id, s.name, s.reason);
+        }
+        println!();
+    };
+
+    if dry_run {
+        let core = GraphiteCore::open_data_dir_read_only(&dir)?;
+        let plan = ci::plan(&core, &census, &programs)?;
+        print_plan(&plan);
+        println!(
+            "DRY RUN: nothing was written to {} and nothing was recorded on its audit trail.",
+            dir.display()
+        );
+        print_census_caveat();
+        return Ok(());
+    }
+
+    let mut core = GraphiteCore::open_data_dir(dir.clone())?;
+    // Before any change: a trail that cannot be written refuses the command.
+    let trail = OperatorTrail::open(&dir)?;
+    let plan = ci::plan(&core, &census, &programs)?;
+    print_plan(&plan);
+    let mut done: Vec<String> = Vec::new();
+    for i in &plan.imports {
+        match ci::apply(&mut core, i)? {
+            Ok(()) => {}
+            Err(e) => {
+                return Err(format!(
+                    "the evidence for {} did NOT reach the data directory ({e}); it is not in force for a server. \
+                     Imported, on disk and recorded before it: [{}]",
+                    i.program_id,
+                    done.join(", ")
+                )
+                .into());
+            }
+        }
+        // As `evidence seed`: an append-only graph has no undo, so an import
+        // the trail cannot take is a failure with the change in force.
+        if !trail.record(&i.program_id, ci::audit_detail(&plan.census_sha256, i)) {
+            return Err(format!(
+                "the evidence for {} was imported and is in force, but the audit trail did NOT record it. \
+                 Imported and recorded before it: [{}]",
+                i.program_id,
+                done.join(", ")
+            )
+            .into());
+        }
+        done.push(i.program_id.clone());
+    }
+    if done.is_empty() {
+        println!("Nothing imported: every selected record was skipped (see above).");
+    } else {
+        println!(
+            "IMPORTED {} program(s) into {}; each is one operator_action row on its audit trail.",
+            done.len(),
+            dir.display()
+        );
+    }
+    print_census_caveat();
+    println!("{NO_SERVER_HOLDS_THIS_DIRECTORY}");
+    Ok(())
+}
+
+fn print_census_caveat() {
+    println!();
+    println!(
+        "This evidence is CENSUS-MEASURED (read-only mainnet-beta counts in battle_tested_evidence.json),"
+    );
+    println!(
+        "not typed by an operator and not earned by this Core. It raises the HistoricalVolume signal only:"
+    );
+    println!(
+        "no tier rule, ceiling, floor or profile changes; on a fresh Core a manifested program's verdict"
+    );
+    println!(
+        "tier stays OfficialManifest. It describes mainnet-beta code at the time measured; an upgrade the Core"
+    );
+    println!(
+        "observes after that time withdraws it. Do not import it on a Core that verifies another cluster."
+    );
+}
+
 /// Seed operator-asserted evidence into the durable semantic graph.
 ///
 /// Deliberately loud about provenance. Evidence seeded here was ASSERTED by an
@@ -2659,6 +2841,13 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
             println!("{NO_SERVER_HOLDS_THIS_DIRECTORY}");
             Ok(())
         }
+
+        EvidenceAction::ImportCensus {
+            data_dir,
+            census,
+            programs,
+            dry_run,
+        } => run_import_census(data_dir, census, programs, dry_run),
 
         EvidenceAction::Baseline {
             data_dir,

@@ -27,7 +27,7 @@ on:
         default: "https://api.devnet.solana.com"
         type: string
       seed_evidence:
-        description: "Seed operator evidence for the System program first (a fresh Core approves nothing without it)"
+        description: "Import the measured census for the System program (graphite evidence import-census) and its L3 anchor first (a fresh Core approves nothing without evidence)"
         default: true
         type: boolean
       airdrop_lamports:

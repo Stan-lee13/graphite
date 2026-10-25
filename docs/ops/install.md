@@ -45,7 +45,10 @@ build-from-source stack.
    rides beside the withdrawal: a sibling instruction that skims the payout is refused
    either way (Round 38, R37-1).
 
-3. **Validate, then start:**
+3. **Validate, then start.** On a new data volume, import the measured
+   census first ([below](#first-start-import-the-measured-census)): it takes
+   the data directory's lock, so it runs before the Core does (or with the
+   Core stopped).
    ```sh
    docker compose config --quiet          # fails on an empty GRAPHITE_API_KEY
    docker compose up -d --build
@@ -78,3 +81,101 @@ build-from-source stack.
 
 7. **Back up the volume** (backup-restore.md) before the first real traffic,
    so a restore procedure has been run once while nothing depends on it.
+
+## First start: import the measured census
+
+A fresh Core approves nothing on the built-in profiles. Half the confidence
+weight comes from evidence the Semantic Graph holds (simulation matches,
+historical volume, community attestations), and a new data directory holds
+none, so a manifested program's verdict sits at 0.44 against the weakest
+built-in bar (Gaming, 0.55). `graphite evidence import-census` (Round 40)
+fills one of those signals, HistoricalVolume, from a measurement the
+repository commits, instead of from a number typed into `graphite evidence
+seed --battle-tested`.
+
+**What it does.**
+
+- Reads `graphite-core/protocols/battle_tested_evidence.json` as compiled into
+  the binary: a read-only mainnet-beta census of each manifested program
+  (successful transactions carrying its address over a stated window, and the
+  share of really-observed instructions its manifest names), reproduced by
+  `graphite-core/scripts/battle_tested_census.py`. With `--census <file>` it
+  checks that file instead, and refuses it unless it is byte-identical to the
+  compiled-in copy (SHA-256), so an edited census cannot be imported.
+- Checks the census first (schema; the bar it states is the bar the binary
+  applies; each record's own verdict agrees with its measurements).
+- Imports only records that clear every threshold (1,000 successful
+  transactions, 20 instructions observed, a decode rate of 0.9 recomputed
+  against the loaded manifest) for a program that exists, is executable and
+  has a loaded manifest. Every other record is listed as `SKIP` with its
+  reason. At this commit that is 114 of 137 records.
+- Appends, per program, the record in force with `battle_tested_tx_count`
+  raised to the census count. Every other field is carried over; nothing is
+  lowered; no signature is asserted. The trust tier is recomputed from the
+  evidence, never set (Constitution P7). The evidence is bound to the census
+  window's oldest slot.
+- Writes one `operator_action` row per imported program on the audit trail,
+  naming the source: `census-measured, battle_tested_evidence.json
+  sha256=<hash>, measured_at <time>`. An import the trail cannot record fails
+  loudly and says which imports are in force, as `evidence seed` does.
+
+**What it does not do.**
+
+- It changes no floor, ceiling, profile threshold or tier rule, and runs only
+  when you run it: a Core that never runs it behaves as before. Nothing on the
+  HTTP surface reaches it.
+- It does not lift a verdict's tier on a fresh Core: the graph tier it
+  produces is HeuristicInferred and a manifested program's verdict tier stays
+  OfficialManifest. Confidence rises from 0.44 to 0.59 for a program alone
+  (Gaming only; TradingBot, Treasury and Enterprise require a higher tier and
+  still refuse). Every other layer (L2 to L8, the intent binding, the risk
+  engine, the residual gate) decides as before.
+- It does not import a quarantined program, a program the census measured
+  below the bar, or a program whose deployment the Core has seen change after
+  the census window began (`census predates the program's last observed
+  deployment`). An upgrade the Core observes after the import withdraws the
+  imported volume like any other evidence (Round 30), and a re-run does not
+  bring it back.
+- It is mainnet-beta evidence. Do not import it on a Core that verifies
+  devnet, testnet or a local validator (the live-devnet runner imports only
+  the System program, a builtin that is the same code on every cluster).
+- It does not make the census fresher than it is: re-measure with
+  `scripts/battle_tested_census.py` (it reads a public RPC) and commit the
+  result to move it forward.
+
+**Run it** with the server's environment, the server stopped (it takes the
+data directory's lock), and the server's `GRAPHITE_AUDIT_KEY_FILE` when the
+trail is keyed ([keys.md](keys.md): an unkeyed import on a keyed trail is
+refused before anything changes):
+
+```sh
+docker compose run --rm --no-deps graphite graphite evidence import-census --dry-run
+docker compose run --rm --no-deps graphite graphite evidence import-census
+# Built from source:
+graphite evidence import-census --data-dir "$GRAPHITE_DATA_DIR" --dry-run
+graphite evidence import-census --data-dir "$GRAPHITE_DATA_DIR"
+```
+
+`--dry-run` prints, per program, the census count, the graph tier the
+evidence recomputes to, and the verdict tier and confidence before and after,
+and writes nothing. `--program <id>` (repeatable) imports only those programs.
+Running it again is safe: a program whose record already holds at least the
+census count is skipped.
+
+**Verify it.**
+
+1. The hash it printed (`CENSUS battle_tested_evidence.json sha256=…`) is the
+   committed file's: `sha256sum graphite-core/protocols/battle_tested_evidence.json`
+   in a checkout of the same tag. `--census <that file> --dry-run` makes the
+   binary compare them for you.
+2. `graphite evidence show --program 11111111111111111111111111111111`
+   shows `battle_tested=` the System Program's census count and
+   `signed_manifest=false`; the trust tier is HeuristicInferred.
+3. `graphite audit verify` (with `--key-file` on a keyed trail) exits 0, and
+   the trail holds one `operator_action` row per imported program whose
+   `detail` starts `evidence imported for <program> (census-measured, …`.
+4. After the server starts, a verdict on an imported program carries the
+   breakdown item `HistoricalVolume` with `raw_value` 1.0. For an imported
+   program under the upgradeable loader (or loader-v4), the first verdict
+   that reads its deployment reports `ProgramEvidenceWithdrawn` when the
+   deployment is newer than the census window, and the volume is gone.

@@ -68,11 +68,15 @@ import wire  # noqa: E402
 
 SYSTEM_PROGRAM = "11111111111111111111111111111111"
 SPL_TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-# What an operator seeds before a fresh Core approves anything: 3 simulation
-# matches (SimulationValidated) and a baseline L3 anchors on. System matches
-# live_devnet.py; SPL Token's band covers Transfer (~4.6k CU) through
-# TransferChecked (~6.2k CU) — a whole multi-program transaction measured
-# against it is expected to fall outside, which is what the run shows.
+# What an operator does before a fresh Core approves anything (Round 40):
+# `graphite evidence import-census` for these programs — the measured,
+# committed mainnet census (protocols/battle_tested_evidence.json), not typed
+# numbers — and a baseline L3 anchors on. The baseline is the one typed input
+# left: an L3 calibration, so the run can show L3 FLAG; it also feeds the
+# SimulationMatch signal through its sample count, and the report says so.
+# System matches live_devnet.py; SPL Token's band covers Transfer (~4.6k CU)
+# through TransferChecked (~6.2k CU) — a whole multi-program transaction
+# measured against it is expected to fall outside, which is what the run shows.
 SEED_BASELINES = {
     SYSTEM_PROGRAM: {"mean": 150, "std": 30, "samples": 10},
     SPL_TOKEN_PROGRAM: {"mean": 5000, "std": 1500, "samples": 10},
@@ -788,7 +792,8 @@ def markdown(report, harness=None):
     if seeded:
         out += [
             f"**Evidence:** operator evidence was seeded for {', '.join(f'`{p}`' for p in seeded)} only "
-            "(simulation matches + an anchored compute baseline, `graphite evidence seed|baseline`). Those programs "
+            "(their measured census volume, `graphite evidence import-census`, and an operator-set anchored compute "
+            "baseline, `graphite evidence baseline`, which also feeds the SimulationMatch signal). Those programs "
             "can reach `executable_approved`, and their L3 is judged against the seeded anchor, which can FLAG; every "
             "other program is as on a fresh Core (next paragraph). See *Seeded programs* below.",
             "",
@@ -966,21 +971,27 @@ def watched_markdown(report):
 
 
 def seed(graphite, data_dir, programs=None, *, run=subprocess.run):
-    """`graphite evidence seed` + `baseline` for each program, then `show`.
-    Returns the record the replay report carries."""
+    """`graphite evidence import-census` for the programs (Round 40: their
+    measured census volume, never typed numbers), then `baseline` (the L3
+    anchor) and `show` for each. Returns the record the replay report carries.
+    Read-only towards the chain: nothing here signs or sends."""
     programs = programs or SEED_BASELINES
-    doc = {"ok": True, "programs": {}}
+    doc = {"ok": True, "evidence": "census-imported", "programs": {}}
+    imp = [graphite, "evidence", "import-census", "--data-dir", data_dir]
+    for p in programs:
+        imp += ["--program", p]
+    r = run(imp, capture_output=True, text=True)
+    if r.returncode != 0:
+        doc.update(ok=False, error=f"`graphite evidence import-census` exited {r.returncode}: {(r.stderr or '')[-300:]}")
+        return doc
+    doc["import"] = (r.stdout or "")[-1500:]
     for p, b in programs.items():
-        cmds = [
-            [graphite, "evidence", "seed", "--data-dir", data_dir, "--program", p, "--simulation-matches", "3"],
-            [graphite, "evidence", "baseline", "--data-dir", data_dir, "--program", p, "--mean-compute-units", str(b["mean"]),
-             "--std-compute-units", str(b["std"]), "--samples", str(b["samples"])],
-        ]
-        for c in cmds:
-            r = run(c, capture_output=True, text=True)
-            if r.returncode != 0:
-                doc.update(ok=False, error=f"`graphite {' '.join(c[1:3])}` for {p} exited {r.returncode}: {(r.stderr or '')[-300:]}")
-                return doc
+        c = [graphite, "evidence", "baseline", "--data-dir", data_dir, "--program", p, "--mean-compute-units", str(b["mean"]),
+             "--std-compute-units", str(b["std"]), "--samples", str(b["samples"])]
+        r = run(c, capture_output=True, text=True)
+        if r.returncode != 0:
+            doc.update(ok=False, error=f"`graphite {' '.join(c[1:3])}` for {p} exited {r.returncode}: {(r.stderr or '')[-300:]}")
+            return doc
         show = run([graphite, "evidence", "show", "--data-dir", data_dir, "--program", p], capture_output=True, text=True)
         doc["programs"][p] = {"baseline": b, "show": ((show.stdout or show.stderr) or "")[-600:]}
     return doc

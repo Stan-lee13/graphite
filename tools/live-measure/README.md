@@ -44,7 +44,10 @@ Inputs (all optional):
 - **Fresh Core** — with no seeded or earned evidence no program can reach
   `executable_approved` and L3 cannot flag; the report says so. With
   `seed_evidence`, the System and SPL Token programs are seeded first
-  (`live_mainnet.py seed`) and get their own *Seeded programs* table.
+  (`live_mainnet.py seed`: `graphite evidence import-census` for their
+  measured census volume — Round 40, never typed numbers — and `graphite
+  evidence baseline` for the L3 anchor) and get their own *Seeded programs*
+  table.
 - **Cluster** (devnet) — the public faucet is retried (3 rounds, 30 s / 60 s
   apart, each backing off on 429); when it still refuses, the run falls back
   to a pinned Agave `solana-test-validator` (exact version and archive
@@ -88,9 +91,12 @@ workflow always gives one). INCONCLUSIVE (exit 0): the
 transfer executed but L8 could not reach the chain for a transient reason
 (429, timeout, connection) or the confirmation was still pending.
 
-`seed_evidence` seeds operator evidence for the System program before the
-Core starts, as an operator would: a fresh Core approves nothing until
-evidence is earned or seeded. The report says which was used.
+`seed_evidence` seeds evidence for the System program before the Core
+starts, as an operator would: `graphite evidence import-census --program
+11111111111111111111111111111111` (the measured mainnet census; the System
+program is a builtin, the same code on every cluster) and `graphite evidence
+baseline`. A fresh Core approves nothing until evidence is earned or seeded.
+The report says which was used.
 
 ## Running locally
 
