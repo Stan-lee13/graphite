@@ -845,7 +845,9 @@ impl ManifestRegistryEngine {
             .with_candidate_manifest(&candidate)
             .map_err(|e| RegistryError::RegressionGateBlocked(e.to_string()))?;
         let run = replay_corpus_for_program(&candidate_core, &replay, &program_id);
-        if let PromotionDecision::Block { reason } = decide_promotion(&run) {
+        if let PromotionDecision::Block { reason } =
+            Self::gate_decision(&run, &self.corpus, &program_id)
+        {
             self.refused.push(RefusedSubmission {
                 program_id: program_id.clone(),
                 version_label: version_label.clone(),
@@ -924,6 +926,63 @@ impl ManifestRegistryEngine {
             trust_tier: tier,
             version_label,
         })
+    }
+
+    /// The P10 decision over a replay (Round 39, R39-CORE-IDENTITY-1).
+    ///
+    /// `decide_promotion` alone took 99.5% of the whole replay, and the
+    /// whole replay included the submitter's fixtures: recorded under the
+    /// candidate, they pass by construction, and one input can be pinned under
+    /// any number of provenance strings. 199 of them let one fixture fail —
+    /// and the one that failed could be a refusal the registry pinned when it
+    /// accepted an earlier version, approved by the candidate. "A submission
+    /// can add fixtures but never remove one" (MR-1) did not hold. Now:
+    ///
+    /// - a fixture pinned as REFUSED that the candidate approves blocks,
+    ///   whatever the pass rate — a loosening of pinned behaviour is the case
+    ///   the gate exists for, and a correction that legitimately approves it
+    ///   goes through the operator's named escape hatch
+    ///   ([`Self::deprecate_regression_fixture`]);
+    /// - the registry's own non-deprecated fixtures are held to the pass rate
+    ///   on their own, so the submitter's fixtures cannot dilute them;
+    /// - the whole replay is held to it as before.
+    fn gate_decision(
+        run: &crate::regression_engine::RegressionRun,
+        registry_corpus: &RegressionCorpus,
+        program_id: &str,
+    ) -> PromotionDecision {
+        if let Some(f) = run.failures.iter().find(|f| !f.expected && f.got) {
+            return PromotionDecision::Block {
+                reason: format!(
+                    "fixture {} was pinned as refused and the candidate approves it: a submission may not loosen pinned behaviour, whatever the pass rate (an operator retires a fixture by name to allow a correction)",
+                    f.content_hash
+                ),
+            };
+        }
+        let pinned: HashSet<&str> = registry_corpus
+            .fixtures_for(program_id)
+            .into_iter()
+            .filter(|f| !f.deprecated)
+            .map(|f| f.content_hash.as_str())
+            .collect();
+        if !pinned.is_empty() {
+            let failed = run
+                .failures
+                .iter()
+                .filter(|f| pinned.contains(f.content_hash.as_str()))
+                .count();
+            let rate = pinned.len().saturating_sub(failed) as f64 / pinned.len() as f64;
+            if rate < crate::regression_engine::PROMOTION_PASS_RATE {
+                return PromotionDecision::Block {
+                    reason: format!(
+                        "the registry's own fixtures for this program pass at {rate:.4}, below the required {:.3} ({failed} failed / {} pinned); the submitter's fixtures do not count toward it",
+                        crate::regression_engine::PROMOTION_PASS_RATE,
+                        pinned.len()
+                    ),
+                };
+            }
+        }
+        decide_promotion(run)
     }
 
     /// Validate the manifest surface: the runtime loader's full validation
