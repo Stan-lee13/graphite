@@ -923,15 +923,15 @@ transaction under the stated threat model, and no external party has yet tried.
 document links here, and `tests/docs_numbers_match_the_code.rs` fails if a live
 document states one elsewhere.
 
-Rust, from the integrated runs of Round 38 on 2026-10-24 (`cargo test --locked`, debug
+Rust, from the integrated runs of Round 38's second pass on 2026-10-25 (`cargo test --locked`, debug
 profile without debug info, on one build target; logs kept outside the repository):
 
-- the default features CI runs: **2,387 Rust tests pass**, 0 failed,
+- the default features CI runs: **2,414 Rust tests pass**, 0 failed,
   14 ignored (network- or sample-dependent, plus three benchmarks, each named in
-  `.github/test-allowlists/rust-ignored.txt`), across 171 test targets;
-- the featureless library (`--no-default-features --lib`): **517 passed, 3 ignored**;
-- the cli-only build (`--no-default-features --features cli`): **1,947 passed, 5 ignored**,
-  across 171 test targets.
+  `.github/test-allowlists/rust-ignored.txt`), across 173 test targets;
+- the featureless library (`--no-default-features --lib`): **529 passed, 3 ignored**;
+- the cli-only build (`--no-default-features --features cli`): **1,967 passed, 5 ignored**,
+  across 173 test targets.
 
 CI's test-count gate holds each leg at these floors (`rust-test` matrix in
 `.github/workflows/ci.yml`).
@@ -939,14 +939,15 @@ CI's test-count gate holds each leg at these floors (`rust-test` matrix in
 Clippy `-D warnings` (all three feature legs) and fmt clean on the integrated tree;
 the release build (`--features server,cli`, thin LTO) builds.
 
-TypeScript (Round 36, run as CI runs them): agent guard 316 (301 at Round 35; the
-transport, verdict-age, spend and F-003 tests); SolanaAgentKit adapter 10; MCP server
-10; Vercel AI adapter 12 (each +1 for the Round 36 Zod bound); TypeScript SDK 66 (62
-hermetic, 4 against a live server — run in CI's container job); dashboard 35 (31 at
-Round 35), production build OK, and the e2e harness (`.github/scripts/dashboard-e2e.sh`:
+TypeScript (Round 38, run as CI runs them): agent guard 330 (316 at Round 36; the
+lock-directory, repeat-key, verdict-age, not-sent, residual and `program_deployments`
+tests); SolanaAgentKit adapter 10; MCP server 10; Vercel AI adapter 12; TypeScript SDK 66
+(62 hermetic, 4 against a live server — run in CI's container job); dashboard 36 (35 at
+Round 36: the response bound), production build OK, and the e2e harness (`.github/scripts/dashboard-e2e.sh`:
 smoke at three sizes and the Round 36 fault states, axe included). Go SDK: `go vet` and
 `go test` pass. Python: 114 across the AI layer, `tools/mainnet-sample` and
-`tools/live-measure`. Deploy kit: 162 checks (`deploy/tests/run.sh`; 109 at Round 35).
+`tools/live-measure`. Deploy kit: 163 checks (`deploy/tests/run.sh`; 162 at Round 36), plus
+`deploy/tests/backup-keys.test.sh`, 22 checks (Round 38: the `.mac` under the current key only).
 The npm advisory gate passes for all six packages with no new allowlist entry, and
 `cargo audit` reports nothing but the allowed bincode-unmaintained warning in the two
 oracles. The runtime oracle: ~628,500 frames per CI seed, bincode and wincode, legacy,

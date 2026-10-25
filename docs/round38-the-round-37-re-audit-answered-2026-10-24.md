@@ -379,24 +379,34 @@ also refused end to end by L4's W19.
 
 ## D. What was run
 
-All on the integrated tree (`a3b9e73`), in this session's Linux container, debug profile without
-debug info. Push and CI runs are recorded on the PR when the owner allows the push.
+All on the integrated tree of the second pass (every workstream merged), in this session's Linux
+container, debug profile without debug info. The first pass's numbers (on `a3b9e73`: 2,387 / 517
+/ 1,947) are superseded. Push and CI runs are recorded on the PR when the owner allows the push.
 
 | Leg | Command | Result |
 |---|---|---|
 | fmt | `cargo fmt --all -- --check` | clean |
-| clippy, three legs | `--all-targets --all-features`; `--lib --no-default-features`; `--all-targets --no-default-features --features cli`, each `-D warnings` | clean (the first run caught two lints in `intent_binding.rs`, fixed in `a3b9e73`) |
-| Rust default | `cargo test --locked` | **2,387 passed**, 0 failed, 14 ignored, 171 targets (floor 2,363 → 2,387) |
-| Rust lib | `cargo test --locked --no-default-features --lib` | **517 passed**, 0 failed, 3 ignored (floor 513 → 517) |
-| Rust cli | `cargo test --locked --no-default-features --features cli` | **1,947 passed**, 0 failed, 5 ignored (floor 1,942 → 1,947) |
+| clippy, three legs | `--all-targets --all-features`; `--lib --no-default-features`; `--all-targets --no-default-features --features cli`, each `-D warnings` | clean |
+| Rust default | `cargo test --locked` | **2,414 passed**, 0 failed, 14 ignored, 173 targets (floor 2,387 → 2,414) |
+| Rust lib | `cargo test --locked --no-default-features --lib` | **529 passed**, 0 failed, 3 ignored (floor 517 → 529) |
+| Rust cli | `cargo test --locked --no-default-features --features cli` | **1,967 passed**, 0 failed, 5 ignored (floor 1,947 → 1,967) |
 | release | `cargo build --locked --release --all-features` | builds |
 | runtime oracle | `tools/runtime-oracle`, `--iterations 300000` | "Graphite is never looser than the runtime" |
 | inner-instruction oracle | `tools/inner-instruction-oracle`, `--iterations 1000000`, Rust 1.99.1 (CI's) | "every rebuild round-trips through Agave's parser" |
-| deploy kit | `deploy/tests/run.sh` against the release binary | 138 of 162: Caddy and promtool are not installed in this container, so the edge and promtool checks fail and the single-writer head check reads an empty trail. The keyed trail was then checked by hand against the release binary: written, verified (`tamper_evident`, a trail id), resumed after a restart under the same id. CI runs the whole kit |
-| pinned outputs | `regression_corpus`, `release_evaluation`, `mainnet_conformance`, `r30_declared_effects_census` | unchanged, except the census's new pinned R37-6 row |
+| pinned outputs | `regression_corpus`, `release_evaluation`, `mainnet_conformance`, `r30_declared_effects_census` (in the default leg) | unchanged |
+| agent guard | `npm test`, `npm run typecheck` | 330 passed, 0 failed (floor 329 → 330); typecheck clean |
+| dashboard | `npm test` | 36 passed, 0 failed |
+| TypeScript SDK | `npm test`, `npm run check` | 62 passed, 4 skipped (live-server tests, CI's container job); check clean |
+| Go SDK | `go vet`, `go test` | pass |
+| CI scripts | `ci-scripts.test.sh`, `release-gate.test.sh`, `pinned-tools.py check-pins`, `dependency-holds.py check`, `check-attestation-commands.py` | 77 / 52 passed, 0 failed; the three checks pass |
+| deploy kit | `deploy/tests/backup-keys.test.sh` against the release binary; `deploy/tests/run.sh` (by the trail workstream) | 22 / 22; run.sh 139 of 163 — the 24 that fail need Caddy or promtool, which this container lacks. CI runs the whole kit |
+| workflows | `actionlint` (by the CI workstream) | clean; `release-guard.yml` and `ruleset-drift.yml` have not run on GitHub |
 
-No TypeScript, Go or Python file changed in Round 38's commits. The F-001 test and the CI script
-changes are PR #54's, green in CI run 40121939855.
+During the round one test run failed in a way worth naming. `docs_numbers_match_the_code` caught
+`CURRENT.md` still saying 14 non-inherent residual codes after `program_deployments` made 15; and
+six end-to-end tests in two harnesses failed on the new residual, because their fixture programs
+were owned by the upgradeable loader with no `Program` data. The fixtures were made real (a
+`Program` account and a served `ProgramData` header); the residual was right.
 
 ## E. Residuals and what this round did not do
 
