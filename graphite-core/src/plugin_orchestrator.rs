@@ -26,8 +26,10 @@
 //!    block attributed to the plugin by name (Round 17, F-16-07: reducing
 //!    it to a note was the fail-open direction, an input that crashed the
 //!    plugin lost its block), and so does a Policy plugin, whose Block is a
-//!    veto; a Simulation plugin, whose verdicts are report-only, becomes an
-//!    error note.
+//!    veto, and (Round 39) a Simulation plugin, whose Block fails L3 and so
+//!    refuses the verdict (F11). Protocol and Analytics plugins return no
+//!    verdict: a panic loses their knowledge or their observation, never a
+//!    block.
 //!
 //! # Plugin review gate
 //!
@@ -592,13 +594,22 @@ impl PluginOrchestrator {
                 // block and the layer passed on the core's verdict alone —
                 // the one direction a security plugin must not fail in. A
                 // Policy plugin's Block is a veto, so it is in the same set.
-                // A panic still cannot fabricate a PASS: Simulation-family
-                // plugins, whose verdicts are report-only, keep the Note so a
-                // crashing advisory plugin does not wedge traffic.
+                //
+                // Round 39 (R39-CORE-DECISION-3): so is a Simulation plugin's.
+                // Since F11 its Block fails L3 and refuses the verdict, but a
+                // panic was still reduced to a Note on the grounds that its
+                // verdicts were report-only — so an input that crashed it lost
+                // its veto, and an honest-looking swap it would have refused
+                // was `executable_approved`. Every family whose verdict can
+                // block now blocks when it cannot reach one; only Protocol and
+                // Analytics plugins, which have no verdict, never reach here.
                 Err(_)
                     if matches!(
                         family,
-                        PluginFamily::Risk | PluginFamily::Verifier | PluginFamily::Policy
+                        PluginFamily::Risk
+                            | PluginFamily::Verifier
+                            | PluginFamily::Policy
+                            | PluginFamily::Simulation
                     ) =>
                 {
                     tracing::error!(
@@ -650,8 +661,8 @@ impl PluginOrchestrator {
         fold_runs_into_result(result, runs)
     }
 
-    /// Simulation-family verdicts for L3 (Note/Block report-only — never a
-    /// pass; P5).
+    /// Simulation-family verdicts for L3 (Note or Block, never a pass; P5).
+    /// A Block fails L3, which refuses the verdict (F11); a panic is a Block.
     pub fn simulation_verdicts(&self, ctx: &PluginContext) -> Vec<PluginRun> {
         self.run_family(
             LayerId::L3SimulationVerification,
@@ -1068,8 +1079,8 @@ mod tests {
     /// previous assertion — "core verdict survives, panic is a note" — was
     /// the fail-open direction: an input that crashed a Verifier or Risk
     /// plugin lost that plugin's block. The pipeline is not wedged (the
-    /// panic is caught), the block is attributed to the plugin by name, and
-    /// advisory families keep the Note.
+    /// panic is caught), and the block is attributed to the plugin by name.
+    /// Round 39: every family that can block, Simulation included.
     #[test]
     fn test_panicking_blocking_plugin_fails_closed() {
         let mut orch = PluginOrchestrator::new();
@@ -1111,8 +1122,11 @@ mod tests {
             outcome.findings[0].pattern
         );
         assert!(outcome.findings[0].reason.contains("panic"));
-        // An ADVISORY family (Simulation) keeps the Note: a crashing advisory
-        // plugin must not wedge traffic, and its verdict never blocked anyway.
+        // Re-pinned in Round 39 (R39-CORE-DECISION-3): this asserted that a
+        // panicking Simulation plugin keeps a Note, "its verdict never
+        // blocked anyway". Since F11 its Block fails L3 and refuses the
+        // verdict, so the Note lost a veto; a crash is now a Block, like the
+        // other families that can block.
         struct PanicSim {
             m: PluginManifest,
         }
@@ -1130,7 +1144,11 @@ mod tests {
         })));
         let runs = orch3.simulation_verdicts(&ctx());
         assert_eq!(runs.len(), 1);
-        assert!(matches!(runs[0].verdict, PluginVerdict::Note(_)));
+        assert!(
+            matches!(&runs[0].verdict, PluginVerdict::Block { pattern, .. } if pattern == "panic-sim:panicked"),
+            "{:?}",
+            runs[0].verdict
+        );
     }
 
     #[test]
