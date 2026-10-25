@@ -1,4 +1,4 @@
-# AUDIT 02 — Roadmap gap: what the roadmap asks for vs. what the code does (2026-09-30, updated 2026-10-22)
+# AUDIT 02 — Roadmap gap: what the roadmap asks for vs. what the code does (2026-09-30, updated 2026-10-25, after Round 38)
 
 This compares the goals in the engineering-skill repository (ROADMAP phase exit criteria, FEATURES rows, CONSTITUTION checks, TESTING, BENCHMARK) and this repository's own `ROADMAP.md` and `docs/CURRENT.md` against the code at `3327fcf`. It then records what this round implemented. The full evidence table from the audit is in `graphite-audit-work/a6/roadmap_gap.md`, outside the repository.
 
@@ -92,6 +92,35 @@ Each has named tests; see the audit table.
 | R-M5 / R-M6 (part) | Release integrity | **Gated in code** (signed tag on `main`, push-event CI gate); the rulesets and `release` environment are OWNER | `.github/scripts/release-gate.test.sh` |
 | — | CI green on `main` | **Split** (`rust-lint`, `rust-test` matrix, `ci-test` profile); green on `main` to be measured after the owner's push | `.github/workflows/ci.yml` |
 | — | Declarations of 18 withdrawal grants name no account | **Open**: rewrite from IDLs (owner sign-off) | `tests/r30_declared_effects_census.rs` |
+
+## Round 35 (2026-10-23): Round 34 on live mainnet
+
+| # | Goal | Status after Round 35 | Evidence |
+|---|---|---|---|
+| — | The live workflows measure the code | **Run** on Round 34's code and on the Round 35 head: no defect; 0 of 200 replayed transactions approved in each run (most fail simulation against later state) | `.github/workflows/live-mainnet.yml`, `docs/round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md` §I |
+| — | A CPI is approvable on a real RPC | **Done** for parsed System, SPL Token, Token-2022 and ATA inner instructions (R35-3); the other families stay incomplete (refused) | `tests/round35_parsed_inner_instructions.rs`, `tools/inner-instruction-oracle` |
+
+## Round 36 (2026-10-24): the owner's forensic brief (F-001..F-022)
+
+| # | Goal | Status after Round 36 | Evidence |
+|---|---|---|---|
+| — | The request's amount, recipient and asset are the transaction's | **Done** for transfers, approves, burns and six decoded swap routes; anything else is `intent_parameters`, never executable (F-003) | `tests/round36_intent_binding.rs` |
+| R30-G-1 | A withdrawal's minimum output | **Held to the simulation** (`WithdrawalUnderbounded`, F-004); a Meteora DLMM remove (no minimum) is never executable | `intent_binding::bind_withdrawal` |
+| — | Declarations of 18 withdrawal grants name no account | **Rewritten from IDLs** (35 declarations, F-005); 9 medium-confidence rewrites need owner sign-off | `docs/audit-r36/declaration-rewrites.json` |
+| W11-c | Registry records keep signatures | **Done** (F-008) | `RegistryRecord::verify_offline` |
+| R-P11/12/15 | Mutation scores | **Measured in part**: 44 shards, no module complete (F-015) | `docs/audit-r36/mutation-run-40083338181.md` |
+
+## Rounds 37–38 (2026-10-24): an internal re-audit of `8b3d8a4`, answered
+
+| # | Goal | Status after Round 38 | Evidence |
+|---|---|---|---|
+| — | Nothing beside a swap, a withdrawal or a creation takes value from a signer | **Done** (R37-1, R37-7; both were `executable_approved` end to end) | `tests/round38_sibling_skims.rs`, `tests/round38_create_funding.rs` |
+| — | A line naming no account excuses no effect on a signer's account | **Done** for authority, delegate, close, freeze and owner effects (R37-6) | `tests/round38_unscoped_authority.rs` |
+| G-07 (hardening) | Readers agree with `verify` | **Done**: readers walk the chain; one-way rotation; chain link v2 with a trail id (R37-2..5) | `durable::chain_trail_tests` |
+| R-M5 / R-M6 (part) | Release integrity | **Still OWNER**: until the rulesets and the `release` environment are applied, anyone with write access can publish a release with genuine provenance (R37-8) | `docs/ops/production-checklist.md`, R1–R5 |
+
+The rest of Round 37 is answered by finding id in the commits after the Round 38 report
+(`git log --oneline 8b3d8a4..`); `docs/CURRENT.md` is the current state.
 
 Not closed by Round 29, and still in the tables below: R-P7, R-P10, R-P11/12/15, R-P16/17,
 R-P18, A2-08, R-M4, R-M5, R-M6, R-M7/8, R-M9, R-M10, R-M12, R-M13, R-M14, R-M15.

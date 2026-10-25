@@ -23,10 +23,12 @@ line: **CONDITIONAL — security-hardened alpha.** No known way to turn a blocke
 verdict into an executed transaction under the stated threat model; no
 independent third party has yet tried; `main` has no branch protection (the
 rulesets that would add it are prepared in `.github/rulesets/`, not applied).
-Round 30's verdict: release blocked on those owner and external items; the code
-is ready for an independent audit. Only `executable: true` permits signing.
-Rounds 31–32 did everything code and CI can do toward production (below); the
-release blockers are unchanged and are the owner's and an auditor's.
+The verdict since Round 36: release blocked on those owner and external items;
+the code is conditionally ready for an independent audit, with the owner gates
+open (`docs/ops/production-checklist.md`). Only `executable: true` permits
+signing. Rounds 31–32 did everything code and CI can do toward production
+(below), and Rounds 34–38 answered three internal audits; the release blockers
+are unchanged and are the owner's and an auditor's.
 
 ## Security Architecture
 

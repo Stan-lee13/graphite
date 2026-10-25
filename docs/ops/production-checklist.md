@@ -3,8 +3,9 @@
 One list, in order, for taking Graphite Core to production. Every item names the
 artifact in this repository and the exact command or click. Items 1–12 are the
 owner and operator release gate of Round 30 (`docs/round30-forensic-audit-and-remediation-2026-10-22.md`,
-§G), in its numbering; A–F are what a production service needs around them.
-**Launch stays blocked until items 1, 2, 3 and 9 are done.**
+§G), in its numbering; item 13 and the pull requests in item 6 are owner gates of Round 36
+(`docs/round36-the-request-is-bound-to-the-bytes-2026-10-24.md`, §F); A–F are what a production
+service needs around them. **Launch stays blocked until items 1, 2, 3, 9 and 13 are done.**
 
 Commands assume the repository `Stan-lee13/graphite`, a checkout at its root,
 and `gh` authenticated as a repository admin.
@@ -49,7 +50,18 @@ and `gh` authenticated as a repository admin.
 - [ ] **6. Dependabot majors.** Round 31 took every update except, with reasons: the oracle's
   `solana-transaction`/`solana-message` 6 and `bincode` 3 (`graphite-core/CHANGELOG.md`),
   `@solana/web3.js` 1.x, `@types/node` 22.x. Each stays an explicit decision; close or re-open the
-  corresponding Dependabot PRs to match.
+  corresponding Dependabot PRs to match. The pull requests named as owner items so far:
+  - [ ] **PR #46** (`@solana/web3.js` 1.99.0 → 3.1.0 in `integrations/agent-guard`; Round 34, D-7:
+    the semver-major ignore in `.github/dependabot.yml` holds it back).
+  - [ ] **PRs #47, #48 and #52** (`solana-transaction` 6.0.0 and `solana-message` 6.0.0 in
+    `tools/runtime-oracle`, `solana-message` 6.0.0 in `tools/inner-instruction-oracle`; Round 36,
+    R36-L2: each bumps one of two crates that move in lockstep, so none compiles alone, and 6.0
+    changes the v1 limits the oracle checks Graphite against; the holds are in
+    `.github/dependency-holds.json`).
+
+  On 2026-10-24 the GitHub API shows all four closed unmerged, by Dependabot (#46 on 2026-10-22,
+  the other three on 2026-10-24, after its ignore rules merged). The owner's item: confirm that is
+  the decision, and re-open one only together with the paired bump and a re-run of the oracles.
 - [ ] **7. Assurance budgets.** After the first scheduled run of the weekly mutation and coverage jobs on
   the hosted runners: Actions → the run → read the measured scores; replace the three provisional
   mutation-score floors (each at 0.60) with measured ones in a PR.
@@ -230,6 +242,17 @@ Pick one form: `deploy/compose/docker-compose.prod.yml` or `deploy/systemd/` (bo
   production traffic; until then confidence for programs without history stays at its floor and
   refusals of them are expected. Check progress on `GET /api/graph` (read key).
 - [ ] **12. MMM `updatePool`** stays ungranted until its IDL is in the repository.
+- [ ] **13. Sign off the 9 medium-confidence declaration rewrites — STOP-SHIP (Round 36, F-005).**
+  Round 36 rewrote 35 declarations from their IDLs (`docs/audit-r36/declaration-rewrites.json`); 26
+  are `"confidence": "high"`, and 9 are `"confidence": "medium"` because the repository holds no IDL
+  file for them: SPL Stake Pool `WithdrawSol`, `WithdrawSolWithSlippage`, `WithdrawStake`,
+  `WithdrawStakeWithSlippage`; Marinade `liquidUnstake`; Raydium AMM v4 `SwapBaseIn`, `SwapBaseOut`,
+  `SwapBaseInV2`, `SwapBaseOutV2`. Read each row's `old_lines`, `new_lines`, `idl_source` and
+  `justification` against the program's own interface, and record the sign-off (or the correction)
+  in a pull request that changes the row's `confidence`.
+  ```sh
+  jq -r '.rewrites[] | select(.confidence=="medium") | "\(.manifest) \(.instruction)"' docs/audit-r36/declaration-rewrites.json
+  ```
 
 ## Running it
 

@@ -1,4 +1,4 @@
-# AUDIT FINAL — verdict (2026-10-23, after Round 35)
+# AUDIT FINAL — verdict (2026-10-25, after Round 38)
 
 **Scope:** the whole repository, audited in six areas at `3327fcf` ([`00-map.md`](00-map.md)) and
 fixed in Round 23. An external review of the result followed (R1–R26 with W1–W26); its items were
@@ -10,22 +10,33 @@ Round 30 (`../docs/audit-r30/findings-registry.md`); Rounds 31–32 updated ever
 built the release, deployment and live-measurement path
 (`../docs/round32-production-readiness-2026-10-22.md`); a deep audit of `b473a31` (Round 33: 1 P0,
 9 P1, 13 P2, about 30 P3) was answered in Round 34
-(`../docs/round34-the-deep-audit-remediated-2026-10-23.md`). **Internal engineering
+(`../docs/round34-the-deep-audit-remediated-2026-10-23.md`); Round 35 ran Round 34 on live mainnet
+(`../docs/round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md`); the owner's
+whole-repository forensic brief (F-001 … F-022) was answered in Round 36
+(`../docs/round36-the-request-is-bound-to-the-bytes-2026-10-24.md`); and an internal re-audit of
+`8b3d8a4` (Round 37: 1 P0 candidate, 8 P1, 9 P2, about 25 P3) was answered in part in Round 38
+(`../docs/round38-the-round-37-re-audit-answered-2026-10-24.md`) and in the commits after it. The
+Round 33 and Round 37 audit reports themselves are not in the repository; the rounds that answer
+them cite their findings by id (R33-n, R37-n). **Internal engineering
 work by the maintainer and AI engineering agents, plus external reviews answered here. Not an
 independent third-party audit and not a certification.** The independent audit remains an owner
 decision (R-M4).
 
 ## Verdict
 
-**Release blocked on owner and external items; the code is ready for an independent audit.**
-This is the same verdict `docs/CURRENT.md` states. Before Round 34 this page said "ready for a
-supervised production pilot", which contradicted it. A supervised pilot needs, first:
+**Release blocked on owner and external items; the code is conditionally ready for an
+independent audit, with the owner gates open** (`../docs/ops/production-checklist.md`). This is
+the verdict the Round 36 report states and the Round 38 report keeps. Before Round 34 this page
+said "ready for a supervised production pilot", which contradicted it. A supervised pilot needs, first:
 - branch protection and the release rulesets applied;
 - the protected `release` environment and a signing key (`docs/ops/production-checklist.md`, R1–R4);
 - a real deployment with monitoring.
 None of these can be done from the repository. The Round 33 audit also showed that the previous
 round's confidence was too high: it found a P0 (R33-1) and a second exploitable path (R33-5) in code
-three rounds of internal work had passed. That is the strongest argument for the independent audit.
+three rounds of internal work had passed. Round 37's re-audit did it again: two transactions were
+`executable_approved` end to end on `main` (R37-1, a swap or withdrawal skimmed by a sibling;
+R37-7, a creation funding the attacker's account; both fixed in Round 38). That is the strongest
+argument for the independent audit.
 
 Every finding this work raised is in one of three states:
 
@@ -57,6 +68,9 @@ This is **not** a "0 issues" verdict.
 | Review of the fixes and the suite (F1–F18) | 0 | 1 candidate (F3) | 5 | 9 | 2 test-quality, 2 nits, 1 rejected (F6) |
 | External review R1–R12 and W1–W26 | 0 | 4 (R2; R3 and W14-a, which completes it; R3-b, from this round's measurement) | 15 (R1; 13 in Round 24, one disclosed rather than refused; R11 open) | 22 (21 fixed; W7 open) | R4–R10 fixed (documents, schemas, bridge); W24 test quality; 6 documented limitations; owner items |
 | Second external review E1–E10 (Round 25) | 0 | 1 by mechanism (E1: a swap not held to the request) | 3 (E2, E3b, E4) | 5 (E3, E5, E6, E8, E9) and 1 documentation (E10) | E7 not a finding |
+| Internal deep audit of `b473a31` (Round 33, answered in Round 34) | 1 (R33-1) | 9 | 13 | about 30 | owner items (`../docs/round34-the-deep-audit-remediated-2026-10-23.md` §G) |
+| The owner's forensic brief F-001 … F-022 (answered in Round 36) | 0 | 3 (F-001, F-003, F-004), fixed | 10 (F-005, F-006, F-008, F-009, F-013, F-014, F-017, F-019, F-020, R36-D1): F-006 unchanged (fails closed), the rest fixed | F-007, F-010, R36-L1 | owner and external: F-002, F-016, F-018, R36-L2 |
+| Internal re-audit of `8b3d8a4` (Round 37) | 1 candidate (R37-1; executable end to end, fixed in Round 38) | 8: R37-1 … R37-7 fixed in Round 38, R37-8 owner (release integrity) | 9 | about 25 | answered by finding id in the commits after the Round 38 report; `../docs/CURRENT.md` is the current state |
 
 The full-repository audit of 2026-10-20 ranked on its own scale: **4 HIGH** (H1 a failed or
 missing simulation approved; H2 a swap's output unbounded; H3 a transfer grounded without verb or
@@ -82,7 +96,10 @@ that alone (a documented limitation; the agent guard refuses it).
   Clippy `-D warnings` is clean on all three feature legs, and fmt is clean. The runtime oracle is
   never looser than the runtime on both CI seeds. Every fixed finding has a named test
   (`01-findings.md`); through Round 28 each was shown to fail before the fix.
-- **Deliberate breaks:** 156 of 156 numbered Rust breaks caught. B153–B156 are Round 35's (the rebuild of Agave's parsed inner instructions). B128–B152 are Round 34's: one per Rust fix of the Round 33 findings, run in a clean integrated build, with B150 caught once its mis-aimed first run was re-pointed (`01-findings.md`). The earlier ones: B01–B59 from Round 23, B60–B103 from
+- **Deliberate breaks:** B01–B168. Through Round 35, 156 of 156 numbered Rust breaks caught.
+  B157–B168 are Round 38's (ten Rust, one CI script, one TypeScript): 11 of 12 caught, and the
+  miss (B163) is covered by a second rule, shown by B164 (`01-findings.md`). Round 36's breaks are
+  described in its report (§C), not numbered. B153–B156 are Round 35's (the rebuild of Agave's parsed inner instructions). B128–B152 are Round 34's: one per Rust fix of the Round 33 findings, run in a clean integrated build, with B150 caught once its mis-aimed first run was re-pointed (`01-findings.md`). The earlier ones: B01–B59 from Round 23, B60–B103 from
   Round 24 (R2, R3, R3-b and W11–W25), B104–B107 from Round 25 (E3, E3b, E8), B108 from Round 26
   (the committed mainnet blocks catch a verdict change), B109–B111 from Round 27 (upgrade detection), B112–B125 from Round 28 (the archive index, the
   emission table, the contract gate). Round 29 adds B126 (the RPC-client and state-diff fixes
@@ -102,7 +119,10 @@ that alone (a documented limitation; the agent guard refuses it).
   newly refused (0.62%), **0 refused-to-Clear**, 0 approved before or after. Under honest labels,
   219 transactions with a manifested primary are newly refused (R2-c, below). The committed blocks
   were re-pinned in Round 29: 3 of 2,277 rows changed, each attributed, none from refused to
-  approved, 0 approvals before and after.
+  approved, 0 approvals before and after. **Live replays on a real RPC approved 0 of 200** in each
+  of the two runs on the Round 35 head (seeded and unseeded, 200 `blocked` each; most fail
+  simulation against later state), so the approval path on live traffic is not yet measured
+  (`../docs/round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md` §I).
 - **Holdout (Round 29):** 37 real exploits, all refused; 1 real successful Jupiter swap, refused
   offline because its lookup tables cannot be resolved. Precision 0.974, recall 1.000 on n = 38.
 - **Supply chain:** cargo-audit on both lockfiles; the npm gate keyed by advisory and package
@@ -130,7 +150,15 @@ Recorded, not hidden. Each is in `01-findings.md` or `02-roadmap-gap.md` with it
   commit older than the gate (`99948c6`) runs a copy with no gate at all (Round 37, R37-8; the
   Round 38 release guard cancels such a run from `main`, a second line, not the stop);
 - whether to keep the Round 32–34 refusal defaults on the operator's traffic profile, after running
-  `.github/workflows/live-mainnet.yml`.
+  `.github/workflows/live-mainnet.yml`;
+- the dependency pull requests: #46 (`@solana/web3.js` 3 in the guard; Round 34, D-7) and #47, #48
+  and #52 (the oracles' `solana-transaction` / `solana-message` 6, which cannot compile alone;
+  Round 36, R36-L2). All four show closed, unmerged, by Dependabot; the owner confirms that is the
+  decision (`../docs/ops/production-checklist.md`, item 6);
+- the sign-off of the 9 medium-confidence declaration rewrites of Round 36 (F-005;
+  `../docs/audit-r36/declaration-rewrites.json`; checklist item 13);
+- Round 38's upgrade steps: `graphite audit verify` before the server (chain link v2 is unreadable
+  by Round 30–37 binaries), and `graphite audit adopt-key` again on trails adopted in Rounds 34–37.
 
 **Documented limitations, with their measured cost where one exists:**
 
@@ -140,29 +168,39 @@ Recorded, not hidden. Each is in `01-findings.md` or `02-roadmap-gap.md` with it
 - **R-M13.** Owner configuration of one's own object is refused like protocol administration.
 - **A2-08.** L3 baselines are per program, not per instruction.
 - **W17-c.** A lookup table's freshness is not checked against the current slot.
-- **W11-c.** Registry records keep no signatures.
+- **W11-c, fixed in Round 36 (F-008).** Registry records carry their signatures and verify
+  offline; the first-manifest self-replay limitation stands (`SECURITY.md`).
 - **W18/19-f.** Since Round 32, signer lamports leaving under a debit declared only for other
   accounts are refused by default (W19; opt-out `GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT`;
-  1 of 200 live mainnet transactions, 0.5%). Graphite still binds no amounts in general, so the
-  agent guard's cap does.
+  1 of 200 live mainnet transactions, 0.5%). Since Round 36 the request's amount, recipient and
+  asset are bound for transfers, approves, burns and six decoded swap routes (F-003; since Round
+  38, also what rides beside a swap, a withdrawal or a creation); anything the Core cannot bind is
+  the `intent_parameters` residual, never executable, and the agent guard's cap still bounds what
+  is signed.
 - **W25-d, revised in Round 29.** The holdout's benign label is now by provenance, but there is
   one benign row, and it is refused offline; the exploits run descriptively.
 - **Round 29.** Without an RPC client nothing is simulated and the Core does not refuse for that
-  alone; without a witness one primary RPC decides L8; the audit trail is corruption-evident, not
-  tamper-evident; L3 does not flag deviations of 50% of the centre or less; a wallet ending in five
+  alone; without a witness one primary RPC decides L8; an unkeyed audit trail is
+  corruption-evident only (keyed, it has been tamper-evident since Round 30); L3 does not flag deviations of 50% of the centre or less; a wallet ending in five
   or more `1`s is refused when it sends (R-4); the measured `BattleTested` tier does not reach
   verdicts and its bar is thin; wSOL wrapping is unsupported in the guard.
 - **Coverage.** About 86% of verified mainnet transactions have a primary program with no
   manifest. There, the drainer heuristic is the coverage boundary.
 - **Rounds 32–34 defaults.** A signer's loss under an unreadable declaration, under a debit line
-  that names no account (R33-5: 1,802 instructions, 18 of the 27 withdrawal grants), or beyond a
-  System transfer's stated amount is refused by default. An honest withdrawal under one of those 18
-  grants is refused until its declaration is rewritten from its IDL. The cost on live traffic is
-  measured by the live-mainnet workflow only: W19 refused 1 of 200 in Round 32. Round 35 ran it on
-  Round 34's code: no defect, and honest swaps (Jupiter `route_v2`, Pump AMM `sell`, Meteora DBC
-  `swap2`) are refused by R33-5 because their declarations name no account (an owner decision).
-- **Withdrawal minimums.** Three grants carry a readable minimum (an unbounded or zero one is
-  refused); the seven Meteora DLMM grants carry none; a non-zero dust minimum is not judged.
+  that names no account (R33-5), or beyond a System transfer's stated amount is refused by default.
+  Round 36 rewrote 35 declarations from their IDLs (F-005): 1,767 of 3,541 instructions still carry
+  such a line (1,802 before), and none of the 27 withdrawal grants does (18 before); 9 of the
+  rewrites await the owner's sign-off. The cost on live traffic is measured by the live-mainnet
+  workflow only: W19 refused 1 of 200 in Round 32. Round 35 ran it on Round 34's code: no defect,
+  and honest swaps (Jupiter `route_v2`, Pump AMM `sell`, Meteora DBC `swap2`) were refused by R33-5
+  because their declarations name no account. Round 38 lists the swaps still refused that way
+  (Raydium CPMM, CLMM and AMM v4, most Meteora DLMM swaps, Orca `swapV2` and `twoHopSwapV2`, every
+  Jupiter exact-out route; its §E): rewriting them is a manifest change for the owner to schedule.
+- **Withdrawal minimums.** Three grants carry a readable minimum: a zero one is refused
+  (`UnboundedWithdrawal`), and since Round 36 a non-zero one is held to what the simulation
+  delivered (`WithdrawalUnderbounded`, F-004). A Meteora DLMM remove carries none and is never
+  executable. Marinade `liquidUnstake`, Stake and Stake Pool withdrawals and claims are not held to
+  a minimum (`../docs/CURRENT.md`). `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS=1` waives both checks.
 - **The agent guard's lock** reaches guards for one wallet under one OS user on one host.
 - **Parsed inner instructions not rebuilt (Round 35).** Agave reports inner instructions only in
   parsed form; Memo, Token-2022 extension, `batch`, Stake, Vote, loader, lookup-table,
@@ -173,14 +211,17 @@ Recorded, not hidden. Each is in `01-findings.md` or `02-roadmap-gap.md` with it
 
 - the guard off `@solana/web3.js` 1.x (R-M15);
 - mutation scores (R-P12): the fuzz and coverage jobs ran on the hosted runners in Round 32 (six
-  targets × 30 minutes, 0 crashes; the 78 % line floor held), but the per-module mutation jobs
-  approach the runners' 6-hour limit and the three provisional 0.60 floors are still unmeasured;
+  targets × 30 minutes, 0 crashes; the 78 % line floor held). Round 36 resharded the mutation job
+  to 44 shards; on run 40083338181, 23 finished and no module has a complete score, and six
+  finished shards are below their floor (`../docs/audit-r36/mutation-run-40083338181.md`). The
+  three provisional 0.60 floors are still not replaced by measured ones;
 - 75 manifest instructions whose account count differs from their on-chain IDL (K-7), pinned, not
   fixed, because the evidence is ambiguous.
 
 **Not measured:**
 
-- the approval path on live traffic: offline, approval is unreachable by design;
+- the approval path on live traffic: offline, approval is unreachable by design, and the live
+  replays on the Round 35 head approved 0 of 200;
 - attack classes beyond the repository's suites, the 37 documented real exploits and the
   deliberate breaks;
 - the two proptest suites under the Round 30 risk mutants; the CLI exit-code mapping on its own

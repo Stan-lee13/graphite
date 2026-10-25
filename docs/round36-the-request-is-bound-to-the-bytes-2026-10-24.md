@@ -29,8 +29,11 @@ commit is green.
 |---|---:|---:|
 | P0 (code) | 0 | 0 |
 | P1 (code) | 3: F-001 dependency DoS gate, F-003 unbound intent, F-004 dust minimum | 0 |
-| P2 (code) | 8: F-005, F-008, F-009, F-013, F-014, F-017, F-019, F-020 | 0 open; the residuals are in §E |
+| P2 (code) | 10: F-005, F-006, F-008, F-009, F-013, F-014, F-017, F-019, F-020, R36-D1 | F-006 not changed (a capability limitation that fails closed, verified); the other nine fixed; the residuals are in §E |
 | External / owner | F-002, private reporting, audit, deployment, live data, F-016 holdout | unchanged: STOP-SHIP |
+
+*Corrected after the Round 37 re-audit:* this table first listed 8 P2 findings and left out F-006
+and R36-D1, which §B classes P2.
 
 ## A. What changed for an operator
 
@@ -147,7 +150,13 @@ Hosted CI on PR #53:
 - [run 40054717819](https://github.com/Stan-lee13/graphite/actions/runs/40054717819) on `574c207`
   (F-001) passed every job.
 - [Run 40059292984](https://github.com/Stan-lee13/graphite/actions/runs/40059292984) on `ce94157`
-  and the final head are recorded on the PR.
+  was **cancelled** (its conclusion on the GitHub API is `cancelled`), so it is not evidence.
+- CI on the PR's final head, `80b3906`:
+  [run 40083327865](https://github.com/Stan-lee13/graphite/actions/runs/40083327865) (CI, pull
+  request) passed, as did the Assurance workflow's pull-request run
+  [40083327860](https://github.com/Stan-lee13/graphite/actions/runs/40083327860).
+- *Corrected after the Round 37 re-audit:* this list first cited the cancelled run as the record
+  and named no run for the final head.
 - The Assurance workflow was dispatched on the branch
   ([run 40059300806](https://github.com/Stan-lee13/graphite/actions/runs/40059300806), on `ce94157`).
   - The line-coverage floor passed.
