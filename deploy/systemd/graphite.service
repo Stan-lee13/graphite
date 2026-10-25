@@ -56,8 +56,12 @@ Environment=GRAPHITE_AUDIT_ANCHOR_DIR=/var/lib/graphite-anchors
 LoadCredential=audit.key:/etc/graphite/audit.key
 Environment=GRAPHITE_AUDIT_KEY_FILE=%d/audit.key
 
-# One TLS-terminating proxy in front (Caddy on this host).
+# One TLS-terminating proxy in front (Caddy on this host), and only it is
+# believed when it sends X-Forwarded-For (Round 40, R39-CB-8): a request from
+# any other address is keyed by that address. Caddy reaches the Core over
+# loopback.
 Environment=GRAPHITE_TRUST_PROXY=1
+Environment=GRAPHITE_TRUSTED_PROXIES=127.0.0.1,::1
 Environment=GRAPHITE_LOG_FORMAT=json
 
 Restart=on-failure

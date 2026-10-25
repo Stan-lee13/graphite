@@ -7,8 +7,10 @@
 #                      unit, graphite:7331 inside the compose network
 #   ACME_EMAIL         the certificate account's contact address
 #
-# Run the Core with GRAPHITE_TRUST_PROXY=1: Caddy is the one hop in front of
-# it. Caddy replaces any X-Forwarded-For a client sends (no `trusted_proxies`
+# Run the Core with GRAPHITE_TRUST_PROXY=1 and GRAPHITE_TRUSTED_PROXIES set to
+# the address Caddy connects from (127.0.0.1,::1 for the systemd unit; Caddy's
+# fixed backend address in the compose file): Caddy is the one hop in front of
+# it, and the only peer whose X-Forwarded-For the Core believes. Caddy replaces any X-Forwarded-For a client sends (no `trusted_proxies`
 # is configured here), so the right-most entry the Core reads is the address
 # Caddy saw.
 #

@@ -386,8 +386,9 @@ struct AppState {
     /// Community Manifest Registry engine (read-only dashboard view — P4).
     registry_engine: Arc<crate::manifest_registry::ManifestRegistryEngine>,
     rate: RateLimiter,
-    /// Only honor `X-Forwarded-For` when behind a trusted proxy.
-    trust_proxy_hops: u8,
+    /// Only honor `X-Forwarded-For` when behind a trusted proxy, and only
+    /// from that proxy (Round 40, R39-CB-8).
+    proxy_trust: Arc<ProxyTrust>,
     /// Operational counters exported at `/metrics`.
     metrics: Metrics,
     /// Bounds how many verifications may be in flight at once. See
@@ -679,6 +680,187 @@ fn client_ip(
         return UNATTRIBUTED_CLIENT;
     }
     forwarded_entry_ip(entries[entries.len() - hops]).unwrap_or(UNATTRIBUTED_CLIENT)
+}
+
+/// Which peers' forwarded headers are believed (Round 40, R39-CB-8).
+///
+/// `GRAPHITE_TRUST_PROXY` says how many proxy hops are in front;
+/// `GRAPHITE_TRUSTED_PROXIES` says WHICH peers those proxies are. Before
+/// Round 40 the hop count alone was honoured from any peer: any host that
+/// could reach the server without passing the proxy — in the production
+/// compose file, the AI layer on the backend network — wrote its own
+/// `X-Forwarded-For` and chose its own rate-limit bucket per request
+/// (campaign 10: 8 of 8 spoofed requests answered 200 where the same peer
+/// was refused from its third). The header is now read only on a connection
+/// whose peer is listed; from any other peer it is ignored and the peer's
+/// own address is the client.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct ProxyTrust {
+    hops: u8,
+    proxies: Vec<IpNet>,
+}
+
+impl ProxyTrust {
+    /// Whether a connection from `peer` may speak for its client.
+    fn believes(&self, peer: IpAddr) -> bool {
+        self.hops > 0 && self.proxies.iter().any(|net| net.contains(peer))
+    }
+}
+
+/// One `GRAPHITE_TRUSTED_PROXIES` entry: an address, or a CIDR range.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct IpNet {
+    addr: IpAddr,
+    prefix: u8,
+}
+
+impl IpNet {
+    /// `peer` is in the range. An IPv4-mapped IPv6 peer (`::ffff:a.b.c.d`,
+    /// what a dual-stack listener reports for an IPv4 client) is judged as
+    /// the IPv4 address it is.
+    fn contains(&self, peer: IpAddr) -> bool {
+        match (self.addr, peer.to_canonical()) {
+            (IpAddr::V4(net), IpAddr::V4(p)) => {
+                let mask = u32::MAX
+                    .checked_shl(32 - u32::from(self.prefix))
+                    .unwrap_or(0);
+                u32::from(net) & mask == u32::from(p) & mask
+            }
+            (IpAddr::V6(net), IpAddr::V6(p)) => {
+                let mask = u128::MAX
+                    .checked_shl(128 - u32::from(self.prefix))
+                    .unwrap_or(0);
+                u128::from(net) & mask == u128::from(p) & mask
+            }
+            _ => false,
+        }
+    }
+
+    fn parse(entry: &str) -> Result<Self, String> {
+        let (addr, prefix) = match entry.split_once('/') {
+            Some((a, p)) => (a, Some(p)),
+            None => (entry, None),
+        };
+        let addr: IpAddr = addr.parse().map_err(|_| {
+            format!("GRAPHITE_TRUSTED_PROXIES entry {entry:?} is not an IP address or a CIDR range (e.g. 127.0.0.1, ::1, 10.73.31.2, 10.73.31.0/24). REFUSING TO START.")
+        })?;
+        // An IPv4-mapped entry names the IPv4 address (as `contains` judges
+        // peers), so `::ffff:10.0.0.1` and `10.0.0.1` are one entry.
+        let addr = addr.to_canonical();
+        let max = if addr.is_ipv4() { 32 } else { 128 };
+        let prefix = match prefix {
+            None => max,
+            Some(p) => match p.parse::<u8>() {
+                // `p.to_string() == p` refuses `+24` and `024`, which `u8`
+                // parsing accepts.
+                Ok(n) if n <= max && n.to_string() == p => n,
+                _ => {
+                    return Err(format!(
+                        "GRAPHITE_TRUSTED_PROXIES entry {entry:?}: the prefix length must be a whole number from 1 to {max}. REFUSING TO START."
+                    ))
+                }
+            },
+        };
+        if prefix == 0 {
+            return Err(format!(
+                "GRAPHITE_TRUSTED_PROXIES entry {entry:?} trusts every peer, which is what the list exists to prevent: name the proxy's address. REFUSING TO START."
+            ));
+        }
+        let net = Self { addr, prefix };
+        // Host bits set (`10.0.0.5/24`): refused rather than guessed at, so
+        // the range read is the range written.
+        if !net.contains_exactly_network() {
+            return Err(format!(
+                "GRAPHITE_TRUSTED_PROXIES entry {entry:?} has host bits set: write the network address of the range. REFUSING TO START."
+            ));
+        }
+        Ok(net)
+    }
+
+    fn contains_exactly_network(&self) -> bool {
+        match self.addr {
+            IpAddr::V4(a) => {
+                let mask = u32::MAX
+                    .checked_shl(32 - u32::from(self.prefix))
+                    .unwrap_or(0);
+                u32::from(a) & !mask == 0
+            }
+            IpAddr::V6(a) => {
+                let mask = u128::MAX
+                    .checked_shl(128 - u32::from(self.prefix))
+                    .unwrap_or(0);
+                u128::from(a) & !mask == 0
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for IpNet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let max = if self.addr.is_ipv4() { 32 } else { 128 };
+        if self.prefix == max {
+            write!(f, "{}", self.addr)
+        } else {
+            write!(f, "{}/{}", self.addr, self.prefix)
+        }
+    }
+}
+
+/// `GRAPHITE_TRUSTED_PROXIES` with the hop count it qualifies (Round 40,
+/// R39-CB-8). A hop count of 1 or more with no list refuses to start: with
+/// no list the header could be honoured from nobody (every proxied client in
+/// the proxy's one bucket, nothing said) or from everybody (the bug), and
+/// neither is a choice to make for the operator. An entry that does not
+/// parse refuses too. A list beside a hop count of 0 is parsed — a typo in
+/// it is still an error — and has no effect.
+fn proxy_trust_from(hops: u8, value: Option<&str>) -> Result<ProxyTrust, String> {
+    let mut proxies = Vec::new();
+    for entry in value
+        .unwrap_or("")
+        .split(',')
+        .map(str::trim)
+        .filter(|e| !e.is_empty())
+    {
+        let net = IpNet::parse(entry)?;
+        if !proxies.contains(&net) {
+            proxies.push(net);
+        }
+    }
+    if hops > 0 && proxies.is_empty() {
+        return Err(format!(
+            "GRAPHITE_TRUST_PROXY={hops} is set and GRAPHITE_TRUSTED_PROXIES is {}: X-Forwarded-For would be believed from any peer that can reach this server, so any of them could choose its own rate-limit bucket. Set GRAPHITE_TRUSTED_PROXIES to the address(es) your proxy connects from (e.g. 127.0.0.1,::1 for a proxy on this host), or GRAPHITE_TRUST_PROXY=0. REFUSING TO START.",
+            if value.is_some() { "empty" } else { "unset" }
+        ));
+    }
+    Ok(ProxyTrust { hops, proxies })
+}
+
+/// The address a request is rate-limited by (Round 40, R39-CB-8): the
+/// forwarded client when the peer is a listed proxy ([`client_ip`]), the peer
+/// itself otherwise — whatever the request's headers say.
+fn client_key_ip(
+    req: &axum::http::Request<axum::body::Body>,
+    addr: SocketAddr,
+    trust: &ProxyTrust,
+) -> IpAddr {
+    if trust.believes(addr.ip()) {
+        return client_ip(req, addr, trust.hops);
+    }
+    if trust.hops > 0 && req.headers().contains_key("x-forwarded-for") {
+        // A forwarded header from a peer that is not a listed proxy: a host
+        // reaching the server around the proxy, or a list that misses the
+        // proxy's address. Said, at most once a minute, so the second case is
+        // found; the request is keyed by its peer either way.
+        static IGNORED_FORWARDED: LogThrottle = LogThrottle::new(60_000);
+        if let Some(suppressed) = IGNORED_FORWARDED.admit() {
+            tracing::warn!(
+                "X-Forwarded-For from {}, which is not in GRAPHITE_TRUSTED_PROXIES: ignored, the request is rate-limited by that peer's own address{}",
+                addr.ip(),
+                suppressed_note(suppressed)
+            );
+        }
+    }
+    addr.ip()
 }
 
 /// The rate-limit key of a request whose forwarded chain cannot name its
@@ -1079,16 +1261,27 @@ struct Limits {
     max_archives: usize,
     inflight_limit: usize,
     max_connections: usize,
+    /// The per-peer connection cap for a peer that is not a listed proxy.
     max_per_peer: usize,
+    /// The cap for a listed proxy (Round 40): every client's connection
+    /// arrives from it, so none unless `GRAPHITE_MAX_CONNECTIONS_PER_IP` is
+    /// set, which then applies to every peer as before.
+    max_per_proxy: usize,
     connection_lifetime: Duration,
 }
 
 impl Limits {
-    fn from_lookup(
-        get: impl Fn(&str) -> Option<String>,
-        trust_proxy_hops: u8,
-    ) -> Result<Self, String> {
+    fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
         let var = |name: &str| get(name);
+        let per_ip = var("GRAPHITE_MAX_CONNECTIONS_PER_IP");
+        let explicit_per_ip = per_ip.as_deref().is_some_and(|v| !v.trim().is_empty());
+        let max_per_peer = env_number(
+            "GRAPHITE_MAX_CONNECTIONS_PER_IP",
+            per_ip.as_deref(),
+            DEFAULT_MAX_CONNECTIONS_PER_PEER,
+            "a whole number of connections (0 = no per-peer cap)",
+            |_| true,
+        )?;
         Ok(Self {
             rotate_bytes: env_number(
                 "GRAPHITE_AUDIT_ROTATE_BYTES",
@@ -1118,19 +1311,13 @@ impl Limits {
                 "a whole number of connections greater than 0",
                 |n| n > 0,
             )?,
-            // Behind a trusted proxy every connection comes from the proxy,
-            // so the default there is no per-peer cap.
-            max_per_peer: env_number(
-                "GRAPHITE_MAX_CONNECTIONS_PER_IP",
-                var("GRAPHITE_MAX_CONNECTIONS_PER_IP").as_deref(),
-                if trust_proxy_hops == 0 {
-                    DEFAULT_MAX_CONNECTIONS_PER_PEER
-                } else {
-                    0
-                },
-                "a whole number of connections (0 = no per-peer cap)",
-                |_| true,
-            )?,
+            // Round 40 (R39-CB-8): the default cap applies to every peer
+            // but a listed proxy, through which every client's connection
+            // comes. Before, a hop count turned the default off for every
+            // peer, so a host reaching the server around the proxy held as
+            // many connections as the global cap allowed.
+            max_per_peer,
+            max_per_proxy: if explicit_per_ip { max_per_peer } else { 0 },
             connection_lifetime: Duration::from_secs(env_number(
                 "GRAPHITE_CONNECTION_LIFETIME_SECS",
                 var("GRAPHITE_CONNECTION_LIFETIME_SECS").as_deref(),
@@ -1516,7 +1703,28 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
     // values again.
     let trust_proxy_hops =
         trust_proxy_hops_from(std::env::var("GRAPHITE_TRUST_PROXY").ok().as_deref())?;
-    let limits = Limits::from_lookup(|k| std::env::var(k).ok(), trust_proxy_hops)?;
+    // Round 40 (R39-CB-8): and only from the listed proxies.
+    let proxy_trust = Arc::new(proxy_trust_from(
+        trust_proxy_hops,
+        std::env::var("GRAPHITE_TRUSTED_PROXIES").ok().as_deref(),
+    )?);
+    let limits = Limits::from_lookup(|k| std::env::var(k).ok())?;
+    if proxy_trust.hops > 0 {
+        tracing_log(&format!(
+            "X-Forwarded-For: believed only from {} (GRAPHITE_TRUSTED_PROXIES), {} hop(s) (GRAPHITE_TRUST_PROXY); from any other peer it is ignored",
+            proxy_trust
+                .proxies
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", "),
+            proxy_trust.hops
+        ));
+    } else {
+        tracing_log(
+            "X-Forwarded-For: ignored (GRAPHITE_TRUST_PROXY=0); every request is keyed by its peer",
+        );
+    }
 
     // Audit log rotation bounds BOTH unbounded disk growth and the dashboard
     // endpoints' full-file scan cost. Archives are kept forever by default
@@ -1684,7 +1892,7 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         audit,
         registry_engine: Arc::new(registry_engine),
         rate: RateLimiter::new(rate_per_sec),
-        trust_proxy_hops,
+        proxy_trust: Arc::clone(&proxy_trust),
         metrics: Metrics::default(),
         inflight: Arc::new(tokio::sync::Semaphore::new(inflight_limit)),
         inflight_limit,
@@ -1745,12 +1953,20 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
 
     let max_connections = limits.max_connections;
     let max_per_peer = limits.max_per_peer;
-    tracing_log(&format!(
-        "connection limit: {max_connections} (GRAPHITE_MAX_CONNECTIONS), {} per peer (GRAPHITE_MAX_CONNECTIONS_PER_IP; IPv6 per /64, and {SITE_CONNECTION_FACTOR}x that per /48); a request head must arrive within {}s",
-        if max_per_peer == 0 {
+    let cap = |n: usize| {
+        if n == 0 {
             "no limit".to_string()
         } else {
-            max_per_peer.to_string()
+            n.to_string()
+        }
+    };
+    tracing_log(&format!(
+        "connection limit: {max_connections} (GRAPHITE_MAX_CONNECTIONS), {} per peer (GRAPHITE_MAX_CONNECTIONS_PER_IP; IPv6 per /64, and {SITE_CONNECTION_FACTOR}x that per /48){}; a request head must arrive within {}s",
+        cap(max_per_peer),
+        if proxy_trust.hops > 0 {
+            format!(", {} per listed proxy", cap(limits.max_per_proxy))
+        } else {
+            String::new()
         },
         HEADER_READ_TIMEOUT.as_secs()
     ));
@@ -1763,12 +1979,34 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         listener,
         app,
         max_connections,
-        max_per_peer,
+        PeerCaps {
+            peer: max_per_peer,
+            proxy: limits.max_per_proxy,
+            trust: proxy_trust,
+        },
         connection_lifetime,
         shutdown,
     )
     .await?;
     Ok(())
+}
+
+/// The per-peer connection caps (Round 40, R39-CB-8): one for a listed
+/// proxy, one for every other peer.
+struct PeerCaps {
+    peer: usize,
+    proxy: usize,
+    trust: Arc<ProxyTrust>,
+}
+
+impl PeerCaps {
+    fn for_peer(&self, ip: IpAddr) -> usize {
+        if self.trust.believes(ip) {
+            self.proxy
+        } else {
+            self.peer
+        }
+    }
 }
 
 /// The server's accept loop (A4-03, 2026-09-29 audit).
@@ -1785,7 +2023,7 @@ async fn serve_hardened(
     listener: tokio::net::TcpListener,
     app: Router,
     max_connections: usize,
-    max_per_peer: usize,
+    caps: PeerCaps,
     connection_lifetime: Duration,
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> std::io::Result<()> {
@@ -1813,6 +2051,7 @@ async fn serve_hardened(
         // at most once per window, with a count (audit 2026-10-20, L4).
         static PEER_CAP_REFUSALS: LogThrottle = LogThrottle::new(REFUSAL_LOG_WINDOW_MS);
         static CONNECTION_CAP_REFUSALS: LogThrottle = LogThrottle::new(REFUSAL_LOG_WINDOW_MS);
+        let max_per_peer = caps.for_peer(remote.ip());
         let peer_slot = match peers.claim(remote.ip(), max_per_peer) {
             Ok(slot) => slot,
             Err(refusal) => {
@@ -2225,7 +2464,7 @@ async fn rate_limit_middleware(
     if req.uri().path() == HEALTH_PATH {
         return next.run(req).await;
     }
-    let ip = rate_limit_key(client_ip(&req, addr, state.trust_proxy_hops));
+    let ip = rate_limit_key(client_key_ip(&req, addr, &state.proxy_trust));
     if !state.rate.check(ip) {
         Metrics::inc(&state.metrics.rate_limited);
         let refusal = (
@@ -5439,7 +5678,7 @@ mod tests {
             audit: Some(audit),
             registry_engine: Arc::new(crate::manifest_registry::ManifestRegistryEngine::new()),
             rate: RateLimiter::new(1000.0),
-            trust_proxy_hops: 0,
+            proxy_trust: Arc::new(ProxyTrust::default()),
             metrics: Metrics::default(),
             // Test harness: a fixed, generous limit so shedding never masks the
             // behaviour under test. The shedding path has its own tests.
@@ -8797,29 +9036,38 @@ Connection: close
         }
 
         let none = |_: &str| None;
-        let d = Limits::from_lookup(none, 0).unwrap();
+        let d = Limits::from_lookup(none).unwrap();
         assert_eq!(d.inflight_limit, DEFAULT_MAX_CONCURRENT_VERIFICATIONS);
         assert_eq!(d.max_connections, DEFAULT_MAX_CONNECTIONS);
         assert_eq!(d.max_per_peer, DEFAULT_MAX_CONNECTIONS_PER_PEER);
         assert_eq!(d.connection_lifetime, DEFAULT_CONNECTION_LIFETIME);
         assert_eq!(d.rotate_bytes, crate::durable::DEFAULT_ROTATE_BYTES);
         assert_eq!(d.max_archives, 0);
+        // Re-pinned in Round 40 (R39-CB-8): "behind a proxy the default is no
+        // per-peer cap" applied to every peer, so a host reaching the server
+        // around the proxy held as many connections as the global cap. The
+        // default now exempts only a listed proxy.
+        assert_eq!(d.max_per_proxy, 0, "a listed proxy has no cap by default");
+        let with_cap = Limits::from_lookup(|k: &str| {
+            (k == "GRAPHITE_MAX_CONNECTIONS_PER_IP").then(|| "8".to_string())
+        })
+        .unwrap();
         assert_eq!(
-            Limits::from_lookup(none, 1).unwrap().max_per_peer,
-            0,
-            "behind a proxy the default is no per-peer cap"
+            (with_cap.max_per_peer, with_cap.max_per_proxy),
+            (8, 8),
+            "an explicit cap applies to every peer, proxies included"
         );
         let with = |name: &'static str, value: &'static str| {
             move |k: &str| (k == name).then(|| value.to_string())
         };
         assert_eq!(
-            Limits::from_lookup(with("GRAPHITE_MAX_CONNECTIONS_PER_IP", "0"), 0)
+            Limits::from_lookup(with("GRAPHITE_MAX_CONNECTIONS_PER_IP", "0"))
                 .unwrap()
                 .max_per_peer,
             0
         );
         assert_eq!(
-            Limits::from_lookup(with("GRAPHITE_MAX_CONCURRENT", " 8 "), 0)
+            Limits::from_lookup(with("GRAPHITE_MAX_CONCURRENT", " 8 "))
                 .unwrap()
                 .inflight_limit,
             8
@@ -8835,7 +9083,7 @@ Connection: close
             ("GRAPHITE_CONNECTION_LIFETIME_SECS", "0"),
             ("GRAPHITE_CONNECTION_LIFETIME_SECS", "2m"),
         ] {
-            let e = Limits::from_lookup(with(name, value), 0).unwrap_err();
+            let e = Limits::from_lookup(with(name, value)).unwrap_err();
             assert!(e.contains(name), "{name}={value}: {e}");
         }
 
@@ -9960,6 +10208,139 @@ mod route_surface {
         ] {
             assert_eq!(ip(&lines), UNATTRIBUTED_CLIENT, "{lines:?}");
         }
+    }
+
+    /// Round 40 (R39-CB-8): `X-Forwarded-For` is believed from a listed
+    /// proxy only. Campaign 10's MISCONFIG rows: with a hop count set, a peer
+    /// that reached the server around the proxy chose its own rate-limit
+    /// bucket with a header of its own.
+    #[test]
+    fn a_forwarded_header_from_a_peer_that_is_not_a_listed_proxy_is_ignored() {
+        let trust = proxy_trust_from(1, Some("10.73.31.2, 2001:db8:7::/48")).unwrap();
+        let req = |xff: &str| {
+            axum::http::Request::builder()
+                .uri("/verify")
+                .header("x-forwarded-for", xff)
+                .body(Body::empty())
+                .unwrap()
+        };
+        let spoofed: IpAddr = "198.51.100.77".parse().unwrap();
+        // Attack: the AI container (another backend address) and a host on
+        // the internet, each with a header of its own.
+        for peer in [
+            "10.73.31.130:5000",
+            "203.0.113.7:443",
+            "[2001:db8:8::1]:443",
+        ] {
+            let peer: SocketAddr = peer.parse().unwrap();
+            for xff in ["198.51.100.77", "1.1.1.1, 198.51.100.77"] {
+                assert_eq!(
+                    client_key_ip(&req(xff), peer, &trust),
+                    peer.ip(),
+                    "{peer} {xff}: keyed by the peer, never the header"
+                );
+            }
+        }
+        // Benign: the listed proxy, by address and inside the listed range,
+        // and an IPv4 proxy seen through a dual-stack listener.
+        for peer in [
+            "10.73.31.2:5000",
+            "[2001:db8:7:ffff::9]:443",
+            "[::ffff:10.73.31.2]:5000",
+        ] {
+            let peer: SocketAddr = peer.parse().unwrap();
+            assert_eq!(client_key_ip(&req("198.51.100.77"), peer, &trust), spoofed);
+        }
+        // A hop count of 0 believes nobody, whatever the list says.
+        let off = proxy_trust_from(0, Some("10.73.31.2")).unwrap();
+        let peer: SocketAddr = "10.73.31.2:5000".parse().unwrap();
+        assert_eq!(client_key_ip(&req("198.51.100.77"), peer, &off), peer.ip());
+    }
+
+    /// Round 40 (R39-CB-8): the list's grammar. Addresses and CIDR ranges,
+    /// IPv4 and IPv6; anything else, a range that trusts everyone, a prefix
+    /// out of range or host bits set refuses to start, and so does a hop
+    /// count with no list.
+    #[test]
+    fn trusted_proxies_parse_strictly() {
+        let nets = |v: &str| {
+            proxy_trust_from(1, Some(v))
+                .unwrap()
+                .proxies
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(nets("127.0.0.1,::1"), ["127.0.0.1", "::1"]);
+        assert_eq!(nets(" 10.0.0.0/8 , fd00::/8 ,"), ["10.0.0.0/8", "fd00::/8"]);
+        assert_eq!(nets("10.0.0.1/32, 10.0.0.1"), ["10.0.0.1"], "one entry");
+        assert_eq!(nets("::ffff:10.0.0.1"), ["10.0.0.1"], "mapped is IPv4");
+        assert_eq!(nets("2001:db8::1/128"), ["2001:db8::1"]);
+        let v4: IpNet = IpNet::parse("192.168.4.0/22").unwrap();
+        assert!(v4.contains("192.168.7.255".parse().unwrap()));
+        assert!(!v4.contains("192.168.8.0".parse().unwrap()));
+        assert!(!v4.contains("::ffff:192.168.8.0".parse().unwrap()));
+        assert!(
+            !v4.contains("2001:db8::1".parse().unwrap()),
+            "families never match"
+        );
+        let v6: IpNet = IpNet::parse("2001:db8:aa00::/40").unwrap();
+        assert!(v6.contains("2001:db8:aaff:ffff::1".parse().unwrap()));
+        assert!(!v6.contains("2001:db8:ab00::".parse().unwrap()));
+        for bad in [
+            "caddy",
+            "localhost",
+            "10.0.0.1/33",
+            "::1/129",
+            "10.0.0.0/+8",
+            "10.0.0.0/08",
+            "10.0.0.0/",
+            "0.0.0.0/0",
+            "::/0",
+            "10.0.0.5/24",
+            "fe80::1%eth0",
+            "[::1]",
+            "10.0.0.1:80",
+        ] {
+            let e = proxy_trust_from(1, Some(bad)).unwrap_err();
+            assert!(
+                e.contains("GRAPHITE_TRUSTED_PROXIES") && e.contains("REFUSING TO START"),
+                "{bad}: {e}"
+            );
+            assert!(
+                proxy_trust_from(0, Some(bad)).is_err(),
+                "{bad} with no hops"
+            );
+        }
+        for unset in [None, Some(""), Some(" , ")] {
+            let e = proxy_trust_from(2, unset).unwrap_err();
+            assert!(
+                e.contains("GRAPHITE_TRUST_PROXY=2")
+                    && e.contains("GRAPHITE_TRUSTED_PROXIES")
+                    && e.contains("REFUSING TO START"),
+                "{unset:?}: {e}"
+            );
+        }
+        assert_eq!(proxy_trust_from(0, None), Ok(ProxyTrust::default()));
+    }
+
+    /// Round 40 (R39-CB-8): the per-peer connection cap exempts a listed
+    /// proxy only; any other peer keeps it.
+    #[test]
+    fn the_connection_cap_exempts_only_a_listed_proxy() {
+        let caps = PeerCaps {
+            peer: 64,
+            proxy: 0,
+            trust: Arc::new(proxy_trust_from(1, Some("10.73.31.2")).unwrap()),
+        };
+        assert_eq!(caps.for_peer("10.73.31.2".parse().unwrap()), 0);
+        assert_eq!(caps.for_peer("10.73.31.130".parse().unwrap()), 64);
+        let no_proxy = PeerCaps {
+            peer: 64,
+            proxy: 0,
+            trust: Arc::new(ProxyTrust::default()),
+        };
+        assert_eq!(no_proxy.for_peer("10.73.31.2".parse().unwrap()), 64);
     }
 
     /// The read key opens no method but GET, on no route but the read ones,

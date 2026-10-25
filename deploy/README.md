@@ -46,6 +46,14 @@ everything when it exits. Exit 0 only when every check passed.
   shows a client rotating that header still hits its own rate limit. Put
   another proxy or a load balancer in front and the hop count changes — set
   it to the real number, never higher.
+- **Only the proxy is believed.** `GRAPHITE_TRUSTED_PROXIES` names the one
+  address whose `X-Forwarded-For` the Core reads (Round 40): `127.0.0.1,::1`
+  in the systemd unit, where Caddy reaches the Core over loopback; Caddy's
+  fixed address `10.73.31.2` on the compose backend network (subnet
+  `10.73.31.0/24`, dynamic addresses from `.128` up). Any other peer — the AI
+  layer, or anything else that can reach the Core — is keyed by its own
+  address, so it cannot choose a rate-limit bucket. The Core refuses to start
+  with a hop count and no list.
 - **`/health` and `/metrics` stay private.** Probe and scrape the Core on its
   private address. Operators reach `/admin/*` through an SSH tunnel, or not at
   all: leave the admin key empty and those routes are disabled.

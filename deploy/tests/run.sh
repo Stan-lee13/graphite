@@ -188,12 +188,35 @@ elif what == "secrets":
                 out.append(f"{n}: {k} has a value in the environment")
     for k in ("api_key", "read_api_key", "admin_api_key", "audit_key"):
         if k not in (c.get("secrets") or {}) or "file" not in c["secrets"][k]: out.append(f"secret {k} is not file-backed")
+elif what == "proxy":
+    # Round 40 (R39-CB-8): the Core believes X-Forwarded-For only from Caddy's
+    # fixed backend address, which no other service can be given.
+    import ipaddress
+    env = svcs["graphite"].get("environment") or {}
+    trusted = [e.strip() for e in str(env.get("GRAPHITE_TRUSTED_PROXIES") or "").split(",") if e.strip()]
+    nets = (svcs["caddy"].get("networks") or {})
+    caddy = ((nets.get("backend") or {}) if isinstance(nets, dict) else {}).get("ipv4_address")
+    ipam = (((c.get("networks") or {}).get("backend") or {}).get("ipam") or {}).get("config") or [{}]
+    subnet, dyn = ipam[0].get("subnet"), ipam[0].get("ip_range")
+    if str(env.get("GRAPHITE_TRUST_PROXY")) != "1": out.append("graphite: GRAPHITE_TRUST_PROXY is not 1")
+    if not caddy: out.append("caddy has no fixed ipv4_address on the backend network")
+    if trusted != [caddy]: out.append(f"graphite: GRAPHITE_TRUSTED_PROXIES is {trusted}, not exactly Caddy's address {caddy}")
+    if not subnet or not dyn: out.append("the backend network has no fixed subnet and ip_range")
+    elif caddy:
+        a = ipaddress.ip_address(caddy)
+        if a not in ipaddress.ip_network(subnet): out.append(f"Caddy's {caddy} is outside {subnet}")
+        if a in ipaddress.ip_network(dyn): out.append(f"Caddy's {caddy} is inside the dynamic range {dyn}: another container could be given it")
+    for n, s in svcs.items():
+        sn = s.get("networks") or {}
+        addr = ((sn.get("backend") or {}) if isinstance(sn, dict) else {}).get("ipv4_address")
+        if n != "caddy" and addr and addr in trusted: out.append(f"{n} holds a trusted proxy address")
 print("; ".join(out))
 EOF
 }
-for w in replicas hardening digests secrets; do
+for w in replicas hardening digests secrets proxy; do
   v="$(compose_audit "$w" 2>&1)"
   case "$w" in
+    proxy) d="compose: X-Forwarded-For believed only from Caddy's fixed backend address, outside the dynamic range" ;;
     replicas) d="compose: one Core replica (container_name and deploy.replicas: 1)" ;;
     hardening) d="compose: every service read-only, cap_drop ALL, no-new-privileges, no host namespaces; Core and AI non-root, unpublished" ;;
     digests) d="compose and Dockerfile: every image pinned by digest; the Dockerfile ends non-root" ;;
@@ -248,7 +271,7 @@ mk_start() { # mk_start AUDIT_KEY_FILE [PREVIOUS_AUDIT_KEY_FILE] -> $T/start.sh
 GRAPHITE_API_KEY='$key' GRAPHITE_READ_API_KEY='$rkey' GRAPHITE_DATA_DIR='$T/data' \\
   GRAPHITE_REGISTRY_STATE='$T/data/registry_state.json' \\
   GRAPHITE_AUDIT_KEY_FILE='$1' ${prev}GRAPHITE_AUDIT_ANCHOR_DIR='$T/anchors' \\
-  GRAPHITE_AUDIT_ROTATE_BYTES=4096 GRAPHITE_TRUST_PROXY=1 GRAPHITE_RATE_LIMIT=5 \\
+  GRAPHITE_AUDIT_ROTATE_BYTES=4096 GRAPHITE_TRUST_PROXY=1 GRAPHITE_TRUSTED_PROXIES='127.0.0.1,::1' GRAPHITE_RATE_LIMIT=5 \\
   GRAPHITE_WALLET_PROFILE=treasury RUST_LOG=warn \\
   '$G' server --host 127.0.0.1 --port $gport >>'$T/core.log' 2>&1 &
 echo \$! >'$T/core.pid'
@@ -286,6 +309,14 @@ verify_n() { # verify_n N  — N verifications straight to the Core (no proxy)
 }
 
 check "core starts with a keyed trail and an anchor dir" start_core "$T/keys/audit-1.key"
+# Round 40 (R39-CB-8): a hop count with no proxy list, or a list entry that is
+# not an address, refuses to start (a server that started would be killed by
+# the timeout, and that exit is not 1).
+mkdir -p "$T/noproxy"
+expect_rc 1 "core refuses GRAPHITE_TRUST_PROXY=1 without GRAPHITE_TRUSTED_PROXIES" env GRAPHITE_DEV_MODE=1 \
+  GRAPHITE_DATA_DIR="$T/noproxy" GRAPHITE_TRUST_PROXY=1 timeout 20 "$G" server --host 127.0.0.1 --port 0
+expect_rc 1 "core refuses a GRAPHITE_TRUSTED_PROXIES entry that is not an address" env GRAPHITE_DEV_MODE=1 \
+  GRAPHITE_DATA_DIR="$T/noproxy" GRAPHITE_TRUST_PROXY=1 GRAPHITE_TRUSTED_PROXIES=caddy timeout 20 "$G" server --host 127.0.0.1 --port 0
 
 GRAPHITE_SITE="http://127.0.0.1:$cport" GRAPHITE_UPSTREAM="127.0.0.1:$gport" \
   XDG_DATA_HOME="$T/caddy" XDG_CONFIG_HOME="$T/caddy" \

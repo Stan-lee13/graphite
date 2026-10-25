@@ -33,6 +33,7 @@ const CLEARED: &[&str] = &[
     "GRAPHITE_WALLET_PROFILE",
     "GRAPHITE_ALLOW_PERMISSIVE_PROFILES",
     "GRAPHITE_TRUST_PROXY",
+    "GRAPHITE_TRUSTED_PROXIES",
     "GRAPHITE_RATE_LIMIT",
     "GRAPHITE_AUDIT_ROTATE_BYTES",
     "GRAPHITE_AUDIT_MAX_ARCHIVES",
@@ -126,6 +127,37 @@ fn configuration_the_server_cannot_honour_refuses_to_start() {
         (
             vec![("GRAPHITE_TRUST_PROXY", s("yes"))],
             "GRAPHITE_TRUST_PROXY",
+        ),
+        // Round 40 (R39-CB-8): a hop count with no proxy list would believe
+        // X-Forwarded-For from any peer; the refusal names both variables.
+        (
+            vec![("GRAPHITE_TRUST_PROXY", s("1"))],
+            "GRAPHITE_TRUST_PROXY=1 is set and GRAPHITE_TRUSTED_PROXIES is unset",
+        ),
+        (
+            vec![
+                ("GRAPHITE_TRUST_PROXY", s("true")),
+                ("GRAPHITE_TRUSTED_PROXIES", s(" ")),
+            ],
+            "GRAPHITE_TRUSTED_PROXIES is empty",
+        ),
+        (
+            vec![
+                ("GRAPHITE_TRUST_PROXY", s("1")),
+                ("GRAPHITE_TRUSTED_PROXIES", s("127.0.0.1,caddy")),
+            ],
+            "GRAPHITE_TRUSTED_PROXIES entry \"caddy\"",
+        ),
+        (
+            vec![
+                ("GRAPHITE_TRUST_PROXY", s("1")),
+                ("GRAPHITE_TRUSTED_PROXIES", s("0.0.0.0/0")),
+            ],
+            "trusts every peer",
+        ),
+        (
+            vec![("GRAPHITE_TRUSTED_PROXIES", s("10.0.0.1/33"))],
+            "GRAPHITE_TRUSTED_PROXIES entry \"10.0.0.1/33\"",
         ),
         (
             vec![("GRAPHITE_MAX_CONCURRENT", s("3O"))],
