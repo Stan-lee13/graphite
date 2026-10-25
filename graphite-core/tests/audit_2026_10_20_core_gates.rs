@@ -150,6 +150,7 @@ fn an_earned_primary_tier_is_held_to_its_siblings() {
         },
         quarantined: false,
         quarantine_reason: None,
+        first_manifest_unvalidated: false,
     })
     .unwrap();
     let alone = core.verify(&transfer("transfer")).unwrap();

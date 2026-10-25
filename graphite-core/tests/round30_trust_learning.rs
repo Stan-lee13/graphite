@@ -400,6 +400,7 @@ fn seed_reviewed(core: &mut GraphiteCore) {
         },
         quarantined: false,
         quarantine_reason: None,
+        first_manifest_unvalidated: false,
     })
     .unwrap();
 }

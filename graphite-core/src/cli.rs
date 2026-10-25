@@ -2741,6 +2741,7 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
                 evidence,
                 quarantined: false,
                 quarantine_reason: None,
+                first_manifest_unvalidated: false,
             })?;
 
             let earned = core
@@ -3297,6 +3298,20 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
                 "This pins what the pipeline DID, not what it should do. Every future \
                  version of this manifest is regressed against it — check the outcome above."
             );
+            // Round 40 (R39-CORE-IDENTITY-7): the gate replays a candidate at
+            // the tier the registry computes, and a program's first version
+            // earns HeuristicInferred at most. A fixture recorded at a higher
+            // declared tier can fail that replay, and a refused version is
+            // never taken again.
+            if TrustTier::from_manifest_str(&manifest.trust_tier) > TrustTier::HeuristicInferred {
+                eprintln!(
+                    "note: recorded at the manifest's declared tier {}. If this is the program's \
+                     first version, the registry replays it at HeuristicInferred: record with \
+                     \"trust_tier\": \"HeuristicInferred\" so the pinned outcome is the one the \
+                     gate will see.",
+                    terminal_safe(&manifest.trust_tier)
+                );
+            }
             Ok(())
         }
     }
@@ -3891,8 +3906,11 @@ mod tests {
         .unwrap();
 
         // Persistence: reload and assert the append-only acceptance record and
-        // the Semantic Graph entry (tier DERIVED — OfficialManifest for a
-        // registered-reporter signature, P7).
+        // the Semantic Graph entry (tier DERIVED, P7). Re-pinned in Round 40
+        // (R39-CORE-IDENTITY-7): a registered reporter's signature on the
+        // program's FIRST version earned OfficialManifest; it is capped at
+        // HeuristicInferred until an upgrade is replayed against this
+        // version's fixtures, and the cap survives the state files.
         let engine = load_registry(&state).unwrap();
         assert_eq!(engine.records().len(), 1, "exactly one accepted record");
         assert_eq!(
@@ -3900,14 +3918,17 @@ mod tests {
             "AuditTest1111111111111111111111111111111111"
         );
         assert_eq!(engine.records()[0].source, "signed");
+        assert!(engine.records()[0].first_manifest_unvalidated);
         let store = load_graph(&graph).unwrap();
         let behavior = store
             .get("AuditTest1111111111111111111111111111111111")
             .expect("submission must be appended to the Semantic Graph");
         assert_eq!(
             behavior.trust_tier,
-            crate::confidence_engine::TrustTier::OfficialManifest
+            crate::confidence_engine::TrustTier::HeuristicInferred
         );
+        assert!(behavior.evidence.has_signed_manifest);
+        assert!(behavior.first_manifest_unvalidated);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

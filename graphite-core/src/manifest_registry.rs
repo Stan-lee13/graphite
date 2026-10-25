@@ -50,6 +50,20 @@
 //!   with an empty history, so its first upgrade has something to be held to.
 //!   The submitter still chooses which transactions to pin, which is the same
 //!   assumption the upgrade path makes for the fixtures it ADDS.
+//!
+//!   **So a first manifest's tier is capped** (Round 40, R39-CORE-IDENTITY-7,
+//!   owner decision option 4). A version whose replay validated nothing
+//!   independent of it — the program's first, the head handed in again, or
+//!   an upgrade replayed against no fixture an earlier version pinned (every
+//!   one retired) — is recorded with `first_manifest_unvalidated`, and its
+//!   registry evidence earns `HeuristicInferred` at most
+//!   (`semantic_graph_store::compute_trust_tier_for`): in the record, in the
+//!   manifest in force and in the graph record, the two sources of the
+//!   verdict's tier. Signatures and attestations are still recorded. The cap
+//!   lifts when an upgrade passes the gate against fixtures an earlier
+//!   version pinned, or when measured battle-tested volume reaches the
+//!   `BattleTested` threshold (a census-backed record); an operator's
+//!   assertion of signatures or attestations does not lift it.
 //! - **P11:** trust is keyed by the exact `programId` string — no fuzzy match.
 //!
 //! Registry submissions reach at most Tier 4 (`CommunityVerified`): Tier 5
@@ -63,7 +77,7 @@ use crate::regression_engine::{
     decide_promotion, replay_corpus_for_program, PromotionDecision, RegressionCorpus,
 };
 use crate::semantic_graph_store::{
-    compute_trust_tier, Behavior, BehaviorEvidence, SemanticGraphStore,
+    compute_trust_tier_for, Behavior, BehaviorEvidence, SemanticGraphStore,
 };
 use crate::verification::GraphiteCore;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -296,6 +310,14 @@ pub struct RegistryRecord {
     /// the message they cover.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signing_domain: Option<String>,
+    /// Round 40 (R39-CORE-IDENTITY-7): this version's replay validated
+    /// nothing independent of it — it is the program's first, or the head
+    /// handed in again, or an upgrade replayed against no fixture an earlier
+    /// version pinned. Its tier is capped at `HeuristicInferred`
+    /// ([`compute_trust_tier_for`]). Absent on records written before Round
+    /// 40, which keep the tier they were accepted at.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub first_manifest_unvalidated: bool,
 }
 
 impl RegistryRecord {
@@ -374,6 +396,12 @@ impl RegistryRecord {
                 return Err(format!(
                     "the record claims CommunityVerified with {} attester(s); it takes {needed}",
                     distinct.len()
+                ))
+            }
+            // Round 40 (R39-CORE-IDENTITY-7).
+            tier if self.first_manifest_unvalidated && tier > TrustTier::HeuristicInferred => {
+                return Err(format!(
+                    "the record claims {tier:?} for a manifest no independent replay has validated; it is capped at HeuristicInferred"
                 ))
             }
             _ => {}
@@ -550,6 +578,8 @@ impl ManifestRegistryEngine {
                     evidence,
                     quarantined: false,
                     quarantine_reason: None,
+                    // Revocation validates nothing (Round 40).
+                    first_manifest_unvalidated: head.first_manifest_unvalidated,
                 })
                 .map_err(|_| RegistryError::EmptyProgramId)?;
             touched += 1;
@@ -640,12 +670,16 @@ impl ManifestRegistryEngine {
         }
     }
 
-    /// The tier a record supports with the reviewers registered now.
+    /// The tier a record supports with the reviewers registered now, capped
+    /// while its manifest is unvalidated (Round 40, R39-CORE-IDENTITY-7).
     fn tier_in_force(&self, record: &RegistryRecord) -> TrustTier {
         if record.signer.is_none() && record.attesters.is_empty() {
             return record.trust_tier;
         }
-        compute_trust_tier(&self.evidence_in_force(record))
+        compute_trust_tier_for(
+            &self.evidence_in_force(record),
+            record.first_manifest_unvalidated,
+        )
     }
 
     /// The CURRENT accepted manifest for each program — the last one accepted,
@@ -781,7 +815,26 @@ impl ManifestRegistryEngine {
         if !evidence.has_signed_manifest && evidence.community_verified_count == 0 {
             return Err(RegistryError::NoEvidence);
         }
-        let tier = compute_trust_tier(&evidence);
+        // Round 40 (R39-CORE-IDENTITY-7, owner decision option 4): whether
+        // this version's replay can validate anything. A first submission's
+        // fixtures are recorded under the candidate and agree with it by
+        // construction; the head handed in again is replayed against its own
+        // fixtures; an upgrade is held to the fixtures earlier versions
+        // pinned, which it did not write — unless there are none left in
+        // force. Unvalidated, the registry evidence earns HeuristicInferred
+        // at most, in the record, in the manifest in force and in the graph.
+        let independent_fixtures = self
+            .corpus
+            .fixtures_for(&program_id)
+            .into_iter()
+            .filter(|f| !f.deprecated)
+            .count();
+        let unvalidated = match &head {
+            None => true,
+            Some(h) if head_tier.is_some() => h.first_manifest_unvalidated,
+            Some(_) => independent_fixtures == 0,
+        };
+        let tier = compute_trust_tier_for(&evidence, unvalidated);
         if head_tier.is_some_and(|head| tier <= head) {
             // The head again, with nothing new: a replay.
             return Err(RegistryError::VersionAlreadyAccepted(version_label));
@@ -883,6 +936,7 @@ impl ManifestRegistryEngine {
                 evidence: evidence.clone(),
                 quarantined: false,
                 quarantine_reason: None,
+                first_manifest_unvalidated: unvalidated,
             })
             // append's only error is an empty program_id, which was rejected
             // above (EmptyProgramId) — unreachable here.
@@ -920,6 +974,7 @@ impl ManifestRegistryEngine {
                 )
                 .into_owned(),
             ),
+            first_manifest_unvalidated: unvalidated,
         });
 
         Ok(RegistryDecision::Accepted {
@@ -1292,6 +1347,37 @@ mod tests {
         sign_manifest(m, signer)
     }
 
+    /// Round 40 (R39-CORE-IDENTITY-7): accept a first version `label` of
+    /// `program`, signed by `signer` and pinned by its onboarding fixture, so
+    /// the submission a test is about is an upgrade the gate replays against
+    /// that fixture — and earns the tier its evidence computes rather than
+    /// the first-manifest cap.
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
+    fn accept_first_version(
+        engine: &mut ManifestRegistryEngine,
+        store: &mut SemanticGraphStore,
+        program: &str,
+        label: &str,
+        signer: &SigningKey,
+    ) {
+        let core = GraphiteCore::new();
+        let first = signed_submission(program, label, signer);
+        let corpus = onboarding_corpus(&core, &first);
+        let decision = engine
+            .submit(store, first, Some((&corpus, &core)))
+            .expect("first version accepted");
+        assert!(
+            matches!(
+                decision,
+                RegistryDecision::Accepted {
+                    trust_tier: TrustTier::HeuristicInferred,
+                    ..
+                }
+            ),
+            "a first version is capped: {decision:?}"
+        );
+    }
+
     #[test]
     fn ambiguous_prefix_discriminators_are_rejected() {
         // Certification decision: prefix matching is only safe when no two
@@ -1378,11 +1464,40 @@ mod tests {
         let decision = engine
             .submit(&mut store, submission, Some((&corpus, &core)))
             .unwrap();
+        // Re-pinned in Round 40 (R39-CORE-IDENTITY-7): a FIRST version earned
+        // OfficialManifest from its signature although its replay was against
+        // fixtures recorded under it. It is capped at HeuristicInferred now;
+        // the signature still counts (the evidence is recorded), and the
+        // first upgrade replayed against this version's fixtures earns it.
+        assert_eq!(
+            decision,
+            RegistryDecision::Accepted {
+                trust_tier: TrustTier::HeuristicInferred,
+                version_label: "v1.0".to_string(),
+            }
+        );
+        let record = store
+            .get("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P")
+            .unwrap();
+        assert_eq!(record.trust_tier, TrustTier::HeuristicInferred);
+        assert!(record.evidence.has_signed_manifest);
+        assert!(record.first_manifest_unvalidated);
+
+        let upgrade = signed_upgrade(
+            "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+            "v1.1",
+            "v1.0",
+            &signer,
+        );
+        let corpus = onboarding_corpus(&core, &upgrade);
+        let decision = engine
+            .submit(&mut store, upgrade, Some((&corpus, &core)))
+            .unwrap();
         assert_eq!(
             decision,
             RegistryDecision::Accepted {
                 trust_tier: TrustTier::OfficialManifest,
-                version_label: "v1.0".to_string(),
+                version_label: "v1.1".to_string(),
             }
         );
         // P7: the graph record's tier matches, computed not asserted.
@@ -1391,6 +1506,7 @@ mod tests {
             .unwrap();
         assert_eq!(record.trust_tier, TrustTier::OfficialManifest);
         assert!(record.evidence.has_signed_manifest);
+        assert!(!record.first_manifest_unvalidated);
     }
 
     /// Round 36 (F-008): an accepted record carries what a third party needs
@@ -1623,11 +1739,21 @@ mod tests {
         // One unregistered attacker identity.
         let attacker = key(13);
 
-        let m = manifest(
+        // Round 40: v1.0 first, so this v2.0 is a validated upgrade and its
+        // tier is what its attestations earn (a first version is capped).
+        accept_first_version(
+            &mut engine,
+            &mut store,
+            "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+            "v1.0",
+            &c,
+        );
+        let mut m = manifest(
             "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
             "Meteora",
             "v2.0",
         );
+        m.version.previous_version_ref = Some("v1.0".to_string());
         let mut submission = ManifestSubmission {
             manifest: m,
             signer_pubkey: None,
@@ -1694,13 +1820,46 @@ mod tests {
         engine.register_reviewer(&pubkey_b58(&c), 1000).unwrap();
         let core = GraphiteCore::new();
 
-        // v1.0, signed by one reviewer: OfficialManifest.
-        let signed = signed_submission(PROGRAM, "v1.0", &a);
+        // Round 40 (R39-CORE-IDENTITY-7): a first version's tier is capped
+        // and more attestations of the same content cannot lift it — its
+        // replay validated nothing, however many sign it. v0.9 is that first
+        // version; resubmitted with two attesters it is refused as a replay.
+        let first_version = signed_submission(PROGRAM, "v0.9", &a);
+        let first_corpus = onboarding_corpus(&core, &first_version);
+        engine
+            .submit(
+                &mut store,
+                first_version.clone(),
+                Some((&first_corpus, &core)),
+            )
+            .unwrap();
+        let first_hash = first_version.signing_message();
+        let mut first_attested = first_version;
+        first_attested.attestations = [&b, &c]
+            .into_iter()
+            .map(|k| ReviewerAttestation {
+                reviewer_pubkey: pubkey_b58(k),
+                signature_hex: sign(k, &first_hash),
+            })
+            .collect();
+        assert!(matches!(
+            engine.submit(&mut store, first_attested, Some((&first_corpus, &core))),
+            Err(RegistryError::VersionAlreadyAccepted(_))
+        ));
+
+        // v1.0, an upgrade signed by one reviewer: OfficialManifest.
+        let signed = signed_upgrade(PROGRAM, "v1.0", "v0.9", &a);
         let corpus = onboarding_corpus(&core, &signed);
         let first = engine
             .submit(&mut store, signed.clone(), Some((&corpus, &core)))
             .unwrap();
-        assert!(matches!(first, RegistryDecision::Accepted { .. }));
+        assert!(matches!(
+            first,
+            RegistryDecision::Accepted {
+                trust_tier: TrustTier::OfficialManifest,
+                ..
+            }
+        ));
 
         // The same content and label, now attested by two reviewers other
         // than its signer (W11: the signer does not attest itself).
@@ -1751,6 +1910,7 @@ mod tests {
                 },
                 quarantined: false,
                 quarantine_reason: None,
+                first_manifest_unvalidated: false,
             })
             .unwrap();
     }
@@ -1784,6 +1944,7 @@ mod tests {
             },
             quarantined: false,
             quarantine_reason: None,
+            first_manifest_unvalidated: false,
         })
         .expect("seed behavior");
     }
@@ -1869,10 +2030,12 @@ mod tests {
         let decision = engine
             .submit(&mut store, submission, Some((&corpus, &core)))
             .unwrap();
+        // Re-pinned in Round 40 (R39-CORE-IDENTITY-7): the registry's first
+        // version of the program, so HeuristicInferred (was OfficialManifest).
         assert_eq!(
             decision,
             RegistryDecision::Accepted {
-                trust_tier: TrustTier::OfficialManifest,
+                trust_tier: TrustTier::HeuristicInferred,
                 version_label: "v2.0".to_string(),
             }
         );
@@ -1921,16 +2084,19 @@ mod tests {
         let decision = engine
             .submit(&mut store, submission, Some((&corpus, &core)))
             .unwrap();
+        // Re-pinned in Round 40 (R39-CORE-IDENTITY-7): a first version, so
+        // HeuristicInferred (was OfficialManifest) — further still from the
+        // BattleTested the document claims.
         assert!(matches!(
             decision,
             RegistryDecision::Accepted {
-                trust_tier: TrustTier::OfficialManifest,
+                trust_tier: TrustTier::HeuristicInferred,
                 ..
             }
         ));
         assert_eq!(
             store.get(SYSTEM).unwrap().trust_tier,
-            TrustTier::OfficialManifest
+            TrustTier::HeuristicInferred
         );
     }
 
@@ -2221,7 +2387,9 @@ mod tests {
         engine.register_reviewer(&pubkey_b58(&a), 1000).unwrap();
         engine.register_reviewer(&pubkey_b58(&b), 1000).unwrap();
         let core = GraphiteCore::new();
-        let mut submission = signed_submission(NON_SEED, "v1.0", &a);
+        // Round 40: an upgrade, so the tier is what the evidence earns.
+        accept_first_version(&mut engine, &mut store, NON_SEED, "v0.9", &b);
+        let mut submission = signed_upgrade(NON_SEED, "v1.0", "v0.9", &a);
         let hash = submission.signing_message();
         submission.attestations = [&a, &b]
             .into_iter()
@@ -2815,11 +2983,13 @@ mod tests {
             Err(RegistryError::MalformedReviewerPubkey(_))
         ));
         let mut store = SemanticGraphStore::new();
-        let (signer, a, b) = (key(95), key(96), key(97));
-        for k in [&signer, &a, &b] {
+        let (signer, a, b, first) = (key(95), key(96), key(97), key(94));
+        for k in [&signer, &a, &b, &first] {
             engine.register_reviewer(&pubkey_b58(k), 1000).unwrap();
         }
-        let mut sub = signed_submission(NON_SEED, "v1.0", &signer);
+        // Round 40: an upgrade, so the tier is what the evidence earns.
+        accept_first_version(&mut engine, &mut store, NON_SEED, "v0.9", &first);
+        let mut sub = signed_upgrade(NON_SEED, "v1.0", "v0.9", &signer);
         let message = sub.signing_message();
         sub.attestations = [&a, &b]
             .into_iter()
@@ -2837,6 +3007,7 @@ mod tests {
             engine.manifests_in_force()[0].trust_tier,
             "CommunityVerified"
         );
+        assert!(!engine.records().last().unwrap().first_manifest_unvalidated);
         assert_eq!(
             store.get(NON_SEED).unwrap().trust_tier,
             TrustTier::CommunityVerified
@@ -2901,6 +3072,7 @@ mod tests {
                 },
                 quarantined: false,
                 quarantine_reason: None,
+                first_manifest_unvalidated: false,
             })
             .unwrap();
         let signer = key(98);
@@ -2918,5 +3090,191 @@ mod tests {
         assert_eq!(latest.evidence.battle_tested_tx_count, 5000);
         assert_eq!(latest.evidence.simulation_match_count, 9);
         assert_eq!(latest.trust_tier, TrustTier::BattleTested);
+    }
+
+    /// Round 40 (R39-CORE-IDENTITY-7, owner decision option 4): a FIRST
+    /// manifest's replay is against fixtures recorded under it, so it proves
+    /// nothing about it; its tier is capped at HeuristicInferred — in the
+    /// record, in the manifest in force and in the graph — however much
+    /// registry evidence it carries, until an upgrade passes the gate against
+    /// fixtures it did not write, or measured volume earns more.
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
+    #[test]
+    fn a_first_manifest_is_capped_until_independent_evidence_lifts_it() {
+        let mut engine = ManifestRegistryEngine::new();
+        let mut store = SemanticGraphStore::new();
+        let (signer, a, b) = (key(111), key(112), key(113));
+        for k in [&signer, &a, &b] {
+            engine.register_reviewer(&pubkey_b58(k), 1000).unwrap();
+        }
+        let core = GraphiteCore::new();
+        // Signed and attested by two other reviewers: CommunityVerified by
+        // its evidence.
+        let attested = |mut sub: ManifestSubmission| {
+            let message = sub.signing_message();
+            sub.attestations = [&a, &b]
+                .into_iter()
+                .map(|k| ReviewerAttestation {
+                    reviewer_pubkey: pubkey_b58(k),
+                    signature_hex: sign(k, &message),
+                })
+                .collect();
+            sub
+        };
+        let first = attested(signed_submission(NON_SEED, "v1.0", &signer));
+        let corpus = onboarding_corpus(&core, &first);
+        assert_eq!(
+            engine
+                .submit(&mut store, first, Some((&corpus, &core)))
+                .unwrap(),
+            RegistryDecision::Accepted {
+                trust_tier: TrustTier::HeuristicInferred,
+                version_label: "v1.0".to_string(),
+            }
+        );
+        let record = engine.records().last().unwrap().clone();
+        assert!(record.first_manifest_unvalidated);
+        assert_eq!(record.trust_tier, TrustTier::HeuristicInferred);
+        assert_eq!(record.attesters.len(), 2, "the evidence is recorded");
+        assert_eq!(record.verify_offline(), Ok(()));
+        assert_eq!(
+            engine.manifests_in_force()[0].trust_tier,
+            "HeuristicInferred"
+        );
+        let graph = store.get(NON_SEED).unwrap().clone();
+        assert!(graph.first_manifest_unvalidated);
+        assert_eq!(graph.evidence.community_verified_count, 2);
+        assert_eq!(graph.trust_tier, TrustTier::HeuristicInferred);
+
+        // A record that claims more than its flag allows is not the record
+        // the registry wrote.
+        let mut tampered = record.clone();
+        tampered.trust_tier = TrustTier::CommunityVerified;
+        assert!(tampered
+            .verify_offline()
+            .unwrap_err()
+            .contains("capped at HeuristicInferred"));
+
+        // Operator-asserted evidence does not lift it; a seed carries the
+        // flag forward (only the registry's independent replay clears it).
+        let seeded = |store: &mut SemanticGraphStore, evidence: BehaviorEvidence| {
+            store
+                .append(Behavior {
+                    program_id: NON_SEED.to_string(),
+                    version: "operator".to_string(),
+                    expected_state_changes: vec![],
+                    allowed_cpis: vec![],
+                    trust_tier: TrustTier::Unknown,
+                    evidence,
+                    quarantined: false,
+                    quarantine_reason: None,
+                    first_manifest_unvalidated: false,
+                })
+                .unwrap();
+            store.get(NON_SEED).unwrap().trust_tier
+        };
+        let mut seeded_store = store.clone();
+        assert_eq!(
+            seeded(
+                &mut seeded_store,
+                BehaviorEvidence {
+                    has_signed_manifest: true,
+                    community_verified_count: 5,
+                    simulation_match_count: 10,
+                    battle_tested_tx_count: 999,
+                }
+            ),
+            TrustTier::HeuristicInferred
+        );
+        // Measured volume at the BattleTested threshold (a census-backed
+        // record) earns its tier as it always did.
+        assert_eq!(
+            seeded(
+                &mut seeded_store,
+                BehaviorEvidence {
+                    has_signed_manifest: true,
+                    battle_tested_tx_count: 1_000,
+                    ..Default::default()
+                }
+            ),
+            TrustTier::BattleTested
+        );
+        assert!(
+            seeded_store
+                .get(NON_SEED)
+                .unwrap()
+                .first_manifest_unvalidated
+        );
+
+        // The cap survives the graph's and the registry's state files.
+        let restored = SemanticGraphStore::from_json(&store.to_json().unwrap()).unwrap();
+        assert_eq!(
+            restored.get(NON_SEED).unwrap().trust_tier,
+            TrustTier::HeuristicInferred
+        );
+        let engine_restored =
+            ManifestRegistryEngine::from_json(&engine.to_json().unwrap()).unwrap();
+        assert_eq!(
+            engine_restored.manifests_in_force()[0].trust_tier,
+            "HeuristicInferred"
+        );
+
+        // An upgrade with its own fixtures only — every fixture an earlier
+        // version pinned retired by the operator — validated nothing either.
+        let mut retired = engine.clone();
+        let mut retired_store = store.clone();
+        let pinned: Vec<String> = retired
+            .regression_corpus()
+            .fixtures_for(NON_SEED)
+            .iter()
+            .map(|f| f.content_hash.clone())
+            .collect();
+        for h in &pinned {
+            assert!(retired.deprecate_regression_fixture(h));
+        }
+        let mut m = manifest(NON_SEED, "Test Protocol", "v1.1");
+        m.version.previous_version_ref = Some("v1.0".to_string());
+        m.instructions[0].discriminator = "02".to_string();
+        let alone = attested(sign_manifest(m, &signer));
+        let mut own = RegressionCorpus::new();
+        let input = make_fixture_input(NON_SEED, "02", "transfer", &[], &[ACCT_A, ACCT_B]);
+        let observed = core
+            .with_candidate_manifest(&alone.manifest)
+            .unwrap()
+            .verify(&input)
+            .unwrap()
+            .approved;
+        crate::regression_engine::record_fixture(&mut own, &input, observed, "own");
+        assert_eq!(
+            retired
+                .submit(&mut retired_store, alone, Some((&own, &core)))
+                .unwrap(),
+            RegistryDecision::Accepted {
+                trust_tier: TrustTier::HeuristicInferred,
+                version_label: "v1.1".to_string(),
+            }
+        );
+
+        // The upgrade the gate replays against v1.0's fixtures: the cap is
+        // lifted, and the evidence earns its tier.
+        let upgrade = attested(signed_upgrade(NON_SEED, "v1.1", "v1.0", &signer));
+        let corpus = onboarding_corpus(&core, &upgrade);
+        assert_eq!(
+            engine
+                .submit(&mut store, upgrade, Some((&corpus, &core)))
+                .unwrap(),
+            RegistryDecision::Accepted {
+                trust_tier: TrustTier::CommunityVerified,
+                version_label: "v1.1".to_string(),
+            }
+        );
+        assert!(!engine.records().last().unwrap().first_manifest_unvalidated);
+        assert_eq!(
+            engine.manifests_in_force()[0].trust_tier,
+            "CommunityVerified"
+        );
+        let graph = store.get(NON_SEED).unwrap();
+        assert!(!graph.first_manifest_unvalidated);
+        assert_eq!(graph.trust_tier, TrustTier::CommunityVerified);
     }
 }

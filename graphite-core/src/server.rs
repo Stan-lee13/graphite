@@ -5653,6 +5653,7 @@ mod tests {
             },
             quarantined: false,
             quarantine_reason: None,
+            first_manifest_unvalidated: false,
         })
         .unwrap();
         core.seed_simulation_baseline(

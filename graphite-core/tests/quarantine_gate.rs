@@ -36,6 +36,7 @@ fn behavior(version: &str) -> Behavior {
         evidence: battle_tested_evidence(),
         quarantined: false,
         quarantine_reason: None,
+        first_manifest_unvalidated: false,
     }
 }
 

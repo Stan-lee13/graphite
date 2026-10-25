@@ -108,6 +108,7 @@ fn earned_core(programs: &[&str]) -> GraphiteCore {
             },
             quarantined: false,
             quarantine_reason: None,
+            first_manifest_unvalidated: false,
         })
         .unwrap();
     }

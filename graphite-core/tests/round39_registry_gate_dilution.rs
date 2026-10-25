@@ -109,9 +109,15 @@ fn pinned_input() -> VerificationInput {
         account_addresses: vec![ACCT_A.to_string(), ACCT_B.to_string()],
         instruction_data: None,
         cpi_targets: vec![],
+        // Round 40 (R39-CORE-IDENTITY-7): the profile was (0.40,
+        // OfficialManifest). A first version is now replayed at
+        // HeuristicInferred, where that floor refused every fixture whatever
+        // its class (and its confidence is 0.36); at (0.30,
+        // HeuristicInferred) the outcome depends on the instruction's class
+        // at either tier, which is what these tests are about.
         wallet_profile: WalletProfile::Custom {
-            min_confidence: 0.40,
-            min_trust_tier: TrustTier::OfficialManifest,
+            min_confidence: 0.30,
+            min_trust_tier: TrustTier::HeuristicInferred,
         },
         behavior_evidence: BehaviorEvidence::default(),
         compute_units: 150,
@@ -128,17 +134,36 @@ fn pinned_input() -> VerificationInput {
 }
 
 /// A corpus of `n` fixtures that each record what `submission`'s manifest
-/// does with the pinned input — at `OfficialManifest`, the tier the registry
-/// computes for a registered reviewer's signature and replays at — under `n`
-/// provenance strings: distinct identities for one input.
+/// does with the pinned input — at `tier`, the tier the registry replays it
+/// at (Round 40: `HeuristicInferred` for a first version, or an upgrade with
+/// no earlier fixture left in force; `OfficialManifest` for a registered
+/// reviewer's signed upgrade) — under `n` provenance strings: distinct
+/// identities for one input.
 fn recorded_under(
     core: &GraphiteCore,
     submission: &ManifestSubmission,
     n: usize,
     tag: &str,
 ) -> RegressionCorpus {
+    // A first version ("v1.0" here, named by no previous_version_ref) is
+    // replayed at HeuristicInferred since Round 40.
+    let tier = if submission.manifest.version.previous_version_ref.is_none() {
+        "HeuristicInferred"
+    } else {
+        "OfficialManifest"
+    };
+    recorded_at(core, submission, n, tag, tier)
+}
+
+fn recorded_at(
+    core: &GraphiteCore,
+    submission: &ManifestSubmission,
+    n: usize,
+    tag: &str,
+    tier: &str,
+) -> RegressionCorpus {
     let mut at_gate_tier = submission.manifest.clone();
-    at_gate_tier.trust_tier = "OfficialManifest".to_string();
+    at_gate_tier.trust_tier = tier.to_string();
     let candidate = core.with_candidate_manifest(&at_gate_tier).unwrap();
     let outcome = candidate.verify(&pinned_input()).unwrap().approved;
     let mut corpus = RegressionCorpus::new();
@@ -231,10 +256,18 @@ fn a_retired_refusal_no_longer_holds_the_upgrade_back() {
         assert!(engine.deprecate_regression_fixture(hash));
     }
     let v2 = signed(manifest("v2.0", Some("v1.0"), "transfer"), &key(72));
-    let corpus = recorded_under(&core, &v2, 1, "v2");
-    engine
-        .submit(&mut store, v2, Some((&corpus, &core)))
-        .expect("accepted once the operator retired the refusal");
+    // Round 40: with every earlier fixture retired its replay validates
+    // nothing independent, so it is capped and replayed at HeuristicInferred.
+    let corpus = recorded_at(&core, &v2, 1, "v2", "HeuristicInferred");
+    assert_eq!(
+        engine
+            .submit(&mut store, v2, Some((&corpus, &core)))
+            .expect("accepted once the operator retired the refusal"),
+        graphite_core::manifest_registry::RegistryDecision::Accepted {
+            trust_tier: TrustTier::HeuristicInferred,
+            version_label: "v2.0".to_string(),
+        }
+    );
 }
 
 /// The first arm on its own: a registry whose OWN corpus is large. v1 pins
@@ -260,9 +293,16 @@ fn a_large_registry_corpus_does_not_tolerate_one_loosened_refusal() {
         m.instructions.push(op2);
         m
     };
+    // Round 40: v1 (a first version) is replayed at HeuristicInferred, v2
+    // (a signed upgrade) at OfficialManifest.
     let at_gate = |s: &ManifestSubmission| {
         let mut m = s.manifest.clone();
-        m.trust_tier = "OfficialManifest".to_string();
+        m.trust_tier = if s.manifest.version.previous_version_ref.is_none() {
+            "HeuristicInferred"
+        } else {
+            "OfficialManifest"
+        }
+        .to_string();
         core.with_candidate_manifest(&m).unwrap()
     };
     let mut other = pinned_input();
