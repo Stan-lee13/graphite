@@ -46,3 +46,6 @@
 # not in this leg: tests/round39_core_boundary.rs (cfg(feature = "server"))
 # not in this leg: tests/round39_decision_campaigns.rs (cfg(feature = "rpc"))
 # not in this leg: tests/round39_lookup_table_campaign.rs (cfg(feature = "rpc"))
+# Round 40 (bootstrap): the census import and its CLI
+8 tests/round40_census_import.rs
+5 tests/round40_import_census_cli.rs
