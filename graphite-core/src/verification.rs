@@ -5630,23 +5630,88 @@ impl GraphiteCore {
         program_id: &str,
         manifest: Option<&crate::manifest::ProtocolManifest>,
     ) -> TrustTier {
-        match manifest {
-            Some(m) => {
-                // P7: cap self-asserted tiers.
-                let manifest_tier =
-                    TrustTier::from_manifest_str(&m.trust_tier).min(TrustTier::OfficialManifest);
-                match self.graph().get(program_id) {
-                    Some(b) if b.quarantined => TrustTier::Unknown,
-                    Some(b) => b.trust_tier.max(manifest_tier),
-                    None => manifest_tier,
-                }
-            }
-            None => self
-                .graph()
-                .get(program_id)
-                .map(|b| b.trust_tier)
-                .unwrap_or(TrustTier::Unknown),
+        let graph = self.graph();
+        verdict_program_tier(manifest, graph.get(program_id))
+    }
+
+    /// Round 40 (bootstrap): what a verdict on `program_id` ALONE would carry
+    /// — the tier [`Self::program_trust_tier`] gives it and the confidence
+    /// `build_signals` and the tier ceiling give a described instruction
+    /// whose L5 passed, with no penalty and no sibling — when its latest
+    /// graph record is `record` (the record in force when `None`).
+    ///
+    /// For `graphite evidence import-census --dry-run` and its report: what
+    /// an import would change, computed by the verdict path's own functions,
+    /// never a separate estimate. A real verdict can only be lower (a
+    /// sibling's lower tier, an L2/L4/L5 penalty, an unknown instruction).
+    pub fn standalone_standing(
+        &self,
+        program_id: &str,
+        record: Option<&Behavior>,
+    ) -> (TrustTier, f64) {
+        let manifest = self.registry.get(program_id);
+        let graph = self.graph();
+        let record = record.or_else(|| graph.get(program_id));
+        let tier = verdict_program_tier(manifest, record);
+        let evidence = GraphSignalEvidence {
+            simulation_matches: graph
+                .get_simulation_baseline(program_id)
+                .map(|b| b.sample_count)
+                .unwrap_or(0),
+            historical_volume: record
+                .map(|b| b.evidence.battle_tested_tx_count)
+                .unwrap_or(0),
+            community_verified: record
+                .map(|b| b.evidence.community_verified_count)
+                .unwrap_or(0),
+        };
+        drop(graph);
+        let intent = ProposedIntent {
+            intent_type: "standalone".to_string(),
+            raw_natural_language: String::new(),
+            confidence_of_parse: 1.0,
+            extracted_parameters: None,
+        };
+        let signals = build_signals(
+            &evidence,
+            manifest.is_some(),
+            tier,
+            &intent,
+            LayerStatus::Passed,
+        );
+        let confidence = compute_confidence(&signals, tier)
+            .map(|c| apply_unknown_protocol_ceiling(tier, c.confidence))
+            .unwrap_or(0.0);
+        (tier, confidence)
+    }
+
+    /// Round 40 (bootstrap): append a census-measured evidence record and
+    /// bind the program's evidence to the earliest slot the census observed
+    /// (`SemanticGraphStore::bind_evidence_to_slot`), so the upgrade watch
+    /// withdraws it when the program's deployment turns out newer than the
+    /// measurement. Returns whether the change reached disk; it is in force
+    /// in memory either way. Operator-only (the `graphite evidence
+    /// import-census` command); nothing on the HTTP surface calls it.
+    pub fn import_measured_evidence(
+        &mut self,
+        behavior: Behavior,
+        measured_from_slot: u64,
+    ) -> Result<Result<(), String>, VerificationError> {
+        {
+            let mut graph = self.graph();
+            let program_id = behavior.program_id.clone();
+            graph.append(behavior)?;
+            graph.bind_evidence_to_slot(&program_id, measured_from_slot);
         }
+        Ok(self.persist_state())
+    }
+
+    /// The deployment Graphite last observed for a program (roadmap R-M1).
+    pub fn observed_deployment(
+        &self,
+        program_id: &str,
+    ) -> Option<crate::semantic_graph_store::ObservedDeployment> {
+        self.graph().observed_deployment(program_id).cloned()
     }
 
     /// Manifest-derived risk-assessment context for ONE instruction, keyed by
@@ -10701,6 +10766,29 @@ impl GraphiteCore {
         self.plugins.run_analytics(&result);
 
         Ok(result)
+    }
+}
+
+/// One program's verdict tier from its manifest and its latest graph record
+/// (the body of `GraphiteCore::program_trust_tier`, see there; a free
+/// function since Round 40 so `standalone_standing` reads the same rule with
+/// a record that is not yet appended).
+fn verdict_program_tier(
+    manifest: Option<&crate::manifest::ProtocolManifest>,
+    record: Option<&Behavior>,
+) -> TrustTier {
+    match manifest {
+        Some(m) => {
+            // P7: cap self-asserted tiers.
+            let manifest_tier =
+                TrustTier::from_manifest_str(&m.trust_tier).min(TrustTier::OfficialManifest);
+            match record {
+                Some(b) if b.quarantined => TrustTier::Unknown,
+                Some(b) => b.trust_tier.max(manifest_tier),
+                None => manifest_tier,
+            }
+        }
+        None => record.map(|b| b.trust_tier).unwrap_or(TrustTier::Unknown),
     }
 }
 

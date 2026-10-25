@@ -10,6 +10,9 @@
 //! artifact, simulated by a loopback mock RPC, through `verify_async`.
 //! Everything is a loopback socket; no public endpoint is contacted.
 
+// Round 40 (bootstrap): every test below runs again in the census-imported
+// state under the built-in Gaming profile (`round40_census_imported::*`).
+mod round40_imported;
 use graphite_core::confidence_engine::TrustTier;
 use graphite_core::find_program_address;
 use graphite_core::manifest::{load_seed_manifests, InstructionDef};
@@ -19,8 +22,8 @@ use graphite_core::semantic_graph_store::BehaviorEvidence;
 use graphite_core::solana_types::Pubkey;
 use graphite_core::tx_pattern_analysis::TransactionInstruction;
 use graphite_core::verification::{
-    ExecutionDecision, ExtractedParameters, GraphiteCore, LayerStatus, ProposedIntent,
-    UnobservedCode, VerificationInput, VerificationResult,
+    ExecutionDecision, ExtractedParameters, LayerStatus, ProposedIntent, UnobservedCode,
+    VerificationInput, VerificationResult,
 };
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -421,7 +424,7 @@ async fn verify(
     let (keys, bytes) = frame(payer, ixs);
     cluster.keys = keys;
     let endpoint = serve(Arc::new(Mutex::new(cluster)));
-    let mut core = GraphiteCore::new();
+    let mut core = round40_imported::core();
     core.attach_rpc_client(SolanaRpcClient::new(RpcConfig {
         endpoint,
         timeout: std::time::Duration::from_secs(10),
@@ -459,10 +462,10 @@ async fn verify(
         // production. The bar is set below it, as in
         // staking_withdrawal_destination.rs, so the decision shows what the
         // other layers and the binding do.
-        wallet_profile: WalletProfile::Custom {
+        wallet_profile: round40_imported::profile(WalletProfile::Custom {
             min_confidence: 0.40,
             min_trust_tier: TrustTier::OfficialManifest,
-        },
+        }),
         behavior_evidence: BehaviorEvidence {
             has_signed_manifest: true,
             community_verified_count: 5,
@@ -923,8 +926,14 @@ fn record(tag: &str, r: &VerificationResult) {
         .map(|l| l.reason.chars().take(700).collect::<String>())
         .unwrap_or_default();
     eprintln!(
-        "[R37-1 {tag}] decision={:?} | {} | risk: {} | L4: {l4}",
+        "[R37-1 {tag}{}] decision={:?} confidence={:.4} | {} | risk: {} | L4: {l4}",
+        if round40_imported::imported() {
+            " [census imported, Gaming]"
+        } else {
+            ""
+        },
         r.decision,
+        r.confidence,
         statuses(r),
         risk(r),
     );
@@ -1485,3 +1494,20 @@ async fn a_transfer_beside_an_unread_program_the_owner_signs_is_not_bound() {
         r.scope.unobserved()
     );
 }
+
+// Round 40 (bootstrap): the same tests after `graphite evidence import-census`,
+// under the built-in Gaming profile (tests/round40_imported/mod.rs).
+imported_twins!(
+    an_honest_swap_is_executable,
+    a_swap_beside_a_memo_is_executable,
+    the_owners_own_wrap_and_unwrap_are_bound,
+    a_swap_output_skimmed_by_a_sibling_is_not_bound,
+    a_swap_input_skimmed_by_a_sibling_is_not_bound,
+    an_honest_withdrawal_is_executable,
+    a_withdrawal_skimmed_by_a_sibling_is_not_bound,
+    an_approval_or_a_cpi_skim_beside_a_swap_is_not_bound,
+    a_relayed_swap_is_bound_to_the_wallet_that_swaps,
+    a_relayer_taking_the_owners_swap_output_is_not_bound,
+    a_relayer_taking_the_owners_lamports_beside_a_swap_is_not_bound,
+    a_transfer_beside_an_unread_program_the_owner_signs_is_not_bound,
+);
