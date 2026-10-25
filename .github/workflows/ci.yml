@@ -747,7 +747,7 @@ jobs:
           # The live-server tests skip without a server (the container job
           # runs them against one); nothing else may skip.
           npm test 2>&1 | tee "$RUNNER_TEMP/sdk-ts.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sdk-ts.log" 62 \
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sdk-ts.log" 68 \
             "$(grep -cE '^live\("' src/live-server.test.ts)"
           # The published package must actually build, and must not ship the
           # test file — dist/ is gitignored, so a broken build config would
@@ -766,7 +766,7 @@ jobs:
           # Every *.test.ts in the directory, so a test file cannot sit in
           # the repository looking like a gate without ever running.
           npm test 2>&1 | tee "$RUNNER_TEMP/agent-guard.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/agent-guard.log" 330
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/agent-guard.log" 343
           # The guard and the Rust Core are two implementations of one
           # agreement: the guard serializes a transaction and describes its
           # instructions, the Core reads both and decides whether they agree.
@@ -798,7 +798,7 @@ jobs:
           npm ci --ignore-scripts
           npm run typecheck
           npm test 2>&1 | tee "$RUNNER_TEMP/mcp-server.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/mcp-server.log" 10
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/mcp-server.log" 12
       - name: SAK adapter typecheck + tests
         working-directory: integrations/solana-agent-kit
         run: |
@@ -813,7 +813,7 @@ jobs:
           npm ci --ignore-scripts
           npm run typecheck
           npm test 2>&1 | tee "$RUNNER_TEMP/sak.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sak.log" 10
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sak.log" 11
 
   go:
     name: Go SDK — fmt, vet, tests
@@ -860,7 +860,7 @@ jobs:
       - name: Tests
         run: |
           go test -count=1 -v ./... 2>&1 | tee "$RUNNER_TEMP/go-test.log"
-          bash ../../.github/scripts/test-count.sh go "$RUNNER_TEMP/go-test.log" 59
+          bash ../../.github/scripts/test-count.sh go "$RUNNER_TEMP/go-test.log" 66
 
   dashboard:
     name: Dashboard — typecheck, tests + production build
@@ -947,7 +947,7 @@ jobs:
       - name: Tests
         run: |
           pytest -q 2>&1 | tee "$RUNNER_TEMP/pytest-ai.log"
-          bash ../.github/scripts/test-count.sh pytest "$RUNNER_TEMP/pytest-ai.log" 50
+          bash ../.github/scripts/test-count.sh pytest "$RUNNER_TEMP/pytest-ai.log" 51
       # Round 29 (audit 2026-10-20, M1-M3): the sample fetcher and the
       # row-by-row verifier, against a stand-in endpoint (no network).
       - name: mainnet-sample tool tests
@@ -963,7 +963,7 @@ jobs:
         working-directory: tools/live-measure
         run: |
           pytest -q -p no:cacheprovider test_live_measure.py 2>&1 | tee "$RUNNER_TEMP/pytest-live.log"
-          bash ../../.github/scripts/test-count.sh pytest "$RUNNER_TEMP/pytest-live.log" 57
+          bash ../../.github/scripts/test-count.sh pytest "$RUNNER_TEMP/pytest-live.log" 60
       # W23 (external review): the other lockfiles were audited and this one
       # was not. Every pin is exact and hashed, so no resolution is needed.
       - name: Advisory audit of the lockfile
