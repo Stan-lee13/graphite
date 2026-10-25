@@ -565,6 +565,24 @@ if "ruleset-drift.py" not in text:
     sys.exit("does not run ruleset-drift.py")
 PY
 
+echo "== live-mainnet.yml: a failed seeding is never reported as seeded (Round 36; pinned Round 39)"
+expect 0 "the seed step fails on a failed seed, and the replay reads its exit code, not its outcome" python3 -I - "$root/.github/workflows/live-mainnet.yml" <<'PY'
+import re, sys, yaml
+steps = yaml.safe_load(open(sys.argv[1]))["jobs"]["measure"]["steps"]
+seed = next(s for s in steps if s.get("id") == "seed")
+replay = next(s for s in steps if s.get("id") == "replay")
+run = seed["run"]
+if 'echo "exit=$code" >> "$GITHUB_OUTPUT"' not in run:
+    sys.exit("the seed step no longer records its exit code")
+tail = run[run.index('echo "exit=$code"'):]
+if not re.search(r'if \[ "\$code" -ne 0 \]; then .*exit "\$code"; fi', tail):
+    sys.exit("the seed step no longer fails after recording a failed seed (its last command would be the echo)")
+if replay.get("env", {}).get("SEEDED") != "${{ steps.seed.outputs.exit == '0' }}":
+    sys.exit(f"SEEDED is {replay.get('env', {}).get('SEEDED')!r}, not the seed step's recorded exit code")
+if "steps.seed.outcome" in str(replay):
+    sys.exit("the replay reads the seed step's outcome, which an echo makes success")
+PY
+
 echo "== test-count.sh per test binary (D2-8)"
 TC=(bash "$here/test-count.sh")
 cat >"$T/cargo.log" <<'LOG'

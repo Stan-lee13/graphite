@@ -1186,13 +1186,13 @@ jobs:
           bash .github/scripts/ci-scripts.test.sh 2>&1 | tee "$RUNNER_TEMP/ci-scripts.log"
           passed="$(sed -n 's/^ci-scripts tests: \([0-9]*\) passed, 0 failed$/\1/p' "$RUNNER_TEMP/ci-scripts.log")"
           # 33 at Round 36; 77 at Round 38 (D2-4, D2-6, D2-7, D2-8, D-8,
-          # R37-8 drift and guard, D2-3 publish structure); 120 at Round 39
+          # R37-8 drift and guard, D2-3 publish structure); 121 at Round 39
           # (the live ruleset state of 2026-10-25, --require-bypass,
           # main-review required, shellcheck of these scripts, and
           # graphite-core/scripts/validate_corpora.py over the committed
-          # corpora with 13 seeded faults).
-          if [ -z "$passed" ] || [ "$passed" -lt 120 ]; then
-            echo "::error::ci-scripts tests: ${passed:-no summary} passed, floor 120"; exit 1
+          # corpora with 13 seeded faults; the live-mainnet seed pin).
+          if [ -z "$passed" ] || [ "$passed" -lt 121 ]; then
+            echo "::error::ci-scripts tests: ${passed:-no summary} passed, floor 121"; exit 1
           fi
 
   # Round 30 (G-11): the one check the `main` ruleset requires

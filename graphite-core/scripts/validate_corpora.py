@@ -745,7 +745,18 @@ def check_artifacts(docs, rep):
         label = "legacy" if e.get("version") is None else str(e.get("version"))
         if label != v:
             rep.error(S, f"sak_bridge_corpus.json {e.get('name')}: labelled {e.get('version')!r}, the bytes say {v}")
-    rep.data["artifacts"] = {"provenance": out, "mainnet_sample_versions": dict(vers), "sak_bridge_corpus_versions": dict(cv),
+    # The two raw getTransaction answers kept beside the scripts: the
+    # signature is the one the file is named after.
+    exploits = 0
+    for f in sorted(docs):
+        mt = re.match(r"graphite-core/scripts/real_exploit_([1-9A-HJ-NP-Za-km-z]+)_[^/]*\.json$", f)
+        if not mt:
+            continue
+        exploits += 1
+        sigs = ((docs[f].get("transaction") or {}).get("signatures") or [""])
+        if not is_signature(sigs[0]) or not sigs[0].startswith(mt.group(1)):
+            rep.error(S, f"{f}: its first signature {sigs[0][:20]!r} is not the one the file is named after")
+    rep.data["artifacts"] = {"real_exploit_transactions_beside_the_scripts": exploits,"provenance": out, "mainnet_sample_versions": dict(vers), "sak_bridge_corpus_versions": dict(cv),
                              "mainnet_v0_alt_transactions": len(alt.get("transactions") or [])}
 
 

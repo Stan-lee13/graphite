@@ -72,8 +72,10 @@ that is not in `.github/revoked_signers`. But a tag on an unmerged branch runs t
 the workflow, which can drop the gate, and a tag on a `main` commit older than the gate (`99948c6`, on
 `main` at 0.3.0-beta) runs a copy that never had one. `.github/workflows/release-guard.yml` runs from
 `main` on every `Release` run and cancels one that fails those checks, but it is a second line: it
-does not see a workflow under another name, cannot revoke an attestation, and an admin can disable
-it. Only repository settings close this, and only an admin can apply them. **Until R1 and R2 are
+does not see a workflow under another name, checks only runs started by a tag push (a branch's own
+`release.yml` changed to publish on a manual run is not checked; its attestations name a branch,
+not `refs/tags/v…`, so the `--source-ref` in 10e refuses them), cannot revoke an attestation, and an
+admin can disable it. Only repository settings close this, and only an admin can apply them. **Until R1 and R2 are
 done, anyone with write access can still publish a release with genuine provenance.**
 
 Exactly what to apply, in order:
