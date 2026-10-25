@@ -421,7 +421,8 @@ func verificationResultViolation(value any) string {
 
 // decisionViolation checks Round 30's decision, executable and
 // instruction_bind_key. Optional, so a server older than Round 30 still
-// decodes (IsExecutable then recomputes alone); when present they must be
+// decodes — and since Round 39 (R39-CLIENTS-1) IsExecutable never calls its
+// verdict executable, as the Core's own rule does not; when present they must be
 // known, agree with each other and with approved, and a server claiming
 // executable must agree with the rule recomputed from the verdict's own
 // fields. A server stricter than the rule is accepted: that is never the
