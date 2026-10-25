@@ -1430,7 +1430,10 @@ fn created_authorities_not_signing(
 /// stake account whose staker and withdrawer sign, with no lockup a
 /// non-signer controls; a nonce account whose authority signs. Lamports in
 /// any other account are not a signer's, whoever paid them in.
-fn lamports_kept_by(
+///
+/// Round 39 (R39-CORE-DECISION-1): `intent_binding`'s sibling rule asks the
+/// same question of the accounts value is moved to, so the two cannot drift.
+pub(crate) fn lamports_kept_by(
     snap: &AccountSnapshot,
     signers: &std::collections::HashSet<&str>,
 ) -> Option<String> {

@@ -1268,20 +1268,43 @@ fn within_slippage(min_out: u64, simulated: i128, bps: u64) -> bool {
     i128::from(min_out) * 10_000 >= simulated * i128::from(10_000 - bps)
 }
 
-/// Whether `account` is a signer's own: a signer itself, or a token account a
-/// signer owns before or after the simulation. An account the simulation did
-/// not observe is nobody's the Core can vouch for.
-fn signers_own(account: &str, signers: &[String], diff: &StateDiff) -> bool {
-    if signers.iter().any(|s| s == account) {
+/// Whether value in `account` stays with `keepers` — the wallet whose
+/// operation this is: it is one of them, or, as the simulation leaves it, an
+/// account one of them keeps (`state_diff::lamports_kept_by`, the rule L4
+/// credits a signer by: a token account a keeper owns, not frozen, whose
+/// delegate and close authority, if any, are keepers too; a stake account a
+/// keeper stakes and withdraws, unlocked; a nonce account a keeper
+/// authorises). An account the simulation did not observe is nobody's the
+/// Core can vouch for.
+///
+/// Round 39 (R39-CORE-DECISION-1): this was `signers_own` — ANY signer, or a
+/// token account whose owner field is any signer, before or after — and each
+/// half let value leave beside a granted withdrawal at `executable_approved`:
+///
+/// - a co-signer is "a signer": the attacker co-signs, and the owner's
+///   System transfer to them is the owner's own;
+/// - a created account is a signer (a fresh keypair signs its own
+///   `CreateAccount`): 30 SOL into an account the attacker's program owns;
+/// - SPL Token's `SetAuthority(AccountOwner)` keeps a non-native account's
+///   close authority, so an attacker builds a token account, sets
+///   themselves as its close authority, and hands it to the victim: its owner
+///   field is the victim's, and the attacker closes it to themselves after
+///   the transaction lands, with whatever SOL was sent into it.
+fn kept_by(account: &str, keepers: &[String], diff: &StateDiff) -> bool {
+    if keepers.iter().any(|k| k == account) {
         return true;
     }
-    diff.deltas.iter().any(|d| {
-        d.pubkey == account
-            && [d.before.as_ref(), d.after.as_ref()]
-                .into_iter()
-                .flatten()
-                .any(|s| s.token.as_ref().is_some_and(|t| signers.contains(&t.owner)))
-    })
+    let set: std::collections::HashSet<&str> = keepers.iter().map(String::as_str).collect();
+    let Some(d) = diff.deltas.iter().find(|d| d.pubkey == account) else {
+        return false;
+    };
+    // What the account is once the transaction has run; a closed one is
+    // judged by what it was.
+    d.after
+        .as_ref()
+        .or(d.before.as_ref())
+        .and_then(|s| crate::state_diff::lamports_kept_by(s, &set))
+        .is_some()
 }
 
 /// Round 38 (R37-1): nothing beside a swap or a withdrawal takes value from a
@@ -1296,22 +1319,27 @@ fn signers_own(account: &str, signers: &[String], diff: &StateDiff) -> bool {
 /// own reading:
 ///
 /// - Every top-level System, SPL Token or Token-2022 instruction that moves
-///   value under a signer's authority sends it to a signer's own account
+///   value under a signer's authority sends it to an account `keepers` keep
 ///   (transfers, account creation, `CloseAccount`); one that hands a signer's
 ///   account to someone else (`Approve`, `SetAuthority`) or destroys value
 ///   (`Burn`) is a mismatch. These are read from the bytes.
-/// - No account outside the signers' own and `route`'s gains lamports or a
-///   token of `mints`. This is read from the diff, so a skim done by CPI from
-///   any program is caught the same way.
+/// - No account outside what `keepers` keep and `route`'s gains lamports or
+///   a token of `mints`. This is read from the diff, so a skim done by CPI
+///   from any program is caught the same way.
+///
+/// `keepers` is the wallet whose operation it is (Round 39): the swapping
+/// wallet, a grant's owner. Another signer is not the owner's, nor is an
+/// account the owner does not keep (see [`kept_by`]).
 fn keeps_value(
     what: &str,
     ixs: &[Ix],
     route: &[&Ix],
+    keepers: &[String],
     signers: &[String],
     diff: &StateDiff,
     mints: &[String],
 ) -> Result<(), Binding> {
-    let own = |a: &str| signers_own(a, signers, diff);
+    let own = |a: &str| kept_by(a, keepers, diff);
     let signer = |a: &str| signers.iter().any(|s| s == a);
     for (i, ix) in ixs.iter().enumerate() {
         if route.iter().any(|r| std::ptr::eq(*r, ix)) {
@@ -1345,8 +1373,11 @@ fn keeps_value(
                 }
                 if !own(&m.to) {
                     return Err(Binding::mismatch(format!(
-                        "{what}: instruction {i} ({}) moves {} from a signer to {}, which is not a signer's own account",
-                        m.what, m.amount, m.to
+                        "{what}: instruction {i} ({}) moves {} from a signer to {}, which is not an account {} keeps",
+                        m.what,
+                        m.amount,
+                        m.to,
+                        keepers.join(", ")
                     )));
                 }
             }
@@ -1359,7 +1390,8 @@ fn keeps_value(
                         if let (Some(dest), Some(owner)) = (account(ix, 1), account(ix, 2)) {
                             if signer(&owner) && !own(&dest) {
                                 return Err(Binding::mismatch(format!(
-                                    "{what}: instruction {i} (CloseAccount) sends a signer's account's lamports to {dest}, which is not a signer's own account"
+                                    "{what}: instruction {i} (CloseAccount) sends a signer's account's lamports to {dest}, which is not an account {} keeps",
+                                    keepers.join(", ")
                                 )));
                             }
                         }
@@ -1382,9 +1414,10 @@ fn keeps_value(
         }
         if d.lamport_delta() > 0 {
             return Err(Binding::mismatch(format!(
-                "{what}: {} gained {} lamports, and it is neither a signer's account nor one of the route's",
+                "{what}: {} gained {} lamports, and it is neither an account {} keeps nor one of the route's",
                 d.pubkey,
-                d.lamport_delta()
+                d.lamport_delta(),
+                keepers.join(", ")
             )));
         }
         let amount = |s: Option<&crate::state_diff::AccountSnapshot>, mint: &str| {
@@ -1396,7 +1429,7 @@ fn keeps_value(
             let gained = amount(d.after.as_ref(), mint) - amount(d.before.as_ref(), mint);
             if gained > 0 {
                 return Err(Binding::mismatch(format!(
-                    "{what}: {} gained {gained} base units of {mint}, and it is neither a signer's account nor one of the route's",
+                    "{what}: {} gained {gained} base units of {mint}, and it is neither an account the owner keeps nor one of the route's",
                     d.pubkey
                 )));
             }
@@ -1557,6 +1590,7 @@ fn bind_swap(input: &BindingInput<'_>) -> Binding {
         decoded.name,
         ixs,
         &[ix],
+        std::slice::from_ref(wallet),
         input.signers,
         diff,
         &[in_mint.clone(), out_mint.clone()],
@@ -1700,10 +1734,12 @@ fn bind_create(input: &BindingInput<'_>) -> Binding {
             "the creation funds {account} with {excess} lamports beyond the rent-exempt minimum for its {size} bytes ({beyond} beyond rent in all; the request states {stated}): lamports put into a new account beyond its rent are a transfer"
         ));
     }
-    // What is not a creation: value leaving a signer for anyone else.
+    // What is not a creation: value leaving a signer for anyone else. Round
+    // 39 (R39-CORE-DECISION-1): "anyone else" is anyone the fee payer — the
+    // wallet that funds the creation — does not keep; a co-signer is not it.
+    let payer: Vec<String> = input.signers.first().cloned().into_iter().collect();
     let own = |a: &str| {
-        signers_own(a, input.signers, diff)
-            || diff.deltas.iter().any(|d| d.pubkey == a && created(d))
+        kept_by(a, &payer, diff) || diff.deltas.iter().any(|d| d.pubkey == a && created(d))
     };
     for (i, ix) in ixs.iter().enumerate() {
         let moved = if ix.program_id == SYSTEM_PROGRAM {
@@ -1812,6 +1848,10 @@ pub struct WithdrawalContext<'a> {
     pub instructions: Result<&'a [Ix], &'a str>,
     pub signers: &'a [String],
     pub program_id: &'a str,
+    /// The key the grant proves the operation belongs to: its `owner` role,
+    /// a required signer of the instruction (Round 39). `None` when no grant
+    /// applies, and then nothing is anyone's own.
+    pub owner: Option<&'a str>,
 }
 
 /// Nothing beside a granted withdrawal takes value from a signer (Round 38,
@@ -1831,6 +1871,33 @@ pub fn withdrawal_keeps_value(
     diff: Option<&StateDiff>,
     beside: &WithdrawalContext<'_>,
 ) -> Result<(), Binding> {
+    grant_keeps_value(instruction, minimums, diff, beside).map_err(|b| match b {
+        Binding::Mismatch { reason, .. } => Binding::Mismatch {
+            pattern: WITHDRAWAL_UNDERBOUNDED,
+            reason,
+        },
+        other => other,
+    })
+}
+
+/// Nothing beside a granted operation takes value from its owner (Round 39,
+/// R39-CORE-DECISION-2): [`keeps_value`] with the granted program's
+/// instructions as the route, the grant's owner as the keeper, and as the
+/// value to watch every mint the owner holds in the diff (and the minimums'
+/// recipients' mints). A mismatch is `IntentMismatch`.
+///
+/// Round 38 put the sibling rule beside every grounded WITHDRAWAL only. A
+/// granted claim, close or owner configuration had none: a Meteora DLMM
+/// `claim_fee` paying 500 into the owner's account beside a
+/// `TransferChecked` of 300 of it to the attacker was `executable_approved`
+/// under the Core's defaults (the claim intent binds nothing, and the
+/// owner's account's NET change is a credit, so L4 sees no debit).
+pub fn grant_keeps_value(
+    instruction: &str,
+    minimums: &[(&str, u64, String)],
+    diff: Option<&StateDiff>,
+    beside: &WithdrawalContext<'_>,
+) -> Result<(), Binding> {
     let Some(diff) = diff else {
         return Err(Binding::unbound(format!(
             "no simulated state diff: what rides beside {instruction} was not measured"
@@ -1840,7 +1907,7 @@ pub fn withdrawal_keeps_value(
         Ok(ixs) => ixs,
         Err(why) => {
             return Err(Binding::unbound(format!(
-                "{instruction}: the transaction's instructions are not readable ({why}), so what rides beside the withdrawal cannot be held"
+                "{instruction}: the transaction's instructions are not readable ({why}), so what rides beside it cannot be held"
             )))
         }
     };
@@ -1848,20 +1915,35 @@ pub fn withdrawal_keeps_value(
         .iter()
         .filter(|ix| ix.program_id == beside.program_id)
         .collect();
-    let mints: Vec<String> = minimums
+    let keepers: Vec<String> = beside.owner.map(str::to_string).into_iter().collect();
+    let mut mints: Vec<String> = minimums
         .iter()
         .filter_map(|(_, _, recipient)| {
             let d = diff.deltas.iter().find(|d| &d.pubkey == recipient)?;
             Some(d.after.as_ref()?.token.as_ref()?.mint.clone())
         })
         .collect();
-    keeps_value(instruction, ixs, &route, beside.signers, diff, &mints).map_err(|b| match b {
-        Binding::Mismatch { reason, .. } => Binding::Mismatch {
-            pattern: WITHDRAWAL_UNDERBOUNDED,
-            reason,
-        },
-        other => other,
-    })
+    // Every mint the owner holds on either side of the transaction: what a
+    // claim pays, what a close leaves, what an owner moves between its own
+    // accounts. An outsider gaining any of them beside the operation took it.
+    for d in &diff.deltas {
+        for s in [d.before.as_ref(), d.after.as_ref()].into_iter().flatten() {
+            if let Some(t) = s.token.as_ref() {
+                if keepers.iter().any(|k| k == &t.owner) && !mints.contains(&t.mint) {
+                    mints.push(t.mint.clone());
+                }
+            }
+        }
+    }
+    keeps_value(
+        instruction,
+        ixs,
+        &route,
+        &keepers,
+        beside.signers,
+        diff,
+        &mints,
+    )
 }
 
 /// A granted withdrawal's minimum outputs against what the simulation

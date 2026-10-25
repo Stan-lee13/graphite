@@ -7087,6 +7087,16 @@ impl GraphiteCore {
         // Round 38 (R37-1): every grounded withdrawal has what rides beside
         // it held (`intent_binding::withdrawal_keeps_value`), minimum or not.
         let mut grounded_withdrawal = false;
+        // Round 39 (R39-CORE-DECISION-2): and so does every other grounded
+        // owner operation a grant gives (a claim, a close, an owner's
+        // configuration) — Round 38 held withdrawals only. A granted burn is
+        // bound by `intent_binding::bind` itself (every other movement beside
+        // it is a mismatch), so it is not listed.
+        let mut grounded_owner_operation = false;
+        // Round 39 (R39-CORE-DECISION-1): whose operation it is — the grant's
+        // owner role, a required signer — which is what "the owner's own"
+        // means beside it, rather than "any signer".
+        let mut grant_owner: Option<String> = None;
         let declared_intent =
             crate::risk_engine::canonical_intent(&input.proposed_intent.intent_type);
         let (expected_account_count, variable_accounts, manifest_risk_class) = match manifest {
@@ -7108,6 +7118,18 @@ impl GraphiteCore {
                             crate::intent_grants::GrantOutcome::Grounded(class) => {
                                 grounded_withdrawal =
                                     class == crate::intent_grants::WITHDRAW_TO_OWNER;
+                                grounded_owner_operation = matches!(
+                                    class,
+                                    crate::intent_grants::CLAIM_TO_OWNER
+                                        | crate::intent_grants::CLOSE_TO_OWNER
+                                        | crate::intent_grants::OWNER_CONFIGURE
+                                );
+                                grant_owner = crate::intent_grants::owner_key(
+                                    &input.program_id,
+                                    i,
+                                    &declared_intent,
+                                    &input.account_addresses,
+                                );
                                 withdrawal_minimums = crate::intent_grants::withdrawal_minimums(
                                     &input.program_id,
                                     i,
@@ -9650,6 +9672,7 @@ impl GraphiteCore {
             instructions: instructions.as_deref().map_err(|e| e.as_str()),
             signers: &signers,
             program_id: &input.program_id,
+            owner: grant_owner.as_deref(),
         };
         let bind_request = || {
             crate::intent_binding::bind(&crate::intent_binding::BindingInput {
@@ -9679,6 +9702,19 @@ impl GraphiteCore {
                 match crate::intent_binding::withdrawal_keeps_value(
                     &instruction_name,
                     minimums.as_deref().unwrap_or(&[]),
+                    binding_diff,
+                    &beside,
+                ) {
+                    Err(b) => b,
+                    Ok(()) => bind_request(),
+                }
+            }
+            // Round 39 (R39-CORE-DECISION-2): a granted claim, close or owner
+            // configuration, held like a withdrawal.
+            _ if grounded_owner_operation => {
+                match crate::intent_binding::grant_keeps_value(
+                    &instruction_name,
+                    &[],
                     binding_diff,
                     &beside,
                 ) {

@@ -755,6 +755,25 @@ pub fn withdrawal_minimums(
     Some(out)
 }
 
+/// The key a grant's facts prove the operation belongs to: the account in its
+/// `owner` role, which `check` requires to be a required signer (Round 39,
+/// R39-CORE-DECISION-1). `None` when no grant names `def` for
+/// `canonical_intent` or its facts do not hold. What rides beside a granted
+/// operation is held to THIS key, never to "a signer": in a transaction
+/// someone else co-signs, a signer includes the stranger.
+pub fn owner_key(
+    program_id: &str,
+    def: &InstructionDef,
+    canonical_intent: &str,
+    accounts: &[String],
+) -> Option<String> {
+    let grant = grant_for(program_id, &def.name, canonical_intent)?;
+    check(grant, def, accounts).ok()?;
+    let layout = def.layout_for(accounts.len());
+    let i = layout.iter().position(|a| a.name == grant.owner)?;
+    accounts.get(i).cloned()
+}
+
 /// Round 34 (R33-1): why the declared intent does not describe `def` when a
 /// grant names it under ANOTHER intent — the intent that does, and whether
 /// the transaction's accounts make the operation the owner's own (if not,
