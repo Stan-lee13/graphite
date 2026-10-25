@@ -613,7 +613,7 @@ which needs a `cargo check` of every feature leg; left for a workstream that bui
 `release-guard.yml:48,86` run only for `workflow_run.event == 'push'`. A collaborator with write access
 can push a branch whose `release.yml` (named `Release`) publishes on `workflow_dispatch` and drops the
 `release` environment; the guard skips it. Its attestations name `refs/heads/<branch>`, so the
-documented `gh attestation verify … --source-ref refs/tags/v<version>` refuses them, but a GHCR push
+documented attestation check (`--source-ref refs/tags/v<version>`, in `docs/ops/production-checklist.md`) refuses them, but a GHCR push
 would land. This is the same class as "a workflow under another name": write access runs workflows.
 Documented in the checklist's release-integrity paragraph. Code-reviewed.
 
