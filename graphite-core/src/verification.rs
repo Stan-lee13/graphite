@@ -8205,6 +8205,26 @@ impl GraphiteCore {
                                     loaded.len()
                                 ))
                             }
+                            // Round 39 (core-identity, R39-CORE-IDENTITY-2):
+                            // a simulation that does not say which accounts it
+                            // loaded — the member absent, `null`, or a list
+                            // with an unreadable entry — confirms nothing about
+                            // Graphite's own resolution, and every index past
+                            // the static keys in its report is unplaceable:
+                            // the transaction's privileges and account list
+                            // were built from the static keys alone, so a
+                            // writable account loaded through a table read as
+                            // read-only to the rules judging what a transfer
+                            // hook may be handed. It was approved
+                            // (`executable_approved`); it is now set aside
+                            // like a contradicting list.
+                            (Some(message), None) if message.has_lookup_accounts() => Some(
+                                format!(
+                                    "the RPC's simulation reports no readable loadedAddresses for a message that reaches {} account(s) through {} address lookup table(s), so the accounts it executed against were never confirmed to be the ones Graphite resolved",
+                                    message.alt_account_count(),
+                                    message.alt_table_count()
+                                ),
+                            ),
                             _ => None,
                         };
                         if let Some(why) = &mismatched_lookups {
