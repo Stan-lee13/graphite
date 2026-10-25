@@ -2713,10 +2713,12 @@ fn a_trail_pruned_without_a_prune_record_is_readable_and_verifies_only_once_ackn
 
 /// T-6: an archive scanned because its index cannot be had (a file stands
 /// where the index directory goes), with the substring prefilter, still
-/// walks every line through the gate: the key adoption — a line the
-/// prefilter does not want — moves the walk on, and the record after it is
-/// found and counted. (Before Round 38 a prefiltered line skipped the gate
-/// and froze what it knew.)
+/// walks every line through the gate: the key adoption and the records
+/// between two verdicts on one transaction — lines the prefilter does not
+/// want — move the walk on, so the later verdict continues it and is the
+/// one found, and both are counted. (Before Round 38 a prefiltered line
+/// skipped the gate and froze what it knew: the later verdict then did not
+/// continue the last line judged, and the scan answered with the earlier.)
 #[test]
 fn an_archive_scanned_with_a_prefilter_walks_every_line() {
     let dir = temp_dir("t-6");
@@ -2730,7 +2732,7 @@ fn an_archive_scanned_with_a_prefilter_walks_every_line() {
     let log = AuditLog::open_with_options(
         &path,
         AuditOptions {
-            rotate_bytes: 6_000,
+            rotate_bytes: 9_000,
             key: Some(k2.clone()),
             previous_key: Some(k1.clone()),
             ..AuditOptions::default()
@@ -2738,12 +2740,15 @@ fn an_archive_scanned_with_a_prefilter_walks_every_line() {
     )
     .unwrap();
     assert!(log.append(&victim_approval("gr-after-adoption")));
-    write_n(&log, 3, 30);
+    // Lines the prefilter does not want between two records it does: each
+    // must move the walk on, or the later one does not continue it.
+    write_n(&log, 3, 3);
+    assert!(log.append(&victim_refusal("gr-refused-later")));
+    write_n(&log, 6, 40);
     close(log);
     let archive = archive_with(&path, "gr-after-adoption");
-    assert!(std::fs::read_to_string(&archive)
-        .unwrap()
-        .contains(chain::KEY_ADOPTION));
+    let text = std::fs::read_to_string(&archive).unwrap();
+    assert!(text.contains(chain::KEY_ADOPTION) && text.contains("gr-refused-later"));
     // K2 only: the K1 records are vouched for by the adoption.
     let server = keyed(&path, &k2, 0);
     let before = server.archive_scans.load(Ordering::Relaxed);
@@ -2758,9 +2763,10 @@ fn an_archive_scanned_with_a_prefilter_walks_every_line() {
     close(server);
     assert_eq!(
         found.map(|r| r.audit_trail_id),
-        Some("gr-after-adoption".into())
+        Some("gr-refused-later".into()),
+        "the scan did not reach the newest verdict"
     );
-    assert_eq!(counted, (1, 0));
+    assert_eq!(counted, (1, 1));
     assert!(id.is_some(), "a record under K1, before the adoption");
 }
 
