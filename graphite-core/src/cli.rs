@@ -1926,11 +1926,54 @@ fn run_protocol(action: ProtocolAction) -> Result<(), Box<dyn std::error::Error>
     }
 }
 
-/// Compare two manifests instruction by instruction.
-///
-/// Deliberately structural rather than textual: a reviewer needs to see that a
-/// discriminator moved or an account became writable, not that a JSON key was
-/// reordered. Ordering is by name so the output is stable (P2).
+/// The differences between two account lists, slot by slot. `prefix` names
+/// which list (the main one, or an alternative layout).
+fn slot_changes(
+    prefix: &str,
+    a: &[crate::manifest::AccountRoleDef],
+    b: &[crate::manifest::AccountRoleDef],
+) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    if a.len() != b.len() {
+        lines.push(format!("{prefix}account count {} -> {}", a.len(), b.len()));
+    }
+    for (i, (x, y)) in a.iter().zip(b.iter()).enumerate() {
+        if x.name != y.name || x.is_signer != y.is_signer || x.is_writable != y.is_writable {
+            lines.push(format!(
+                "{prefix}account #{i}: {} (signer {}, writable {}) -> {} (signer {}, writable {})",
+                x.name, x.is_signer, x.is_writable, y.name, y.is_signer, y.is_writable
+            ));
+        }
+        // Round 39 (R39-CB-12): everything else the runtime judges a slot
+        // by. A dropped expected address or changed seed formula weakens a
+        // verdict exactly as much as a privilege change does.
+        let mut slot: Vec<String> = Vec::new();
+        if x.role != y.role {
+            slot.push(format!("role {:?} -> {:?}", x.role, y.role));
+        }
+        if x.pda_seeds != y.pda_seeds {
+            slot.push(format!("pda seeds {:?} -> {:?}", x.pda_seeds, y.pda_seeds));
+        }
+        if x.expected_address != y.expected_address {
+            slot.push(format!(
+                "expected address {:?} -> {:?}",
+                x.expected_address, y.expected_address
+            ));
+        }
+        if x.optional != y.optional {
+            slot.push(format!("optional {} -> {}", x.optional, y.optional));
+        }
+        if !slot.is_empty() {
+            lines.push(format!(
+                "{prefix}account #{i} {}: {}",
+                y.name,
+                slot.join("; ")
+            ));
+        }
+    }
+    lines
+}
+
 /// Everything that differs between two versions of one instruction, as lines a
 /// reviewer can read. Shared by the changed-in-place path and the rename path,
 /// so a rename can never hide a privilege change riding along with it.
@@ -1945,20 +1988,31 @@ fn instruction_changes(
             a.discriminator, b.discriminator
         ));
     }
-    if a.accounts.len() != b.accounts.len() {
+    lines.extend(slot_changes("", &a.accounts, &b.accounts));
+    // Round 39 (R39-CB-12): an alternative layout is judged exactly like
+    // the main one when the transaction's account count selects it.
+    if a.account_layouts.len() != b.account_layouts.len() {
         lines.push(format!(
-            "account count {} -> {}",
-            a.accounts.len(),
-            b.accounts.len()
+            "account layouts {} -> {} alternative(s), sizes {:?} -> {:?}",
+            a.account_layouts.len(),
+            b.account_layouts.len(),
+            a.account_layouts.iter().map(Vec::len).collect::<Vec<_>>(),
+            b.account_layouts.iter().map(Vec::len).collect::<Vec<_>>()
         ));
     }
-    for (i, (x, y)) in a.accounts.iter().zip(b.accounts.iter()).enumerate() {
-        if x.name != y.name || x.is_signer != y.is_signer || x.is_writable != y.is_writable {
-            lines.push(format!(
-                "account #{i}: {} (signer {}, writable {}) -> {} (signer {}, writable {})",
-                x.name, x.is_signer, x.is_writable, y.name, y.is_signer, y.is_writable
-            ));
-        }
+    for (j, (x, y)) in a
+        .account_layouts
+        .iter()
+        .zip(b.account_layouts.iter())
+        .enumerate()
+    {
+        lines.extend(slot_changes(&format!("account layouts [{j}] "), x, y));
+    }
+    if a.risk_rules != b.risk_rules {
+        lines.push(format!(
+            "risk rules {:?} -> {:?}",
+            a.risk_rules, b.risk_rules
+        ));
     }
     if a.expected_state_changes != b.expected_state_changes {
         lines.push(format!(
@@ -1987,6 +2041,11 @@ fn instruction_changes(
     lines
 }
 
+/// Compare two manifests instruction by instruction.
+///
+/// Deliberately structural rather than textual: a reviewer needs to see that a
+/// discriminator moved or an account became writable, not that a JSON key was
+/// reordered. Ordering is by name so the output is stable (P2).
 pub fn manifest_diff(before: &ProtocolManifest, after: &ProtocolManifest) -> Vec<String> {
     use std::collections::BTreeMap;
     let mut out: Vec<String> = Vec::new();
@@ -3337,6 +3396,77 @@ mod tests {
         assert!(out.contains("allowed CPI"), "new CPI target: {out}");
         assert!(out.contains("risk class"), "risk class change: {out}");
         assert!(out.contains("assigns authority"), "declared changes: {out}");
+    }
+
+    /// Round 39 (R39-CB-12): the diff compared only an account's name,
+    /// signer and writable flags, so a version that dropped a slot's
+    /// expected address, changed its PDA seeds or role, made it optional,
+    /// or changed an alternative layout or a risk rule read "no
+    /// instruction-level changes".
+    #[test]
+    fn the_diff_surfaces_every_field_the_runtime_judges_an_account_by() {
+        type Edit = fn(&mut ProtocolManifest);
+        let edits: [(&str, Edit); 8] = [
+            ("expected address", |m| {
+                m.instructions[0].accounts[0].expected_address =
+                    vec!["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string()]
+            }),
+            ("pda seeds", |m| {
+                m.instructions[0].accounts[0].pda_seeds = vec!["vault".to_string()]
+            }),
+            ("role", |m| {
+                m.instructions[0].accounts[0].role = "pda".to_string()
+            }),
+            ("optional", |m| {
+                m.instructions[0].accounts[0].optional = true
+            }),
+            ("account layouts", |m| {
+                let alt = m.instructions[0].accounts.clone();
+                m.instructions[0].account_layouts = vec![alt]
+            }),
+            (
+                "account layouts [0] account #0 vault: expected address",
+                |m| {
+                    // Both sides have the alternative; only its slot differs
+                    // (the `before` side gets the same layout below).
+                    let mut alt = m.instructions[0].accounts.clone();
+                    alt[0].expected_address = vec!["{program_id}".to_string()];
+                    m.instructions[0].account_layouts = vec![alt]
+                },
+            ),
+            ("risk rules", |m| {
+                m.instructions[0].risk_rules = vec!["no_external_destination".to_string()]
+            }),
+            ("account #0", |m| {
+                // Several fields of one slot at once: still one line per slot.
+                let a = &mut m.instructions[0].accounts[0];
+                a.pda_seeds = vec!["vault".to_string()];
+                a.expected_address = vec!["{program_id}".to_string()];
+            }),
+        ];
+        for (what, edit) in edits {
+            let mut before = diff_manifest(DIFF_PROGRAM, "1.0");
+            if what.starts_with("account layouts [0]") {
+                before.instructions[0].account_layouts =
+                    vec![before.instructions[0].accounts.clone()];
+            }
+            let mut after = diff_manifest(DIFF_PROGRAM, "1.0");
+            edit(&mut after);
+            let out = manifest_diff(&before, &after).join("\n");
+            assert!(
+                !out.contains("no instruction-level changes"),
+                "a change of {what} read as no change: {out}"
+            );
+            assert!(out.contains(what), "{what} not named: {out}");
+            // The reverse direction (a constraint removed) is the one that
+            // weakens a verdict; it must show too.
+            let back = manifest_diff(&after, &before).join("\n");
+            assert!(back.contains(what), "{what} removal not named: {back}");
+        }
+        // Benign control: an identical manifest still diffs to nothing.
+        let a = diff_manifest(DIFF_PROGRAM, "1.0");
+        let out = manifest_diff(&a, &a.clone()).join("\n");
+        assert!(out.contains("no instruction-level changes"), "{out}");
     }
 
     #[test]

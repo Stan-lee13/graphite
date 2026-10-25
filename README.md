@@ -725,7 +725,9 @@ graphite protocol status --program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
 # What am I signing off on? Compares a candidate manifest against the one
 # currently in force: instructions added and removed, renames (identified by an
 # unchanged discriminator, so a rename never reads as a breaking removal),
-# account privilege changes, new CPI targets, changed risk classes.
+# account privilege changes, each slot's role, PDA seeds, expected addresses
+# and optional flag (alternative layouts too), new CPI targets, changed risk
+# classes and risk rules.
 # The reviewer's missing tool — their attestation is what earns the tier.
 graphite protocol diff --manifest ./candidate.json
 ```
