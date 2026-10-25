@@ -119,7 +119,7 @@ case "$cmd" in
     case "$rc" in
       0) echo "rotate: every link and every MAC verified under the keys given" ;;
       2) echo "rotate: some MACs are under a key not given — pass every key file the trail was written under" >&2 ;;
-      4) echo "rotate: keys were given but do not cover the trail — records with no MAC and no key-adoption record (graphite audit adopt-key), or an unsigned checkpoint: docs/ops/keys.md" >&2 ;;
+      4) echo "rotate: keys were given but do not cover the trail — records with no MAC and no key-adoption record (graphite audit adopt-key), the trail's newest key not given, or an unsigned checkpoint: docs/ops/keys.md" >&2 ;;
       *) echo "rotate: the trail does not verify (exit $rc): docs/ops/incidents.md, \"Audit-integrity alert\"" >&2 ;;
     esac
     exit "$rc"

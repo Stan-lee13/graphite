@@ -16,7 +16,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -1773,15 +1773,103 @@ impl AuditLog {
         }
     }
 
+    /// Append a prune record naming where the trail on disk starts now
+    /// (Round 39, R37-14), as `graphite audit acknowledge-prune` does for a
+    /// trail pruned before prune records existed, once the operator has
+    /// checked the trail against an anchored checkpoint or a backup. MAC'd
+    /// when this writer is keyed. The start named is returned. Refused when
+    /// the trail on disk starts at seq 0, or has no chained record.
+    pub fn acknowledge_prune(&self) -> std::io::Result<(u64, String)> {
+        let start = trail_files_of(self.path.as_ref())
+            .iter()
+            .find_map(|f| chain::first_chained(f))
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "the trail holds no chained record: nothing was pruned",
+                )
+            })?;
+        if start.first_seq == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "the trail starts at seq 0: nothing was pruned",
+            ));
+        }
+        let record = chain::PruneRecord {
+            audit_control: chain::PRUNE.to_string(),
+            timestamp: now_utc_rfc3339(),
+            retained: vec![start.clone()],
+            acknowledged: true,
+            torn_tail: None,
+        };
+        if self.append_line(&record) {
+            Ok((start.first_seq, start.last_pruned_hash))
+        } else {
+            Err(std::io::Error::other(format!(
+                "the prune record could not be written to {}",
+                self.path.display()
+            )))
+        }
+    }
+
     /// Open an existing trail to READ it: no writer lock, no file created,
     /// and every append refused. For a process that only reads — `graphite
     /// execution` beside a running server — so it never competes with the
     /// writer for the lock or extends the chain from a head of its own.
+    ///
+    /// Without a key its readers check no MAC: to them the trail is
+    /// corruption-evident only. `open_read_only_keyed` is what a reader of a
+    /// keyed trail uses.
     pub fn open_read_only(path: impl AsRef<Path>) -> std::io::Result<Self> {
-        let path = path.as_ref().to_path_buf();
+        Self::open_read_only_with(path.as_ref(), Vec::new())
+    }
+
+    /// `open_read_only` with the keys its readers check MACs under — the
+    /// server's key, and the previous key of a rotation — as the server's
+    /// own readers do (Round 39, T-11: `graphite execution` read the trail
+    /// without them, so a self-hashed forgery claiming a MAC was a verdict
+    /// to it). Refused unless the trail's newest record is under one of
+    /// `keys`, or, with no key, carries no MAC: a reader that cannot check
+    /// the head could answer from a forgery, or from a trail its keys reach
+    /// only part of.
+    pub fn open_read_only_keyed(
+        path: impl AsRef<Path>,
+        keys: Vec<AuditKey>,
+    ) -> std::io::Result<Self> {
+        let path = path.as_ref();
+        let head = chain::head_key(path, &archives_newest_first(path))
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let refuse = |why: String| Err(std::io::Error::new(std::io::ErrorKind::InvalidData, why));
+        match (&head, keys.is_empty()) {
+            (None, true) => {}
+            (Some(id), true) => {
+                return refuse(format!(
+                    "the audit trail is keyed (its newest record is MAC'd under key {id}) and no key is configured: set {AUDIT_KEY_ENV}. A reader without the key cannot tell a forged record from a written one"
+                ))
+            }
+            (Some(id), false) if keys.iter().any(|k| k.id() == id) => {}
+            (Some(id), false) => {
+                return refuse(format!(
+                    "the audit trail's newest record is MAC'd under key {id}, which is not a configured key ({}): the keys given do not reach the head",
+                    keys.iter().map(AuditKey::id).collect::<Vec<_>>().join(", ")
+                ))
+            }
+            (None, false) => {
+                return refuse(format!(
+                    "the audit trail's newest record carries no MAC and a key ({}) is configured: the trail is not under it",
+                    keys[0].id()
+                ))
+            }
+        }
+        Self::open_read_only_with(path, keys)
+    }
+
+    fn open_read_only_with(path: &Path, keys: Vec<AuditKey>) -> std::io::Result<Self> {
+        let path = path.to_path_buf();
         let file = File::open(&path)?;
         let cursors = Arc::new(Mutex::new(CursorCache::new()));
         let facts = Arc::new(chain::TrailFacts::default());
+        let reader_keys = Arc::new(keys);
         let archives: Vec<PathBuf> = archives_of(&path).into_iter().map(|(_, p)| p).collect();
         let trail_pin = chain::head_trail(&path, &archives_newest_first(&path));
         let (active_index, lifecycle_index, active_counts) = build_indexes(
@@ -1790,7 +1878,7 @@ impl AuditLog {
                 &path,
                 &archives,
                 None,
-                &Arc::new(Vec::new()),
+                &reader_keys,
                 &facts,
                 Some(&cursors),
                 trail_pin,
@@ -1830,7 +1918,7 @@ impl AuditLog {
             unacknowledged_from: Arc::new(AtomicU64::new(NO_UNACKNOWLEDGED_BYTES)),
             detached_into: Arc::new(Mutex::new(None)),
             cursors,
-            reader_keys: Arc::new(Vec::new()),
+            reader_keys,
             facts: Arc::new(Mutex::new(facts)),
             previous_key_unused: false,
             trail_pin,
@@ -1920,8 +2008,13 @@ impl AuditLog {
         let mut file = File::open(self.path.as_ref()).ok()?;
         file.seek(std::io::SeekFrom::Start(offset)).ok()?;
         let mut line = Vec::new();
-        BufReader::new(file).read_until(b'\n', &mut line).ok()?;
-        let record = line.strip_suffix(b"\n")?;
+        match chain::read_line_bounded(&mut BufReader::new(file), &mut line, chain::MAX_LINE_BYTES)
+            .ok()?
+        {
+            (_, chain::LineEnd::Terminated) => {}
+            _ => return None,
+        }
+        let record = line.as_slice();
         let actual: [u8; 32] = sha2::Sha256::digest(record).into();
         if actual != expected {
             return None;
@@ -2340,7 +2433,7 @@ impl AuditLog {
                 counts: &counts.by_key,
                 lifecycle: &lifecycle,
             };
-            match archive_index::write(&index_path, len, &sha256, source) {
+            match archive_index::write(&index_path, len, &sha256, source, log.index_key()) {
                 Ok(index) => log.remember_index(&archive, IndexState::Ready(index)),
                 Err(e) => tracing::warn!(
                     "audit archive index {} could not be written ({e}); the first lookup retries",
@@ -2403,7 +2496,17 @@ impl AuditLog {
         }
     }
 
+    /// The key this log's archive indexes are MAC'd under (Round 39,
+    /// R37-12): the writer's key, or a read-only reader's configured key
+    /// (its first). `None`: a log without a key trusts unkeyed indexes only.
+    fn index_key(&self) -> Option<&AuditKey> {
+        self.key.as_deref().or_else(|| self.reader_keys.first())
+    }
+
     /// The archive's index, checked or built; `None` when none can be had.
+    /// A log opened read-only never writes one: it walks the archive when
+    /// the index on disk does not check (Round 39: a reader without the
+    /// writer's key would otherwise replace the writer's index).
     fn check_or_build_index(&self, archive: &Path, len: u64) -> Option<ArchiveIndex> {
         let unavailable = None;
         let Some(index_path) = self
@@ -2418,12 +2521,17 @@ impl AuditLog {
         if hashed_len != len {
             return unavailable;
         }
-        if let Some(index) = archive_index::open_checked(&index_path, len, &sha256) {
+        if let Some(index) =
+            archive_index::open_checked(&index_path, len, &sha256, self.index_key())
+        {
             return Some(index);
+        }
+        if self.read_only {
+            return unavailable;
         }
         if index_path.exists() {
             tracing::warn!(
-                "audit archive index {} does not check against its archive; rebuilding it",
+                "audit archive index {} does not check against its archive under this log's key; rebuilding it",
                 index_path.display()
             );
         }
@@ -2439,7 +2547,7 @@ impl AuditLog {
             counts: &counts.by_key,
             lifecycle: &lifecycle,
         };
-        match archive_index::write(&index_path, len, &sha256, source) {
+        match archive_index::write(&index_path, len, &sha256, source, self.index_key()) {
             Ok(index) => Some(index),
             Err(e) => {
                 tracing::warn!(
@@ -2656,7 +2764,7 @@ impl AuditLog {
                 self.rotations_ok.fetch_add(1, Ordering::Relaxed);
                 tracing::info!("audit log rotated to {}", archive.display());
                 self.write_anchor();
-                self.prune_archives();
+                self.prune_archives(file);
             }
             Err(e) => {
                 self.rotations_failed.fetch_add(1, Ordering::Relaxed);
@@ -2737,7 +2845,7 @@ impl AuditLog {
                     self.path.display(),
                     archive.display()
                 );
-                self.prune_archives();
+                self.prune_archives(file);
                 Ok(())
             }
             Err(e) => {
@@ -2769,16 +2877,56 @@ impl AuditLog {
 
     /// Prune the oldest archives when an explicit retention limit is set.
     /// No-op when `max_archives == 0` (keep everything — the P9 default).
-    fn prune_archives(&self) {
+    /// Called under the append lock, with the append handle (`file`).
+    ///
+    /// Round 39 (R37-14): a prune record (`chain::PruneRecord`) is appended
+    /// first, naming each place the trail may start once the archives are
+    /// gone; nothing is deleted when it cannot be written. Deleting stops at
+    /// the first archive that cannot be removed (it used to go on past it,
+    /// leaving a gap in the middle of the trail), so the trail always starts
+    /// at a place the record names.
+    fn prune_archives(&self, file: &mut File) {
         if self.max_archives == 0 {
             return;
         }
         let mut archives = self.archives();
         let pruned = archives.len() > self.max_archives;
+        if pruned {
+            let doomed = archives.len() - self.max_archives;
+            let mut files = archives.clone();
+            files.push(self.path.as_ref().clone());
+            let retained: Vec<chain::PruneBoundary> = (1..=doomed)
+                .filter_map(|cut| files[cut..].iter().find_map(|f| chain::first_chained(f)))
+                .collect();
+            let record = chain::PruneRecord {
+                audit_control: chain::PRUNE.to_string(),
+                timestamp: now_utc_rfc3339(),
+                retained,
+                acknowledged: false,
+                torn_tail: None,
+            };
+            let written = match serde_json::to_value(&record) {
+                Ok(serde_json::Value::Object(fields)) => {
+                    self.append_locked(file, fields, &[], &[], None)
+                }
+                _ => false,
+            };
+            if !written {
+                tracing::error!(
+                    "audit prune skipped: its prune record could not be written to {}; no archive is deleted without one",
+                    self.path.display()
+                );
+                return;
+            }
+        }
         while archives.len() > self.max_archives {
             let oldest = archives.remove(0);
             if let Err(e) = std::fs::remove_file(&oldest) {
                 tracing::warn!("audit archive prune failed for {}: {}", oldest.display(), e);
+                // Kept, and every archive after it: the trail still starts
+                // where the prune record says it may.
+                archives.insert(0, oldest);
+                break;
             } else if let Some(index) = self
                 .index_dir()
                 .and_then(|dir| archive_index::index_path(&dir, &oldest))
@@ -3412,7 +3560,7 @@ impl AuditLog {
             );
             return false;
         }
-        let mut fields = match serde_json::to_value(record) {
+        let fields = match serde_json::to_value(record) {
             Ok(serde_json::Value::Object(map)) => map,
             Ok(_) => {
                 tracing::error!("audit serialization failed: a record is not a JSON object");
@@ -3430,8 +3578,28 @@ impl AuditLog {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
+        if !self.append_locked(&mut file, fields, index_keys, lifecycle_keys, verdict) {
+            return false;
+        }
+        // Rotate AFTER a successful append, while still holding the lock, so
+        // the size check and rename cannot interleave with another writer.
+        self.rotate_if_needed(&mut file);
+        true
+    }
+
+    /// `append_line_with` under the append lock already held, without the
+    /// rotation after it: what rotation itself appends through (the prune
+    /// record, Round 39).
+    fn append_locked(
+        &self,
+        file: &mut File,
+        mut fields: serde_json::Map<String, serde_json::Value>,
+        index_keys: &[String],
+        lifecycle_keys: &[String],
+        verdict: Option<bool>,
+    ) -> bool {
         // Never append through a handle that writes into an archive.
-        if self.reattach(&mut file).is_err() {
+        if self.reattach(file).is_err() {
             self.writes_failed.fetch_add(1, Ordering::Relaxed);
             return false;
         }
@@ -3474,6 +3642,17 @@ impl AuditLog {
         // Sealed under the append lock, so the head it extends is the one
         // the previous acknowledged record left (Round 30, G-07).
         let (line, next_head) = chain::seal(fields, &self.chain_head_now(), self.key.as_deref());
+        // Round 39 (T-15): no line over the bound every reader applies. A
+        // record that long is refused, never written unreadable.
+        if line.len() > chain::MAX_LINE_BYTES {
+            self.writes_failed.fetch_add(1, Ordering::Relaxed);
+            tracing::error!(
+                "audit write refused: the record is {} bytes, over the {} bytes any line of the trail may hold",
+                line.len(),
+                chain::MAX_LINE_BYTES
+            );
+            return false;
+        }
         // Where this write starts: the length a failed write is cut back to.
         let start = match file.metadata() {
             Ok(m) => m.len(),
@@ -3569,9 +3748,6 @@ impl AuditLog {
                 }
             }
         }
-        // Rotate AFTER a successful append, while still holding the lock, so
-        // the size check and rename cannot interleave with another writer.
-        self.rotate_if_needed(&mut file);
         true
     }
 }
@@ -3620,14 +3796,14 @@ fn read_admitted_lines_at(
     let limit = File::open(path)
         .ok()
         .and_then(|f| {
-            use std::io::{Read, Seek};
+            use std::io::Seek;
             let mut f = f;
             f.seek(std::io::SeekFrom::Start(last)).ok()?;
             let mut line = Vec::new();
-            BufReader::new(f.take(1 << 26))
-                .read_until(b'\n', &mut line)
-                .ok()?;
-            Some(last + line.len() as u64)
+            let (n, _) =
+                chain::read_line_bounded(&mut BufReader::new(f), &mut line, chain::MAX_LINE_BYTES)
+                    .ok()?;
+            Some(last + n)
         })
         .unwrap_or(0);
     let _ = chain::walk_file(path, limit, &mut gate, |at, record, admitted| {
@@ -3667,6 +3843,26 @@ fn torn_tail_of(path: &Path) -> Option<chain::TornTail> {
         return None;
     }
     file.seek(SeekFrom::Start(start_of_tail)).ok()?;
+    if len - start_of_tail > chain::MAX_LINE_BYTES as u64 {
+        // Round 39 (T-15): never buffered. Named by its length and hash
+        // like any torn write; `verify` reports it as a break regardless.
+        use sha2::Digest;
+        let mut hasher = sha2::Sha256::new();
+        let mut buf = vec![0u8; 1 << 16];
+        let mut reader = file.take(len - start_of_tail);
+        loop {
+            let n = reader.read(&mut buf).ok()?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+        }
+        return Some(chain::TornTail {
+            offset: start_of_tail,
+            length: len - start_of_tail,
+            sha256: hex::encode(hasher.finalize()),
+        });
+    }
     let mut tail = Vec::new();
     file.take(len - start_of_tail).read_to_end(&mut tail).ok()?;
     if tail.iter().all(u8::is_ascii_whitespace)
@@ -3740,9 +3936,14 @@ fn ends_without_newline(path: &Path) -> bool {
 /// the chain began. `chain_began`: whether a file older than this one holds
 /// a chained record.
 ///
-/// `prefilter`: a substring every wanted line contains. Once the chain has
-/// begun the gate's state cannot change, so a line without it is passed
-/// over unjudged; before that, every line is judged.
+/// `prefilter`: a substring every wanted line contains. It filters only
+/// which admitted lines are visited: every line is judged by the gate, since
+/// each one admitted moves the walk on (Round 38). A line passed over
+/// unjudged froze what the gate knew — a key adoption, the last link —
+/// when an archive was scanned for want of its index (T-6).
+///
+/// A line longer than `chain::MAX_LINE_BYTES` is read past without being
+/// kept (Round 39, T-15).
 ///
 /// Bytes, not `lines()` (Round 19, F-19-23): a line that is not UTF-8 skips
 /// one line, not the rest of the file.
@@ -3756,24 +3957,23 @@ fn for_each_record(
     let mut gate = chain::RecordGate::new(chain_began);
     let mut line: Vec<u8> = Vec::new();
     loop {
-        line.clear();
-        match reader.read_until(b'\n', &mut line) {
-            Ok(0) | Err(_) => break,
-            Ok(_) => {
-                let Some(record) = line.strip_suffix(b"\n") else {
-                    continue;
-                };
-                // Not UTF-8: not JSON, so neither a record nor a chain link.
-                let Ok(text) = std::str::from_utf8(record) else {
-                    continue;
-                };
+        match chain::read_line_bounded(&mut reader, &mut line, chain::MAX_LINE_BYTES) {
+            Ok((_, chain::LineEnd::Terminated)) => {
                 // Round 38: every line goes through the gate — each one
                 // admitted moves the walk on — and only the visit is
-                // filtered.
-                if gate.admit(record) && !prefilter.is_some_and(|w| !text.contains(w)) {
+                // filtered (the prefilter never skips the gate: T-6).
+                let admitted = gate.admit(&line);
+                // Not UTF-8: not JSON, so neither a record nor a chain link.
+                let Ok(text) = std::str::from_utf8(&line) else {
+                    continue;
+                };
+                if admitted && !prefilter.is_some_and(|w| !text.contains(w)) {
                     visit(text);
                 }
             }
+            // Round 39 (T-15): read past, never kept, never read.
+            Ok((_, chain::LineEnd::Oversized { terminated: true })) => gate.refuse_oversized(),
+            _ => break,
         }
     }
 }
@@ -3832,6 +4032,7 @@ mod chain_trail_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::BufRead;
 
     fn rec(id: &str) -> AuditRecord {
         AuditRecord {
@@ -6211,6 +6412,7 @@ mod tests {
                 counts: &counts.by_key,
                 lifecycle: &lifecycle,
             },
+            None,
         )
         .unwrap();
         let log = AuditLog::open_with_rotation(audit_path(&dir), 0, 0).unwrap();
@@ -6229,6 +6431,7 @@ mod tests {
                 counts: &counts.by_key,
                 lifecycle: &lifecycle,
             },
+            None,
         )
         .unwrap();
         log.wait_for_index_jobs();

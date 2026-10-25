@@ -17,7 +17,9 @@
 //!
 //! - its magic and version;
 //! - its length, which the header's entry counts fix exactly;
-//! - its trailing SHA-256, over every byte before it;
+//! - its trailer, over every byte before it: an HMAC-SHA256 under the
+//!   trail's key, the reader's own (Round 39, R37-12), or a SHA-256 for a
+//!   trail with no key;
 //! - the archive's length and SHA-256, recorded in the header when the index
 //!   was built.
 //!
@@ -27,25 +29,38 @@
 //! Layout (little-endian):
 //!
 //! ```text
-//! header  72 bytes  magic[8] version:u32 reserved:u32 archive_len:u64
+//! header  80 bytes  magic[8] version:u32 trailer_kind:u32 archive_len:u64
 //!                   archive_sha256[32] verifications:u64 lifecycle:u64
+//!                   key_id[8]
 //! verif   56 each   key_sha256[32] last_offset:u64 approved:u64 refused:u64
 //! life    40 each   key_sha256[32] offset:u64       (sorted by key, offset)
-//! trailer 32 bytes  sha256 of everything above
+//! trailer 32 bytes  kind 1: HMAC-SHA256 under the key `key_id` names, of
+//!                   a domain tag and everything above; kind 0 (no key,
+//!                   `key_id` zero): sha256 of everything above
 //! ```
+//!
+//! Round 39 (R37-12): the trailer was always an unkeyed SHA-256, so an index
+//! rewritten by whoever can write the data directory — one that omits a
+//! transaction (the lookup then falls through to an older archive's
+//! approval), points it at another record, or changes its counts — still
+//! checked, over an archive whose own hash matched, and `verify` never reads
+//! an index. A log with a key now trusts only an index MAC'd under that key
+//! (the writer's key, or a read-only reader's configured key): any other
+//! index is refused and the archive walked, and only a writer replaces it.
+//! An index MAC'd under a key since rotated away is rebuilt once. A log
+//! without a key trusts only an unkeyed index: to it the trail itself is
+//! corruption-evident only.
 //!
 //! Keys are stored as the SHA-256 of the index key (`id:…`, `tx:…`, `ch:…`,
 //! `lc:…`), so every entry has the same width. Two keys of one archive with
 //! the same digest refuse the build, and the archive is scanned instead.
 //!
-//! Corruption-evident, NOT tamper-evident: every hash here is unkeyed and
-//! nothing chains one archive to the next, so whoever can write the data
-//! directory can rewrite an archive and its index together, or delete an
-//! archive and its index, and every check above still passes. A keyed MAC
-//! would not change that while its key sits in the same directory. The data
-//! directory must be writable by the Graphite process alone; the counts an
-//! index answers with are additionally checked against the archive record
-//! they point at (`super::index_entry_is_plausible`).
+//! Under a key the index is tamper-evident against anyone without the key
+//! (the key lives outside the data directory). The archive it describes is
+//! judged by the chain, as every reader judges it; the counts an index
+//! answers with are additionally checked against the archive record they
+//! point at (`super::index_entry_is_plausible`). Without a key an index is
+//! corruption-evident only, as the trail is.
 
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
@@ -67,8 +82,16 @@ const MAGIC: &[u8; 8] = b"GRAIDX\0\0";
 /// line only where it continues the line before it. A version-2 index may
 /// count, or point at, a genuine record copied to a new position, so it is
 /// rebuilt rather than trusted.
-pub(super) const VERSION: u32 = 3;
-const HEADER_LEN: u64 = 72;
+///
+/// 4 (Round 39, R37-12): the trailer is MAC'd under the trail's key, and the
+/// header names the key. An unkeyed version-3 index is not trusted by a log
+/// with a key; one without a key rebuilds it as version 4 once.
+pub(super) const VERSION: u32 = 4;
+const HEADER_LEN: u64 = 80;
+/// `trailer_kind`: a SHA-256, for a log with no key.
+const TRAILER_SHA256: u32 = 0;
+/// `trailer_kind`: an HMAC-SHA256 under the key the header names.
+const TRAILER_HMAC: u32 = 1;
 const VERIFICATION_ENTRY: u64 = 56;
 const LIFECYCLE_ENTRY: u64 = 40;
 const TRAILER_LEN: u64 = 32;
@@ -87,13 +110,50 @@ pub(super) struct VerificationEntry {
 }
 
 /// An index file checked against its archive.
+///
+/// Round 39 (R37-12): read through the handle it was checked through, and
+/// only while that file is unchanged since (its length and change time). An
+/// index is checked once per process, so a rewrite after the check — in
+/// place, or by a rename over it — would otherwise be read unchecked by a
+/// running server.
 #[derive(Debug, Clone)]
 pub(super) struct ArchiveIndex {
-    path: PathBuf,
+    file: std::sync::Arc<std::sync::Mutex<File>>,
+    stamp: Stamp,
     /// The archive's length when the index was checked.
     pub archive_len: u64,
     verifications: u64,
     lifecycle: u64,
+}
+
+/// What changes whenever a file's bytes do: its length and change time
+/// (`ctime`, which no caller can set back; the modification time elsewhere).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Stamp {
+    len: u64,
+    changed: (i64, i64),
+}
+
+fn stamp_of(file: &File) -> Option<Stamp> {
+    let m = file.metadata().ok()?;
+    #[cfg(unix)]
+    let changed = {
+        use std::os::unix::fs::MetadataExt;
+        (m.ctime(), m.ctime_nsec())
+    };
+    #[cfg(not(unix))]
+    let changed = {
+        let t = m
+            .modified()
+            .ok()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?;
+        (t.as_secs() as i64, i64::from(t.subsec_nanos()))
+    };
+    Some(Stamp {
+        len: m.len(),
+        changed,
+    })
 }
 
 /// What an archive's index was built from: the archive's three indexes,
@@ -131,14 +191,46 @@ pub(super) fn index_path(index_dir: &Path, archive: &Path) -> Option<PathBuf> {
     Some(index_dir.join(format!("{name}.idx")))
 }
 
-/// Write the index of an archive whose bytes hash to `archive_sha256`, and
-/// return it checked. Atomic: written to a temporary file, synced, then
-/// renamed over the destination.
+/// The trailer of an index whose bytes before it are fed to the result:
+/// MAC'd under `key`, or a SHA-256 without one.
+enum Trailer {
+    Mac(super::chain::HmacSha256),
+    Sha(Sha256),
+}
+
+impl Trailer {
+    fn new(key: Option<&super::AuditKey>) -> Self {
+        match key {
+            Some(k) => Trailer::Mac(k.index_mac()),
+            None => Trailer::Sha(Sha256::new()),
+        }
+    }
+
+    fn update(&mut self, bytes: &[u8]) {
+        match self {
+            Trailer::Mac(m) => m.update(bytes),
+            Trailer::Sha(h) => h.update(bytes),
+        }
+    }
+
+    fn finish(self) -> [u8; 32] {
+        match self {
+            Trailer::Mac(m) => m.finalize(),
+            Trailer::Sha(h) => h.finalize().into(),
+        }
+    }
+}
+
+/// Write the index of an archive whose bytes hash to `archive_sha256`, MAC'd
+/// under `key` (Round 39; unkeyed for a log without one), and return it
+/// checked. Atomic: written to a temporary file, synced, then renamed over
+/// the destination.
 pub(super) fn write(
     index_path: &Path,
     archive_len: u64,
     archive_sha256: &[u8; 32],
     source: IndexSource<'_>,
+    key: Option<&super::AuditKey>,
 ) -> std::io::Result<ArchiveIndex> {
     let invalid = |msg: &str| std::io::Error::new(std::io::ErrorKind::InvalidData, msg.to_string());
     let mut verifications: Vec<([u8; 32], u64, u64, u64)> = Vec::with_capacity(source.counts.len());
@@ -173,11 +265,17 @@ pub(super) fn write(
     );
     bytes.extend_from_slice(MAGIC);
     bytes.extend_from_slice(&VERSION.to_le_bytes());
-    bytes.extend_from_slice(&0u32.to_le_bytes());
+    let kind = if key.is_some() {
+        TRAILER_HMAC
+    } else {
+        TRAILER_SHA256
+    };
+    bytes.extend_from_slice(&kind.to_le_bytes());
     bytes.extend_from_slice(&archive_len.to_le_bytes());
     bytes.extend_from_slice(archive_sha256);
     bytes.extend_from_slice(&(verifications.len() as u64).to_le_bytes());
     bytes.extend_from_slice(&(lifecycle.len() as u64).to_le_bytes());
+    bytes.extend_from_slice(&key.map(|k| k.id_bytes()).unwrap_or([0u8; 8]));
     for (digest, last, approved, refused) in &verifications {
         bytes.extend_from_slice(digest);
         bytes.extend_from_slice(&last.to_le_bytes());
@@ -188,7 +286,9 @@ pub(super) fn write(
         bytes.extend_from_slice(digest);
         bytes.extend_from_slice(&offset.to_le_bytes());
     }
-    let trailer: [u8; 32] = Sha256::digest(&bytes).into();
+    let mut trailer = Trailer::new(key);
+    trailer.update(&bytes);
+    let trailer = trailer.finish();
     bytes.extend_from_slice(&trailer);
 
     let dir = index_path
@@ -215,12 +315,10 @@ pub(super) fn write(
         return Err(e);
     }
     super::sync_dir(index_path);
-    Ok(ArchiveIndex {
-        path: index_path.to_path_buf(),
-        archive_len,
-        verifications: verifications.len() as u64,
-        lifecycle: lifecycle.len() as u64,
-    })
+    // Read back and checked like any index: what is answered from is the
+    // file as it is now, not the bytes this call meant to write.
+    open_checked(index_path, archive_len, archive_sha256, key)
+        .ok_or_else(|| invalid("the index written does not check"))
 }
 
 /// Open an index file and check it against the archive whose bytes hash to
@@ -232,9 +330,11 @@ pub(super) fn open_checked(
     index_path: &Path,
     archive_len: u64,
     archive_sha256: &[u8; 32],
+    key: Option<&super::AuditKey>,
 ) -> Option<ArchiveIndex> {
     let mut file = File::open(index_path).ok()?;
-    let file_len = file.metadata().ok()?.len();
+    let stamp = stamp_of(&file)?;
+    let file_len = stamp.len;
     if file_len < HEADER_LEN + TRAILER_LEN {
         return None;
     }
@@ -248,6 +348,15 @@ pub(super) fn open_checked(
     if u32_at(8) != VERSION || u64_at(16) != archive_len || &header[24..56] != archive_sha256 {
         return None;
     }
+    // Under the reader's key, or unkeyed for a reader without one: nothing
+    // else (R37-12).
+    let (kind, key_id) = match key {
+        Some(k) => (TRAILER_HMAC, k.id_bytes()),
+        None => (TRAILER_SHA256, [0u8; 8]),
+    };
+    if u32_at(12) != kind || header[72..80] != key_id {
+        return None;
+    }
     let verifications = u64_at(56);
     let lifecycle = u64_at(64);
     let expected = verifications
@@ -257,8 +366,8 @@ pub(super) fn open_checked(
     if expected != file_len {
         return None;
     }
-    let mut hasher = Sha256::new();
-    hasher.update(header);
+    let mut hasher = Trailer::new(key);
+    hasher.update(&header);
     let mut remaining = file_len - HEADER_LEN - TRAILER_LEN;
     let mut buf = vec![0u8; 1 << 16];
     while remaining > 0 {
@@ -269,12 +378,17 @@ pub(super) fn open_checked(
     }
     let mut trailer = [0u8; 32];
     file.read_exact(&mut trailer).ok()?;
-    let computed: [u8; 32] = hasher.finalize().into();
-    if computed != trailer {
+    let computed = hasher.finish();
+    if !super::chain::constant_time_eq(&computed, &trailer) {
+        return None;
+    }
+    // Unchanged while it was read: what was checked is what is answered from.
+    if stamp_of(&file)? != stamp {
         return None;
     }
     Some(ArchiveIndex {
-        path: index_path.to_path_buf(),
+        file: std::sync::Arc::new(std::sync::Mutex::new(file)),
+        stamp,
         archive_len,
         verifications,
         lifecycle,
@@ -305,10 +419,27 @@ impl ArchiveIndex {
         Ok(lo)
     }
 
+    /// The checked handle, while the file is unchanged since it was checked;
+    /// an error otherwise, which every caller answers by discarding the
+    /// index and walking the archive.
+    fn checked_file(&self) -> std::io::Result<std::sync::MutexGuard<'_, File>> {
+        let file = match self.file.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if stamp_of(&file) != Some(self.stamp) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "the index file changed after it was checked",
+            ));
+        }
+        Ok(file)
+    }
+
     /// The archive's entry for a verification index key, if it has one.
     pub(super) fn verification(&self, key: &str) -> std::io::Result<Option<VerificationEntry>> {
         let digest = key_digest(key);
-        let mut file = File::open(&self.path)?;
+        let mut file = self.checked_file()?;
         let at = Self::lower_bound(
             &mut file,
             HEADER_LEN,
@@ -338,7 +469,7 @@ impl ArchiveIndex {
     pub(super) fn lifecycle_offsets(&self, key: &str) -> std::io::Result<Vec<u64>> {
         let digest = key_digest(key);
         let base = HEADER_LEN + self.verifications * VERIFICATION_ENTRY;
-        let mut file = File::open(&self.path)?;
+        let mut file = self.checked_file()?;
         let mut at = Self::lower_bound(&mut file, base, LIFECYCLE_ENTRY, self.lifecycle, &digest)?;
         let mut offsets = Vec::new();
         let mut entry = [0u8; LIFECYCLE_ENTRY as usize];
@@ -399,6 +530,7 @@ mod tests {
                 counts: &HashMap::new(),
                 lifecycle: &lifecycle,
             },
+            None,
         )
         .unwrap();
         let offsets = index.lifecycle_offsets(&key).unwrap();
@@ -426,9 +558,10 @@ mod tests {
                 counts: &counts,
                 lifecycle: &HashMap::new(),
             },
+            None,
         )
         .unwrap();
-        let index = open_checked(&path, 500, &[1u8; 32]).expect("checks");
+        let index = open_checked(&path, 500, &[1u8; 32], None).expect("checks");
         assert_eq!(
             index.verification("id:gr-1").unwrap(),
             Some(VerificationEntry {
@@ -438,12 +571,53 @@ mod tests {
             })
         );
         assert_eq!(index.verification("id:gr-2").unwrap(), None);
-        assert!(open_checked(&path, 501, &[1u8; 32]).is_none());
-        assert!(open_checked(&path, 500, &[2u8; 32]).is_none());
+        assert!(open_checked(&path, 501, &[1u8; 32], None).is_none());
+        assert!(open_checked(&path, 500, &[2u8; 32], None).is_none());
         let mut bytes = std::fs::read(&path).unwrap();
         bytes[HEADER_LEN as usize + 40] ^= 1;
         std::fs::write(&path, &bytes).unwrap();
-        assert!(open_checked(&path, 500, &[1u8; 32]).is_none());
+        assert!(open_checked(&path, 500, &[1u8; 32], None).is_none());
+        std::fs::remove_dir_all(path.parent().unwrap()).ok();
+    }
+
+    /// Round 39 (R37-12): an index under a key is trusted only by a reader
+    /// holding that key; an unkeyed index (anyone can write one) or one under
+    /// another key is not; and an index rewritten after it was checked is
+    /// not read.
+    #[test]
+    fn an_index_is_trusted_only_under_the_readers_key_and_only_as_checked() {
+        let path = temp_index("keyed");
+        let k = super::super::AuditKey::from_bytes(&[3u8; 32]).unwrap();
+        let other = super::super::AuditKey::from_bytes(&[4u8; 32]).unwrap();
+        let mut last = HashMap::new();
+        let mut counts = HashMap::new();
+        last.insert("id:gr-1".to_string(), 42u64);
+        counts.insert("id:gr-1".to_string(), (1usize, 0usize));
+        let no_rows = HashMap::new();
+        let source = || IndexSource {
+            last: &last,
+            counts: &counts,
+            lifecycle: &no_rows,
+        };
+        write(&path, 500, &[1u8; 32], source(), Some(&k)).unwrap();
+        let index = open_checked(&path, 500, &[1u8; 32], Some(&k)).expect("checks under k");
+        assert!(open_checked(&path, 500, &[1u8; 32], Some(&other)).is_none());
+        assert!(open_checked(&path, 500, &[1u8; 32], None).is_none());
+        // Rewritten in place after the check: the checked index stops
+        // answering. (Past a timestamp tick: a filesystem with coarse
+        // timestamps keeps one change time for a few milliseconds.)
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let mut bytes = std::fs::read(&path).unwrap();
+        bytes[HEADER_LEN as usize + 40] ^= 1;
+        {
+            use std::io::Write;
+            let mut f = OpenOptions::new().write(true).open(&path).unwrap();
+            f.write_all(&bytes).unwrap();
+        }
+        assert!(index.verification("id:gr-1").is_err());
+        // An unkeyed index of the same entries: not trusted under k.
+        write(&path, 500, &[1u8; 32], source(), None).unwrap();
+        assert!(open_checked(&path, 500, &[1u8; 32], Some(&k)).is_none());
         std::fs::remove_dir_all(path.parent().unwrap()).ok();
     }
 }

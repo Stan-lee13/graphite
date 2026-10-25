@@ -80,6 +80,86 @@ pub const CHAIN_FIELD: &str = "chain";
 /// The smallest key accepted, in bytes (HMAC-SHA256's output size).
 pub const MIN_KEY_BYTES: usize = 32;
 
+/// The longest line of the trail anything reads, in bytes, newline excluded
+/// (Round 39, T-15). Lines were read whole, so one line without a newline —
+/// gigabytes of it — was read into memory by every reader and by `verify`.
+/// A longer line is never buffered past this bound: `verify` reports it as a
+/// break, no reader reads it, and the writer refuses to write one. No record
+/// the server writes comes near it (a request body is at most 1 MiB, and
+/// JSON escaping at most sextuples a byte).
+pub const MAX_LINE_BYTES: usize = 8 << 20;
+
+/// How one line read by `read_line_bounded` ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LineEnd {
+    /// End of input before any byte.
+    Eof,
+    /// A newline (not kept).
+    Terminated,
+    /// End of input after some bytes: a final line without its newline.
+    Unterminated,
+    /// Longer than the bound: the buffer is left empty, and the line was
+    /// read past (`terminated`: up to and including its newline).
+    Oversized { terminated: bool },
+}
+
+/// Read one line of at most `max` bytes into `buf` (cleared first, newline
+/// not kept): the bytes consumed, and how it ended. A longer line is
+/// consumed to its end without being kept, so memory stays bounded by `max`
+/// whatever the input (Round 39, T-15).
+pub(crate) fn read_line_bounded<R: BufRead>(
+    reader: &mut R,
+    buf: &mut Vec<u8>,
+    max: usize,
+) -> std::io::Result<(u64, LineEnd)> {
+    buf.clear();
+    let mut consumed = 0u64;
+    let mut over = false;
+    loop {
+        let (used, done) = {
+            let available = match reader.fill_buf() {
+                Ok(b) => b,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(e) => return Err(e),
+            };
+            if available.is_empty() {
+                let end = if consumed == 0 {
+                    LineEnd::Eof
+                } else if over {
+                    LineEnd::Oversized { terminated: false }
+                } else {
+                    LineEnd::Unterminated
+                };
+                return Ok((consumed, end));
+            }
+            let newline = available.iter().position(|b| *b == b'\n');
+            let chunk = &available[..newline.unwrap_or(available.len())];
+            if !over {
+                if buf.len() + chunk.len() > max {
+                    over = true;
+                    buf.clear();
+                } else {
+                    buf.extend_from_slice(chunk);
+                }
+            }
+            match newline {
+                Some(i) => (i + 1, true),
+                None => (available.len(), false),
+            }
+        };
+        reader.consume(used);
+        consumed += used as u64;
+        if done {
+            let end = if over {
+                LineEnd::Oversized { terminated: true }
+            } else {
+                LineEnd::Terminated
+            };
+            return Ok((consumed, end));
+        }
+    }
+}
+
 const LINK_DOMAIN: &[u8] = b"graphite-audit-chain-v1\0";
 const LINK_DOMAIN_V2: &[u8] = b"graphite-audit-chain-v2\0";
 const LEGACY_DOMAIN: &[u8] = b"graphite-audit-legacy-v1\0";
@@ -87,6 +167,7 @@ const TRAIL_ID_DOMAIN: &[u8] = b"graphite-audit-trail-id-v1\0";
 const MAC_DOMAIN: &[u8] = b"graphite-audit-mac-v1\0";
 const CHECKPOINT_DOMAIN: &[u8] = b"graphite-audit-checkpoint-v1\0";
 const KEY_ID_DOMAIN: &[u8] = b"graphite-audit-key-id-v1\0";
+const INDEX_MAC_DOMAIN: &[u8] = b"graphite-audit-index-v1\0";
 
 /// The `prev` of the first record of a chain.
 pub const GENESIS: [u8; 32] = [0u8; 32];
@@ -214,36 +295,76 @@ impl AuditKey {
     fn mac_of(&self, domain: &[u8], message: &[u8]) -> [u8; 32] {
         hmac_sha256(&self.key, &[domain, message])
     }
+
+    /// A running MAC of an archive index under this key (Round 39, R37-12):
+    /// the index's bytes are fed to it as they are written or read.
+    pub(crate) fn index_mac(&self) -> HmacSha256 {
+        let mut m = HmacSha256::new(&self.key);
+        m.update(INDEX_MAC_DOMAIN);
+        m
+    }
+
+    /// The key id as its 8 bytes.
+    pub(crate) fn id_bytes(&self) -> [u8; 8] {
+        let mut out = [0u8; 8];
+        if let Ok(b) = hex::decode(&self.id) {
+            if b.len() == 8 {
+                out.copy_from_slice(&b);
+            }
+        }
+        out
+    }
+}
+
+/// HMAC-SHA256 (RFC 2104), fed incrementally.
+pub(crate) struct HmacSha256 {
+    inner: Sha256,
+    opad: [u8; 64],
+}
+
+impl HmacSha256 {
+    pub(crate) fn new(key: &[u8]) -> Self {
+        let mut block = [0u8; 64];
+        if key.len() > 64 {
+            block[..32].copy_from_slice(&Sha256::digest(key));
+        } else {
+            block[..key.len()].copy_from_slice(key);
+        }
+        let mut ipad = [0x36u8; 64];
+        let mut opad = [0x5cu8; 64];
+        for i in 0..64 {
+            ipad[i] ^= block[i];
+            opad[i] ^= block[i];
+        }
+        let mut inner = Sha256::new();
+        inner.update(ipad);
+        Self { inner, opad }
+    }
+
+    pub(crate) fn update(&mut self, bytes: &[u8]) {
+        self.inner.update(bytes);
+    }
+
+    pub(crate) fn finalize(self) -> [u8; 32] {
+        let inner = self.inner.finalize();
+        let mut outer = Sha256::new();
+        outer.update(self.opad);
+        outer.update(inner);
+        outer.finalize().into()
+    }
 }
 
 /// HMAC-SHA256 (RFC 2104) over the concatenation of `parts`.
 pub(crate) fn hmac_sha256(key: &[u8], parts: &[&[u8]]) -> [u8; 32] {
-    let mut block = [0u8; 64];
-    if key.len() > 64 {
-        block[..32].copy_from_slice(&Sha256::digest(key));
-    } else {
-        block[..key.len()].copy_from_slice(key);
-    }
-    let mut ipad = [0x36u8; 64];
-    let mut opad = [0x5cu8; 64];
-    for i in 0..64 {
-        ipad[i] ^= block[i];
-        opad[i] ^= block[i];
-    }
-    let mut inner = Sha256::new();
-    inner.update(ipad);
+    let mut m = HmacSha256::new(key);
     for p in parts {
-        inner.update(p);
+        m.update(p);
     }
-    let inner = inner.finalize();
-    let mut outer = Sha256::new();
-    outer.update(opad);
-    outer.update(inner);
-    outer.finalize().into()
+    m.finalize()
 }
 
 /// Equality that takes the same time wherever the inputs differ.
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+pub(crate) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }
@@ -584,14 +705,16 @@ pub(crate) fn legacy_prefix(files: &[PathBuf]) -> Vec<(LegacyFile, Vec<[u8; 16]>
         let mut hashes = Vec::new();
         let mut chained = false;
         loop {
-            line.clear();
-            match reader.read_until(b'\n', &mut line) {
-                Ok(0) | Err(_) => break,
-                Ok(_) => {}
+            match read_line_bounded(&mut reader, &mut line, MAX_LINE_BYTES) {
+                Ok((_, LineEnd::Terminated)) => {}
+                // A line over the bound may carry a link: the prefix ends.
+                Ok((_, LineEnd::Oversized { terminated: true })) => {
+                    chained = true;
+                    break;
+                }
+                _ => break,
             }
-            let Some(record) = line.strip_suffix(b"\n") else {
-                break;
-            };
+            let record = line.as_slice();
             match classify_line(record) {
                 LineClass::Legacy => {
                     digest.add(record);
@@ -674,11 +797,77 @@ pub struct TornLine {
     pub after_seq: Option<u64>,
 }
 
+/// `CONTROL_FIELD` of a prune record.
+pub const PRUNE: &str = "prune";
+
+/// The content of a prune record (Round 39, R37-14): written by the writer,
+/// before it deletes the oldest archives (`GRAPHITE_AUDIT_MAX_ARCHIVES`), or
+/// by `graphite audit acknowledge-prune` for a trail pruned before prune
+/// records existed. Each entry of `retained` is a place the trail may start
+/// once archives are gone: the first chained record left after deleting one
+/// more archive, by its `seq` and its `prev` (the hash of the last record
+/// deleted). Deleting stops at the first archive that cannot be removed, so
+/// the trail on disk always starts at one of them.
+///
+/// Until Round 39 a trail whose oldest record on disk was above seq 0 read
+/// as "pruned" with nothing to say so: deleting the oldest archives, or the
+/// oldest lines of one, passed `verify` (exit 0). A first record above seq 0
+/// that no prune record in the chain names is now a break.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PruneRecord {
+    pub audit_control: String,
+    pub timestamp: String,
+    pub retained: Vec<PruneBoundary>,
+    /// Written by `graphite audit acknowledge-prune` (an operator's record of
+    /// a prune nothing recorded), not by the writer that pruned.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub acknowledged: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub torn_tail: Option<TornTail>,
+}
+
+/// One place a pruned trail may start (`PruneRecord::retained`).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PruneBoundary {
+    pub first_seq: u64,
+    /// The `prev` of the record at `first_seq`: the hash of the last record
+    /// pruned, hex.
+    pub last_pruned_hash: String,
+}
+
+/// The first chained record of `path`, as a `PruneBoundary`: `None` when
+/// the file holds none, or when the first line carrying a link is not a
+/// valid chained record.
+pub(crate) fn first_chained(path: &Path) -> Option<PruneBoundary> {
+    let mut reader = BufReader::new(File::open(path).ok()?);
+    let mut line = Vec::new();
+    loop {
+        match read_line_bounded(&mut reader, &mut line, MAX_LINE_BYTES).ok()? {
+            (_, LineEnd::Terminated) => {}
+            (_, LineEnd::Oversized { terminated: true }) => continue,
+            _ => return None,
+        }
+        match classify_line(&line) {
+            LineClass::Chained(c) => {
+                return Some(PruneBoundary {
+                    first_seq: c.link.seq,
+                    last_pruned_hash: c.link.prev.clone(),
+                })
+            }
+            LineClass::Invalid { chained: true, .. } => return None,
+            _ => {}
+        }
+    }
+}
+
 /// A control record of the chain itself.
 #[derive(Debug, Clone)]
 pub(crate) enum Control {
     KeyAdoption(KeyAdoption),
     TearAcknowledgement(TearAcknowledgement),
+    Prune(PruneRecord),
 }
 
 /// A line that is a chained record: its bytes are the canonical form of its
@@ -699,7 +888,7 @@ pub(crate) struct ChainedLine {
 impl ChainedLine {
     fn adoption(&self) -> Option<Result<&KeyAdoption, &String>> {
         match &self.control {
-            None | Some(Ok(Control::TearAcknowledgement(_))) => None,
+            None | Some(Ok(Control::TearAcknowledgement(_))) | Some(Ok(Control::Prune(_))) => None,
             Some(Ok(Control::KeyAdoption(a))) => Some(Ok(a)),
             Some(Err(e)) => Some(Err(e)),
         }
@@ -874,6 +1063,9 @@ pub(crate) fn classify_line(line: &[u8]) -> LineClass {
             Some(TEAR_ACKNOWLEDGEMENT) => serde_json::from_value::<TearAcknowledgement>(content)
                 .map(Control::TearAcknowledgement)
                 .map_err(|e| e.to_string()),
+            Some(PRUNE) => serde_json::from_value::<PruneRecord>(content)
+                .map(Control::Prune)
+                .map_err(|e| e.to_string()),
             _ => Err(format!("unknown control record {kind}")),
         }
     });
@@ -908,7 +1100,14 @@ pub(crate) fn classify_line(line: &[u8]) -> LineClass {
 /// - with keys held (`GateContext::keys`): its MAC verifies under one of
 ///   them, or it is under a key id that a checked key-adoption record names
 ///   as the key before it (`vouched`: a key rotated out of this reader's
-///   reach, admitted on that record's word);
+///   reach) AND a checked key-adoption record covers it through the hash
+///   chain, as an unkeyed record must be (`TrailFacts::covered`, Round 39,
+///   R37-13). It used to be admitted on the adoption's word alone, so a
+///   forgery under the vouched key that replaced a record — its MAC one the
+///   reader cannot check, its link continuing the record before it — was
+///   read in place of that record. It breaks the chain to the adoption, so
+///   now nothing under the vouched key is covered, and the forgery is never
+///   read;
 /// - its key id is not one the chain moved away from: a key rotation is
 ///   one-way, and a record under a retired key after the rotation is never
 ///   read (R37-4). A key change without a key-adoption record (a rotation
@@ -931,8 +1130,8 @@ pub(crate) struct RecordGate {
     ctx: GateContext,
     /// Legacy lines of this file seen so far.
     legacy_in_file: u64,
-    /// Pass 1 of `TrailFacts::unkeyed`: unkeyed records admitted
-    /// tentatively, not yet covered by an adoption.
+    /// Pass 1 of `TrailFacts::covered`: unkeyed records and records under a
+    /// vouched key, admitted tentatively, not yet covered by an adoption.
     pending: Vec<(u64, [u8; 16])>,
     /// Pass 1: unkeyed records a checked adoption covered.
     covered: std::collections::HashSet<(u64, [u8; 16])>,
@@ -962,7 +1161,7 @@ pub(crate) struct Cursor {
 #[derive(Default)]
 pub(crate) struct TrailFacts {
     adoptions: std::sync::OnceLock<AdoptionFacts>,
-    unkeyed: std::sync::OnceLock<std::collections::HashSet<(u64, [u8; 16])>>,
+    covered: std::sync::OnceLock<std::collections::HashSet<(u64, [u8; 16])>>,
 }
 
 impl std::fmt::Debug for TrailFacts {
@@ -1064,16 +1263,22 @@ impl TrailFacts {
         })
     }
 
-    /// The unkeyed records a checked key-adoption record covers, as
-    /// (seq, first half of the hash): found by walking the trail once with
-    /// unkeyed records admitted tentatively, until an adoption whose MAC
-    /// verifies under a held key continues that walk (pass 1). A forged
-    /// unkeyed record the walk took in place of a written one keeps the
-    /// walk from ever reaching the adoption, and then nothing unkeyed is
-    /// covered: the readers lose the unkeyed records, and never read the
-    /// forgery.
-    fn unkeyed(&self, ctx: &GateContext) -> &std::collections::HashSet<(u64, [u8; 16])> {
-        self.unkeyed.get_or_init(|| {
+    /// The records whose MAC this reader cannot check — unkeyed ones, and
+    /// (Round 39, R37-13) ones under a vouched key it does not hold — that a
+    /// checked key-adoption record covers, as (seq, first half of the hash):
+    /// found by walking the trail once with those records admitted
+    /// tentatively, until an adoption whose MAC verifies under a held key
+    /// continues that walk (pass 1). A forgery the walk took in place of a
+    /// written record keeps the walk from ever reaching the adoption, and
+    /// then nothing before it is covered: the readers lose those records,
+    /// and never read the forgery.
+    ///
+    /// The walk stops once nothing is pending and the chain is under a key
+    /// this reader holds. A later span under a key it does not hold (a
+    /// reader holding the first and third keys of three, but not the
+    /// second) is then not covered: refused, never read unchecked.
+    fn covered(&self, ctx: &GateContext) -> &std::collections::HashSet<(u64, [u8; 16])> {
+        self.covered.get_or_init(|| {
             let mut cursor = Cursor::default();
             let mut pending = Vec::new();
             let mut covered = std::collections::HashSet::new();
@@ -1089,7 +1294,12 @@ impl TrailFacts {
                 cursor = gate.cur;
                 pending = gate.pending;
                 covered.extend(gate.covered);
-                if !covered.is_empty() || (pending.is_empty() && cursor.chain_key.is_some()) {
+                if pending.is_empty()
+                    && cursor
+                        .chain_key
+                        .as_deref()
+                        .is_some_and(|k| ctx.held(k).is_some())
+                {
                     break;
                 }
             }
@@ -1113,14 +1323,12 @@ fn checked_adoptions(files: &[PathBuf], keys: &[AuditKey]) -> Vec<KeyAdoption> {
         let mut reader = BufReader::new(file);
         let mut line = Vec::new();
         loop {
-            line.clear();
-            match reader.read_until(b'\n', &mut line) {
-                Ok(0) | Err(_) => break,
-                Ok(_) => {}
+            match read_line_bounded(&mut reader, &mut line, MAX_LINE_BYTES) {
+                Ok((_, LineEnd::Terminated)) => {}
+                Ok((_, LineEnd::Oversized { terminated: true })) => continue,
+                _ => break,
             }
-            let Some(record) = line.strip_suffix(b"\n") else {
-                continue;
-            };
+            let record = line.as_slice();
             if !std::str::from_utf8(record).is_ok_and(|t| t.contains(&marker)) {
                 continue;
             }
@@ -1169,18 +1377,24 @@ pub(crate) fn walk_file(
     let mut offset = 0u64;
     let mut line = Vec::new();
     loop {
-        line.clear();
-        let n = match reader.read_until(b'\n', &mut line) {
-            Ok(0) | Err(_) => break,
-            Ok(n) => n as u64,
+        let (n, end) = match read_line_bounded(&mut reader, &mut line, MAX_LINE_BYTES) {
+            Ok((_, LineEnd::Eof)) | Err(_) => break,
+            Ok(r) => r,
         };
         let at = offset;
         offset += n;
-        let Some(record) = line.strip_suffix(b"\n") else {
-            break;
-        };
-        let admitted = gate.admit(record);
-        visit(at, record, admitted);
+        match end {
+            LineEnd::Terminated => {
+                let admitted = gate.admit(&line);
+                visit(at, &line, admitted);
+            }
+            // Never read; it may carry a link (Round 39, T-15).
+            LineEnd::Oversized { terminated: true } => {
+                gate.refuse_oversized();
+                visit(at, &[], false);
+            }
+            _ => break,
+        }
     }
     offset
 }
@@ -1200,6 +1414,27 @@ impl RecordGate {
     /// Where the walk is after the lines judged so far.
     pub(crate) fn cursor(&self) -> &Cursor {
         &self.cur
+    }
+
+    /// A line longer than `MAX_LINE_BYTES`, read past unread (Round 39,
+    /// T-15): never a record, and it may carry a link, so no legacy line
+    /// after it is read.
+    pub(crate) fn refuse_oversized(&mut self) {
+        self.cur.chain_began = true;
+    }
+
+    /// A record whose MAC this reader cannot check — unkeyed, or under a
+    /// vouched key — is read only when a checked key-adoption record covers
+    /// it (`TrailFacts::covered`); in pass 1, tentatively.
+    fn admit_if_covered(&mut self, c: &ChainedLine) -> bool {
+        let mut half = [0u8; 16];
+        half.copy_from_slice(&c.hash[..16]);
+        let entry = (c.link.seq, half);
+        if self.ctx.tentative {
+            self.pending.push(entry);
+            return true;
+        }
+        self.ctx.facts.covered(&self.ctx).contains(&entry)
     }
 
     /// Whether `line` (a terminated line, without its newline) is a record
@@ -1275,14 +1510,7 @@ impl RecordGate {
                 if !keyed_reader {
                     return true;
                 }
-                let mut half = [0u8; 16];
-                half.copy_from_slice(&c.hash[..16]);
-                let entry = (c.link.seq, half);
-                if self.ctx.tentative {
-                    self.pending.push(entry);
-                    return true;
-                }
-                self.ctx.facts.unkeyed(&self.ctx).contains(&entry)
+                self.admit_if_covered(c)
             }
             (Some(id), Some(mac)) => {
                 if self.cur.retired.iter().any(|r| r == id) {
@@ -1306,7 +1534,7 @@ impl RecordGate {
                 } else {
                     false
                 };
-                match c.adoption() {
+                let continues = match c.adoption() {
                     Some(Ok(a)) => {
                         if a.key_id != *id || a.previous_key_id != self.cur.chain_key {
                             return false;
@@ -1328,7 +1556,10 @@ impl RecordGate {
                                 && (!keyed_reader || (checked && self.ctx.held(current).is_some()))
                         }
                     },
-                }
+                };
+                // Under a vouched key (Round 39, R37-13): only where a
+                // checked adoption covers it.
+                continues && (!keyed_reader || checked || self.admit_if_covered(c))
             }
             _ => false,
         }
@@ -1389,9 +1620,14 @@ pub(crate) fn newest_chained(path: &Path) -> std::io::Result<Option<Newest>> {
     let len = file.metadata()?.len();
     // Read windows from the end, doubling, until a chained line is found or
     // the whole file has been read. A record is a few hundred bytes; the
-    // first 64 KiB window answers for every trail Graphite writes.
+    // first 64 KiB window answers for every trail Graphite writes. Past four
+    // times the line bound (Round 39, T-15) the file is read forward, a line
+    // at a time, instead: memory stays bounded whatever the file holds.
     let mut window: u64 = 64 * 1024;
     loop {
+        if window > 4 * MAX_LINE_BYTES as u64 && window < len {
+            return newest_chained_forward(file);
+        }
         let start = len.saturating_sub(window);
         file.seek(SeekFrom::Start(start))?;
         let mut buf = Vec::with_capacity((len - start) as usize);
@@ -1405,13 +1641,17 @@ pub(crate) fn newest_chained(path: &Path) -> std::io::Result<Option<Newest>> {
         if start > 0 && !lines.is_empty() {
             lines.remove(0);
         }
-        let tail_is_json =
-            !tail.is_empty() && serde_json::from_slice::<serde_json::Value>(tail).is_ok();
+        let tail_is_json = !tail.is_empty()
+            && tail.len() <= MAX_LINE_BYTES
+            && serde_json::from_slice::<serde_json::Value>(tail).is_ok();
         let candidates = tail_is_json
             .then_some((tail, true))
             .into_iter()
             .chain(lines.into_iter().rev().map(|l| (l, false)));
         for (line, unterminated) in candidates {
+            if line.len() > MAX_LINE_BYTES {
+                return Ok(Some(oversized_newest()));
+            }
             match classify_line(line) {
                 LineClass::Chained(c) => return Ok(Some(Newest::Valid(c, unterminated))),
                 LineClass::Invalid {
@@ -1430,6 +1670,52 @@ pub(crate) fn newest_chained(path: &Path) -> std::io::Result<Option<Newest>> {
     }
 }
 
+/// A line over the bound where the newest chained line is looked for: it
+/// may carry a link, and it cannot be read, so the head is not known.
+fn oversized_newest() -> Newest {
+    Newest::Altered {
+        seq: None,
+        reason: format!(
+            "a line longer than {MAX_LINE_BYTES} bytes, which no writer of this trail writes"
+        ),
+    }
+}
+
+/// `newest_chained` by one forward pass, a line at a time.
+fn newest_chained_forward(file: File) -> std::io::Result<Option<Newest>> {
+    let mut reader = BufReader::new(file);
+    reader.seek(SeekFrom::Start(0))?;
+    let mut line = Vec::new();
+    let mut newest = None;
+    loop {
+        let (_, end) = read_line_bounded(&mut reader, &mut line, MAX_LINE_BYTES)?;
+        match end {
+            LineEnd::Eof => break,
+            LineEnd::Oversized { .. } => newest = Some(oversized_newest()),
+            LineEnd::Terminated | LineEnd::Unterminated => {
+                let unterminated = end == LineEnd::Unterminated;
+                if unterminated && serde_json::from_slice::<serde_json::Value>(&line).is_err() {
+                    break;
+                }
+                match classify_line(&line) {
+                    LineClass::Chained(c) => newest = Some(Newest::Valid(c, unterminated)),
+                    LineClass::Invalid {
+                        chained: true,
+                        seq,
+                        reason,
+                        ..
+                    } => newest = Some(Newest::Altered { seq, reason }),
+                    _ => {}
+                }
+                if unterminated {
+                    break;
+                }
+            }
+        }
+    }
+    Ok(newest)
+}
+
 /// The trail id of the newest chained record of the trail (`newest_chained`
 /// of the active file, else of the newest archive holding one): what the
 /// readers pin (`GateContext::pin`). `None` for a version-1 head or none.
@@ -1445,6 +1731,28 @@ pub(crate) fn head_trail(
         }
     }
     None
+}
+
+/// The key id of the trail's newest chained record (`None`: unkeyed, or no
+/// chained record). An error when that record is not a valid one.
+pub(crate) fn head_key(
+    active: &Path,
+    archives_newest_first: &[PathBuf],
+) -> Result<Option<String>, String> {
+    for file in std::iter::once(active).chain(archives_newest_first.iter().map(PathBuf::as_path)) {
+        match newest_chained(file) {
+            Ok(None) => continue,
+            Ok(Some(Newest::Valid(c, _))) => return Ok(c.link.key_id.clone()),
+            Ok(Some(Newest::Altered { reason, .. })) => {
+                return Err(format!(
+                    "the newest chained audit record ({}) is not a valid record: {reason}",
+                    file.display()
+                ))
+            }
+            Err(e) => return Err(format!("reading {}: {e}", file.display())),
+        }
+    }
+    Ok(None)
 }
 
 /// A key-adoption record the writer must append before anything else.
@@ -1796,6 +2104,12 @@ pub struct TrailReport {
     pub macs_verified: u64,
     /// MACs under a key that was not supplied.
     pub macs_unverified: u64,
+    /// Of `macs_unverified`, those no checked key-adoption record after them
+    /// covers through the hash chain (Round 39, T-12): records the keys
+    /// supplied do not reach at all, such as a whole trail under another
+    /// key. With keys supplied, any is exit 4; the rest (a lost key whose
+    /// span a checked adoption closes) is exit 2.
+    pub macs_not_covered: u64,
     /// Chained records with no MAC.
     pub unkeyed_records: u64,
     /// Of `unkeyed_records`, those a checked key-adoption record covers.
@@ -1812,6 +2126,14 @@ pub struct TrailReport {
     /// The `seq` of the oldest chained record on disk; above 0 when older
     /// archives were pruned.
     pub first_seq: Option<u64>,
+    /// The oldest chained record on disk is above seq 0 and no prune record
+    /// in the chain names it (Round 39, R37-14): the records before it were
+    /// deleted, or pruned by a writer before prune records existed. This is
+    /// the break `first_break` names (`graphite audit acknowledge-prune`
+    /// records the prune, once an operator has checked the trail).
+    pub pruned_without_record: bool,
+    /// Prune records in the chain (written by the writer, or acknowledged).
+    pub prune_records: u64,
     pub head_seq: Option<u64>,
     pub head_hash: Option<String>,
     /// The key the chain is under at its head (`None`: unkeyed).
@@ -1863,8 +2185,11 @@ impl TrailReport {
     ///   records were pruned;
     /// - 4 (Round 34): keys were supplied and something is not covered by
     ///   them — chained records with no MAC and no key-adoption record, a
-    ///   checkpoint with no MAC or under a key not supplied, or (Round 38,
-    ///   R37-2) legacy records no checked key-adoption record lists.
+    ///   checkpoint with no MAC or under a key not supplied, (Round 38,
+    ///   R37-2) legacy records no checked key-adoption record lists, or
+    ///   (Round 39, T-12) MACs under a key not supplied that no checked
+    ///   key-adoption record after them covers (a trail under none of the
+    ///   keys given exited 2, as if a key were merely missing).
     ///
     /// (3, a trail that could not be read, is decided by the caller.)
     pub fn exit_code(&self) -> i32 {
@@ -1878,7 +2203,11 @@ impl TrailReport {
             Some(CheckpointStatus::UnsignedCheckpoint { .. }) => return 4,
             _ => {}
         }
-        if self.keys_supplied && (self.unkeyed_not_adopted() > 0 || self.legacy_not_adopted() > 0) {
+        if self.keys_supplied
+            && (self.unkeyed_not_adopted() > 0
+                || self.legacy_not_adopted() > 0
+                || self.macs_not_covered > 0)
+        {
             return 4;
         }
         if matches!(self.checkpoint, Some(CheckpointStatus::NotOnDisk { .. })) {
@@ -1888,6 +2217,25 @@ impl TrailReport {
             return 2;
         }
         0
+    }
+
+    /// Whether the keys supplied cover the head and everything before it,
+    /// with nothing unproven but MACs under keys not supplied that checked
+    /// key-adoption records close (a lost key, or an old key not passed):
+    /// exit 0, or that exit 2 alone (Round 39, T-13). What `graphite audit
+    /// checkpoint` requires before it signs a head.
+    pub fn head_covered(&self) -> bool {
+        match self.exit_code() {
+            0 => true,
+            2 => {
+                self.keys_supplied
+                    && self.macs_unverified > 0
+                    && self.macs_not_covered == 0
+                    && self.integrity != Integrity::LegacyUnchained
+                    && matches!(self.checkpoint, None | Some(CheckpointStatus::Confirmed))
+            }
+            _ => false,
+        }
     }
 }
 
@@ -1923,12 +2271,15 @@ pub(crate) fn verify_trail_with(
         trail_id: None,
         macs_verified: 0,
         macs_unverified: 0,
+        macs_not_covered: 0,
         unkeyed_records: 0,
         unkeyed_adopted: 0,
         key_adoptions: 0,
         keys_supplied: !keys.is_empty(),
         unparseable_lines: 0,
         first_seq: None,
+        pruned_without_record: false,
+        prune_records: 0,
         head_seq: None,
         head_hash: None,
         head_key_id: None,
@@ -1963,6 +2314,13 @@ pub(crate) fn verify_trail_with(
     let mut first_legacy: Option<ChainBreak> = None;
     let mut born_keyed = false;
     let mut legacy_listed = false;
+    // MACs under a key not supplied that no checked adoption has covered
+    // yet (T-12).
+    let mut unverified_pending: u64 = 0;
+    // The oldest chained record, where it is, and every place a prune record
+    // says the trail may start (R37-14).
+    let mut first_link: Option<(PruneBoundary, ChainBreak)> = None;
+    let mut boundaries: Vec<PruneBoundary> = Vec::new();
 
     let mut files: Vec<PathBuf> = archives_oldest_first.to_vec();
     let has_active = active.exists();
@@ -1988,9 +2346,8 @@ pub(crate) fn verify_trail_with(
         let mut pending: Option<(ChainBreak, TornLine)> = None;
         let mut legacy_digest = LegacyDigest::default();
         loop {
-            buf.clear();
-            let n = reader.read_until(b'\n', &mut buf)? as u64;
-            if n == 0 {
+            let (n, end) = read_line_bounded(&mut reader, &mut buf, MAX_LINE_BYTES)?;
+            if end == LineEnd::Eof {
                 break;
             }
             line_no += 1;
@@ -2009,12 +2366,17 @@ pub(crate) fn verify_trail_with(
                     break 'files;
                 }};
             }
-            let terminated = buf.last() == Some(&b'\n');
-            let line: &[u8] = if terminated {
-                &buf[..buf.len() - 1]
-            } else {
-                &buf[..]
-            };
+            if let LineEnd::Oversized { .. } = end {
+                // Round 39 (T-15): read past without being kept. Even named
+                // as a torn write, or as the active file's line in flight:
+                // no record and no crash leaves one this long.
+                stop!(
+                    None,
+                    format!("a line longer than {MAX_LINE_BYTES} bytes: no writer of this trail writes one, and nothing reads it")
+                );
+            }
+            let terminated = end == LineEnd::Terminated;
+            let line: &[u8] = &buf[..];
             if !terminated {
                 if line.iter().all(u8::is_ascii_whitespace) {
                     break;
@@ -2143,6 +2505,21 @@ pub(crate) fn verify_trail_with(
                     }
                     report.first_seq = Some(link.seq);
                     born_keyed = link.seq == 0 && link.mac.is_some();
+                    if link.seq > 0 {
+                        first_link = Some((
+                            PruneBoundary {
+                                first_seq: link.seq,
+                                last_pruned_hash: link.prev.clone(),
+                            },
+                            fail(
+                                seq,
+                                format!(
+                                    "the oldest record on disk is seq {} and no prune record in the chain names it: the records before it were deleted, or pruned by a writer before Round 39 (check the trail against an anchored checkpoint or a backup; then `graphite audit acknowledge-prune` records the prune)",
+                                    link.seq
+                                ),
+                            ),
+                        ));
+                    }
                 }
             }
             match (trail, c.trail) {
@@ -2206,6 +2583,7 @@ pub(crate) fn verify_trail_with(
                         }
                         None => {
                             report.macs_unverified += 1;
+                            unverified_pending += 1;
                             false
                         }
                     };
@@ -2258,6 +2636,7 @@ pub(crate) fn verify_trail_with(
                                 // through the hash chain, from now on.
                                 report.unkeyed_adopted += unkeyed_pending;
                                 unkeyed_pending = 0;
+                                unverified_pending = 0;
                                 Some("adoption_checked")
                             } else {
                                 Some("adoption_unchecked")
@@ -2326,6 +2705,10 @@ pub(crate) fn verify_trail_with(
             if let Some(Ok(Control::TearAcknowledgement(a))) = &c.control {
                 acknowledgements.push(a.clone());
             }
+            if let Some(Ok(Control::Prune(p))) = &c.control {
+                report.prune_records += 1;
+                boundaries.extend(p.retained.iter().cloned());
+            }
             if let Some(cp) = checkpoint {
                 if link.seq == cp.seq {
                     checkpoint_hit = Some(link.hash == cp.hash);
@@ -2354,11 +2737,22 @@ pub(crate) fn verify_trail_with(
     // is the break (it precedes any break that stopped the walk). Legacy
     // records before a chain keyed from seq 0 that nothing lists precede
     // everything (R37-2).
+    report.macs_not_covered = unverified_pending;
     let real_break = report.first_break.take();
     if born_keyed && !legacy_listed {
         if let Some(b) = first_legacy {
             report.legacy_before_keyed_genesis = true;
             report.first_break = Some(b);
+        }
+    }
+    // Round 39 (R37-14): a trail starting above seq 0 starts where a prune
+    // record says it may, or records were deleted from its front. (Every
+    // prune record the walk reached counts: a later one only ever names a
+    // later start, and the start on disk only ever moves forward.)
+    if let Some((first, at)) = first_link {
+        if !boundaries.contains(&first) && report.first_break.is_none() {
+            report.pruned_without_record = true;
+            report.first_break = Some(at);
         }
     }
     for (brk, tear) in tears {

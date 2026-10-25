@@ -1581,6 +1581,7 @@ fn a_forged_index_pointing_at_a_forged_line_is_never_an_answer() {
             counts: &counts,
             lifecycle: &HashMap::new(),
         },
+        None,
     )
     .unwrap();
     let reader = AuditLog::open_read_only(&path).unwrap();
@@ -1755,6 +1756,7 @@ fn a_self_hashed_forgery_in_a_keyed_trail_is_never_read_by_a_reader_with_the_key
                 counts: &counts,
                 lifecycle: &HashMap::new(),
             },
+            None,
         )
         .unwrap();
 
@@ -1863,11 +1865,28 @@ fn records_under_a_rotated_out_key_stay_readable_when_an_adoption_vouches_for_it
     // forgery in place of the genuine seq 1, so nothing after it continues
     // the walk, and the writer refuses to resume onto a head the walk never
     // reaches rather than fork the chain.
-    let new_only = keyed_with_previous(&path, &new, None).unwrap_err();
+    //
+    // Round 39 (R37-13): re-pinned. The residual is closed: a record under
+    // the vouched K1 is read only where the checked adoption covers it
+    // through the hash chain, and the forgery breaks that chain, so nothing
+    // under K1 is covered. The walk takes neither the forgery nor the K1
+    // records (they are lost to the reader: fail closed, and `verify`
+    // reports the break), starts again at the records under K2, which it
+    // checks, and reaches the head: the writer resumes after its own head,
+    // so no fork, and never reads the forgery.
+    let new_only = keyed_with_previous(&path, &new, None).unwrap();
     assert!(
-        new_only.to_string().contains("does not continue the chain"),
-        "{new_only}"
+        new_only.find_verification(tx).is_none(),
+        "the K2-only server read the forgery under K1"
     );
+    assert!(new_only
+        .find_verification(VerificationKey::AuditTrailId("gr-00001"))
+        .is_none());
+    assert!(new_only
+        .find_verification(VerificationKey::AuditTrailId("gr-00005"))
+        .is_some());
+    close(new_only);
+    assert_eq!(verify(&path, &[old.clone(), new.clone()]).exit_code(), 1);
 }
 
 /// A torn write a pre-Round-34 writer resumed past: terminated by the
@@ -2398,4 +2417,475 @@ fn a_copied_record_is_not_the_newest_verdict() {
     );
     assert_eq!(server.read_tail_filtered(100, AuditSelector::All).2, 4);
     close(server);
+}
+
+// ---------------------------------------------------------------------------
+// Round 39: archive indexes MAC'd under the trail key (R37-12), records under
+// a vouched key read only where a checked adoption covers them (R37-13),
+// prune records (R37-14), the prefilter walk (T-6), a trail under no
+// supplied key (T-12), a bound on a line (T-15).
+// ---------------------------------------------------------------------------
+
+/// The head a record sealed right after `line` continues.
+fn head_after(line: &str) -> chain::ChainHead {
+    let v: serde_json::Value = serde_json::from_str(line).unwrap();
+    let link: ChainLink = serde_json::from_value(v[CHAIN_FIELD].clone()).unwrap();
+    chain::ChainHead {
+        next_seq: link.seq + 1,
+        prev: hex::decode(&link.hash).unwrap().try_into().unwrap(),
+        keyed: link.mac.is_some(),
+        trail: trail_of(&link),
+    }
+}
+
+/// The archive of the trail at `path` whose text contains `needle`.
+fn archive_with(path: &Path, needle: &str) -> PathBuf {
+    archives_of(path)
+        .into_iter()
+        .map(|(_, p)| p)
+        .find(|p| std::fs::read_to_string(p).unwrap().contains(needle))
+        .expect("an archive holds it")
+}
+
+/// The byte offset of the first line of `file` containing `needle`.
+fn offset_of(file: &Path, needle: &str) -> u64 {
+    let mut at = 0u64;
+    for l in lines_of(file) {
+        if l.contains(needle) {
+            return at;
+        }
+        at += l.len() as u64 + 1;
+    }
+    panic!("{needle} not in {file:?}")
+}
+
+/// A refusal of `VICTIM_TX`.
+fn victim_refusal(id: &str) -> AuditRecord {
+    let mut r = victim_approval(id);
+    r.approved = false;
+    r.decision = Some("refused".into());
+    r.executable = Some(false);
+    r
+}
+
+/// What whoever can write the data directory, without the key, writes as
+/// an archive's index: the format the server reads, built over the
+/// archive's real bytes, with the entries the forger chose.
+fn forge_index(
+    index_path: &Path,
+    archive: &Path,
+    last: &HashMap<String, u64>,
+    counts: &HashMap<String, (usize, usize)>,
+) {
+    let (sha, len) = archive_index::file_sha256(archive).unwrap();
+    archive_index::write(
+        index_path,
+        len,
+        &sha,
+        archive_index::IndexSource {
+            last,
+            counts,
+            lifecycle: &HashMap::new(),
+        },
+        None,
+    )
+    .unwrap();
+}
+
+/// R37-12: an archive index rewritten by someone without the key — one that
+/// omits the refusal, so the lookup falls through to an older approval, or
+/// one whose counts are inflated while its offset still reads back — is
+/// never believed: the archive is walked instead.
+#[test]
+fn a_rewritten_archive_index_is_never_believed() {
+    let dir = temp_dir("r37-12");
+    let path = audit_path(&dir);
+    let (_, key) = key_file("r37-12", 90);
+    let tx = VerificationKey::TransactionSha256(VICTIM_TX);
+    let log = keyed(&path, &key, 1_500);
+    assert!(log.append(&victim_approval("gr-approved")));
+    write_n(&log, 0, 8);
+    assert!(log.append(&victim_refusal("gr-refused")));
+    write_n(&log, 8, 8);
+    assert_eq!(log.count_verifications(tx), (1, 1));
+    close(log);
+    let archive = archive_with(&path, "gr-refused");
+    assert_ne!(archive, archive_with(&path, "gr-approved"));
+    // The server builds every archive's index.
+    let server = keyed(&path, &key, 0);
+    assert_eq!(server.count_verifications(tx), (1, 1));
+    assert_eq!(
+        server.find_verification(tx).unwrap().audit_trail_id,
+        "gr-refused"
+    );
+    close(server);
+    let index_path =
+        archive_index::index_path(&path.with_file_name("audit.jsonl-index"), &archive).unwrap();
+    assert!(index_path.exists());
+    let ikey = format!("tx:{VICTIM_TX}");
+    let at = offset_of(&archive, "gr-refused");
+    for (case, entry) in [
+        ("omits the refusal", None),
+        ("inflates the counts", Some((4usize, 1usize))),
+    ] {
+        let mut last = HashMap::new();
+        let mut counts = HashMap::new();
+        if let Some(c) = entry {
+            last.insert(ikey.clone(), at);
+            counts.insert(ikey.clone(), c);
+        }
+        forge_index(&index_path, &archive, &last, &counts);
+        let server = keyed(&path, &key, 0);
+        let newest = server.find_verification(tx).expect("on record");
+        let counted = server.count_verifications(tx);
+        close(server);
+        assert_eq!(
+            newest.audit_trail_id, "gr-refused",
+            "{case}: the lookup answered from a rewritten index"
+        );
+        assert_eq!(
+            counted,
+            (1, 1),
+            "{case}: the counts came from a rewritten index"
+        );
+    }
+    // Beside a running server that already checked the index: rewritten
+    // after the check (in place, past a timestamp tick), it is not read.
+    let server = keyed(&path, &key, 0);
+    assert_eq!(server.count_verifications(tx), (1, 1));
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let rebuilt = std::fs::read(&index_path).unwrap();
+    let mut forged_path = index_path.clone();
+    forged_path.set_extension("forged");
+    forge_index(&forged_path, &archive, &HashMap::new(), &HashMap::new());
+    let forged = std::fs::read(&forged_path).unwrap();
+    assert_ne!(rebuilt, forged);
+    {
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&index_path)
+            .unwrap();
+        f.write_all(&forged).unwrap();
+    }
+    assert_eq!(
+        server.find_verification(tx).map(|r| r.audit_trail_id),
+        Some("gr-refused".into()),
+        "a running server read an index rewritten after its check"
+    );
+    assert_eq!(server.count_verifications(tx), (1, 1));
+    close(server);
+}
+
+/// R37-13: a record under a key the reader does not hold, vouched for by a
+/// checked key-adoption record naming that key, is read only where that
+/// adoption covers it through the hash chain, as an unkeyed record is. A
+/// forgery under the vouched key that replaces a record (its link continuing
+/// the record before it, its MAC one the reader cannot check) breaks the
+/// chain to the adoption: nothing under the vouched key is then read, and
+/// never the forgery. Round 38's one-way rotation already refused a record
+/// under it AFTER the adoption; this is the span before it.
+#[test]
+fn a_forgery_under_a_vouched_key_is_not_read_in_place_of_the_record_it_replaced() {
+    let dir = temp_dir("r37-13");
+    let path = audit_path(&dir);
+    let (_, k1) = key_file("r37-13-old", 91);
+    let (_, k2) = key_file("r37-13-new", 92);
+    let log = keyed(&path, &k1, 1_500);
+    write_n(&log, 0, 20);
+    close(log);
+    let log = AuditLog::open_with_options(
+        &path,
+        AuditOptions {
+            rotate_bytes: 1_500,
+            key: Some(k2.clone()),
+            previous_key: Some(k1.clone()),
+            ..AuditOptions::default()
+        },
+    )
+    .unwrap();
+    write_n(&log, 20, 4);
+    close(log);
+    // The server after the rotation, holding K2 only: the records under K1
+    // are read (vouched for and covered by the checked adoption).
+    let server = keyed(&path, &k2, 0);
+    assert_eq!(server.read_tail_filtered(100, AuditSelector::All).2, 24);
+    assert!(server
+        .find_verification(VerificationKey::AuditTrailId("gr-00001"))
+        .is_some());
+    // Whoever holds K1 (retired) replaces gr-00001 in the oldest archive with
+    // an approval of the victim, MAC'd under K1.
+    let oldest = archives_of(&path).into_iter().next().unwrap().1;
+    let mut lines = lines_of(&oldest);
+    let at = lines.iter().position(|l| l.contains("gr-00001")).unwrap();
+    let forged = chain::seal(
+        map_of(&victim_approval("gr-forged")),
+        &head_after(&lines[at - 1]),
+        Some(&k1),
+    )
+    .0;
+    lines[at] = forged;
+    write_lines(&oldest, &lines);
+    let tx = VerificationKey::TransactionSha256(VICTIM_TX);
+    assert!(
+        server.find_verification(tx).is_none(),
+        "the running server read a forgery under the vouched key"
+    );
+    assert_eq!(server.count_verifications(tx), (0, 0));
+    close(server);
+    assert_eq!(verify(&path, &[k1.clone(), k2.clone()]).exit_code(), 1);
+}
+
+/// R37-14: deleting the oldest archive, or the oldest lines of it, passed
+/// `verify` (a first seq above 0 read as "pruned"). Pruning now writes a
+/// chained prune record naming where the trail may start; a first record no
+/// prune record names is a break.
+#[test]
+fn deleting_the_oldest_records_is_a_break_unless_a_prune_record_names_the_start() {
+    let dir = temp_dir("r37-14");
+    let path = audit_path(&dir);
+    let (_, key) = key_file("r37-14", 93);
+    let keys = std::slice::from_ref(&key);
+    let log = AuditLog::open_with_options(
+        &path,
+        AuditOptions {
+            rotate_bytes: 1_500,
+            max_archives: 3,
+            key: Some(key.clone()),
+            ..AuditOptions::default()
+        },
+    )
+    .unwrap();
+    write_n(&log, 0, 60);
+    close(log);
+    let report = verify(&path, keys);
+    assert!(report.first_seq.unwrap() > 0, "{report:?}");
+    assert_eq!(report.exit_code(), 0, "the writer's own prune: {report:?}");
+    // The oldest archive left, deleted.
+    let oldest = archives_of(&path).into_iter().next().unwrap().1;
+    let saved = std::fs::read_to_string(&oldest).unwrap();
+    std::fs::remove_file(&oldest).unwrap();
+    let report = verify(&path, keys);
+    assert_eq!(
+        report.exit_code(),
+        1,
+        "the oldest archive deleted: {report:?}"
+    );
+    // Only its first line deleted.
+    let cut = saved.find('\n').unwrap() + 1;
+    std::fs::write(&oldest, &saved[cut..]).unwrap();
+    let report = verify(&path, keys);
+    assert_eq!(report.exit_code(), 1, "the oldest line deleted: {report:?}");
+    // Put back as it was: the writer's prune record names it again.
+    std::fs::write(&oldest, &saved).unwrap();
+    assert_eq!(verify(&path, keys).exit_code(), 0);
+}
+
+/// R37-14, legacy rule: a trail pruned before prune records existed carries
+/// none. It stays readable, and `verify` reports a break (never a silent
+/// pass) until an operator who checked it acknowledges the prune.
+#[test]
+fn a_trail_pruned_without_a_prune_record_is_readable_and_verifies_only_once_acknowledged() {
+    let (path, key, archives) = rotated_keyed_trail("r37-14-legacy", 94, 40);
+    let keys = std::slice::from_ref(&key);
+    std::fs::remove_file(&archives[0]).unwrap();
+    let report = verify(&path, keys);
+    assert_eq!(report.exit_code(), 1, "{report:?}");
+    assert!(report.pruned_without_record, "{report:?}");
+    assert!(report.other_break.is_none(), "{report:?}");
+    let reader = keyed(&path, &key, 0);
+    let read = reader.read_tail_filtered(100, AuditSelector::All).2;
+    assert!(read > 0, "still readable");
+    let (seq, _) = reader.acknowledge_prune().unwrap();
+    assert_eq!(Some(seq), report.first_seq);
+    close(reader);
+    let after = verify(&path, keys);
+    assert_eq!(after.exit_code(), 0, "{after:?}");
+    assert!(!after.pruned_without_record);
+    assert_eq!(after.prune_records, 1);
+    // A prune acknowledged is a prune named: deleting one more archive is a
+    // break again.
+    let oldest = archives_of(&path).into_iter().next().unwrap().1;
+    std::fs::remove_file(&oldest).unwrap();
+    assert_eq!(verify(&path, keys).exit_code(), 1);
+}
+
+/// T-6: an archive scanned because its index cannot be had (a file stands
+/// where the index directory goes), with the substring prefilter, still
+/// walks every line through the gate: the key adoption — a line the
+/// prefilter does not want — moves the walk on, and the record after it is
+/// found and counted. (Before Round 38 a prefiltered line skipped the gate
+/// and froze what it knew.)
+#[test]
+fn an_archive_scanned_with_a_prefilter_walks_every_line() {
+    let dir = temp_dir("t-6");
+    let path = audit_path(&dir);
+    std::fs::write(path.with_file_name("audit.jsonl-index"), b"not a directory").unwrap();
+    let (_, k1) = key_file("t-6-old", 95);
+    let (_, k2) = key_file("t-6-new", 96);
+    let log = keyed(&path, &k1, 0);
+    write_n(&log, 0, 3);
+    close(log);
+    let log = AuditLog::open_with_options(
+        &path,
+        AuditOptions {
+            rotate_bytes: 6_000,
+            key: Some(k2.clone()),
+            previous_key: Some(k1.clone()),
+            ..AuditOptions::default()
+        },
+    )
+    .unwrap();
+    assert!(log.append(&victim_approval("gr-after-adoption")));
+    write_n(&log, 3, 30);
+    close(log);
+    let archive = archive_with(&path, "gr-after-adoption");
+    assert!(std::fs::read_to_string(&archive)
+        .unwrap()
+        .contains(chain::KEY_ADOPTION));
+    // K2 only: the K1 records are vouched for by the adoption.
+    let server = keyed(&path, &k2, 0);
+    let before = server.archive_scans.load(Ordering::Relaxed);
+    let tx = VerificationKey::TransactionSha256(VICTIM_TX);
+    let found = server.find_verification(tx);
+    let counted = server.count_verifications(tx);
+    let id = server.find_verification(VerificationKey::AuditTrailId("gr-00001"));
+    assert!(
+        server.archive_scans.load(Ordering::Relaxed) > before,
+        "scanned"
+    );
+    close(server);
+    assert_eq!(
+        found.map(|r| r.audit_trail_id),
+        Some("gr-after-adoption".into())
+    );
+    assert_eq!(counted, (1, 0));
+    assert!(id.is_some(), "a record under K1, before the adoption");
+}
+
+/// T-12: keys were supplied and the trail is under none of them: nothing is
+/// covered by the keys given, exit 4. It was 2, which is what a lost key
+/// whose records a checked adoption covers exits.
+#[test]
+fn a_trail_under_no_supplied_key_is_not_covered() {
+    let dir = temp_dir("t-12");
+    let path = audit_path(&dir);
+    let (_, k1) = key_file("t-12", 97);
+    let (_, other) = key_file("t-12-other", 98);
+    let log = keyed(&path, &k1, 0);
+    write_n(&log, 0, 4);
+    close(log);
+    assert_eq!(verify(&path, std::slice::from_ref(&other)).exit_code(), 4);
+    assert_eq!(verify(&path, &[]).exit_code(), 2, "no key at all: unproven");
+    assert_eq!(verify(&path, std::slice::from_ref(&k1)).exit_code(), 0);
+}
+
+/// T-15: a line longer than the bound (`chain::MAX_LINE_BYTES`, 8 MiB) is a
+/// break, and no reader reads it. A self-hashed record continuing the head
+/// of an unkeyed trail is otherwise a record like any other.
+#[test]
+fn a_line_over_the_bound_is_a_break_and_never_read() {
+    let dir = temp_dir("t-15");
+    let path = audit_path(&dir);
+    let log = AuditLog::open_with_rotation(&path, 0, 0).unwrap();
+    write_n(&log, 0, 3);
+    close(log);
+    let mut victim = victim_approval("gr-huge");
+    victim.instruction_name = "x".repeat(chain::MAX_LINE_BYTES + 1);
+    let mut lines = lines_of(&path);
+    lines.push(chain::seal(map_of(&victim), &head_of(&path), None).0);
+    write_lines(&path, &lines);
+    let report = verify(&path, &[]);
+    assert_eq!(report.exit_code(), 1, "{:?}", report.first_break);
+    let reader = AuditLog::open_read_only(&path).unwrap();
+    let found = reader.find_verification(VerificationKey::TransactionSha256(VICTIM_TX));
+    let total = reader.read_tail_filtered(100, AuditSelector::All).2;
+    reader.wait_for_index_jobs();
+    assert!(found.is_none(), "a line over the bound was read");
+    assert_eq!(total, 3);
+    // The writer refuses to write one.
+    let log = AuditLog::open_with_rotation(audit_path(&temp_dir("t-15-w")), 0, 0).unwrap();
+    assert!(!log.append(&victim), "a record over the bound was written");
+    assert!(log.append(&rec("gr-small", true)));
+    close(log);
+}
+
+/// T-15: the bounded line reader keeps at most the bound in memory and
+/// reads past the rest of a longer line.
+#[test]
+fn the_line_reader_holds_at_most_the_bound() {
+    let mut input = vec![b'a'; 3 * 1024 + 7];
+    input.push(b'\n');
+    input.extend_from_slice(b"short\nnone");
+    let mut r = std::io::BufReader::with_capacity(64, &input[..]);
+    let mut buf = Vec::new();
+    let (n, end) = chain::read_line_bounded(&mut r, &mut buf, 1024).unwrap();
+    assert_eq!(
+        (n, end),
+        (3 * 1024 + 8, chain::LineEnd::Oversized { terminated: true })
+    );
+    assert!(buf.capacity() <= 1024 + 64, "{}", buf.capacity());
+    assert!(buf.is_empty());
+    assert_eq!(
+        chain::read_line_bounded(&mut r, &mut buf, 1024).unwrap(),
+        (6, chain::LineEnd::Terminated)
+    );
+    assert_eq!(buf, b"short");
+    assert_eq!(
+        chain::read_line_bounded(&mut r, &mut buf, 1024).unwrap(),
+        (4, chain::LineEnd::Unterminated)
+    );
+    assert_eq!(
+        chain::read_line_bounded(&mut r, &mut buf, 1024).unwrap(),
+        (0, chain::LineEnd::Eof)
+    );
+}
+
+/// T-11: `graphite execution` read the trail with no key, so a self-hashed
+/// approval claiming a MAC under the trail's key (one that does not verify)
+/// was the verdict it reconciled against. It now reads with the keys the
+/// server is configured with, and refuses a keyed trail it has no key for.
+#[cfg(feature = "cli")]
+#[test]
+fn graphite_execution_reads_the_trail_with_the_configured_keys() {
+    let dir = temp_dir("t-11");
+    let path = audit_path(&dir);
+    let (key_path, key) = key_file("t-11", 99);
+    let (other_path, _) = key_file("t-11-other", 100);
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 0, 3);
+    close(log);
+    let mut lines = lines_of(&path);
+    let last = lines.last().unwrap().clone();
+    lines.push(self_hashed_forgery(
+        &last,
+        map_of(&victim_approval("gr-forged")),
+        ForgedMac::UnderTheTrailKey,
+        &key,
+    ));
+    write_lines(&path, &lines);
+    let tx = VerificationKey::TransactionSha256(VICTIM_TX);
+    // What `graphite execution` read until Round 39.
+    let keyless = AuditLog::open_read_only(&path).unwrap();
+    assert!(
+        keyless.find_verification(tx).is_some(),
+        "documented limit: a reader without the key reads the forgery"
+    );
+    keyless.wait_for_index_jobs();
+    let key_arg = key_path.to_str().unwrap();
+    let reader = crate::cli::execution_audit_log(&dir, Some(key_arg), None).unwrap();
+    assert!(
+        reader.find_verification(tx).is_none(),
+        "graphite execution read a forged approval"
+    );
+    assert!(reader
+        .find_verification(VerificationKey::AuditTrailId("gr-00001"))
+        .is_some());
+    reader.wait_for_index_jobs();
+    let none = crate::cli::execution_audit_log(&dir, None, None).unwrap_err();
+    assert!(none.contains("no key is configured"), "{none}");
+    let other = crate::cli::execution_audit_log(&dir, other_path.to_str(), None).unwrap_err();
+    assert!(other.contains("not a configured key"), "{other}");
+    assert!(crate::cli::execution_audit_log(&dir, Some("/no/such/key"), None).is_err());
 }
