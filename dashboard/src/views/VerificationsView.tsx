@@ -122,9 +122,12 @@ export function VerificationsView() {
         <Section
           title="Recent"
           meta={
-            <div className="seg" role="radiogroup" aria-label="Show">
+            // Round 39 (R39-DASH-11): toggle buttons, which is what they
+            // are. As role="radio" they promised arrow keys and a single
+            // tab stop and delivered neither.
+            <div className="seg" role="group" aria-label="Show">
               {(["all", "executable", "approved", "refused"] as Filter[]).map((f) => (
-                <button key={f} type="button" role="radio" aria-checked={filter === f} className={filter === f ? "on" : undefined} onClick={() => setFilter(f)}>
+                <button key={f} type="button" aria-pressed={filter === f} className={filter === f ? "on" : undefined} onClick={() => setFilter(f)}>
                   {FILTER_LABEL[f]}
                 </button>
               ))}

@@ -54,7 +54,7 @@ export function ProgramsView({ selected }: { selected?: string }) {
     <>
       <PageHead
         title="Programs"
-        desc="Every program with a manifest in the semantic graph, the most verified here first, then by mainnet census."
+        desc="Every program in the semantic graph, the most verified here first, then by mainnet census."
         actions={
           <label className="search-field">
             <Search aria-hidden="true" />
@@ -156,12 +156,17 @@ export function ProgramsView({ selected }: { selected?: string }) {
         )}
       </Section>
 
+      {/* Round 39 (R39-DASH-1): a deep link opened before the graph had
+          answered said "Not in the graph: no manifest describes this program
+          ID" about a program nobody had looked up yet. */}
       <Detail
         open={!!selected}
         onClose={() => navigate("programs")}
-        title={open ? open.node.name : selected ? "Unknown program" : ""}
+        title={loading ? "Loading…" : open ? open.node.name : selected ? "Unknown program" : ""}
       >
-        {open ? (
+        {loading ? (
+          <Skeleton rows={6} cols={2} />
+        ) : open ? (
           <ProgramDetail
             node={open.node}
             observed={open.observed}
@@ -256,7 +261,8 @@ export function ProgramDetail({
         <dt>Mainnet census</dt>
         <dd>{fmt.int(node.battle_tested_tx_count)}</dd>
         <dt>Community verified</dt>
-        <dd>{fmt.int(node.community_verified_count)}</dd>
+        {/* Round 39: a Core that does not send it drew "NaN". */}
+        <dd>{node.community_verified_count == null ? "not reported" : fmt.int(node.community_verified_count)}</dd>
         {manifest && manifest.protocol.category && (
           <>
             <dt>Category</dt>
@@ -287,7 +293,14 @@ export function ProgramDetail({
         {manifestsLoading ? (
           <Skeleton rows={4} cols={2} />
         ) : !manifest ? (
-          <p className="prose muted">The manifest is not readable from this Core, so the instruction list cannot be shown.</p>
+          // Round 39: a program the graph knows only from observed behaviour
+          // has no manifest at all; that is not the same as one this Core
+          // did not send.
+          <p className="prose muted">
+            {node.manifest_version === null
+              ? "No manifest describes this program, so the gate cannot resolve its instructions."
+              : "The manifest is not readable from this Core, so the instruction list cannot be shown."}
+          </p>
         ) : (
           <ul className="instructions">
             {manifest.instructions.map((ix) => (
@@ -334,7 +347,11 @@ function Instruction({ ix, nameOf }: { ix: ManifestInstruction; nameOf: Map<stri
               {ix.accounts.map((a, i) => (
                 <tr key={i}>
                   <td translate="no">{a.name}</td>
-                  <td>{a.role}</td>
+                  {/* Round 39: an optional account was drawn as required. */}
+                  <td>
+                    {a.role}
+                    {a.optional && <span className="row-sub">optional</span>}
+                  </td>
                   <td>{a.is_writable ? "yes" : <span className="muted">no</span>}</td>
                   <td>{a.is_signer ? "yes" : <span className="muted">no</span>}</td>
                 </tr>

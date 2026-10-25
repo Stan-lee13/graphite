@@ -898,7 +898,7 @@ jobs:
           NODE_OPTIONS: --test-reporter=tap
         run: |
           npm test 2>&1 | tee "$RUNNER_TEMP/dashboard.log"
-          bash ../.github/scripts/test-count.sh tap "$RUNNER_TEMP/dashboard.log" 36
+          bash ../.github/scripts/test-count.sh tap "$RUNNER_TEMP/dashboard.log" 48
       - name: Build
         run: npm run build
       # Round 29 (audit 2026-10-20, D6): what the build ships. No source
@@ -1016,7 +1016,8 @@ jobs:
     name: Dashboard — browser smoke against a live Core
     runs-on: ubuntu-24.04
     # A release build of the Core (~5 min warm, longer cold), the console
-    # build, a Chromium download and 32 page walks. 45 leaves a cold cache room.
+    # build, a Chromium download, 80 smoke page walks (Round 39: five sizes)
+    # and the fault-state walks. 45 leaves a cold cache room.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -74,8 +74,13 @@ export function checkGraph(v: unknown): void {
     count(o.instruction_count, `node ${i} \`instruction_count\``);
     count(o.battle_tested_tx_count, `node ${i} \`battle_tested_tx_count\``);
     optCount(o.baseline_samples, `node ${i} \`baseline_samples\``);
+    // Round 39: drawn too, as a number and as text; a missing count was
+    // drawn "NaN", a non-text CPI target crashed the detail pane.
+    optCount(o.community_verified_count, `node ${i} \`community_verified_count\``);
+    optStr(o.manifest_version, `node ${i} \`manifest_version\``);
+    optStr(o.quarantine_reason, `node ${i} \`quarantine_reason\``);
     bool(o.quarantined, `node ${i} \`quarantined\``);
-    arr(o.cpi_targets, `node ${i} \`cpi_targets\``);
+    arr(o.cpi_targets, `node ${i} \`cpi_targets\``).forEach((t, j) => str(t, `node ${i} \`cpi_targets[${j}]\``));
   });
   arr(g.edges, "`edges`").forEach((e, i) => {
     const o = obj(e, `edge ${i}`);
@@ -162,7 +167,26 @@ export function checkManifests(v: unknown): void {
   arr(v, "the manifest list").forEach((m, i) => {
     const o = obj(m, `manifest ${i}`);
     str(obj(o.protocol, `manifest ${i} \`protocol\``).program_id, `manifest ${i} \`protocol.program_id\``);
-    arr(o.instructions, `manifest ${i} \`instructions\``);
+    // Round 39 (R39-DASH-12): every list the instruction list draws. Only
+    // the instruction array was checked, so a manifest whose instruction
+    // had no `accounts` reached the view and crashed it into its error
+    // boundary when a program was opened — the answer half-drawn rather
+    // than refused as unreadable.
+    arr(o.instructions, `manifest ${i} \`instructions\``).forEach((x, j) => {
+      const where = `manifest ${i} instruction ${j}`;
+      const ix = obj(x, where);
+      str(ix.name, `${where} \`name\``);
+      str(ix.discriminator, `${where} \`discriminator\``);
+      arr(ix.accounts, `${where} \`accounts\``).forEach((a, k) => {
+        const acc = obj(a, `${where} account ${k}`);
+        bool(acc.is_writable, `${where} account ${k} \`is_writable\``);
+        bool(acc.is_signer, `${where} account ${k} \`is_signer\``);
+      });
+      for (const list of ["expected_state_changes", "allowed_cpis", "risk_rules"] as const) {
+        arr(ix[list], `${where} \`${list}\``).forEach((t, k) => str(t, `${where} \`${list}[${k}]\``));
+      }
+      optStr(ix.risk_class, `${where} \`risk_class\``);
+    });
   });
 }
 
@@ -172,5 +196,7 @@ export function checkHealth(v: unknown): void {
   str(h.status, "`status`");
   str(h.version, "`version`");
   if (h.degraded !== undefined) bool(h.degraded, "`degraded`");
-  if (h.degraded_reasons !== undefined) arr(h.degraded_reasons, "`degraded_reasons`");
+  // Round 39: each reason is drawn as a list item; one that is not text
+  // crashed the System view.
+  if (h.degraded_reasons !== undefined) arr(h.degraded_reasons, "`degraded_reasons`").forEach((r, i) => str(r, `\`degraded_reasons[${i}]\``));
 }

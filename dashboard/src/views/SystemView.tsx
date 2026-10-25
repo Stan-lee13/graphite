@@ -5,8 +5,9 @@
 
 import { api, type Health, type Metrics } from "../api";
 import { readBypass } from "../figures";
+import { auditReading, persistenceReading } from "../status";
 import { usePolling } from "../usePolling";
-import { Empty, Fault, Figure, Freshness, PageHead, Section, Skeleton, State, fmt, pollFault, relTime } from "../ui";
+import { Empty, Fault, FaultNote, Figure, Freshness, PageHead, Section, Skeleton, State, fmt, pollFault, relTime } from "../ui";
 
 interface Counter {
   metric: string;
@@ -63,11 +64,19 @@ export function SystemView() {
   const health = usePolling<Health>(() => api.health(), 5000);
   const metrics = usePolling<Metrics>(() => api.metrics(), 5000);
 
-  const fault = pollFault(health, metrics);
+  // Round 39 (R39-DASH-4): only /health stands in for the whole view. A
+  // /metrics that failed before its first answer (a proxy that does not
+  // route it, a 404) replaced every /health figure with its fault, so a
+  // partial answer showed nothing at all; it now faults the counters only.
+  const fault = pollFault(health);
   if (fault) return <Fault error={fault} title="System" />;
   const h = health.data;
   const m = metrics.data;
-  const loading = !h || !m;
+  const metricsFault = pollFault(metrics);
+  const loading = !h;
+  const countersLoading = !m && !metricsFault;
+  const audit = h ? auditReading(h) : null;
+  const persistence = h ? persistenceReading(h) : null;
 
   // Round 36: the last good /health stays on screen when the Core stops
   // answering (under <Freshness>'s banner), but the Status figure is about
@@ -78,7 +87,7 @@ export function SystemView() {
     <>
       <PageHead title="System" desc="What the Core reports about itself, and what it has counted since it started." />
 
-      <Freshness sources={[health, metrics]} />
+      <Freshness sources={metricsFault ? [health] : [health, metrics]} />
 
       <div className="figures five">
         <Figure
@@ -95,13 +104,11 @@ export function SystemView() {
         />
         {/* Round 30: while loading, this said "verdicts are not being
             recorded" — a claim about a Core it had not heard from yet. */}
-        <Figure
-          label="Audit trail"
-          value={loading ? "—" : h.audit?.enabled ? "Writing" : "Off"}
-          tone={loading ? undefined : h.audit?.enabled ? "pass" : "warn"}
-          sub={loading ? undefined : h.audit?.enabled ? `${fmt.bytes(h.audit.active_bytes ?? 0)} active, ${fmt.int(h.audit.archive_count ?? 0)} archived` : "verdicts are not being recorded"}
-        />
-        <Figure label="Graph snapshots" value={loading ? "—" : h.graph_persistence?.enabled ? fmt.int(h.graph_persistence.snapshots_ok ?? 0) : "Off"} tone={loading ? undefined : h.graph_persistence?.enabled && !(h.graph_persistence.snapshots_failed ?? 0) ? "pass" : "warn"} sub={h?.graph_persistence?.last_error ?? undefined} />
+        {/* Round 39 (R39-DASH-5, status.ts): a /health without these
+            fields is "Not reported", not "Off"; failing appends are not
+            "Writing". */}
+        <Figure label="Audit trail" value={audit?.value ?? "—"} tone={audit?.tone} sub={audit?.sub} />
+        <Figure label="Graph snapshots" value={persistence?.value ?? "—"} tone={persistence?.tone} sub={persistence?.sub} />
         {/* Round 30: whether any approval can be executable at all. A Core
             without an RPC simulates nothing, and every approval it makes is
             for analysis only. "Not reported" when the Core does not say. */}
@@ -198,7 +205,9 @@ export function SystemView() {
           key={g.title}
           title={g.title}
           meta={
-            g.title === "Bypass signals" && m
+            g.title === "Bypass signals" && metricsFault
+              ? <State kind="warn" title="/metrics has not answered">unknown</State>
+              : g.title === "Bypass signals" && m
               ? // Round 36: "clear" only when every counter was read and is
                 // zero; a counter missing from /metrics is unknown, not 0.
                 {
@@ -215,7 +224,11 @@ export function SystemView() {
           }
           flush
         >
-          {loading ? (
+          {metricsFault && g === GROUPS[0] ? (
+            <FaultNote error={metricsFault} />
+          ) : metricsFault ? (
+            <p className="section-note">Not read: /metrics has not answered.</p>
+          ) : countersLoading || !m ? (
             <Skeleton rows={4} cols={2} />
           ) : (
             <table className="data counters">
@@ -238,11 +251,11 @@ export function SystemView() {
               </tbody>
             </table>
           )}
-          {g.note && !loading && <p className="section-note">{g.note}</p>}
+          {g.note && m && <p className="section-note">{g.note}</p>}
         </Section>
       ))}
 
-      {!loading && m.size === 0 && <Empty title="No metrics" hint="The Core answered /metrics with nothing. That endpoint is where every counter on this page comes from." />}
+      {m && m.size === 0 && <Empty title="No metrics" hint="The Core answered /metrics with nothing. That endpoint is where every counter on this page comes from." />}
     </>
   );
 }

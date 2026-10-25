@@ -33,17 +33,31 @@ export function usePolling<T>(loader: () => Promise<T>, intervalMs = 5000): Poll
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let inFlight = false;
     // Round 30 (poll-state.ts): another Core's data is cleared, not shown
     // under this Core's name while the new one loads.
     dispatch({ type: "connection-changed", epoch });
 
+    // Round 39 (R39-DASH-9): a hidden tab polls six times slower, and it
+    // kept that wait after the operator came back — up to a minute (and,
+    // throttled by the browser, more) of the old figures on a tab that was
+    // in front again. Coming back polls at once.
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || inFlight || cancelled) return;
+      if (timer !== undefined) clearTimeout(timer);
+      void tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
     async function tick() {
+      inFlight = true;
       try {
         const value = await loaderRef.current();
         if (!cancelled) dispatch({ type: "ok", epoch, value, at: Date.now() });
       } catch (e) {
         if (!cancelled) dispatch({ type: "fail", epoch, error: toApiError(e, "poll") });
       } finally {
+        inFlight = false;
         if (!cancelled) {
           // Back off while the page is hidden: nobody is looking, and a
           // background tab hammering a Core is a poor neighbour.
@@ -56,6 +70,7 @@ export function usePolling<T>(loader: () => Promise<T>, intervalMs = 5000): Poll
     void tick();
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
       if (timer !== undefined) clearTimeout(timer);
     };
   }, [intervalMs, epoch]);

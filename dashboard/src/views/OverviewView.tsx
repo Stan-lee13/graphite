@@ -376,9 +376,12 @@ function Tape({ points, total }: { points: ConfidencePoint[]; total: number }) {
           />
         ))}
       </ol>
+      {/* Round 39 (R39-DASH-3): the right edge is the newest verdict, not
+          the present; "now" beside a verdict two days old said the gate had
+          just decided something. */}
       <div className="tape-axis" aria-hidden="true">
         <span>{relTime(points[0].timestamp)}</span>
-        <span>now</span>
+        <span>{relTime(points[n - 1].timestamp)}</span>
       </div>
     </div>
   );

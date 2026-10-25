@@ -49,7 +49,21 @@ export function insecureBaseReason(base: string, pageOrigin: string, buildOrigin
         "Enter the Core's origin, e.g. https://graphite.example or http://127.0.0.1:7331."
       );
     }
-    return `"${base}" is not a URL. Enter the Core's origin, e.g. https://graphite.example or http://127.0.0.1:7331.`;
+    // Round 39 (R39-DASH-7): the value is not echoed. What lands in this
+    // field by mistake is most often the key itself, pasted one field too
+    // high, and this text is drawn on every view's fault panel.
+    return "The Core address is not a URL. Enter the Core's origin, e.g. https://graphite.example or http://127.0.0.1:7331.";
+  }
+  // Round 39 (R39-DASH-7): an address is where the Core lives, never how to
+  // unlock it. A user name, password, query or fragment in it is a secret
+  // (or a mistake) that would be kept in localStorage — on disk, whatever
+  // "Remember the key" says — and drawn in the sidebar; fetch() also refuses
+  // a URL with credentials, so it could never have worked.
+  if (url.username || url.password) {
+    return "The Core address carries a user name or password. Put the key in the API key field, never in the address.";
+  }
+  if (url.search || url.hash || /[?#]/.test(base)) {
+    return "The Core address carries a query or a fragment (? or #). Enter only the Core's origin, e.g. https://graphite.example.";
   }
   if (url.protocol === "https:") return null;
   if (url.protocol === "http:") {
@@ -68,6 +82,25 @@ export function insecureBaseReason(base: string, pageOrigin: string, buildOrigin
     );
   }
   return `${url.protocol} is not a Core address. Use https://, or http:// on this machine.`;
+}
+
+/**
+ * The Core address as the sidebar shows it: host and path, nothing that could
+ * be a secret. Round 39 (R39-DASH-7): the raw stored value was drawn, so a
+ * key typed into the address (or into its user-info) was on screen on every
+ * view. An empty base is "this origin"; anything that does not parse, or that
+ * carries user-info, a query or a fragment, is not shown at all.
+ */
+export function displayBase(base: string): string {
+  if (!base) return "this origin";
+  try {
+    const u = new URL(base);
+    if (u.username || u.password || u.search || u.hash || /[?#]/.test(base)) return "an address that cannot be used";
+    if (u.protocol !== "http:" && u.protocol !== "https:") return "an address that cannot be used";
+    return `${u.host}${u.pathname === "/" ? "" : u.pathname}`;
+  } catch {
+    return "an address that cannot be used";
+  }
 }
 
 /**
