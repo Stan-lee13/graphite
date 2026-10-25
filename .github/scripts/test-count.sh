@@ -37,6 +37,13 @@ fail() { echo "::error::$*"; exit 1; }
 
 case "$format" in
   cargo)
+    # Round 40: CI runs cargo with CARGO_TERM_COLOR=always, which colours the
+    # `Running X (path)` status lines; read a copy with the ANSI escapes
+    # removed, or every binary's name is lost.
+    plain=$(mktemp)
+    trap 'rm -f "$plain"' EXIT
+    sed -E $'s/\x1b\\[[0-9;]*[A-Za-z]//g' "$log" >"$plain"
+    log=$plain
     # One `test result:` line per test binary (unit, integration, doc).
     passed=$(sed -n -E 's/^test result: (ok|FAILED)\. ([0-9]+) passed.*/\2/p' "$log" | awk '{s+=$1} END {print s+0}')
     failed=$(sed -n -E 's/^test result: [A-Za-z]+\. [0-9]+ passed; ([0-9]+) failed.*/\1/p' "$log" | awk '{s+=$1} END {print s+0}')

@@ -609,6 +609,11 @@ sed 's/^test result: ok\. 3 passed/test result: ok. 0 passed/' "$T/cargo.log" >"
 sed -i 's/^test result: ok\. 40 passed/test result: ok. 43 passed/' "$T/cargo-beta0.log"
 expect 0 "the summed floor misses a binary that fell to 0 while another grew (the D2-8 hole)" "${TC[@]}" cargo "$T/cargo-beta0.log" 52 "$T/allow.txt"
 expect 1 "a per-binary floor catches it" "${TC[@]}" cargo "$T/cargo-beta0.log" 52 "$T/allow.txt" "$T/floors.txt"
+# Round 40: CI runs cargo with CARGO_TERM_COLOR=always; the coloured `Running`
+# lines lost every binary's name (the per-binary floors failed on PR CI 40216476078).
+sed -E $'s/^( *)Running /\\1\x1b[1m\x1b[92mRunning\x1b[0m /' "$T/cargo.log" >"$T/cargo-colour.log"
+grep -q $'\x1b' "$T/cargo-colour.log" && ok "the coloured log fixture carries ANSI escapes" || bad "the coloured log fixture has no escapes"
+expect 0 "a coloured cargo log still names each binary at its floor" "${TC[@]}" cargo "$T/cargo-colour.log" 52 "$T/allow.txt" "$T/floors.txt"
 grep -v 'tests/alpha.rs' "$T/cargo.log" | grep -v '^test result: ok\. 7 passed' >"$T/cargo-noalpha.log"
 expect 1 "a listed binary missing from the log fails" "${TC[@]}" cargo "$T/cargo-noalpha.log" 40 "$T/allow.txt" "$T/floors.txt"
 expect 1 "a floors file that does not exist fails" "${TC[@]}" cargo "$T/cargo.log" 52 "$T/allow.txt" "$T/no-floors.txt"
