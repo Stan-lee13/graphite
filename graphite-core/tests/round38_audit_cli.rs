@@ -1,4 +1,4 @@
-//! Round 39 (R37-14, T-12, T-13, T-14): `graphite audit` exit codes and
+//! Round 38 (R37-14, T-12, T-13, T-14): `graphite audit` exit codes and
 //! refusals through the real binary, against trails the library wrote.
 //!
 //! 0 nothing failed, 1 a break, 2 unproven, 3 the trail, a key file or a
@@ -227,7 +227,7 @@ fn audit_exit_codes_tell_an_unreadable_input_and_a_usage_error_from_a_verdict() 
 }
 
 /// R37-14: `graphite audit acknowledge-prune` writes the prune record a
-/// trail pruned before Round 39 lacks, and refuses anything else.
+/// trail pruned before Round 38 lacks, and refuses anything else.
 #[test]
 fn acknowledge_prune_accepts_only_a_missing_prune_record() {
     let dir = temp_dir("r37-14");

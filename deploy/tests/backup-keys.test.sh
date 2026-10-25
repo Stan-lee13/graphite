@@ -3,7 +3,7 @@
 # shellcheck disable=SC2015
 # Which key backup.sh MACs an archive under, which key restore.sh accepts a
 # .mac under, and which anchored checkpoint restore.sh checks against
-# (Round 39: R37-11, T-9). Needs no server: the trail is written by
+# (Round 38: R37-11, T-9). Needs no server: the trail is written by
 # `graphite quarantine add`, which writes the server's trail offline.
 #
 # The rules under test (docs/ops/backup-restore.md):

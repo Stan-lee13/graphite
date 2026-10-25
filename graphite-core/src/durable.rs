@@ -1774,7 +1774,7 @@ impl AuditLog {
     }
 
     /// Append a prune record naming where the trail on disk starts now
-    /// (Round 39, R37-14), as `graphite audit acknowledge-prune` does for a
+    /// (Round 38, R37-14), as `graphite audit acknowledge-prune` does for a
     /// trail pruned before prune records existed, once the operator has
     /// checked the trail against an anchored checkpoint or a backup. MAC'd
     /// when this writer is keyed. The start named is returned. Refused when
@@ -1826,7 +1826,7 @@ impl AuditLog {
 
     /// `open_read_only` with the keys its readers check MACs under — the
     /// server's key, and the previous key of a rotation — as the server's
-    /// own readers do (Round 39, T-11: `graphite execution` read the trail
+    /// own readers do (Round 38, T-11: `graphite execution` read the trail
     /// without them, so a self-hashed forgery claiming a MAC was a verdict
     /// to it). Refused unless the trail's newest record is under one of
     /// `keys`, or, with no key, carries no MAC: a reader that cannot check
@@ -2496,7 +2496,7 @@ impl AuditLog {
         }
     }
 
-    /// The key this log's archive indexes are MAC'd under (Round 39,
+    /// The key this log's archive indexes are MAC'd under (Round 38,
     /// R37-12): the writer's key, or a read-only reader's configured key
     /// (its first). `None`: a log without a key trusts unkeyed indexes only.
     fn index_key(&self) -> Option<&AuditKey> {
@@ -2505,7 +2505,7 @@ impl AuditLog {
 
     /// The archive's index, checked or built; `None` when none can be had.
     /// A log opened read-only never writes one: it walks the archive when
-    /// the index on disk does not check (Round 39: a reader without the
+    /// the index on disk does not check (Round 38: a reader without the
     /// writer's key would otherwise replace the writer's index).
     fn check_or_build_index(&self, archive: &Path, len: u64) -> Option<ArchiveIndex> {
         let unavailable = None;
@@ -2879,7 +2879,7 @@ impl AuditLog {
     /// No-op when `max_archives == 0` (keep everything — the P9 default).
     /// Called under the append lock, with the append handle (`file`).
     ///
-    /// Round 39 (R37-14): a prune record (`chain::PruneRecord`) is appended
+    /// Round 38 (R37-14): a prune record (`chain::PruneRecord`) is appended
     /// first, naming each place the trail may start once the archives are
     /// gone; nothing is deleted when it cannot be written. Deleting stops at
     /// the first archive that cannot be removed (it used to go on past it,
@@ -3589,7 +3589,7 @@ impl AuditLog {
 
     /// `append_line_with` under the append lock already held, without the
     /// rotation after it: what rotation itself appends through (the prune
-    /// record, Round 39).
+    /// record, Round 38).
     fn append_locked(
         &self,
         file: &mut File,
@@ -3642,7 +3642,7 @@ impl AuditLog {
         // Sealed under the append lock, so the head it extends is the one
         // the previous acknowledged record left (Round 30, G-07).
         let (line, next_head) = chain::seal(fields, &self.chain_head_now(), self.key.as_deref());
-        // Round 39 (T-15): no line over the bound every reader applies. A
+        // Round 38 (T-15): no line over the bound every reader applies. A
         // record that long is refused, never written unreadable.
         if line.len() > chain::MAX_LINE_BYTES {
             self.writes_failed.fetch_add(1, Ordering::Relaxed);
@@ -3844,7 +3844,7 @@ fn torn_tail_of(path: &Path) -> Option<chain::TornTail> {
     }
     file.seek(SeekFrom::Start(start_of_tail)).ok()?;
     if len - start_of_tail > chain::MAX_LINE_BYTES as u64 {
-        // Round 39 (T-15): never buffered. Named by its length and hash
+        // Round 38 (T-15): never buffered. Named by its length and hash
         // like any torn write; `verify` reports it as a break regardless.
         use sha2::Digest;
         let mut hasher = sha2::Sha256::new();
@@ -3943,7 +3943,7 @@ fn ends_without_newline(path: &Path) -> bool {
 /// when an archive was scanned for want of its index (T-6).
 ///
 /// A line longer than `chain::MAX_LINE_BYTES` is read past without being
-/// kept (Round 39, T-15).
+/// kept (Round 38, T-15).
 ///
 /// Bytes, not `lines()` (Round 19, F-19-23): a line that is not UTF-8 skips
 /// one line, not the rest of the file.
@@ -3971,7 +3971,7 @@ fn for_each_record(
                     visit(text);
                 }
             }
-            // Round 39 (T-15): read past, never kept, never read.
+            // Round 38 (T-15): read past, never kept, never read.
             Ok((_, chain::LineEnd::Oversized { terminated: true })) => gate.refuse_oversized(),
             _ => break,
         }

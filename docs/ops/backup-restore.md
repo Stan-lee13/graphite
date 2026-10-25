@@ -41,7 +41,7 @@ written under (`--key-file`, repeatable, in any order).
 It writes `graphite-<stamp>.tar.gz`, its `.sha256` and `<archive>.mac`: an
 HMAC-SHA256 over the archive's name and bytes (Round 34, R33 D-6) under the
 **current** audit key — the key the copied trail's head is MAC'd under, which
-the verify checked (Round 39, R37-11; it used to be the last `--key-file`
+the verify checked (Round 38, R37-11; it used to be the last `--key-file`
 given, a retired key whenever that one was listed last). A keyed head whose key
 is not among those given refuses the backup. Copy all three off the host: an
 audit trail kept only on the machine it audits is lost with that machine.
@@ -87,7 +87,7 @@ backup for anything you plan to restore from.
    `--current-key-file` (or set `GRAPHITE_AUDIT_KEY_FILE`).
    The previous directory is kept beside it as `<dir>.pre-restore-<stamp>`.
    The newest anchored checkpoint is the one whose content has the highest
-   `seq` (Round 39, T-9: never chosen by file name, which nothing
+   `seq` (Round 38, T-9: never chosen by file name, which nothing
    authenticates); a checkpoint file in the anchor directory that cannot be
    read refuses the restore.
    An archive older than the newest anchored checkpoint is refused until

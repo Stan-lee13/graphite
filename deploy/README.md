@@ -68,7 +68,7 @@ everything when it exits. Exit 0 only when every check passed.
   `sha256sum -c` checked whatever file the list named. `backup.sh` now writes
   `<archive>.mac`, HMAC-SHA256 under the audit key of the archive's name and
   bytes; `restore.sh` requires the `.sha256` to name the archive itself and
-  the `.mac` to verify. Round 39 (R37-11): the `.mac` is under the current key
+  the `.mac` to verify. Round 38 (R37-11): the `.mac` is under the current key
   only — `backup.sh` uses the key the copied trail's head is MAC'd under, and
   `restore.sh` accepts it only under `--current-key-file`, else
   `GRAPHITE_AUDIT_KEY_FILE`, else the single `--key-file` given (several keys

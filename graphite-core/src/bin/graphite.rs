@@ -420,7 +420,7 @@ enum AuditAction {
     },
     /// Record a prune of the oldest archives that nothing recorded
     ///
-    /// With the server stopped. A trail pruned before Round 39 starts above
+    /// With the server stopped. A trail pruned before Round 38 starts above
     /// seq 0 with no prune record, and `audit verify` reports a break: the
     /// records before it could as well have been deleted. Check the trail
     /// against an anchored checkpoint or a backup first; this then appends a
@@ -571,7 +571,7 @@ enum RegistryAction {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Round 39 (T-14): a usage error under `audit` exits 64, not clap's 2,
+    // Round 38 (T-14): a usage error under `audit` exits 64, not clap's 2,
     // which `audit verify` uses for "unproven": a script reading 2 as a lost
     // key went on to check a report a mistyped command never produced. Help
     // and version still exit 0; every other command keeps clap's 2 (which

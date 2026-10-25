@@ -73,7 +73,7 @@ build-from-source stack.
      failures, refusals by layer.
    - A periodic `graphite execution` reconciliation for each signed
      transaction (exit codes in incidents.md), run with the server's
-     `GRAPHITE_AUDIT_KEY_FILE`: since Round 39 it reads a keyed trail only
+     `GRAPHITE_AUDIT_KEY_FILE`: since Round 38 it reads a keyed trail only
      with its key, and is unavailable (exit 3) without it (keys.md).
 
 7. **Back up the volume** (backup-restore.md) before the first real traffic,

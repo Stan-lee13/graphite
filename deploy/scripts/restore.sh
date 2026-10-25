@@ -14,7 +14,7 @@
 #    Then ARCHIVE.mac (backup.sh): an HMAC-SHA256 of the archive's name and
 #    bytes under the audit key, so the graph snapshot and registry_state.json
 #    are authenticated too, not only the trail `audit verify` walks. It must
-#    verify under the CURRENT key (Round 39, R37-11): --current-key-file, else
+#    verify under the CURRENT key (Round 38, R37-11): --current-key-file, else
 #    GRAPHITE_AUDIT_KEY_FILE, else the --key-file when exactly one is given;
 #    with several keys and none named current the restore refuses (exit 64).
 #    A .mac under any other key given — a retired one — is refused: whoever
@@ -30,7 +30,7 @@
 #    `graphite audit verify` on it: exit 0 is required (every link, and every
 #    MAC under the keys given). Nothing is touched if it fails.
 # 4. With --anchor-dir, also verifies against the newest anchored checkpoint:
-#    the one with the highest seq by its CONTENT (Round 39, T-9), never by
+#    the one with the highest seq by its CONTENT (Round 38, T-9), never by
 #    its file name, which nothing authenticates (an old checkpoint copied
 #    under a name that sorts last made a stale archive pass). A checkpoint
 #    file that cannot be read refuses the restore. A restore from a backup older than that checkpoint FAILS this check —

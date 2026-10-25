@@ -449,7 +449,7 @@ pub enum AuditAction {
     /// existing file) a checkpoint of its head — MAC'd under the key the
     /// head is under — for the operator to keep where the writer cannot
     /// alter it. Refused (with `verify`'s exit code) unless the keys given
-    /// cover the head (Round 39, T-13): `verify` exits 0 under them, or 2
+    /// cover the head (Round 38, T-13): `verify` exits 0 under them, or 2
     /// only for a lost key a checked key-adoption record closes.
     Checkpoint {
         data_dir: Option<PathBuf>,
@@ -482,7 +482,7 @@ pub enum AuditAction {
         offset: u64,
         key_file: Option<PathBuf>,
     },
-    /// Record a prune that nothing recorded (Round 39, R37-14), with the
+    /// Record a prune that nothing recorded (Round 38, R37-14), with the
     /// server stopped: a trail pruned before prune records existed starts
     /// above seq 0 and `verify` reports that as a break. Once the operator
     /// has checked the trail against an anchored checkpoint or a backup,
@@ -523,7 +523,7 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
             json,
         } => {
             let dir = data_dir_path(data_dir);
-            // Round 39 (T-14): an input that cannot be read is exit 3 (the
+            // Round 38 (T-14): an input that cannot be read is exit 3 (the
             // check could not be made), never 1, which a monitor reads as a
             // break.
             let keys = match audit_keys(&key_files, &dir) {
@@ -619,7 +619,7 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                 if let Some(first) = report.first_seq.filter(|s| *s > 0) {
                     if report.pruned_without_record {
                         println!(
-                            "first on disk    seq {first}: NO prune record names it — the records before it were deleted, or pruned by a writer before Round 39. Check the trail against an anchored checkpoint or a backup; `graphite audit acknowledge-prune` records the prune"
+                            "first on disk    seq {first}: NO prune record names it — the records before it were deleted, or pruned by a writer before Round 38. Check the trail against an anchored checkpoint or a backup; `graphite audit acknowledge-prune` records the prune"
                         );
                     } else {
                         println!(
@@ -680,7 +680,7 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                 eprintln!("the trail holds no chained record yet; nothing to checkpoint");
                 return Ok(2);
             };
-            // Round 39 (T-13): a checkpoint vouches for the head and, through
+            // Round 38 (T-13): a checkpoint vouches for the head and, through
             // the hash chain, for everything before it. It is signed only when
             // the keys given cover that — `audit verify` exits 0 under them,
             // or 2 only for MACs under keys a checked key-adoption record
@@ -993,7 +993,7 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
 }
 
 /// Report an input `audit` could not read — a key file, a checkpoint, the
-/// trail — or an output it could not write: exit 3 (Round 39, T-14). It was
+/// trail — or an output it could not write: exit 3 (Round 38, T-14). It was
 /// an error out of `main`, exit 1, which reads as a break.
 fn unreadable(why: &str) -> i32 {
     eprintln!("{why}");
@@ -1013,7 +1013,7 @@ fn writer_refused(e: &std::io::Error, why: &str) -> i32 {
     }
 }
 
-/// A checkpoint file, read up to 64 KiB (Round 39, T-15: a checkpoint is a
+/// A checkpoint file, read up to 64 KiB (Round 38, T-15: a checkpoint is a
 /// few hundred bytes; anything longer is not one).
 fn read_checkpoint(path: &Path) -> Result<crate::durable::Checkpoint, String> {
     use std::io::Read;
@@ -2162,7 +2162,7 @@ fn run_execution(
     // Read the same audit trail the server writes, so the CLI reconciles
     // against the real record rather than a second source of truth. Read
     // only (Round 30): this runs beside the server, which holds the trail's
-    // writer lock, and appends nothing. With the server's keys (Round 39,
+    // writer lock, and appends nothing. With the server's keys (Round 38,
     // T-11), so it reads the trail as the server's own readers do.
     let audit = match execution_audit_log(
         &dir,
@@ -2275,7 +2275,7 @@ fn run_execution(
     ))
 }
 
-/// The trail `graphite execution` reconciles against (Round 39, T-11): read
+/// The trail `graphite execution` reconciles against (Round 38, T-11): read
 /// only, with the keys the server is configured with —
 /// `GRAPHITE_AUDIT_KEY_FILE` and, during a rotation,
 /// `GRAPHITE_AUDIT_PREVIOUS_KEY_FILE` (`key_file`, `previous_key_file`) —

@@ -684,7 +684,7 @@ expect_rc 1 "restore.sh --lost-key refuses a rewritten record under the lost key
 [ ! -e "$L/restored-tampered" ] && ok "the rewritten archive was not restored" || bad "the rewritten archive reached $L/restored-tampered"
 
 echo "== backup and restore keys (backup-keys.test.sh)"
-# Round 39 (R37-11, T-9): the .mac under the current key only, on both sides,
+# Round 38 (R37-11, T-9): the .mac under the current key only, on both sides,
 # and the newest anchored checkpoint chosen by content, not by file name.
 check "backup.sh / restore.sh key and anchor rules (deploy/tests/backup-keys.test.sh)" bash "$here/backup-keys.test.sh"
 

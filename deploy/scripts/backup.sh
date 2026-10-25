@@ -34,7 +34,7 @@
 # without a .mac that verifies under the current key. With an unkeyed trail no
 # .mac is written, and restoring it needs ALLOW_UNKEYED_ARCHIVE=1.
 #
-# The .mac is under the CURRENT key only (Round 39, R37-11): the key the copied
+# The .mac is under the CURRENT key only (Round 38, R37-11): the key the copied
 # trail's head is MAC'd under, which the verify above checked — the key the
 # server writes under now — whatever order the --key-file options come in
 # (GRAPHITE_AUDIT_KEY_FILE counts as one of them). It used to be the last

@@ -1866,7 +1866,7 @@ fn records_under_a_rotated_out_key_stay_readable_when_an_adoption_vouches_for_it
     // the walk, and the writer refuses to resume onto a head the walk never
     // reaches rather than fork the chain.
     //
-    // Round 39 (R37-13): re-pinned. The residual is closed: a record under
+    // Round 38 (R37-13): re-pinned. The residual is closed: a record under
     // the vouched K1 is read only where the checked adoption covers it
     // through the hash chain, and the forgery breaks that chain, so nothing
     // under K1 is covered. The walk takes neither the forgery nor the K1
@@ -2420,7 +2420,7 @@ fn a_copied_record_is_not_the_newest_verdict() {
 }
 
 // ---------------------------------------------------------------------------
-// Round 39: archive indexes MAC'd under the trail key (R37-12), records under
+// Round 38: archive indexes MAC'd under the trail key (R37-12), records under
 // a vouched key read only where a checked adoption covers them (R37-13),
 // prune records (R37-14), the prefilter walk (T-6), a trail under no
 // supplied key (T-12), a bound on a line (T-15).
@@ -2872,7 +2872,7 @@ fn graphite_execution_reads_the_trail_with_the_configured_keys() {
     ));
     write_lines(&path, &lines);
     let tx = VerificationKey::TransactionSha256(VICTIM_TX);
-    // What `graphite execution` read until Round 39.
+    // What `graphite execution` read until Round 38.
     let keyless = AuditLog::open_read_only(&path).unwrap();
     assert!(
         keyless.find_verification(tx).is_some(),

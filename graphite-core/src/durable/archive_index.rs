@@ -18,7 +18,7 @@
 //! - its magic and version;
 //! - its length, which the header's entry counts fix exactly;
 //! - its trailer, over every byte before it: an HMAC-SHA256 under the
-//!   trail's key, the reader's own (Round 39, R37-12), or a SHA-256 for a
+//!   trail's key, the reader's own (Round 38, R37-12), or a SHA-256 for a
 //!   trail with no key;
 //! - the archive's length and SHA-256, recorded in the header when the index
 //!   was built.
@@ -39,7 +39,7 @@
 //!                   `key_id` zero): sha256 of everything above
 //! ```
 //!
-//! Round 39 (R37-12): the trailer was always an unkeyed SHA-256, so an index
+//! Round 38 (R37-12): the trailer was always an unkeyed SHA-256, so an index
 //! rewritten by whoever can write the data directory — one that omits a
 //! transaction (the lookup then falls through to an older archive's
 //! approval), points it at another record, or changes its counts — still
@@ -83,7 +83,7 @@ const MAGIC: &[u8; 8] = b"GRAIDX\0\0";
 /// count, or point at, a genuine record copied to a new position, so it is
 /// rebuilt rather than trusted.
 ///
-/// 4 (Round 39, R37-12): the trailer is MAC'd under the trail's key, and the
+/// 4 (Round 38, R37-12): the trailer is MAC'd under the trail's key, and the
 /// header names the key. An unkeyed version-3 index is not trusted by a log
 /// with a key; one without a key rebuilds it as version 4 once.
 pub(super) const VERSION: u32 = 4;
@@ -111,7 +111,7 @@ pub(super) struct VerificationEntry {
 
 /// An index file checked against its archive.
 ///
-/// Round 39 (R37-12): read through the handle it was checked through, and
+/// Round 38 (R37-12): read through the handle it was checked through, and
 /// only while that file is unchanged since (its length and change time). An
 /// index is checked once per process, so a rewrite after the check — in
 /// place, or by a rename over it — would otherwise be read unchecked by a
@@ -222,7 +222,7 @@ impl Trailer {
 }
 
 /// Write the index of an archive whose bytes hash to `archive_sha256`, MAC'd
-/// under `key` (Round 39; unkeyed for a log without one), and return it
+/// under `key` (Round 38; unkeyed for a log without one), and return it
 /// checked. Atomic: written to a temporary file, synced, then renamed over
 /// the destination.
 pub(super) fn write(
@@ -580,7 +580,7 @@ mod tests {
         std::fs::remove_dir_all(path.parent().unwrap()).ok();
     }
 
-    /// Round 39 (R37-12): an index under a key is trusted only by a reader
+    /// Round 38 (R37-12): an index under a key is trusted only by a reader
     /// holding that key; an unkeyed index (anyone can write one) or one under
     /// another key is not; and an index rewritten after it was checked is
     /// not read.

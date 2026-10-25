@@ -100,7 +100,7 @@ what a rewrite under an invented key id looks like.
 5. Keep retired keys for as long as you keep the records they cover, off the
    server (an attacker holding a key can rewrite what it covers; since Round 38
    it cannot add to the trail after the rotation).
-6. Take a fresh backup (`deploy/scripts/backup.sh`). Since Round 39 (R37-11)
+6. Take a fresh backup (`deploy/scripts/backup.sh`). Since Round 38 (R37-11)
    `restore.sh` accepts an archive's `.mac` under the current key only, so a
    backup taken under the old key is refused from now on
    (backup-restore.md).
@@ -180,11 +180,11 @@ the same `GRAPHITE_AUDIT_KEY_FILE` for those commands as the server uses.
 | Exit | Meaning |
 |---|---|
 | 0 | Nothing failed: every chained record links to the one before it; every MAC under a supplied key verified; when keys are supplied, every chained record is MAC'd under one of them or covered by a key-adoption record; a `--checkpoint` is confirmed (and, when keys are supplied, MAC'd under one of them). |
-| 1 | A break (an edited, inserted, deleted, reordered, copied or non-canonical line; a line that is not a record, including a torn write nothing names — `TEAR`, see incidents.md; an archive that ends without its newline; a MAC that does not verify; a key id that appears with no adoption record, or with none after the trail's first adoption record; a record under a key the chain retired at a rotation; a record of another trail (`trail` id); legacy records before a chain keyed from seq 0 that no adoption record lists, or legacy records that do not match the list an adoption record carries; since Round 39 an oldest record above seq 0 that no prune record names, and a line longer than 8 MiB), or a checkpoint that does not hold (rewritten, truncated, forged). |
+| 1 | A break (an edited, inserted, deleted, reordered, copied or non-canonical line; a line that is not a record, including a torn write nothing names — `TEAR`, see incidents.md; an archive that ends without its newline; a MAC that does not verify; a key id that appears with no adoption record, or with none after the trail's first adoption record; a record under a key the chain retired at a rotation; a record of another trail (`trail` id); legacy records before a chain keyed from seq 0 that no adoption record lists, or legacy records that do not match the list an adoption record carries; since Round 38 an oldest record above seq 0 that no prune record names, and a line longer than 8 MiB), or a checkpoint that does not hold (rewritten, truncated, forged). |
 | 2 | The walk could not prove what it was asked to: MACs under a key not supplied that a checked key-adoption record after them covers (an old or lost key not passed), a trail with no chained record, a checkpoint whose records were pruned. |
-| 3 | The trail, a key file or the `--checkpoint` file could not be read (or the trail kept rotating under the walk on every retry). Until Round 39 an unreadable key file or checkpoint exited 1, which reads as a break. |
-| 4 | Keys were supplied, but something is not covered by them: chained records with no MAC and no key-adoption record, legacy records no checked key-adoption record lists (Round 38), MACs under a key not supplied that no checked key-adoption record after them covers — a trail under none of the keys given, or a head under a key not given (Round 39, T-12; it exited 2) — or a checkpoint with no MAC or under a key not supplied. |
-| 64 | A usage error (Round 39: under `graphite audit` it was clap's 2, the same as "unproven"). |
+| 3 | The trail, a key file or the `--checkpoint` file could not be read (or the trail kept rotating under the walk on every retry). Until Round 38 an unreadable key file or checkpoint exited 1, which reads as a break. |
+| 4 | Keys were supplied, but something is not covered by them: chained records with no MAC and no key-adoption record, legacy records no checked key-adoption record lists (Round 38), MACs under a key not supplied that no checked key-adoption record after them covers — a trail under none of the keys given, or a head under a key not given (Round 38, T-12; it exited 2) — or a checkpoint with no MAC or under a key not supplied. |
+| 64 | A usage error (Round 38: under `graphite audit` it was clap's 2, the same as "unproven"). |
 
 The writing `audit` commands (`adopt-key`, `acknowledge-tear`,
 `acknowledge-prune`) exit 75 when another writer holds the trail (stop the
@@ -203,16 +203,16 @@ counted. The server checks the MAC of every record under its own key and
 does not verify, or that carries none, is not read — a line someone forged with
 a recomputed hash is not a verdict to it, even before anyone runs `verify`.
 Records under an older key it does not hold are read when a key-adoption record
-MAC'd under a key it holds names that key and (Round 39, R37-13) covers them
+MAC'd under a key it holds names that key and (Round 38, R37-13) covers them
 through the hash chain, as unkeyed records must be: a forgery under the old key
 that replaces a record breaks the chain to the adoption, and then nothing under
-the old key is read — never the forgery. (Before Round 39 such records were read
+the old key is read — never the forgery. (Before Round 38 such records were read
 on the adoption's word alone, so a holder of the retired key could replace one
 and the reader answered with the replacement.) Unkeyed
 records are read only when a checked key-adoption record covers them through
 the hash chain — an unkeyed line at the top of a trail keyed from genesis is
 covered by nothing. A record under a key the chain retired is never read.
-`graphite execution` reads with the server's keys (Round 39, T-11:
+`graphite execution` reads with the server's keys (Round 38, T-11:
 `GRAPHITE_AUDIT_KEY_FILE`, and `GRAPHITE_AUDIT_PREVIOUS_KEY_FILE` when set): run
 it with the same variables as the server. A keyed trail with no key configured,
 or whose newest record is under none of the keys, is refused, and the
@@ -266,7 +266,7 @@ Checkpoints (`graphite audit checkpoint --out <file>`, or automatically at
 each rotation into `GRAPHITE_AUDIT_ANCHOR_DIR`) are what catch a dropped tail
 or a restored older backup; ship them to storage the server cannot rewrite
 (WORM, object lock) and pass one to `graphite audit verify --checkpoint`.
-Since Round 39 (T-13) `graphite audit checkpoint` signs a head only when the
+Since Round 38 (T-13) `graphite audit checkpoint` signs a head only when the
 keys given cover it — `verify` exits 0 with them, or 2 only for MACs under a
 key a checked key-adoption record closes (a lost key) — and signs it under the
 key the head is MAC'd under. Otherwise it writes nothing and exits with
@@ -274,7 +274,7 @@ key the head is MAC'd under. Otherwise it writes nothing and exits with
 keyed trail with no key given (an unsigned checkpoint confirms nothing under a
 key). It used to sign any head the walk reached, under the first key given.
 
-**Pruning and prune records (Round 39, R37-14).** With
+**Pruning and prune records (Round 38, R37-14).** With
 `GRAPHITE_AUDIT_MAX_ARCHIVES` set, the writer deletes the oldest archives at a
 rotation. It now first appends a chained *prune record* (MAC'd like any record)
 naming each place the trail may start once they are gone: the first record left,
@@ -282,11 +282,11 @@ by its `seq` and its `prev` (the hash of the last record deleted). Nothing is
 deleted when that record cannot be written, and deleting stops at the first
 archive that cannot be removed (it used to go on past it, leaving a gap). A trail
 whose oldest record on disk is above seq 0 and that no prune record names is a
-break (exit 1): until Round 39 that read as "pruned", so deleting the oldest
+break (exit 1): until Round 38 that read as "pruned", so deleting the oldest
 archives, or the oldest lines of one, passed `verify` with exit 0. Readers are
 unaffected: such a trail stays readable.
 
-*Legacy rule:* a trail pruned before Round 39 has no prune record, and
+*Legacy rule:* a trail pruned before Round 38 has no prune record, and
 `verify` reports that break (it never passes silently). Check the trail against
 an anchored checkpoint or a backup that still holds the pruned records, then,
 with the server stopped, run
@@ -297,7 +297,7 @@ anything else. Deleting any further archive after that is a break again. A
 Round 30–38 binary cannot read a prune record ("unknown control record"):
 upgrade every verifier before the server.
 
-**Archive indexes (Round 39, R37-12).** Each archive's index
+**Archive indexes (Round 38, R37-12).** Each archive's index
 (`audit.jsonl-index/*.idx`) is now MAC'd under the trail's key (the writer's
 key; a read-only reader's configured key). An index under any other key, an
 unkeyed one, or one that changed after the server checked it, is not believed:
@@ -309,7 +309,7 @@ reads an index. After a key rotation every index is rebuilt once, under the new
 key (one parse per archive). A trail with no key keeps unkeyed indexes: to it
 the index is as corruption-evident as the trail.
 
-**A bound on a line (Round 39, T-15).** No reader, and not `verify`, holds more
+**A bound on a line (Round 38, T-15).** No reader, and not `verify`, holds more
 than 8 MiB of one line in memory: a longer line is read past without being kept,
 is never a record, and is a break (exit 1). The writer refuses to write one (the
 append fails, and the verdict is not answered as recorded). No record the server

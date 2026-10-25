@@ -235,7 +235,7 @@ Pick one form: `deploy/compose/docker-compose.prod.yml` or `deploy/systemd/` (bo
   (`restore.sh` refuses an archive without a `.mac` that verifies, and runs without `--anchor-dir`).
   Before go-live and quarterly: restore the latest archive into a scratch directory on another host,
   `deploy/scripts/restore.sh --key-file <every audit key> --current-key-file <current audit key> --anchor-dir <anchors> <archive> <scratch dir>`,
-  start a Core on it and check `/health`. The `.mac` is accepted under the current key only (Round 39):
+  start a Core on it and check `/health`. The `.mac` is accepted under the current key only (Round 38):
   take a fresh backup after every audit-key rotation. Record the drill (date, archive, result).
   After an audit key was lost and replaced (`graphite audit adopt-key`, [keys.md](keys.md)), both
   scripts need `--lost-key <key id>` from then on: `audit verify` can no longer check that key's MACs.

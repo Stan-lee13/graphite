@@ -117,7 +117,7 @@ Unknown) until an operator lifts it; with `0` (default) it is reported only.
 
 Run `graphite execution --signature <sig> --transaction-sha256 <digest>
 --audit-trail-id <id>` (or POST `/verify/execution`) for each signed
-transaction, with the server's `GRAPHITE_AUDIT_KEY_FILE` set (Round 39: a keyed
+transaction, with the server's `GRAPHITE_AUDIT_KEY_FILE` set (Round 38: a keyed
 trail is not read without its key, and the check is then unavailable, exit 3).
 Exit codes:
 

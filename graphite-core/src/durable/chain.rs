@@ -81,7 +81,7 @@ pub const CHAIN_FIELD: &str = "chain";
 pub const MIN_KEY_BYTES: usize = 32;
 
 /// The longest line of the trail anything reads, in bytes, newline excluded
-/// (Round 39, T-15). Lines were read whole, so one line without a newline —
+/// (Round 38, T-15). Lines were read whole, so one line without a newline —
 /// gigabytes of it — was read into memory by every reader and by `verify`.
 /// A longer line is never buffered past this bound: `verify` reports it as a
 /// break, no reader reads it, and the writer refuses to write one. No record
@@ -106,7 +106,7 @@ pub(crate) enum LineEnd {
 /// Read one line of at most `max` bytes into `buf` (cleared first, newline
 /// not kept): the bytes consumed, and how it ended. A longer line is
 /// consumed to its end without being kept, so memory stays bounded by `max`
-/// whatever the input (Round 39, T-15).
+/// whatever the input (Round 38, T-15).
 pub(crate) fn read_line_bounded<R: BufRead>(
     reader: &mut R,
     buf: &mut Vec<u8>,
@@ -296,7 +296,7 @@ impl AuditKey {
         hmac_sha256(&self.key, &[domain, message])
     }
 
-    /// A running MAC of an archive index under this key (Round 39, R37-12):
+    /// A running MAC of an archive index under this key (Round 38, R37-12):
     /// the index's bytes are fed to it as they are written or read.
     pub(crate) fn index_mac(&self) -> HmacSha256 {
         let mut m = HmacSha256::new(&self.key);
@@ -800,7 +800,7 @@ pub struct TornLine {
 /// `CONTROL_FIELD` of a prune record.
 pub const PRUNE: &str = "prune";
 
-/// The content of a prune record (Round 39, R37-14): written by the writer,
+/// The content of a prune record (Round 38, R37-14): written by the writer,
 /// before it deletes the oldest archives (`GRAPHITE_AUDIT_MAX_ARCHIVES`), or
 /// by `graphite audit acknowledge-prune` for a trail pruned before prune
 /// records existed. Each entry of `retained` is a place the trail may start
@@ -809,7 +809,7 @@ pub const PRUNE: &str = "prune";
 /// deleted). Deleting stops at the first archive that cannot be removed, so
 /// the trail on disk always starts at one of them.
 ///
-/// Until Round 39 a trail whose oldest record on disk was above seq 0 read
+/// Until Round 38 a trail whose oldest record on disk was above seq 0 read
 /// as "pruned" with nothing to say so: deleting the oldest archives, or the
 /// oldest lines of one, passed `verify` (exit 0). A first record above seq 0
 /// that no prune record in the chain names is now a break.
@@ -1101,7 +1101,7 @@ pub(crate) fn classify_line(line: &[u8]) -> LineClass {
 ///   them, or it is under a key id that a checked key-adoption record names
 ///   as the key before it (`vouched`: a key rotated out of this reader's
 ///   reach) AND a checked key-adoption record covers it through the hash
-///   chain, as an unkeyed record must be (`TrailFacts::covered`, Round 39,
+///   chain, as an unkeyed record must be (`TrailFacts::covered`, Round 38,
 ///   R37-13). It used to be admitted on the adoption's word alone, so a
 ///   forgery under the vouched key that replaced a record — its MAC one the
 ///   reader cannot check, its link continuing the record before it — was
@@ -1264,7 +1264,7 @@ impl TrailFacts {
     }
 
     /// The records whose MAC this reader cannot check — unkeyed ones, and
-    /// (Round 39, R37-13) ones under a vouched key it does not hold — that a
+    /// (Round 38, R37-13) ones under a vouched key it does not hold — that a
     /// checked key-adoption record covers, as (seq, first half of the hash):
     /// found by walking the trail once with those records admitted
     /// tentatively, until an adoption whose MAC verifies under a held key
@@ -1388,7 +1388,7 @@ pub(crate) fn walk_file(
                 let admitted = gate.admit(&line);
                 visit(at, &line, admitted);
             }
-            // Never read; it may carry a link (Round 39, T-15).
+            // Never read; it may carry a link (Round 38, T-15).
             LineEnd::Oversized { terminated: true } => {
                 gate.refuse_oversized();
                 visit(at, &[], false);
@@ -1416,7 +1416,7 @@ impl RecordGate {
         &self.cur
     }
 
-    /// A line longer than `MAX_LINE_BYTES`, read past unread (Round 39,
+    /// A line longer than `MAX_LINE_BYTES`, read past unread (Round 38,
     /// T-15): never a record, and it may carry a link, so no legacy line
     /// after it is read.
     pub(crate) fn refuse_oversized(&mut self) {
@@ -1557,7 +1557,7 @@ impl RecordGate {
                         }
                     },
                 };
-                // Under a vouched key (Round 39, R37-13): only where a
+                // Under a vouched key (Round 38, R37-13): only where a
                 // checked adoption covers it.
                 continues && (!keyed_reader || checked || self.admit_if_covered(c))
             }
@@ -1621,7 +1621,7 @@ pub(crate) fn newest_chained(path: &Path) -> std::io::Result<Option<Newest>> {
     // Read windows from the end, doubling, until a chained line is found or
     // the whole file has been read. A record is a few hundred bytes; the
     // first 64 KiB window answers for every trail Graphite writes. Past four
-    // times the line bound (Round 39, T-15) the file is read forward, a line
+    // times the line bound (Round 38, T-15) the file is read forward, a line
     // at a time, instead: memory stays bounded whatever the file holds.
     let mut window: u64 = 64 * 1024;
     loop {
@@ -2105,7 +2105,7 @@ pub struct TrailReport {
     /// MACs under a key that was not supplied.
     pub macs_unverified: u64,
     /// Of `macs_unverified`, those no checked key-adoption record after them
-    /// covers through the hash chain (Round 39, T-12): records the keys
+    /// covers through the hash chain (Round 38, T-12): records the keys
     /// supplied do not reach at all, such as a whole trail under another
     /// key. With keys supplied, any is exit 4; the rest (a lost key whose
     /// span a checked adoption closes) is exit 2.
@@ -2127,7 +2127,7 @@ pub struct TrailReport {
     /// archives were pruned.
     pub first_seq: Option<u64>,
     /// The oldest chained record on disk is above seq 0 and no prune record
-    /// in the chain names it (Round 39, R37-14): the records before it were
+    /// in the chain names it (Round 38, R37-14): the records before it were
     /// deleted, or pruned by a writer before prune records existed. This is
     /// the break `first_break` names (`graphite audit acknowledge-prune`
     /// records the prune, once an operator has checked the trail).
@@ -2187,7 +2187,7 @@ impl TrailReport {
     ///   them — chained records with no MAC and no key-adoption record, a
     ///   checkpoint with no MAC or under a key not supplied, (Round 38,
     ///   R37-2) legacy records no checked key-adoption record lists, or
-    ///   (Round 39, T-12) MACs under a key not supplied that no checked
+    ///   (Round 38, T-12) MACs under a key not supplied that no checked
     ///   key-adoption record after them covers (a trail under none of the
     ///   keys given exited 2, as if a key were merely missing).
     ///
@@ -2222,7 +2222,7 @@ impl TrailReport {
     /// Whether the keys supplied cover the head and everything before it,
     /// with nothing unproven but MACs under keys not supplied that checked
     /// key-adoption records close (a lost key, or an old key not passed):
-    /// exit 0, or that exit 2 alone (Round 39, T-13). What `graphite audit
+    /// exit 0, or that exit 2 alone (Round 38, T-13). What `graphite audit
     /// checkpoint` requires before it signs a head.
     pub fn head_covered(&self) -> bool {
         match self.exit_code() {
@@ -2367,7 +2367,7 @@ pub(crate) fn verify_trail_with(
                 }};
             }
             if let LineEnd::Oversized { .. } = end {
-                // Round 39 (T-15): read past without being kept. Even named
+                // Round 38 (T-15): read past without being kept. Even named
                 // as a torn write, or as the active file's line in flight:
                 // no record and no crash leaves one this long.
                 stop!(
@@ -2514,7 +2514,7 @@ pub(crate) fn verify_trail_with(
                             fail(
                                 seq,
                                 format!(
-                                    "the oldest record on disk is seq {} and no prune record in the chain names it: the records before it were deleted, or pruned by a writer before Round 39 (check the trail against an anchored checkpoint or a backup; then `graphite audit acknowledge-prune` records the prune)",
+                                    "the oldest record on disk is seq {} and no prune record in the chain names it: the records before it were deleted, or pruned by a writer before Round 38 (check the trail against an anchored checkpoint or a backup; then `graphite audit acknowledge-prune` records the prune)",
                                     link.seq
                                 ),
                             ),
@@ -2745,7 +2745,7 @@ pub(crate) fn verify_trail_with(
             report.first_break = Some(b);
         }
     }
-    // Round 39 (R37-14): a trail starting above seq 0 starts where a prune
+    // Round 38 (R37-14): a trail starting above seq 0 starts where a prune
     // record says it may, or records were deleted from its front. (Every
     // prune record the walk reached counts: a later one only ever names a
     // later start, and the start on disk only ever moves forward.)
