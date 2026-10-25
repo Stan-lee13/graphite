@@ -150,10 +150,13 @@ _RX = {
         re.IGNORECASE,
     ),
     "revoke": re.compile(r"\brevoke\b", re.IGNORECASE),
-    # Round 30: burning the signer's own tokens.
+    # Round 30: burning the signer's own tokens. Round 39 (R39-CLIENTS-5):
+    # ASCII digits, as every other amount since Round 30 — `\d` here was the
+    # one left, read "５" as an amount, and only the NON_ASCII_DIGITS refusal
+    # in front of it kept that from reaching a label.
     "burn": re.compile(
         r"\bburn\s+" + _DETERMINERS +
-        r"(?:(?P<amount>\d+(?:\.\d+)?)\s+)?"
+        r"(?:(?P<amount>[0-9]+(?:\.[0-9]+)?)\s+)?"
         r"(?P<token>[A-Za-z0-9]+)?",
         re.IGNORECASE,
     ),

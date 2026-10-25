@@ -1177,6 +1177,23 @@ def test_the_server_states_what_a_request_may_be(monkeypatch):
     print("✓ test_the_server_states_what_a_request_may_be passed")
 
 
+def test_every_amount_pattern_reads_ascii_digits_only():
+    """Round 39 (R39-CLIENTS-5): the `burn` pattern was the last amount group
+    written with `\\d`, which matches every Unicode digit; the whole-text
+    NON_ASCII_DIGITS refusal hid it. Each pattern with an amount group is held
+    to ASCII on its own, so no later reordering of the checks can expose one."""
+    for kind, rx in _ip._RX.items():
+        if "amount" not in rx.groupindex:
+            continue
+        for digit in ("５", "০", "٥"):
+            m = rx.search(f"{kind} {digit} SOL for USDC with BONK")
+            assert m is None or m.group("amount") is None, (kind, digit, m.group(0))
+    # Control: an ASCII amount is still read.
+    assert _ip._RX["burn"].search("burn 5 BONK").group("amount") == "5"
+    assert parse_intent("Burn 5 BONK")["extracted_parameters"]["amount"] == "5"
+    print("✓ test_every_amount_pattern_reads_ascii_digits_only passed")
+
+
 if __name__ == "__main__":
     # Every test_* function, in file order; no pytest needed.
     import inspect
