@@ -151,6 +151,27 @@ impl Cluster {
     fn set(&mut self, k: &str, a: Account) {
         self.pre.insert(k.to_string(), a);
     }
+    /// A program `owner` deployed. Under the upgradeable loader it is a
+    /// `Program` account naming its `ProgramData`, served with a header
+    /// (deployed at slot 1, final): Round 38 (R37-16) makes a deployment that
+    /// does not decode the `program_deployments` residual, so a fixture's
+    /// program must be one a loader could have written.
+    fn program(&mut self, k: &str, owner: &str) {
+        let mut a = program_account(owner);
+        if owner == LOADER {
+            let programdata = find_program_address(&[pk(k).as_bytes()], &pk(LOADER))
+                .unwrap()
+                .0
+                .to_base58();
+            a.data = 2u32.to_le_bytes().to_vec();
+            a.data.extend(pk(&programdata).as_bytes());
+            let mut header = 3u32.to_le_bytes().to_vec();
+            header.extend(1u64.to_le_bytes());
+            header.extend([0u8; 33]);
+            self.set(&programdata, acct(1, LOADER, header));
+        }
+        self.set(k, a);
+    }
     fn after(&mut self, k: &str, a: Account) {
         self.post.insert(k.to_string(), Some(a));
     }
@@ -679,7 +700,7 @@ fn jupiter_swap(
         (MEMO, LOADER),
         (SYSTEM, NATIVE_LOADER),
     ] {
-        c.set(p, program_account(owner));
+        c.program(p, owner);
     }
     for m in [in_mint, out_mint] {
         c.set(m, acct(1_461_600, TOKEN, mint(10u64.pow(15), None)));
@@ -819,7 +840,7 @@ fn jupiter_swap(
         }
         Beside::CpiSkim(skim) => {
             let theirs = ata(ATTACKER, out_mint);
-            c.set(FOREIGN, program_account(LOADER));
+            c.program(FOREIGN, LOADER);
             c.set(
                 &theirs,
                 acct(RENT, TOKEN, token_account(out_mint, ATTACKER, 0)),
@@ -1119,7 +1140,7 @@ fn clmm_withdrawal(gross_x: u64, skim: Option<u64>) -> (Cluster, Vec<Ix>) {
         (MEMO, LOADER),
         (SYSTEM, NATIVE_LOADER),
     ] {
-        c.set(p, program_account(owner));
+        c.program(p, owner);
     }
     c.set(OWNER, acct(10 * SOL, SYSTEM, vec![]));
     c.after(OWNER, acct(10 * SOL - FEE, SYSTEM, vec![]));
@@ -1385,7 +1406,7 @@ const TREE: &str = "Tree111111111111111111111111111111111111111";
 fn sol_transfer(sibling: Option<bool>) -> (Cluster, Vec<Ix>) {
     let mut c = Cluster::default();
     for (p, owner) in [(SYSTEM, NATIVE_LOADER), (MEMO, LOADER), (FOREIGN, LOADER)] {
-        c.set(p, program_account(owner));
+        c.program(p, owner);
     }
     c.set(OWNER, acct(10 * SOL, SYSTEM, vec![]));
     c.after(OWNER, acct(9 * SOL - FEE, SYSTEM, vec![]));

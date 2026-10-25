@@ -30,6 +30,7 @@ use base64::Engine as _;
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
 use graphite_core::semantic_graph_store::{BehaviorEvidence, TrustTier};
+use graphite_core::tx_pattern_analysis::TransactionInstruction;
 use graphite_core::verification::{
     ExecutionDecision, GraphiteCore, ProposedIntent, VerificationInput, VerificationResult,
 };
@@ -105,17 +106,39 @@ fn acct(key: &str, signer: bool, writable: bool, owner: &str, pre: u64, post: u6
     }
 }
 
+const UPGRADEABLE: &str = "BPFLoaderUpgradeab1e11111111111111111111111";
+
+/// A loader-v3 program: a `Program` account naming its `ProgramData`, which
+/// `serve` answers with a header (deployed at slot 1, final). Round 38
+/// (R37-16): a deployment that does not decode is a residual now, so a
+/// fixture's program must be one a loader could have written.
 fn program(key: &str) -> Acct {
+    let mut data = 2u32.to_le_bytes().to_vec();
+    data.extend(bs58::decode(programdata_of(key)).into_vec().unwrap());
     Acct {
         executable: true,
-        ..acct(
-            key,
-            false,
-            false,
-            "BPFLoaderUpgradeab1e11111111111111111111111",
-            1,
-            1,
-        )
+        data,
+        ..acct(key, false, false, UPGRADEABLE, 1, 1)
+    }
+}
+
+/// The program's `ProgramData` address, derived as the loader derives it.
+fn programdata_of(program: &str) -> String {
+    let pk = |s: &str| graphite_core::solana_types::Pubkey::from_base58(s).unwrap();
+    graphite_core::find_program_address(&[pk(program).as_bytes()], &pk(UPGRADEABLE))
+        .unwrap()
+        .0
+        .to_base58()
+}
+
+/// What `serve` answers for a program's `ProgramData`.
+fn programdata(program: &str) -> Acct {
+    let mut header = 3u32.to_le_bytes().to_vec();
+    header.extend(1u64.to_le_bytes());
+    header.extend([0u8; 33]);
+    Acct {
+        data: header,
+        ..acct(&programdata_of(program), false, false, UPGRADEABLE, 1, 1)
     }
 }
 
@@ -247,6 +270,7 @@ fn fixture(
         data,
         intent,
         raw,
+        siblings: vec![],
     }
 }
 
@@ -260,6 +284,8 @@ struct Fixture {
     data: Vec<u8>,
     intent: &'static str,
     raw: &'static str,
+    /// Top-level instructions after the primary: program, account keys, data.
+    siblings: Vec<(String, Vec<String>, Vec<u8>)>,
 }
 
 impl Fixture {
@@ -287,7 +313,7 @@ impl Fixture {
             out.extend_from_slice(&bs58::decode(&a.key).into_vec().unwrap());
         }
         out.extend_from_slice(&[9u8; 32]);
-        compact_u16(1, &mut out);
+        compact_u16(1 + self.siblings.len(), &mut out);
         let p = self
             .accounts
             .iter()
@@ -298,7 +324,63 @@ impl Fixture {
         out.extend(self.ix_accounts.iter().map(|i| *i as u8));
         compact_u16(self.data.len(), &mut out);
         out.extend_from_slice(&self.data);
+        let index = |k: &str| self.accounts.iter().position(|a| a.key == k).unwrap() as u8;
+        for (program, keys, data) in &self.siblings {
+            out.push(index(program));
+            compact_u16(keys.len(), &mut out);
+            out.extend(keys.iter().map(|k| index(k)));
+            compact_u16(data.len(), &mut out);
+            out.extend_from_slice(data);
+        }
         out
+    }
+
+    /// A System transfer of `lamports` from `from` (a signer already in the
+    /// message) to `to`, after the primary; the balances follow it.
+    fn with_transfer(mut self, from: &str, to: &str, lamports: u64) -> Self {
+        let primary: Vec<String> = self
+            .ix_accounts
+            .iter()
+            .map(|i| self.accounts[*i].key.clone())
+            .collect();
+        let group = |a: &Acct| match (a.signer, a.writable) {
+            (true, true) => 0,
+            (true, false) => 1,
+            (false, true) => 2,
+            (false, false) => 3,
+        };
+        let mut insert = |a: Acct, accounts: &mut Vec<Acct>| {
+            if accounts.iter().any(|k| k.key == a.key) {
+                return;
+            }
+            let at = accounts
+                .iter()
+                .rposition(|k| group(k) <= group(&a))
+                .map_or(0, |i| i + 1);
+            accounts.insert(at, a);
+        };
+        insert(acct(to, false, true, SYSTEM, 0, 0), &mut self.accounts);
+        insert(program(SYSTEM), &mut self.accounts);
+        for a in self.accounts.iter_mut() {
+            if a.key == from {
+                a.post -= lamports;
+            }
+            if a.key == to {
+                a.post += lamports;
+            }
+        }
+        self.ix_accounts = primary
+            .iter()
+            .map(|k| self.accounts.iter().position(|a| &a.key == k).unwrap())
+            .collect();
+        let mut data = 2u32.to_le_bytes().to_vec();
+        data.extend(lamports.to_le_bytes());
+        self.siblings.push((
+            SYSTEM.to_string(),
+            vec![from.to_string(), to.to_string()],
+            data,
+        ));
+        self
     }
 
     fn disc_hex(&self) -> String {
@@ -339,7 +421,16 @@ impl Fixture {
             account_writes: 0,
             cpi_hops: 0,
             signed_transaction: Some(self.frame()),
-            transaction_instructions: vec![],
+            transaction_instructions: self
+                .siblings
+                .iter()
+                .map(|(program, keys, data)| TransactionInstruction {
+                    program_id: program.clone(),
+                    instruction_discriminator: hex::encode(&data[..data.len().min(4)]),
+                    account_addresses: keys.clone(),
+                    cpi_targets: vec![],
+                })
+                .collect(),
             cpi_trace: None,
             real_account_metas: vec![],
             uses_versioned_transaction: false,
@@ -367,6 +458,13 @@ impl Fixture {
     /// the request names the addresses.
     fn serve(&self) -> String {
         let accounts = Arc::new(self.accounts.clone());
+        let programdata: Arc<Vec<Acct>> = Arc::new(
+            self.accounts
+                .iter()
+                .filter(|a| a.executable && a.owner == UPGRADEABLE)
+                .map(|a| programdata(&a.key))
+                .collect(),
+        );
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         std::thread::spawn(move || {
@@ -374,7 +472,12 @@ impl Fixture {
                 let body = read_request(&mut stream);
                 let req: serde_json::Value =
                     serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
-                let find = |k: &str| accounts.iter().find(|a| a.key == k);
+                let find = |k: &str| {
+                    accounts
+                        .iter()
+                        .chain(programdata.iter())
+                        .find(|a| a.key == k)
+                };
                 let state = |k: &str, post: bool| {
                     find(k)
                         .map(|a| Fixture::account_json(a, post))
@@ -430,7 +533,13 @@ impl Fixture {
     }
 
     async fn verify(&self) -> VerificationResult {
+        self.verify_with(false).await
+    }
+
+    /// With the operator's `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS` as given.
+    async fn verify_with(&self, allow_unbounded_withdrawals: bool) -> VerificationResult {
         let mut core = GraphiteCore::new();
+        core.set_allow_unbounded_withdrawals(allow_unbounded_withdrawals);
         core.attach_rpc_client(SolanaRpcClient::new(RpcConfig {
             endpoint: self.serve(),
             timeout: std::time::Duration::from_secs(5),
@@ -546,6 +655,7 @@ fn stake_withdraw(to: Option<String>, intent: &'static str, raw: &'static str) -
         data: stake_withdraw_data(amount),
         intent,
         raw,
+        siblings: vec![],
     }
 }
 
@@ -587,6 +697,38 @@ async fn a_stake_withdrawal_back_to_the_withdrawer_is_approved_as_a_withdrawal()
         .verify()
         .await;
     assert_executable(&r, "a Stake Withdraw back to the withdrawer");
+}
+
+/// Round 38 (Round 37, R37-1 for the grants with no minimum): a withdrawal
+/// paying the owner, beside the owner's own transfer of most of it to a
+/// stranger. The owner's NET is a gain, so L4 sees no loss, and the grant
+/// carries no minimum, so `bind_withdrawal` — where R37-1's sibling rule
+/// lived — never ran.
+#[tokio::test]
+async fn a_withdrawal_beside_a_transfer_to_a_stranger_is_not_executable() {
+    let user = user();
+    let r = stake_withdraw(None, "withdraw", "withdraw my stake")
+        .with_transfer(&user, &attacker(), 30 * SOL)
+        .verify()
+        .await;
+    assert_refused(
+        &r,
+        "a Stake Withdraw beside a transfer of 30 SOL to a stranger",
+    );
+    assert!(said(&r).contains("WithdrawalUnderbounded"), "{}", said(&r));
+    // The operator's waiver of the chain's bound on an amount does not waive
+    // what rides beside the withdrawal (it did: the waiver skipped the whole
+    // withdrawal binding).
+    let r = stake_withdraw(None, "withdraw", "withdraw my stake")
+        .with_transfer(&user, &attacker(), 30 * SOL)
+        .verify_with(true)
+        .await;
+    assert_refused(&r, "the same, with GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS=1");
+    // The control: the waiver does not refuse the honest withdrawal.
+    let r = stake_withdraw(None, "withdraw", "withdraw my stake")
+        .verify_with(true)
+        .await;
+    assert_executable(&r, "a Stake Withdraw back to the withdrawer, waiver on");
 }
 
 #[tokio::test]

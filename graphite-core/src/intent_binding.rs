@@ -1814,6 +1814,56 @@ pub struct WithdrawalContext<'a> {
     pub program_id: &'a str,
 }
 
+/// Nothing beside a granted withdrawal takes value from a signer (Round 38,
+/// R37-1): [`keeps_value`] with the withdrawing program's instructions as the
+/// route and the minimums' recipients' mints as the value to watch.
+///
+/// Every granted withdrawal, not only the ones with a minimum: a Stake
+/// `Withdraw` paying the owner 40 SOL beside the owner's own `Transfer` of 30
+/// to a stranger was `executable_approved` — the owner's net is a gain, so L4
+/// saw no loss, and the grant carries no minimum, so `bind_withdrawal`, where
+/// this rule lived, never ran. Nor is it waived by
+/// `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS`, which is about the chain holding a
+/// withdrawal to an amount, not about what rides beside it.
+pub fn withdrawal_keeps_value(
+    instruction: &str,
+    minimums: &[(&str, u64, String)],
+    diff: Option<&StateDiff>,
+    beside: &WithdrawalContext<'_>,
+) -> Result<(), Binding> {
+    let Some(diff) = diff else {
+        return Err(Binding::unbound(format!(
+            "no simulated state diff: what rides beside {instruction} was not measured"
+        )));
+    };
+    let ixs = match beside.instructions {
+        Ok(ixs) => ixs,
+        Err(why) => {
+            return Err(Binding::unbound(format!(
+                "{instruction}: the transaction's instructions are not readable ({why}), so what rides beside the withdrawal cannot be held"
+            )))
+        }
+    };
+    let route: Vec<&Ix> = ixs
+        .iter()
+        .filter(|ix| ix.program_id == beside.program_id)
+        .collect();
+    let mints: Vec<String> = minimums
+        .iter()
+        .filter_map(|(_, _, recipient)| {
+            let d = diff.deltas.iter().find(|d| &d.pubkey == recipient)?;
+            Some(d.after.as_ref()?.token.as_ref()?.mint.clone())
+        })
+        .collect();
+    keeps_value(instruction, ixs, &route, beside.signers, diff, &mints).map_err(|b| match b {
+        Binding::Mismatch { reason, .. } => Binding::Mismatch {
+            pattern: WITHDRAWAL_UNDERBOUNDED,
+            reason,
+        },
+        other => other,
+    })
+}
+
 /// A granted withdrawal's minimum outputs against what the simulation
 /// delivered (Round 36, F-004). `minimums` are `(name, value, recipient
 /// account)`. A minimum is held to `slippage` of the recipient's simulated
@@ -1851,33 +1901,8 @@ pub fn bind_withdrawal(
             "no simulated state diff: what {instruction} delivers was not measured, so its minimum outputs cannot be held to it"
         ));
     };
-    let ixs = match beside.instructions {
-        Ok(ixs) => ixs,
-        Err(why) => {
-            return Binding::unbound(format!(
-                "{instruction}: the transaction's instructions are not readable ({why}), so what rides beside the withdrawal cannot be held"
-            ))
-        }
-    };
-    let route: Vec<&Ix> = ixs
-        .iter()
-        .filter(|ix| ix.program_id == beside.program_id)
-        .collect();
-    let mints: Vec<String> = minimums
-        .iter()
-        .filter_map(|(_, _, recipient)| {
-            let d = diff.deltas.iter().find(|d| &d.pubkey == recipient)?;
-            Some(d.after.as_ref()?.token.as_ref()?.mint.clone())
-        })
-        .collect();
-    if let Err(b) = keeps_value(instruction, ixs, &route, beside.signers, diff, &mints) {
-        return match b {
-            Binding::Mismatch { reason, .. } => Binding::Mismatch {
-                pattern: WITHDRAWAL_UNDERBOUNDED,
-                reason,
-            },
-            other => other,
-        };
+    if let Err(b) = withdrawal_keeps_value(instruction, minimums, Some(diff), beside) {
+        return b;
     }
     let mut held = Vec::new();
     for (name, min, recipient) in minimums {

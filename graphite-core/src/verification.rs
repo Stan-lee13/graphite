@@ -7084,6 +7084,9 @@ impl GraphiteCore {
         // Round 36 (F-004): a grounded withdrawal's minimum outputs and the
         // accounts they bound, held below to what the simulation delivered.
         let mut withdrawal_minimums: Option<Vec<(&'static str, u64, String)>> = None;
+        // Round 38 (R37-1): every grounded withdrawal has what rides beside
+        // it held (`intent_binding::withdrawal_keeps_value`), minimum or not.
+        let mut grounded_withdrawal = false;
         let declared_intent =
             crate::risk_engine::canonical_intent(&input.proposed_intent.intent_type);
         let (expected_account_count, variable_accounts, manifest_risk_class) = match manifest {
@@ -7103,19 +7106,15 @@ impl GraphiteCore {
                             self.allow_unbounded_withdrawals,
                         ) {
                             crate::intent_grants::GrantOutcome::Grounded(class) => {
-                                // The operator's GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS
-                                // covers the economic bound too: it is the
-                                // same decision, to sign a withdrawal the
-                                // chain does not hold to an amount.
-                                if !self.allow_unbounded_withdrawals {
-                                    withdrawal_minimums = crate::intent_grants::withdrawal_minimums(
-                                        &input.program_id,
-                                        i,
-                                        &declared_intent,
-                                        &input.account_addresses,
-                                        input.instruction_data.as_deref(),
-                                    );
-                                }
+                                grounded_withdrawal =
+                                    class == crate::intent_grants::WITHDRAW_TO_OWNER;
+                                withdrawal_minimums = crate::intent_grants::withdrawal_minimums(
+                                    &input.program_id,
+                                    i,
+                                    &declared_intent,
+                                    &input.account_addresses,
+                                    input.instruction_data.as_deref(),
+                                );
                                 class.to_string()
                             }
                             crate::intent_grants::GrantOutcome::Ungrounded(why) => {
@@ -9647,26 +9646,47 @@ impl GraphiteCore {
             artifact_message.as_ref(),
             resolved_lookups.as_ref().and_then(|r| r.as_ref().ok()),
         );
-        let intent_binding = match &withdrawal_minimums {
-            Some(minimums) => crate::intent_binding::bind_withdrawal(
-                &instruction_name,
-                minimums,
-                input.proposed_intent.extracted_parameters.as_ref(),
-                binding_diff,
-                &crate::intent_binding::WithdrawalContext {
-                    instructions: instructions.as_deref().map_err(|e| e.as_str()),
-                    signers: &signers,
-                    program_id: &input.program_id,
-                },
-            ),
-            None => crate::intent_binding::bind(&crate::intent_binding::BindingInput {
+        let beside = crate::intent_binding::WithdrawalContext {
+            instructions: instructions.as_deref().map_err(|e| e.as_str()),
+            signers: &signers,
+            program_id: &input.program_id,
+        };
+        let bind_request = || {
+            crate::intent_binding::bind(&crate::intent_binding::BindingInput {
                 canonical_intent: &declared_intent,
                 params: input.proposed_intent.extracted_parameters.as_ref(),
                 instructions: instructions.as_deref().map_err(|e| e.as_str()),
                 signers: &signers,
                 diff: binding_diff,
                 mint_decimals: &binding_mint_decimals,
-            }),
+            })
+        };
+        let intent_binding = match &withdrawal_minimums {
+            // The operator's GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS covers the
+            // economic bound too: it is the same decision, to sign a
+            // withdrawal the chain does not hold to an amount. It never
+            // covers what rides beside the withdrawal (R37-1).
+            Some(minimums) if !self.allow_unbounded_withdrawals => {
+                crate::intent_binding::bind_withdrawal(
+                    &instruction_name,
+                    minimums,
+                    input.proposed_intent.extracted_parameters.as_ref(),
+                    binding_diff,
+                    &beside,
+                )
+            }
+            minimums if grounded_withdrawal => {
+                match crate::intent_binding::withdrawal_keeps_value(
+                    &instruction_name,
+                    minimums.as_deref().unwrap_or(&[]),
+                    binding_diff,
+                    &beside,
+                ) {
+                    Err(b) => b,
+                    Ok(()) => bind_request(),
+                }
+            }
+            _ => bind_request(),
         };
         let mut intent_unbound: Option<String> = None;
         let risk_summary = match intent_binding {
