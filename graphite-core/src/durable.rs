@@ -1272,9 +1272,15 @@ impl LifecycleEventRecord {
 }
 
 /// An audit record for a verification that FAILED before producing a result
-/// (400 bad-input, 500 internal error). Rejected-by-error requests — probing
-/// attacks, malformed payloads, oversized bodies — leave a trail instead of
-/// silently vanishing from the audit log.
+/// (400 bad-input, 422 a body that does not parse, 500 internal error), and
+/// for a malformed request to `/verify/execution`, `/audit/event` or
+/// `/admin/quarantine`. Rejected-by-error requests — probing attacks,
+/// malformed payloads — leave a trail instead of silently vanishing from the
+/// audit log. Round 39 (R39-CB-4): refusals of the transport or before a
+/// request is authenticated — 401/403/421, 429, 503 shed, 413 (a body over
+/// 1 MiB), 408 (a body or request too slow), a caught panic's 500 — leave
+/// no row (an unauthenticated caller must not be able to write the trail);
+/// each is counted at `/metrics`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AuditErrorRecord {
     pub timestamp: String,
@@ -1821,7 +1827,7 @@ impl AuditLog {
     /// corruption-evident only. `open_read_only_keyed` is what a reader of a
     /// keyed trail uses.
     pub fn open_read_only(path: impl AsRef<Path>) -> std::io::Result<Self> {
-        Self::open_read_only_with(path.as_ref(), Vec::new())
+        Self::open_read_only_with(path.as_ref(), Vec::new(), false)
     }
 
     /// `open_read_only` with the keys its readers check MACs under — the
@@ -1861,10 +1867,18 @@ impl AuditLog {
                 ))
             }
         }
-        Self::open_read_only_with(path, keys)
+        // Round 39 (R39-CB-1): its readers pin the newest record's trail id,
+        // and a record of another trail appended at the end is the newest.
+        Self::open_read_only_with(path, keys, true)
     }
 
-    fn open_read_only_with(path: &Path, keys: Vec<AuditKey>) -> std::io::Result<Self> {
+    /// `refuse_other_trail`: refuse a trail whose walk refused a genuine
+    /// record of another trail (`chain::Cursor::other_trail`).
+    fn open_read_only_with(
+        path: &Path,
+        keys: Vec<AuditKey>,
+        refuse_other_trail: bool,
+    ) -> std::io::Result<Self> {
         let path = path.to_path_buf();
         let file = File::open(&path)?;
         let cursors = Arc::new(Mutex::new(CursorCache::new()));
@@ -1872,8 +1886,9 @@ impl AuditLog {
         let reader_keys = Arc::new(keys);
         let archives: Vec<PathBuf> = archives_of(&path).into_iter().map(|(_, p)| p).collect();
         let trail_pin = chain::head_trail(&path, &archives_newest_first(&path));
-        let (active_index, lifecycle_index, active_counts) = build_indexes(
+        let ((active_index, lifecycle_index, active_counts), walked) = build_indexes_walked(
             &path,
+            u64::MAX,
             &gate_before(
                 &path,
                 &archives,
@@ -1884,6 +1899,12 @@ impl AuditLog {
                 trail_pin,
             ),
         );
+        if refuse_other_trail && walked.other_trail {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                chain::other_trail_refusal(),
+            ));
+        }
         let torn = ends_without_newline(&path);
         Ok(Self {
             torn_tail: Arc::new(std::sync::atomic::AtomicBool::new(torn)),

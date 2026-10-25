@@ -1134,7 +1134,7 @@ pub(crate) struct RecordGate {
     /// vouched key, admitted tentatively, not yet covered by an adoption.
     pending: Vec<(u64, [u8; 16])>,
     /// Pass 1: unkeyed records a checked adoption covered.
-    covered: std::collections::HashSet<(u64, [u8; 16])>,
+    covered: Vec<(u64, [u8; 16])>,
 }
 
 /// Where the reader's walk is (Round 38): what it knows after the last line
@@ -1154,6 +1154,14 @@ pub(crate) struct Cursor {
     pub adopted: bool,
     /// The trail id of the version-2 records admitted.
     pub trail: Option<[u8; TRAIL_ID_BYTES]>,
+    /// A chained line of another trail was refused for its trail id alone:
+    /// one whose MAC verifies under a key this reader holds (for a reader
+    /// without a key, any valid chained line). Round 39 (R39-CB-1): two
+    /// trails under one key are on disk, and which of them is this one is
+    /// not knowable from the trail, since the pin is the newest record's id
+    /// and the newest record is whoever appended last. A writer refuses to
+    /// resume (`resume_head`), and a keyed read-only reader to open.
+    pub other_trail: bool,
 }
 
 /// What a reader with keys learns once from the whole trail (Round 34
@@ -1161,7 +1169,30 @@ pub(crate) struct Cursor {
 #[derive(Default)]
 pub(crate) struct TrailFacts {
     adoptions: std::sync::OnceLock<AdoptionFacts>,
-    covered: std::sync::OnceLock<std::collections::HashSet<(u64, [u8; 16])>>,
+    covered: std::sync::OnceLock<RecordSet>,
+}
+
+/// A set of `(seq or index, 16-byte hash)` pairs, as a sorted vector
+/// (Round 39, R39-CB-5). These sets hold one entry per unkeyed or legacy
+/// record a key adoption covers, for the life of the process: as a hash set
+/// that measured 129 bytes per record (300,000 records: 37 MiB), so the
+/// history a key was adopted over decided whether the server fitted its
+/// memory limit. Sorted and shrunk it is 24 bytes per record, looked up by
+/// binary search. The same set, the same answers.
+#[derive(Debug, Default)]
+pub(crate) struct RecordSet(Vec<(u64, [u8; 16])>);
+
+impl RecordSet {
+    fn from_unsorted(mut entries: Vec<(u64, [u8; 16])>) -> Self {
+        entries.sort_unstable();
+        entries.dedup();
+        entries.shrink_to_fit();
+        Self(entries)
+    }
+
+    pub(crate) fn contains(&self, entry: &(u64, [u8; 16])) -> bool {
+        self.0.binary_search(entry).is_ok()
+    }
 }
 
 impl std::fmt::Debug for TrailFacts {
@@ -1177,7 +1208,7 @@ pub(crate) struct AdoptionFacts {
     pub vouched: std::collections::HashSet<String>,
     /// The legacy lines they list, as (index in its file, short hash), when
     /// the legacy lines on disk are what one of them lists (R37-2).
-    pub legacy: std::collections::HashSet<(u64, [u8; 16])>,
+    pub legacy: RecordSet,
 }
 
 /// What a reader's gate knows before the first line of a file: where the
@@ -1242,7 +1273,7 @@ impl TrailFacts {
                 .iter()
                 .filter_map(|a| a.previous_key_id.clone())
                 .collect();
-            let mut legacy = std::collections::HashSet::new();
+            let mut legacy = Vec::new();
             let on_disk = legacy_prefix(&files);
             if !on_disk.is_empty() {
                 let digests: Vec<LegacyFile> = on_disk.iter().map(|(d, _)| d.clone()).collect();
@@ -1254,12 +1285,15 @@ impl TrailFacts {
                 if vouched_for {
                     for (_, hashes) in &on_disk {
                         for (i, h) in hashes.iter().enumerate() {
-                            legacy.insert((i as u64, *h));
+                            legacy.push((i as u64, *h));
                         }
                     }
                 }
             }
-            AdoptionFacts { vouched, legacy }
+            AdoptionFacts {
+                vouched,
+                legacy: RecordSet::from_unsorted(legacy),
+            }
         })
     }
 
@@ -1277,11 +1311,11 @@ impl TrailFacts {
     /// this reader holds. A later span under a key it does not hold (a
     /// reader holding the first and third keys of three, but not the
     /// second) is then not covered: refused, never read unchecked.
-    fn covered(&self, ctx: &GateContext) -> &std::collections::HashSet<(u64, [u8; 16])> {
+    fn covered(&self, ctx: &GateContext) -> &RecordSet {
         self.covered.get_or_init(|| {
             let mut cursor = Cursor::default();
             let mut pending = Vec::new();
-            let mut covered = std::collections::HashSet::new();
+            let mut covered = Vec::new();
             for path in ctx.files() {
                 let pass = GateContext {
                     start: cursor,
@@ -1293,7 +1327,11 @@ impl TrailFacts {
                 let _ = walk_file(&path, u64::MAX, &mut gate, |_, _, _| {});
                 cursor = gate.cur;
                 pending = gate.pending;
-                covered.extend(gate.covered);
+                if covered.is_empty() {
+                    covered = gate.covered;
+                } else {
+                    covered.append(&mut gate.covered);
+                }
                 if pending.is_empty()
                     && cursor
                         .chain_key
@@ -1303,7 +1341,7 @@ impl TrailFacts {
                     break;
                 }
             }
-            covered
+            RecordSet::from_unsorted(covered)
         })
     }
 }
@@ -1491,15 +1529,19 @@ impl RecordGate {
                 }
             }
         }
-        match (self.cur.trail, c.trail) {
-            (Some(t), Some(u)) if t != u => return false,
+        let other_trail = match (self.cur.trail, c.trail) {
+            (Some(t), Some(u)) => t != u,
             (Some(_), None) => return false,
-            _ => {}
-        }
-        if let (Some(pin), Some(t)) = (self.ctx.pin, c.trail) {
-            if pin != t {
-                return false;
+            _ => false,
+        } || matches!((self.ctx.pin, c.trail), (Some(pin), Some(t)) if pin != t);
+        if other_trail {
+            // Round 39 (R39-CB-1): noted when the line is genuine under a
+            // key this reader holds, so a writer does not resume onto
+            // whichever of two trails was appended last.
+            if self.genuine_to_this_reader(c) {
+                self.cur.other_trail = true;
             }
+            return false;
         }
         let keyed_reader = !self.ctx.keys.is_empty();
         match (&c.link.key_id, &c.link.mac) {
@@ -1540,7 +1582,13 @@ impl RecordGate {
                             return false;
                         }
                         if self.ctx.tentative && checked {
-                            self.covered.extend(self.pending.drain(..));
+                            if self.covered.is_empty() {
+                                // The common case, one adoption over the
+                                // whole history: no second copy of it.
+                                std::mem::swap(&mut self.covered, &mut self.pending);
+                            } else {
+                                self.covered.append(&mut self.pending);
+                            }
                         }
                         true
                     }
@@ -1561,6 +1609,23 @@ impl RecordGate {
                 // checked adoption covers it.
                 continues && (!keyed_reader || checked || self.admit_if_covered(c))
             }
+            _ => false,
+        }
+    }
+
+    /// Whether `c` is a record this reader would take as written by the
+    /// trail's writer, its trail id aside: MAC'd under a key it holds, with
+    /// the MAC verifying; for a reader without a key, any valid chained line
+    /// (to it the trail is corruption-evident only).
+    fn genuine_to_this_reader(&self, c: &ChainedLine) -> bool {
+        if self.ctx.keys.is_empty() {
+            return true;
+        }
+        match (&c.link.key_id, &c.link.mac) {
+            (Some(id), Some(mac)) => self
+                .ctx
+                .held(id)
+                .is_some_and(|key| mac_verifies(key, mac, &c.hash)),
             _ => false,
         }
     }
@@ -1802,6 +1867,10 @@ pub(crate) struct Resume {
 ///   link and no chained record (R37-2): a chain keyed from genesis after
 ///   them would be indistinguishable from legacy lines inserted before it.
 ///   `adopt` writes a key-adoption record at genesis that lists them.
+///
+/// Round 39 (R39-CB-1): also refused, a trail whose walk refused a record of
+/// another trail that is genuine under this writer's keys
+/// (`Cursor::other_trail`): two trails under one key are on disk.
 pub(crate) fn resume_head(
     active: &Path,
     archives_newest_first: &[PathBuf],
@@ -1811,6 +1880,13 @@ pub(crate) fn resume_head(
     walked: &Cursor,
     legacy_on_disk: bool,
 ) -> Result<Resume, String> {
+    // Round 39 (R39-CB-1): records of two trails under this writer's keys.
+    // The walk is pinned to the newest record's trail id, so a record of
+    // another trail appended at the end made every genuine record "another
+    // trail's" and itself the whole walk, which it then continued.
+    if walked.other_trail {
+        return Err(other_trail_refusal());
+    }
     let files = std::iter::once(active.to_path_buf()).chain(archives_newest_first.iter().cloned());
     for file in files {
         let found =
@@ -1945,6 +2021,12 @@ pub(crate) fn resume_head(
         head: ChainHead::genesis(),
         adoption: None,
     })
+}
+
+/// Why a writer, or a keyed read-only reader, refuses a trail holding
+/// records of two trails (Round 39, R39-CB-1).
+pub(crate) fn other_trail_refusal() -> String {
+    "the audit trail holds records of another trail under the same key (a trail id other than the newest record's, MAC-verified): records copied in from another trail, at its start or its end. Which of the two is this trail cannot be told from the trail itself, so it is not resumed or read. Run `graphite audit verify`, which names the first record of another trail, and move the trail aside or restore it from a backup (docs/ops/keys.md)".to_string()
 }
 
 /// An exported statement of the chain's head, for anchoring outside the

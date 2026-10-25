@@ -2410,13 +2410,22 @@ fn a_copied_record_is_not_the_newest_verdict() {
     write_lines(&path, &lines);
     let report = verify(&path, std::slice::from_ref(&key));
     assert_eq!(report.exit_code(), 1, "{report:?}");
-    let server = try_keyed(&path, &key).expect("the trail's own head is where the walk ends");
-    assert!(
-        server.find_verification(tx).is_none(),
-        "a record of another trail at the top of the trail was read"
-    );
-    assert_eq!(server.read_tail_filtered(100, AuditSelector::All).2, 4);
-    close(server);
+    // Re-pinned in Round 39 (R39-CB-1): the writer started here, pinning its
+    // own head's trail id, and its readers skipped the foreign record. The
+    // pin is the newest record's id, though, which whoever appends last
+    // chooses: the same record at the END made the writer resume onto the
+    // other trail (`a_record_of_another_trail_at_the_end_does_not_become_the_trail`).
+    // A writer now refuses a trail holding genuine records of two trails,
+    // wherever the other trail's record stands. The running writer above
+    // still never read one (`(0, 0)`).
+    let refused = match try_keyed(&path, &key) {
+        Ok(server) => {
+            close(server);
+            panic!("a trail holding records of two trails was resumed");
+        }
+        Err(e) => e,
+    };
+    assert!(refused.to_string().contains("another trail"), "{refused}");
 }
 
 // ---------------------------------------------------------------------------
@@ -2894,4 +2903,219 @@ fn graphite_execution_reads_the_trail_with_the_configured_keys() {
     let other = crate::cli::execution_audit_log(&dir, other_path.to_str(), None).unwrap_err();
     assert!(other.contains("not a configured key"), "{other}");
     assert!(crate::cli::execution_audit_log(&dir, Some("/no/such/key"), None).is_err());
+}
+
+// ---------------------------------------------------------------------------
+// Round 39 (core-boundary audit): R39-CB-1.
+// ---------------------------------------------------------------------------
+
+/// R39-CB-1: a record of another trail under the same key, appended to the
+/// end of the active file. The readers pin the trail id of the trail's
+/// newest record, and the newest record is whoever appended last: under that
+/// pin every genuine record was refused, the foreign record was the only line
+/// the walk admitted, and so it "continued" the walk. A restarted writer (the
+/// server) resumed onto the other trail: its readers saw none of the real
+/// history (the victim's refusal was gone, the foreign trail's approval of the
+/// same transaction was the verdict on record), and its next records extended
+/// the other trail. `graphite audit verify` reported the break; the writer
+/// did not. A writer now refuses to resume, and a keyed read-only reader
+/// (`graphite execution`) to open, a trail that holds MAC-verified records
+/// of two trails.
+#[test]
+fn a_record_of_another_trail_at_the_end_does_not_become_the_trail() {
+    let (_, key) = key_file("r39-cb-1", 41);
+    let tx = VerificationKey::TransactionSha256(VICTIM_TX);
+    // Another trail under the same key, whose newest record approves the
+    // victim's transaction.
+    let other = audit_path(&temp_dir("r39-cb-1-other"));
+    let log = keyed(&other, &key, 0);
+    write_n(&log, 0, 3);
+    assert!(log.append(&victim_approval("gr-foreign")));
+    close(log);
+    let foreign = lines_of(&other).last().unwrap().clone();
+
+    // The target trail, which refused that transaction.
+    let path = audit_path(&temp_dir("r39-cb-1"));
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 100, 4);
+    let mut refusal = victim_approval("gr-refused");
+    refusal.approved = false;
+    refusal.decision = Some("blocked".into());
+    refusal.executable = Some(false);
+    assert!(log.append(&refusal));
+    close(log);
+    let genuine = lines_of(&path);
+
+    let mut lines = genuine.clone();
+    lines.push(foreign.clone());
+    write_lines(&path, &lines);
+    assert_eq!(verify(&path, std::slice::from_ref(&key)).exit_code(), 1);
+    match try_keyed(&path, &key) {
+        Ok(server) => {
+            let newest = server.find_verification(tx);
+            let readable = server.read_tail_filtered(100, AuditSelector::All).2;
+            close(server);
+            panic!(
+                "the writer resumed onto another trail: the victim's verdict on record is {newest:?}, {readable} of 5 genuine records readable"
+            );
+        }
+        Err(e) => {
+            assert_eq!(e.kind(), std::io::ErrorKind::InvalidData, "{e}");
+            assert!(e.to_string().contains("another trail"), "{e}");
+        }
+    }
+    // `graphite execution`'s reader refuses it too.
+    match AuditLog::open_read_only_keyed(&path, vec![key.clone()]) {
+        Ok(reader) => {
+            let newest = reader.find_verification(tx);
+            reader.wait_for_index_jobs();
+            panic!(
+                "a keyed reader opened a trail of two trails: the victim's verdict on record is {newest:?}"
+            );
+        }
+        Err(e) => assert!(e.to_string().contains("another trail"), "{e}"),
+    }
+
+    // The same record at the top of the trail (R37-5's top insertion) is two
+    // trails on disk as well: refused at start now (re-pinned from Round 38,
+    // where the writer started and pinned its own head's id), since nothing
+    // in the trail says which of two trails under one key is this one.
+    let mut lines = genuine.clone();
+    lines.insert(0, foreign.clone());
+    write_lines(&path, &lines);
+    assert!(
+        try_keyed(&path, &key).is_err(),
+        "two trails on disk, resumed"
+    );
+
+    // Benign control: the genuine trail resumes, its refusal is the verdict.
+    write_lines(&path, &genuine);
+    let server = try_keyed(&path, &key).expect("the genuine trail resumes");
+    let newest = server
+        .find_verification(tx)
+        .expect("the refusal is on record");
+    assert!(
+        !newest.approved && newest.audit_trail_id == "gr-refused",
+        "{newest:?}"
+    );
+    assert_eq!(server.read_tail_filtered(100, AuditSelector::All).2, 5);
+    // Appended beside the running writer, the foreign record is still never
+    // read: the running writer's pin is its own trail's id.
+    let mut lines = lines_of(&path);
+    lines.push(foreign);
+    write_lines(&path, &lines);
+    let newest = server
+        .find_verification(tx)
+        .expect("the refusal is on record");
+    assert_eq!(newest.audit_trail_id, "gr-refused");
+    close(server);
+}
+
+/// Resident memory of this process, in KiB (Linux).
+#[cfg(target_os = "linux")]
+fn rss_kib() -> u64 {
+    std::fs::read_to_string("/proc/self/status")
+        .unwrap()
+        .lines()
+        .find_map(|l| l.strip_prefix("VmRSS:"))
+        .and_then(|v| v.split_whitespace().next()?.parse().ok())
+        .unwrap()
+}
+
+/// R39-CB-5 (measurement, not a gate): what a keyed reader holds for a
+/// history of unkeyed records a key adoption covers. `TrailFacts::covered`
+/// keeps one `(seq, 16-byte hash)` per covered record for the life of the
+/// process (the server computes it at start), so the memory grows with the
+/// unkeyed history, not with anything bounded. The trail is opened in a
+/// fresh child process (this test, re-run with `CB5_OPEN`), so what earlier
+/// steps allocated and freed does not hide what the reader holds. Run with
+/// `cargo test --lib keyed_reader_memory -- --ignored --nocapture`.
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore]
+fn keyed_reader_memory_for_an_adopted_unkeyed_history() {
+    if let Ok(dir) = std::env::var("CB5_OPEN") {
+        let path = audit_path(Path::new(&dir));
+        let key = AuditKey::from_bytes(&[77u8; 32]).unwrap();
+        let before = rss_kib();
+        let t = std::time::Instant::now();
+        let server = keyed(&path, &key, 0);
+        let opened = t.elapsed();
+        let after = rss_kib();
+        println!("CB5 {before} {after} {}", opened.as_millis());
+        close(server);
+        return;
+    }
+    let n: u64 = std::env::var("CB5_RECORDS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(300_000);
+    let dir = temp_dir("r39-cb-5");
+    let path = audit_path(&dir);
+    {
+        // Unkeyed chained records, written as an unkeyed writer seals them.
+        use std::io::Write;
+        let mut out = std::io::BufWriter::new(std::fs::File::create(&path).unwrap());
+        let mut head = chain::ChainHead {
+            next_seq: 0,
+            prev: chain::GENESIS,
+            keyed: false,
+            trail: Some(chain::new_trail_id(b"r39-cb-5")),
+        };
+        for i in 0..n {
+            let mut m = serde_json::Map::new();
+            m.insert("i".into(), serde_json::json!(i));
+            let (line, next) = chain::seal(m, &head, None);
+            out.write_all(line.as_bytes()).unwrap();
+            out.write_all(b"\n").unwrap();
+            head = next;
+        }
+    }
+    // The history in a rotated archive, so the active file's own indexes
+    // (bounded by rotation) do not count in what is measured.
+    let archive = path.with_extension("jsonl.1000-000000");
+    std::fs::rename(&path, &archive).unwrap();
+    let (_, key) = key_file("r39-cb-5", 77);
+    let adopt = AuditLog::open_with_options(
+        &path,
+        AuditOptions {
+            rotate_bytes: 0,
+            key: Some(key.clone()),
+            adopt_key: true,
+            ..AuditOptions::default()
+        },
+    )
+    .unwrap();
+    close(adopt);
+    let size = std::fs::metadata(&archive).unwrap().len();
+    let out = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "durable::chain_trail_tests::keyed_reader_memory_for_an_adopted_unkeyed_history",
+            "--ignored",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env("CB5_OPEN", &dir)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    let line = text
+        .lines()
+        .find_map(|l| l.split_once("CB5 ").map(|(_, rest)| rest))
+        .unwrap_or_else(|| panic!("the child did not report: {text}"));
+    let v: Vec<u64> = line
+        .split_whitespace()
+        .map(|x| x.parse().unwrap())
+        .collect();
+    let grown = v[1].saturating_sub(v[0]);
+    eprintln!(
+        "R39-CB-5: {n} unkeyed records ({} MiB, in an archive) under a key adoption: a keyed writer opened in {:.1} s, its resident memory {} KiB -> {} KiB ({:.0} bytes per covered record)",
+        size >> 20,
+        v[2] as f64 / 1000.0,
+        v[0],
+        v[1],
+        grown as f64 * 1024.0 / n as f64
+    );
+    std::fs::remove_dir_all(&dir).ok();
 }
