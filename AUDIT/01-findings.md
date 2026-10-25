@@ -892,3 +892,76 @@ against the end-to-end tests. Each fix was restored and the file checked byte fo
 | B154 | R35-3 | `parsed_inner`: a multisig authority's signers dropped from the account list (`src/parsed_inner.rs`) | `tools/inner-instruction-oracle` (`closeAccount`, `setAuthority`: round trip differs) | caught |
 | B155 | R35-3 | `parsed_inner`: ATA `createIdempotent` rebuilt as `create` (`src/parsed_inner.rs`) | `tools/inner-instruction-oracle` (`createIdempotent`: round trip differs) | caught |
 | B156 | R35-3 | `verify_async`: the reported inner instructions not resolved before they are read (`src/verification.rs`) | `round35_parsed_inner_instructions::a_sweep_reported_in_agave_forms_is_seen_by_the_cpi_trace_rules`, `::the_simulation_gate_reads_a_parsed_report_and_still_refuses_one_it_cannot_rebuild` | caught |
+
+**Round 38 (B157–B168).** The Round 37 re-audit of `8b3d8a4` (R37-1..R37-7) and the F-015 /
+F-001 follow-ups of PR #54. Each break was built in a worktree outside the working tree with its
+own `CARGO_TARGET_DIR` (a first R37-1 run shared the main build directory and one result in it
+was stale, so every break was re-run in isolation). Each fix was restored. **11 of 12 caught; the
+one miss (B163) is covered by a second rule, shown by B164.** Details:
+[`docs/round38-the-round-37-re-audit-answered-2026-10-24.md`](../docs/round38-the-round-37-re-audit-answered-2026-10-24.md) §C.
+
+| # | Finding | What was reverted | Caught by | Result |
+|---|---|---|---|---|
+| B157 | R37-1 | `intent_binding::keeps_value` returns `Ok(())` (`src/intent_binding.rs`) | `round38_sibling_skims`: output skim, withdrawal skim, approval/CPI skim | caught (3 of 8 fail; controls pass) |
+| B158 | R37-1 | B157 plus a swap's SOL spend held to the request instead of the route's `amount_in` | `round38_sibling_skims::a_swap_input_skimmed_by_a_sibling_is_not_bound` | caught |
+| B159 | R37-6 | `src/state_diff.rs` without `signer_holds` (as at `f5a17a4`) | `round38_unscoped_authority`: delegate, owner/close-authority/closure, close line, between-owners takeover | caught (5 fail; controls pass) |
+| B160 | R37-7 | `"create" => Binding::NotApplicable` (`src/intent_binding.rs`) | `round38_create_funding`: 5 SOL creation, transfer beside a creation, 5 SOL against a stated 1 | caught (3 of 4 fail; the rent control passes) |
+| B161 | R37-2 | the reader-side legacy check (`src/durable/chain.rs`) | `chain_trail_tests::a_forged_legacy_line_in_a_keyed_trail_is_neither_read_nor_verified` | caught |
+| B162 | R37-3 | the keyed gate's unkeyed-line rule (`src/durable/chain.rs`) | `chain_trail_tests::an_unkeyed_forgery_is_never_admitted_after_the_trail_is_keyed` | caught |
+| B163 | R37-4 | the retired-key check alone (`src/durable/chain.rs`) | `chain_trail_tests::a_retired_key_cannot_extend_the_trail_after_rotation` | missed: the switch-after-adoption rule blocks the same record |
+| B164 | R37-4 | the retired-key check and the switch-after-adoption rule | the same test | caught `(1, 0)` |
+| B165 | R37-5 | the continuity check (next `seq`, `prev` = last hash) | `chain_trail_tests::a_copied_record_is_not_the_newest_verdict` | caught `(2, 1)` |
+| B166 | R37-5 | the readers' trail-id pin | the same test, cross-trail top-insertion step | caught |
+| B167 | F-015 | `scripts/mutation_floor.py` counting the shard from `outcomes.json`'s `total_mutants` (as merged in PR #53) | `.github/scripts/ci-scripts.test.sh` (`mutation_floor.py` section) | caught (5 of 8 new cases fail) |
+| B168 | F-001 | the module-graph test's `registerHooks` hook back to an off-thread `register` hook | `graphite-sak-bridge.test.ts` with `require("zod")` added to the adapter in an isolated checkout | caught (the old hook passed it) |
+
+**Round 38, second pass (B169–B206).** The rest of the Round 37 re-audit: the P2s, the P3s and
+the residual of R37-7, plus the gap this pass found in its own R37-1 fix (B180). The Rust breaks
+B169–B180 were built together in a copy outside the working tree with their own
+`CARGO_TARGET_DIR`; every failing test was checked to fail for its own break, and the R37-9
+pair was then re-run one break at a time. The trail, CI and guard breaks were each built alone in
+a copy by the workstream that made the fix. Each fix was restored. **All caught**, B171b only by
+a second rule of the same fix. Details:
+[`docs/round38-the-round-37-re-audit-answered-2026-10-24.md`](../docs/round38-the-round-37-re-audit-answered-2026-10-24.md) §C.
+
+| # | Finding | What was reverted | Caught by | Result |
+|---|---|---|---|---|
+| B169 | B-7 | `le_u64` adding 8 to its offset unchecked (`src/intent_binding.rs`) | `intent_binding::tests::a_seed_length_at_the_end_of_the_address_space_reads_as_short` | caught (panic: add overflow) |
+| B170 | R37-7 residual | the stated-amount comparison back on the rent-netted loss (`src/state_diff.rs`) | `state_diff::w19_scope_tests::a_created_accounts_rent_is_not_netted_on_top_of_the_stated_amount` | caught |
+| B171 | R37-9 | `swapping_wallet` bypassed: the effect on `signers.first()` (the code before the fix) | `round38_sibling_skims`: the relayed control and the relayer taking the output | caught (2 of 2 fail) |
+| B171b | R37-9 | only the one-mover choice back to the fee payer | the same tests | the control fails; the theft is still caught by the two-signers rule |
+| B172 | R37-9 | the co-signer lamport-gain rule | `a_relayer_taking_the_owners_lamports_beside_a_swap_is_not_bound` | caught (L4's W19 refuses the transaction too) |
+| B173 | R37-10 | `reads_or_moves_nothing` treated as always true | `a_transfer_beside_an_unread_program_the_owner_signs_is_not_bound` | caught |
+| B174 | B-6 | `"withdraw" => Binding::NotApplicable` | `intent_binding::tests::a_stake_withdrawal_is_held_to_the_amount_requested` | caught |
+| B175 | R37-15 | only near-misses refused; no near-miss outside the prefix | `round36_env_names`: the protective-switch test and the re-pinned unknown-name test | caught (2 fail) |
+| B176 | V-2 | the CLI's name check | `the_cli_refuses_a_misspelled_switch` | caught |
+| B177 | V-3 | the CLI's high-assurance witness requirement | `an_execution_check_under_high_assurance_needs_a_witness` | caught |
+| B178 | R37-16 | the `program_deployments` residual never pushed | `rm1_program_upgrade_detection`: the unread and the undecodable deployment | caught (2 fail) |
+| B179 | V-5 | the record's tier held to its attesters | `manifest_registry::tests::an_accepted_record_verifies_offline_and_a_tampered_one_does_not` | caught |
+| B180 | R37-1, grants with no minimum | `withdrawal_keeps_value` skipped for a grounded withdrawal that does not go through `bind_withdrawal` (the R37-1 code as first fixed) | `staking_withdrawal_destination::a_withdrawal_beside_a_transfer_to_a_stranger_is_not_executable` | caught (also its reproduction: `executable_approved` before the fix) |
+| B181 | R37-11, T-9 | `backup.sh` / `restore.sh` as before (MAC under the last key; any key accepted; the anchor by file name) | `deploy/tests/backup-keys.test.sh` | caught (11 of 22 fail; the rest are setup and baselines) |
+| B182 | R37-12 | the archive index's MAC and the checked-handle read | `a_rewritten_archive_index_is_never_believed`, `an_index_is_trusted_only_under_the_readers_key_and_only_as_checked` | caught (2 of 15) |
+| B183 | R37-13 | vouched-key records admitted unchecked before their adoption | `a_forgery_under_a_vouched_key_is_not_read_in_place_of_the_record_it_replaced` and the re-pinned rotation test | caught (2 of 15) |
+| B184 | R37-14 | a first seq above 0 read as "pruned" with no prune record | the two prune tests and `acknowledge_prune_accepts_only_a_missing_prune_record` | caught (3 of 15) |
+| B185 | T-6 | prefiltered lines skipping the reader gate | `an_archive_scanned_with_a_prefilter_walks_every_line` (and the index test) | caught (2 of 15) |
+| B186 | T-11 | `graphite execution` reading the trail without keys | `graphite_execution_reads_the_trail_with_the_configured_keys` | caught |
+| B187 | T-12 | `macs_not_covered` not counted (a trail under no supplied key exits 2) | `a_trail_under_no_supplied_key_is_not_covered`, `verify_under_a_key_the_trail_is_not_under_exits_4` | caught (2 of 15) |
+| B188 | T-13 | `audit checkpoint` signing an uncovered head | `checkpoint_refuses_a_head_the_keys_do_not_cover` | caught |
+| B189 | T-14 | the audit exit codes 3 / 64 / 75 | `audit_exit_codes_tell_an_unreadable_input_and_a_usage_error_from_a_verdict` | caught |
+| B190 | T-15 | the 8 MiB line bound | `a_line_over_the_bound_is_a_break_and_never_read`, `the_line_reader_holds_at_most_the_bound` | caught (2 of 15) |
+| B191 | R37-8 | the gate's descent-from-the-gate check | `release-gate.test.sh` (fixture repo, `99948c6` against the real history) | caught (3 fail) |
+| B192 | R37-8 | `release-guard.yml` | its structure test | caught |
+| B193 | R37-8 | `ruleset-drift.py`'s comparison | `ci-scripts.test.sh` drift cases | caught (4 of 14) |
+| B194 | D2-3 | the `same-tag` re-checks around `gh release create` | `release-gate.test.sh` same-tag cases | caught (2 fail) |
+| B195 | D2-4 | the admin `pull_request` bypass in `main-review.json` | the rulesets bypass test | caught |
+| B196 | D2-5 | the revocation list and the validity-window reasons | `release-gate.test.sh` revoked / expired / not-yet-valid cases | caught (2 fail) |
+| B197 | D2-6 | the cross-file pin consistency check | `ci-scripts.test.sh` pinned-tools cases | caught (6 of 7) |
+| B198 | D2-7 | the review-by dates check | `ci-scripts.test.sh` dependency-holds cases | caught (2 of 8) |
+| B199 | D2-8 | the per-binary counts and floors | `ci-scripts.test.sh` test-count fixtures | caught (4 fail) |
+| B200 | D-8 | the apt snapshot pin | the Dockerfile test and `pinned-tools.py check-pins` | caught (4 fail; check-pins fails) |
+| B201 | R37-17 | the XDG-dependent default lock directory | `guard-round38.test.ts` (SSH vs cron, account-derived default) and the re-pinned lock-dir test | caught (3 fail) |
+| B202 | G2-2 | the route-specific swap repeat key | the G2-2 repro and the old-key compatibility test | caught (2 fail) |
+| B203 | G2-3 | the age re-check before the send | the G2-3 lifecycle and guard tests | caught (2 fail) |
+| B204 | G2-4 | not-sent classification and the expired reservation's return | the classifier, connect-refused and release tests (4a–4d each alone) | caught (5 fail; the landed control passes) |
+| B205 | G2-5 | `intent_parameters` acceptable | the G2-5 repro and the re-pinned F-003 test | caught |
+| B206 | G2-6 | the dashboard's 32 MiB response bound | `transport` "an answer over the size bound is refused" | caught |

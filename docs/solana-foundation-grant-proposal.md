@@ -1,6 +1,6 @@
 # Graphite — Solana Foundation grant proposal
 
-> **Revised 2026-10-22, after Round 34.** Every figure about Graphite below is measured in this
+> **Revised 2026-10-25, after Round 38** (§4; the rest as revised after Round 34). Every figure about Graphite below is measured in this
 > repository and named with where it comes from. [`CURRENT.md`](CURRENT.md) is authoritative
 > for anything that has moved since. Refresh this page again before any submission.
 
@@ -49,6 +49,7 @@ What exists today, all in the repository:
   replay live mainnet traffic and run the whole signing path on a validator. A deep internal
   audit (Round 33) found one critical issue and nine high ones; Round 34 fixed them
   ([`round34-the-deep-audit-remediated-2026-10-23.md`](round34-the-deep-audit-remediated-2026-10-23.md)).
+  Rounds 35–38 are summarised in §4.
 
 ## 2. The problem
 
@@ -84,28 +85,45 @@ observe, and the guard refuses to sign over any such gap the operator has not ac
 
 ## 4. Evidence, and how it was produced
 
-- **Adversarial rounds.** The repository records 24 rounds of internal review and repair. Each
-  finding has a class, a root cause, a fix, and a test that fails before the fix
-  ([`AUDIT/01-findings.md`](../AUDIT/01-findings.md)). Every fix in the last two rounds was then
-  reverted once, alone, to show its test catches the reversal. The latest round answered an
-  external review. Its two most serious items (R2 and R3) showed that a `transfer` label could
-  clear a multisig drain or a delegate hand-over at the intent and risk layers. Both were
-  reproduced on the previous commit and fixed at the root.
+- **Adversarial rounds.** The repository records 38 rounds of internal review and repair,
+  including two internal deep audits (Rounds 33 and 37), each answered in the round after.
+  Each finding has a class, a root cause, a fix, and a test that fails before the fix
+  ([`AUDIT/01-findings.md`](../AUDIT/01-findings.md)). Fixes are also reverted one at a time to
+  show their tests catch the reversal: B01–B168 in that file's break log, misses included (Round
+  29's record is partial, and its report says which fixes were reverted). The last four rounds:
+  - **Round 35** ran Round 34 on live mainnet traffic and found that no transaction making a CPI
+    could be approved on a real RPC (inner instructions arrive parsed); it now rebuilds them,
+    checked against the validator's own parser in CI
+    ([`round35-…-2026-10-23.md`](round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md)).
+  - **Round 36** bound the request to the bytes: an approval is executable only when the
+    request's amount, recipient and asset are the transaction's, and a withdrawal's minimum is
+    held to the simulation
+    ([`round36-…-2026-10-24.md`](round36-the-request-is-bound-to-the-bytes-2026-10-24.md)).
+  - **Round 37**, an internal re-audit, found two transactions that were executable end to end
+    (a swap or withdrawal skimmed by a sibling instruction; a creation funded far beyond its
+    rent); **Round 38** fixed both and closed four audit-trail reader gaps
+    ([`round38-…-2026-10-24.md`](round38-the-round-37-re-audit-answered-2026-10-24.md)). That a
+    re-audit still finds such paths is the strongest argument for Milestone 1.
 - **Real traffic.** Whole finalized mainnet blocks from four days, 48,855 executed transactions,
   are pushed through the full pipeline bound to their real bytes. Graphite records 0 parse
   failures and 0 verify errors, and every verdict that changes between rounds is attributed to
   the finding that changed it ([`round24-the-intent-is-the-class-2026-10-03.md`](round24-the-intent-is-the-class-2026-10-03.md)).
   The samples are fetched by slot list, with their SHA-256 recorded, so anyone can re-measure
   them ([`../tools/mainnet-sample/SAMPLES.md`](../tools/mainnet-sample/SAMPLES.md)).
+  Live replays on a real RPC approve nothing yet: on the Round 35 head, 0 of 200 replayed
+  transactions were approved in each of two runs, most failing simulation against later state,
+  so the approval path on live traffic is unmeasured.
 - **Real exploits.** 35 mainnet exploit transactions from the public SolPhishHunter dataset
   (arXiv:2505.04094), labelled outside Graphite, are all refused.
 
 What this evidence is not:
 
 - **It is not an independent audit.** Every review in the repository is internal engineering
-  work, done by the maintainer with AI engineering agents, apart from one external review whose
-  items are verified and answered in `AUDIT/01-findings.md`. No third party has certified
-  Graphite. Milestone 1 pays for one to try.
+  work, done by the maintainer with AI engineering agents, apart from two external reviews and
+  one full-repository audit whose items are verified and answered in `AUDIT/01-findings.md`. No
+  third party has audited or certified Graphite. The code is conditionally ready for an
+  independent audit, with the owner gates open (`docs/ops/production-checklist.md`).
+  Milestone 1 pays for the audit.
 - **There is no public deployment.** Graphite runs locally, in Docker, and in CI.
 - **Coverage is partial.** On the measured mainnet sample, most executed transactions call at
   least one program with no manifest. There, Graphite falls back to its drainer heuristics,

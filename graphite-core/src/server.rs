@@ -1123,16 +1123,13 @@ impl Limits {
 pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
 
-    // Round 36 (F-020): a misspelled variable is a decision the Core never
-    // sees. A near-miss of one it reads refuses to start; any other unknown
-    // GRAPHITE_* name is logged.
+    // Round 36 (F-020), Round 38 (R37-15): a misspelled variable is a
+    // decision the Core never sees. Any name no Graphite component reads
+    // refuses to start.
     let env_names: Vec<String> = std::env::vars_os()
         .filter_map(|(k, _)| k.into_string().ok())
         .collect();
-    for warning in crate::operator_boundary::check_env_names(env_names.iter().map(String::as_str))?
-    {
-        tracing::warn!("{warning}");
-    }
+    crate::operator_boundary::check_env_names(env_names.iter().map(String::as_str))?;
 
     // Decided first, before the data directory is touched or anything binds,
     // so a misconfigured deployment fails at the first line of output rather

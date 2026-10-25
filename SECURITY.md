@@ -23,10 +23,12 @@ line: **CONDITIONAL — security-hardened alpha.** No known way to turn a blocke
 verdict into an executed transaction under the stated threat model; no
 independent third party has yet tried; `main` has no branch protection (the
 rulesets that would add it are prepared in `.github/rulesets/`, not applied).
-Round 30's verdict: release blocked on those owner and external items; the code
-is ready for an independent audit. Only `executable: true` permits signing.
-Rounds 31–32 did everything code and CI can do toward production (below); the
-release blockers are unchanged and are the owner's and an auditor's.
+The verdict since Round 36: release blocked on those owner and external items;
+the code is conditionally ready for an independent audit, with the owner gates
+open (`docs/ops/production-checklist.md`). Only `executable: true` permits
+signing. Rounds 31–32 did everything code and CI can do toward production
+(below), and Rounds 34–38 answered three internal audits; the release blockers
+are unchanged and are the owner's and an auditor's.
 
 ## Security Architecture
 
@@ -391,8 +393,11 @@ documented as a limitation, or recorded as an owner decision; the report is
 - **A protocol upgrade is noticed (R-M1).** With an RPC, a manifested program redeployed, or
   handed to a new upgrade authority, since Graphite last saw it is reported on the verdict, on
   `/health` and in the metrics; `GRAPHITE_QUARANTINE_ON_UPGRADE=1` also withdraws it from trust
-  until the operator reviews the manifest. Limits: the first sighting is the baseline, and
-  evidence earned on the old code is not reset by an upgrade.
+  until the operator reviews the manifest. Limits as of Rounds 26–27: the first sighting was the
+  baseline, and evidence earned on the old code was not reset by an upgrade. Both are superseded:
+  since Round 30 (G-04) an upgrade withdraws the program's evidence, and a first sighting whose
+  deployment is newer than its evidence withdraws it too; since Round 38 (R37-16) a deployment
+  that cannot be read is the `program_deployments` residual, not a log line.
 - **Advisories published after Round 24 fixed** in the Rust lockfile (`quinn-proto`, `rustls`) and
   by npm overrides (SAK adapter, dashboard).
 
@@ -722,7 +727,7 @@ These are documented scope boundaries, not hidden vulnerabilities:
 - **An upgrade sends a program back to the start (Round 30).** A detected redeploy or authority change withdraws the program's evidence; it is refused by every built-in profile until an operator re-seeds it. An RPC that lies about deployments can therefore reset evidence — an availability risk, inside the RPC trust boundary. Loader-v4 deployments are read the same way since Round 36 (F-009).
 - **One address-poisoning trade-off (Round 29, R-4).** The Risk Engine judges a fund movement's destination at four trailing `1`s and its source at five, and never the signing authority of an SPL transfer. Judging no source would have approved five documented address-poisoning sends in the holdout; the price is that a user's own wallet ending in five or more `1`s (about one random address in 656 million) is refused when it sends.
 - **`content_hash` is an instruction-level identifier, not the transaction's identity.** It is a 64-bit hash over one instruction's projection (program, discriminator, accounts, data, CPI targets) and cannot see the fee payer, blockhash, signer set or sibling instructions. It remains the audit-trail and L8 join key and the SDKs' `verifyInstruction` secondary check; the authoritative binding is `scope.transaction_sha256` over the supplied bytes, checked by the bridge's `signApproved`. Since Round 30 the verdict also carries it as `instruction_bind_key`, a name that says what it is; `content_hash` is deprecated for one minor version, and lifecycle request bodies keep the old name.
-- **An accepted residual is the operator's decision.** The bridge refuses every non-inherent `unobserved_codes` entry by default; an operator who names `no_state_diff` or `lookup_tables_unresolved` in `GRAPHITE_ACCEPT_UNOBSERVED` has chosen to execute without that observation, and the execution outcome records the choice. Nothing at execution time second-guesses configuration (P1).
+- **An accepted residual is the operator's decision.** The bridge refuses every non-inherent `unobserved_codes` entry by default; an operator who names `no_state_diff` or `lookup_tables_unresolved` in `GRAPHITE_ACCEPT_UNOBSERVED` has chosen to execute without that observation, and the execution outcome records the choice. Nothing at execution time second-guesses configuration (P1). One code is not the operator's to accept: `intent_parameters`, the Core's word that it could not tie the request's amount, recipient or asset to the bytes (F-003). Accepting it switched that binding off for every request, so since Round 38 (G2-5) naming it refuses to start.
 - **Pre-signature verification has a window.** The chain moves between verification and execution; the blockhash bounds the window to roughly a minute for ordinary transactions. Nothing signed in advance can be verified against the state it will execute in.
 - **Single-tenant.** One verify key (plus an optional, separate operator key for `/admin/*`), one wallet-profile pin, one audit trail and one semantic graph per process. Tenant isolation is process isolation; no document claims otherwise.
 - **An archive's index costs one read of the archive per process, and a new one a parse.** Since Round 28 (R-M11) every L8 and lifecycle lookup, and every count of the recorded verdicts for a digest, answers from indexes: the active file's (Rounds 9, 12, 22) and each rotated archive's persisted index (`<log>-index/`). An archive's index is checked against the archive's SHA-256 once per process, which is one read of the archive, and an archive without a usable index is parsed once to build one. Measured on three 64 MiB archives: a count took 822 ms by scanning and takes 2.2 ms indexed, a check of the three after a restart takes 1.8 s, and a build from a parse 6.7 s. The server does both in the background at start, and rotation writes the new archive's index without a parse, so a lookup pays them only when it arrives first. An index that cannot be written (a read-only index directory) leaves that archive scanned on every lookup, as before Round 28. The index files take about a quarter of the archives' space. The lifecycle-sequence check (Round 12) consults the active file and, when the active file holds no rows for the transaction, the newest archive only: a lifecycle that straddles two rotations is checked against an incomplete history, and the row says nothing about rows it did not see.

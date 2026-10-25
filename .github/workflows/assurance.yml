@@ -111,7 +111,12 @@ jobs:
       # and every shard hit the six-hour limit before scoring. Each shard now
       # holds about 40 mutants; the suites and floor for each file are chosen
       # in the "Select" step below. A shard that cannot finish is reported
-      # INCOMPLETE by mutation_floor.py, never scored on the part that ran.
+      # INCOMPLETE by mutation_floor.py, never scored on the part that ran:
+      # it counts the shard's mutants from mutants.json, because the second
+      # run (40083338181) showed outcomes.json's total_mutants is only the
+      # outcomes recorded so far, and 16 killed shards were scored on it.
+      # At ~9 minutes a mutant (one rebuild each), about 35 fit the step's
+      # 330 minutes; 18 of 44 shards of ~41 were killed by it.
       matrix:
         include:
           - { file: src/risk_engine.rs, shard: 0/6 }

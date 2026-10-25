@@ -16,8 +16,12 @@ name: Release
 #   - a GitHub Release carrying the tarball, the SBOMs and the checksums.
 #
 # A tag is published only when its version is the crate's version, the commit
-# it names is on main and passed the `CI gate` of a push to main (ci.yml), and
-# the tag is signed by a key in .github/allowed_signers (the `gate` job).
+# it names is on main, descends from the commit that introduced the gate, and
+# passed the `CI gate` of a push to main (ci.yml), and the tag is signed by a
+# key in .github/allowed_signers that is not in .github/revoked_signers (the
+# `gate` job). `publish` re-reads the tag right before it pushes, attests and
+# creates the release, and refuses a tag that is no longer the one the gate
+# verified (Round 38, D2-3).
 #
 # Verify a published release. `--repo` alone accepts an attestation made by
 # ANY workflow of the repository (Round 34, R33-18); the other three flags
@@ -74,9 +78,14 @@ jobs:
   #
   # What this file cannot do on its own: a tag runs the TAGGED commit's copy
   # of this workflow, so a tag on an unmerged branch runs that branch's copy,
-  # gate and all. What stops that is a repository setting, not code: the
-  # tag-creation ruleset (.github/rulesets/release-tags-create.json) and the
-  # `release` environment's tag policy and reviewer — owner steps in
+  # gate and all, and a tag on a main commit older than the gate (99948c6,
+  # Round 32) runs a copy with no gate at all (R37-8). The ancestry check
+  # below refuses such commits for every copy from the gate on; for the old
+  # copies, release-guard.yml (it runs from main on every `Release` run and
+  # cancels a refused one) is a second line, and the stop is a repository
+  # setting, not code: the tag-creation ruleset
+  # (.github/rulesets/release-tags-create.json) and the `release`
+  # environment's tag policy and reviewer — owner steps in
   # docs/ops/production-checklist.md, "Release integrity".
   gate:
     name: Release gate — version, main, signature and CI
@@ -89,11 +98,16 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
+      # D2-3: the exact tag object and commit this gate verified; `publish`
+      # releases only while the tag still names exactly these.
+      tag_object: ${{ steps.signature.outputs.tag_object }}
+      commit: ${{ steps.signature.outputs.commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # Every branch and tag: the ancestry check needs origin/main.
+          # Every branch and tag: the ancestry check needs origin/main and the
+          # commit that introduced the gate.
           fetch-depth: 0
       - name: The tag is the crate's version
         id: version
@@ -114,12 +128,13 @@ jobs:
           echo "version=$crate" >> "$GITHUB_OUTPUT"
           echo "prerelease=$pre" >> "$GITHUB_OUTPUT"
           echo "version $crate (prerelease: $pre)"
-      - name: The tagged commit is on main
+      - name: The tagged commit is on main, and not older than the gate
         if: github.event_name == 'push'
         env:
           SHA: ${{ github.sha }}
         run: bash .github/scripts/release-gate.sh ancestor "$SHA" refs/remotes/origin/main
-      - name: The tag is signed by a release signer
+      - name: The tag is signed by a release signer, not revoked
+        id: signature
         if: github.event_name == 'push'
         env:
           SHA: ${{ github.sha }}
@@ -131,7 +146,11 @@ jobs:
         run: |
           git fetch --no-tags --force origin "+refs/tags/${REF_NAME}:refs/tags/${REF_NAME}"
           git cat-file tag "refs/tags/${REF_NAME}" > "$RUNNER_TEMP/tag.raw"
-          bash .github/scripts/release-gate.sh tag-signature "$RUNNER_TEMP/tag.raw" "$REF_NAME" "$SHA" .github/allowed_signers
+          bash .github/scripts/release-gate.sh tag-signature "$RUNNER_TEMP/tag.raw" "$REF_NAME" "$SHA" .github/allowed_signers .github/revoked_signers
+          obj="$(git rev-parse --verify "refs/tags/${REF_NAME}")"
+          [[ "$obj" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::cannot name the tag object of $REF_NAME"; exit 1; }
+          echo "tag_object=$obj" >> "$GITHUB_OUTPUT"
+          echo "commit=$SHA" >> "$GITHUB_OUTPUT"
       - name: The commit passed the CI gate of a push to main
         if: github.event_name == 'push'
         env:
@@ -402,7 +421,32 @@ jobs:
       VERSION: ${{ needs.gate.outputs.version }}
       PRERELEASE: ${{ needs.gate.outputs.prerelease }}
       REF_NAME: ${{ github.ref_name }}
+      # D2-3: what the gate verified, by hash. An empty output (a gate copy
+      # that set none) stops `same-tag` as a usage error.
+      TAG_OBJECT: ${{ needs.gate.outputs.tag_object }}
+      GATED_SHA: ${{ needs.gate.outputs.commit }}
+      REPO: ${{ github.repository }}
     steps:
+      # The gate's script, at the commit the gate ran on (nothing is built
+      # from it here).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: src
+      # Round 38 (D2-3): the gate ran minutes or hours ago (the builds, then
+      # the `release` environment's approval). Until the tag rulesets are
+      # applied a tag can be deleted and pushed again at another commit in
+      # between; `gh release create` would then attach this build to the new
+      # tag. So every publishing step first re-reads the tag and requires the
+      # exact tag object and commit the gate verified.
+      - name: The tag is still the one the gate verified
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ "$GATED_SHA" = "$GITHUB_SHA" ] || { echo "::error::the gate verified $GATED_SHA, this run is $GITHUB_SHA"; exit 1; }
+          gh api "repos/${REPO}/git/ref/tags/${REF_NAME}" > "$RUNNER_TEMP/ref.json"
+          gh api "repos/${REPO}/git/tags/${TAG_OBJECT}" > "$RUNNER_TEMP/tagobj.json"
+          bash src/.github/scripts/release-gate.sh same-tag "$RUNNER_TEMP/ref.json" "$RUNNER_TEMP/tagobj.json" "$REF_NAME" "$TAG_OBJECT" "$GATED_SHA"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: binary-a
@@ -461,7 +505,6 @@ jobs:
       - name: GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
           IMAGE: ${{ steps.files.outputs.image }}
           DIGEST: ${{ steps.files.outputs.digest }}
         run: |
@@ -484,4 +527,18 @@ jobs:
           EOF
           flags=(--verify-tag --title "Graphite Core ${VERSION}" --notes-file notes.md)
           if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          # D2-3: re-read the tag in this step, right before the release is
+          # created, and once after: a tag moved in between is caught, and
+          # the release made on it is deleted again.
+          same_tag() {
+            gh api "repos/${REPO}/git/ref/tags/${REF_NAME}" > "$RUNNER_TEMP/ref.json" \
+              && gh api "repos/${REPO}/git/tags/${TAG_OBJECT}" > "$RUNNER_TEMP/tagobj.json" \
+              && bash src/.github/scripts/release-gate.sh same-tag "$RUNNER_TEMP/ref.json" "$RUNNER_TEMP/tagobj.json" "$REF_NAME" "$TAG_OBJECT" "$GATED_SHA"
+          }
+          same_tag
           gh release create "$REF_NAME" --repo "$REPO" "${flags[@]}" release/*
+          if ! same_tag; then
+            echo "::error::the tag moved while the release was created; deleting the release"
+            gh release delete "$REF_NAME" --repo "$REPO" --yes
+            exit 1
+          fi

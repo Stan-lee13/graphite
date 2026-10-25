@@ -74,7 +74,7 @@ trap cleanup EXIT
 port() { python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1])'; }
 
 echo "== static"
-check "shellcheck deploy/scripts deploy/tests" "$SC" -x "$deploy"/scripts/*.sh "$here"/run.sh
+check "shellcheck deploy/scripts deploy/tests" "$SC" -x "$deploy"/scripts/*.sh "$here"/run.sh "$here"/*.test.sh
 check "caddy validate" env GRAPHITE_SITE=graphite.example.com "$C" validate --config "$deploy/caddy/Caddyfile" --adapter caddyfile
 check "caddy fmt (already formatted)" sh -c '"$1" fmt "$2" | cmp -s - "$2"' _ "$C" "$deploy/caddy/Caddyfile"
 check "promtool check rules" "$P" check rules "$deploy/prometheus/graphite-alerts.yml"
@@ -682,6 +682,11 @@ mac_of "$lnew" "$L/backups/ltampered.tar.gz" >"$L/backups/ltampered.tar.gz.mac"
 expect_rc 1 "restore.sh --lost-key refuses a rewritten record under the lost key" "${LR[@]}" --lost-key "$lost_id" \
   "$L/backups/ltampered.tar.gz" "$L/restored-tampered"
 [ ! -e "$L/restored-tampered" ] && ok "the rewritten archive was not restored" || bad "the rewritten archive reached $L/restored-tampered"
+
+echo "== backup and restore keys (backup-keys.test.sh)"
+# Round 38 (R37-11, T-9): the .mac under the current key only, on both sides,
+# and the newest anchored checkpoint chosen by content, not by file name.
+check "backup.sh / restore.sh key and anchor rules (deploy/tests/backup-keys.test.sh)" bash "$here/backup-keys.test.sh"
 
 echo "== compose entrypoint"
 # The Core's entrypoint script from the prod compose file, run against a

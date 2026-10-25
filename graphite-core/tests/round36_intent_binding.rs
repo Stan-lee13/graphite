@@ -12,7 +12,7 @@
 use graphite_core::confidence_engine::TrustTier;
 use graphite_core::intent_binding::{
     bind, bind_withdrawal, decode_swap, wallet_effect, Binding, BindingInput, Ix, JupiterPayload,
-    JUPITER_SWAP_VARIANTS, JUPITER_V6, NATIVE_MINT, RAYDIUM_CPMM,
+    WithdrawalContext, JUPITER_SWAP_VARIANTS, JUPITER_V6, NATIVE_MINT, RAYDIUM_CPMM,
 };
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
@@ -744,13 +744,20 @@ fn stake_and_intents_that_state_nothing() {
         run("stake", params("1", FRIEND, "SOL"), &[], None),
         Binding::Unbound(_)
     ));
-    for intent in ["close", "revoke", "create", "claim", "configure"] {
+    for intent in ["close", "revoke", "claim", "configure"] {
         assert_eq!(
             run(intent, None, &[], None),
             Binding::NotApplicable,
             "{intent}"
         );
     }
+    // Re-pinned in Round 38 (R37-7): a creation is held to the rent of what
+    // it creates (`bind_create`), so without a simulated diff it is unbound,
+    // not "nothing to bind".
+    assert!(matches!(
+        run("create", None, &[], None),
+        Binding::Unbound(_)
+    ));
 }
 
 // ─── Swaps ──────────────────────────────────────────────────────────────────
@@ -1051,6 +1058,15 @@ fn a_withdrawal_minimum_is_held_to_what_was_simulated() {
             ("minimum_token_1_amount", b, r1.clone()),
         ]
     };
+    // Nothing rides beside it (Round 38's `keeps_value` reads this).
+    let signers = [WALLET.to_string()];
+    let none = WithdrawalContext {
+        instructions: Ok(&[]),
+        signers: &signers,
+        program_id: RAYDIUM_CPMM,
+    };
+    let bind_withdrawal =
+        |i: &str, m: &[(&str, u64, String)], p, d| bind_withdrawal(i, m, p, d, &none);
     assert!(matches!(
         bind_withdrawal("withdraw", &m(99_500_000, 995_000_000), None, Some(&diff)),
         Binding::Bound(_)

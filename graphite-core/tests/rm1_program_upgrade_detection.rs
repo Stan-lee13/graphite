@@ -17,9 +17,10 @@
 use base64::Engine as _;
 use graphite_core::manifest::load_seed_manifests;
 use graphite_core::policy_engine::WalletProfile;
+use graphite_core::rpc_client::{ProgramDeployment, LOADER_V4};
 use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient, UPGRADEABLE_LOADER};
 use graphite_core::verification::{
-    GraphiteCore, ProgramUpgrade, ProposedIntent, VerificationInput,
+    GraphiteCore, ProgramUpgrade, ProposedIntent, UnobservedCode, VerificationInput,
 };
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -322,6 +323,16 @@ async fn a_deployment_that_cannot_be_read_changes_nothing() {
     loader.deploy_slot.store(400, Ordering::SeqCst);
     let (found, r) = upgrades(&core).await;
     assert!(found.is_empty(), "nothing was read, so nothing changed");
+    // Round 38 (R37-16): and the verdict says so. Until then this was a
+    // tracing line, and the verdict rested on evidence that may describe
+    // replaced code.
+    assert!(
+        r.scope
+            .unobserved_codes()
+            .contains(&UnobservedCode::ProgramDeployments),
+        "{:?}",
+        r.scope.unobserved()
+    );
     assert!(!r
         .risk_verdict
         .findings
@@ -329,7 +340,46 @@ async fn a_deployment_that_cannot_be_read_changes_nothing() {
         .any(|f| f.pattern == "ProgramQuarantined"));
     // Once the loader answers again, the redeploy is still noticed.
     *loader.broken.lock().unwrap() = false;
-    assert_eq!(upgrades(&core).await.0.len(), 1);
+    let (found, r) = upgrades(&core).await;
+    assert_eq!(found.len(), 1);
+    assert!(!r
+        .scope
+        .unobserved_codes()
+        .contains(&UnobservedCode::ProgramDeployments));
+}
+
+/// Round 38 (R37-16): one program whose account does not decode as its
+/// loader's failed the whole batch, so a single odd account switched
+/// upgrade detection off for every program in the transaction. It now
+/// stands for itself, and the verdict names it.
+#[tokio::test]
+async fn one_undecodable_deployment_does_not_hide_the_others() {
+    let loader = Loader::new();
+    // Owned by loader-v4, with a loader-v3 Program account's 36 bytes.
+    *loader.owner.lock().unwrap() = LOADER_V4.to_string();
+    let client = SolanaRpcClient::new(RpcConfig {
+        endpoint: serve(loader.clone()),
+        timeout: std::time::Duration::from_secs(5),
+        max_retries: 0,
+        ..Default::default()
+    });
+    let read = client
+        .get_program_deployments(&[WHIRLPOOL.to_string(), key(0x70)])
+        .await
+        .expect("one bad entry is not a failed batch");
+    assert!(
+        matches!(&read[0], ProgramDeployment::Unreadable { why } if why.contains("LoaderV4State")),
+        "{read:?}"
+    );
+    assert_eq!(read[1], ProgramDeployment::Missing);
+    let (_, r) = upgrades(&core_with(&loader)).await;
+    assert!(
+        r.scope
+            .unobserved_codes()
+            .contains(&UnobservedCode::ProgramDeployments),
+        "{:?}",
+        r.scope.unobserved()
+    );
 }
 
 #[tokio::test]

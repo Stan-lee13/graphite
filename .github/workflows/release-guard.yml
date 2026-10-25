@@ -1,0 +1,112 @@
+name: Release guard
+
+# Round 38 (R37-8). A `v*` tag runs the TAGGED commit's own release.yml. On a
+# main commit older than the release gate (99948c6, Round 32, is on main at
+# 0.3.0-beta) that copy has no signature, ancestry or push-run check at all,
+# so anyone who can push a tag could publish an image and a release with
+# genuine provenance, and no change to release.yml can reach that old copy.
+#
+# This workflow can: `workflow_run` always runs the DEFAULT BRANCH's copy of
+# the file, whichever commit the watched run came from. It watches every run
+# of the workflow named `Release` (every copy of release.yml, old ones
+# included, has that name) and checks, with main's gate script and main's
+# signer lists:
+#   - the run's commit is on main and descends from the commit that
+#     introduced the gate (release-gate.sh ancestor);
+#   - the tag is an annotated tag of that commit, SSH-signed by a key in
+#     main's .github/allowed_signers and not in main's .github/revoked_signers.
+# A run that fails either check (or that cannot be checked) is cancelled when
+# it is requested, long before its publish job (two builds and an image come
+# first), and when one completes anyway its GitHub Release is deleted. The
+# run of this workflow is red either way.
+#
+# What it cannot do, said plainly: it does not see a release workflow under
+# another name (a branch commit can rename it), it cannot revoke an
+# attestation or an image already pushed (the error names them for the
+# owner), and an admin can disable it. The stop is still the owner's: the
+# tag-creation ruleset and the `release` environment's reviewer and tag
+# policy (docs/ops/production-checklist.md, R1–R2). This is a second line.
+#
+# It never runs code from the watched commit: it checks out main and only
+# reads the watched commit's history and tag object.
+
+on:
+  workflow_run:
+    workflows: ["Release"]
+    types: [requested, completed]
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    name: The tag is on main, not older than the gate, and signed by a current signer
+    # A manual run is a rehearsal and publishes nothing; a tag is a push.
+    if: github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      verdict: ${{ steps.verdict.outputs.verdict }}
+    steps:
+      # main, the default branch: no `ref`, so this is main's gate and lists.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verdict
+        id: verdict
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
+        # The verdict is "refused" unless every check below passes; a check
+        # that errors is a refusal (the owner re-runs this, then the release).
+        run: |
+          verdict=refused
+          trap 'echo "verdict=$verdict" >> "$GITHUB_OUTPUT"' EXIT
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::the watched run's commit '$HEAD_SHA' is not a commit id"; exit 1; }
+          [[ "$TAG" =~ ^v[0-9A-Za-z._+-]+$ ]] || { echo "::error::the watched run's ref '$TAG' is not a v* tag name"; exit 1; }
+          git fetch --no-tags --force origin "+refs/tags/${TAG}:refs/tags/${TAG}"
+          peeled="$(git rev-parse --verify "refs/tags/${TAG}^{commit}")"
+          [ "$peeled" = "$HEAD_SHA" ] || { echo "::error::tag $TAG names $peeled, the run built $HEAD_SHA"; exit 1; }
+          bash .github/scripts/release-gate.sh ancestor "$HEAD_SHA" refs/remotes/origin/main
+          git cat-file tag "refs/tags/${TAG}" > "$RUNNER_TEMP/tag.raw"
+          bash .github/scripts/release-gate.sh tag-signature "$RUNNER_TEMP/tag.raw" "$TAG" "$HEAD_SHA" .github/allowed_signers .github/revoked_signers
+          verdict=allowed
+
+  stop:
+    name: Stop a refused release
+    needs: check
+    # Runs on every verdict but "allowed", including a check job that failed
+    # before it wrote one.
+    if: always() && github.event.workflow_run.event == 'push' && needs.check.outputs.verdict != 'allowed'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: write # cancel the watched run
+      contents: write # delete its GitHub Release
+    steps:
+      - name: Cancel the run, delete its release, fail
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          echo "::error::Release run $RUN_URL ($TAG at $HEAD_SHA) failed the release guard"
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo "::error::run id '$RUN_ID'"; exit 1; }
+          # A completed run cannot be cancelled; that answer is expected then.
+          gh api -X POST "repos/${REPO}/actions/runs/${RUN_ID}/cancel" \
+            || echo "::warning::could not cancel run $RUN_ID (already completed?)"
+          if [[ "$TAG" =~ ^v[0-9A-Za-z._+-]+$ ]] && gh release view "$TAG" --repo "$REPO" --json tagName >/dev/null 2>&1; then
+            gh release delete "$TAG" --repo "$REPO" --yes
+            echo "::error::deleted the GitHub Release $TAG"
+          fi
+          echo "::error::OWNER: if run $RUN_URL reached its publish job, the image ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/graphite-core:${TAG#v} and its attestations exist; delete the package version, and treat the attestations (which cannot be revoked) as void."
+          exit 1

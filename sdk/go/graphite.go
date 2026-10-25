@@ -608,6 +608,10 @@ const (
 	// UnobservedIntentParameters (Round 36, F-003): the request states an
 	// amount, recipient or asset the Core could not tie to the bytes.
 	UnobservedIntentParameters = "intent_parameters"
+	// UnobservedProgramDeployments (Round 38, R37-16): whether a manifested
+	// program the transaction invokes was redeployed since its evidence was
+	// gathered: its deployment could not be read.
+	UnobservedProgramDeployments = "program_deployments"
 )
 
 // IsInherentUnobserved reports whether a residual code is one every

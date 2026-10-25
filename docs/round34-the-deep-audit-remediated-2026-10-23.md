@@ -14,6 +14,11 @@ scratch reproduction tests were not in the environment this round ran in. Every 
 re-reproduced from the remediation brief's restatement of it: what is wrong, why, and how to fix
 it. Each regression test below was written fresh, not ported, and was shown to fail on `b473a31`.
 
+> **Not in this repository (noted after the Round 37 re-audit, DOC2-18):** neither the Round 33
+> audit report nor the Round 34 remediation brief is committed here. The finding ids this report
+> and the later documents cite (`R33-n`, and the documentation items `DOC-n`) are theirs; what each
+> finding says is restated in this report, and its fix and test in `AUDIT/01-findings.md`.
+
 ## A. What changed for an operator
 
 - **A `stake` intent no longer declares any withdrawal (R33-1, P0).** Staking withdrawals are

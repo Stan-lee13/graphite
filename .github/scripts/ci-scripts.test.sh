@@ -3,7 +3,12 @@
 # backticks in single quotes are fixture text, not expansions (SC2016).
 # shellcheck disable=SC2015,SC2016
 # Tests for the small CI scripts of Round 34: set-rpc-env.sh (D-9),
-# pinned-tools.py (R33-20) and check-attestation-commands.py (R33-18).
+# pinned-tools.py (R33-20) and check-attestation-commands.py (R33-18); and
+# Round 36's mutation_floor.py (F-015). Round 38: pinned-tools consistency
+# (D2-6), dependency-holds.py (D2-7), the rulesets and ruleset-drift.py
+# (D2-4, R37-8), the release workflows (R37-8, D2-3), test-count.sh per test
+# binary (D2-8) and the Dockerfile's apt snapshot (D-8). Needs git and the
+# repository's full history (ci-scripts checks out with fetch-depth: 0).
 # Needs bash and python3; no network. Exit 0 only when every case behaved.
 set -uo pipefail
 
@@ -142,6 +147,386 @@ want = {"inherits": "release", "opt-level": 3, "debug-assertions": False, "overf
 bad = {k: p.get(k) for k, v in want.items() if p.get(k) != v}
 if bad:
     sys.exit(f"profile.ci-test differs from release semantics: {bad}")
+PY
+
+echo "== mutation_floor.py (F-015)"
+# The shapes cargo-mutants 27.1.0 writes. A shard killed by the step timeout
+# leaves outcomes.json with total_mutants EQUAL to the outcomes recorded and
+# end_time null; only mutants.json, written before the first mutant runs,
+# holds the shard's own count. Run 40083338181 scored 16 such shards as
+# complete.
+floor="$root/graphite-core/scripts/mutation_floor.py"
+shard() { # shard DIR LISTED CAUGHT MISSED UNVIABLE END_TIME
+  mkdir -p "$1"
+  python3 -I - "$@" <<'PY'
+import json, sys
+d, listed, caught, missed, unviable, end = sys.argv[1], *map(int, sys.argv[2:6]), sys.argv[6]
+json.dump([{"name": f"m{i}"} for i in range(listed)], open(f"{d}/mutants.json", "w"))
+oc = [{"scenario": "Baseline", "summary": "Success"}]
+for n, s in ((caught, "CaughtMutant"), (missed, "MissedMutant"), (unviable, "Unviable")):
+    oc += [{"scenario": {"Mutant": {}}, "summary": s}] * n
+json.dump({"outcomes": oc, "total_mutants": caught + missed + unviable,
+           "end_time": None if end == "null" else end}, open(f"{d}/outcomes.json", "w"))
+PY
+}
+shard "$T/m-done" 10 8 1 1 2026-10-24T12:55:19Z
+expect 0 "a finished shard at its floor passes" python3 -I "$floor" "$T/m-done/outcomes.json" 0.80
+expect 1 "a finished shard below its floor fails" python3 -I "$floor" "$T/m-done/outcomes.json" 0.90
+shard "$T/m-killed" 40 37 1 0 null
+expect 1 "a shard killed after 38 of 40 is INCOMPLETE, not scored" python3 -I "$floor" "$T/m-killed/outcomes.json" 0.10
+grep -q INCOMPLETE <<<"$(python3 -I "$floor" "$T/m-killed/outcomes.json" 0.10 2>&1)" && ok "and says INCOMPLETE" || bad "the killed shard was not reported INCOMPLETE"
+shard "$T/m-short" 40 37 1 0 2026-10-24T12:55:19Z
+expect 1 "a shard short of its list is INCOMPLETE even with an end time" python3 -I "$floor" "$T/m-short/outcomes.json" 0.10
+shard "$T/m-open" 10 8 1 1 null
+expect 1 "a shard with every outcome but no end time is INCOMPLETE" python3 -I "$floor" "$T/m-open/outcomes.json" 0.10
+shard "$T/m-nolist" 10 9 1 0 2026-10-24T12:55:19Z && rm "$T/m-nolist/mutants.json"
+expect 1 "a shard without its mutant list cannot be judged" python3 -I "$floor" "$T/m-nolist/outcomes.json" 0.10
+shard "$T/m-empty" 0 0 0 0 2026-10-24T12:55:19Z
+expect 1 "a shard that tested nothing fails" python3 -I "$floor" "$T/m-empty/outcomes.json" 0.10
+
+echo "== pinned-tools.py: the same pin everywhere (D2-6)"
+# check-pins used to ask only that each listed text occurs somewhere: a
+# second, different pin of the same tool in another file (or another line of
+# the same file) passed. Each tool now names the patterns its pin appears
+# under, and every match in the files it names must carry the one version.
+cons() { "${P[@]}" check-pins --list "$T/cons/.github/pinned-tools.json" --root "$T/cons"; }
+fresh_cons() {
+  rm -rf "$T/cons" && mkdir -p "$T/cons/.github"
+  cp -r "$root/.github/workflows" "$T/cons/.github/"
+  cp "$root/.github/pinned-tools.json" "$T/cons/.github/"
+  cp "$root/Dockerfile" "$T/cons/"
+}
+fresh_cons
+expect 0 "a copy of the tree with every workflow and the Dockerfile passes" cons
+fresh_cons
+sed -i '0,/toolchain: 1\.99\.1/s//toolchain: 1.98.0/' "$T/cons/.github/workflows/live-mainnet.yml"
+expect 1 "a second, older toolchain pin in another workflow fails" cons
+fresh_cons
+printf '# rust:1.98.0-bookworm\n' >>"$T/cons/Dockerfile"
+expect 1 "a stale rust image tag left in the Dockerfile fails" cons
+fresh_cons
+printf '      - run: cargo install cargo-audit --locked --version 0.21.0\n' >>"$T/cons/.github/workflows/assurance.yml"
+expect 1 "a second cargo-audit install at another version fails" cons
+fresh_cons
+python3 -I - "$T/cons/.github/pinned-tools.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+for t in d["tools"]:
+    if t["name"] == "caddy":
+        t.pop("consistent", None)
+json.dump(d, open(sys.argv[1], "w"))
+PY
+expect 1 "a tool without a consistency rule fails (no rule is not 'consistent')" cons
+fresh_cons
+python3 -I - "$T/cons/.github/pinned-tools.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+for t in d["tools"]:
+    if t["name"] == "caddy":
+        t["consistent"][0]["pattern"] = r"CADDY_NEVER_MATCHES: (\S+)"
+json.dump(d, open(sys.argv[1], "w"))
+PY
+expect 1 "a consistency pattern that matches nothing fails" cons
+fresh_cons
+sed -i 's/toolchain: 1\.89\.0/toolchain: 1.90.0/' "$T/cons/.github/workflows/ci.yml"
+expect 1 "the MSRV exception names its exact text: a changed MSRV pin fails until the list says so" cons
+
+echo "== dependency-holds.py (D2-7)"
+H=(python3 -I "$here/dependency-holds.py")
+expect 0 "every Dependabot ignore and npm override is listed, none past review" "${H[@]}" check --today 2026-10-24
+expect 1 "a hold past its review-by date fails" "${H[@]}" check --today 2027-06-01
+fresh_holds() {
+  rm -rf "$T/holds" && mkdir -p "$T/holds/.github"
+  cp "$root/.github/dependabot.yml" "$root/.github/dependency-holds.json" "$T/holds/.github/"
+  (cd "$root" && git ls-files '*package.json' | grep -v node_modules) | while read -r f; do
+    mkdir -p "$T/holds/$(dirname "$f")" && cp "$root/$f" "$T/holds/$f"
+  done
+}
+hold() { "${H[@]}" check --list "$T/holds/.github/dependency-holds.json" --root "$T/holds" --today 2026-10-24; }
+fresh_holds
+expect 0 "a copy of the tree passes" hold
+fresh_holds
+python3 -I - "$T/holds/.github/dependabot.yml" <<'PY'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1]))
+for u in d["updates"]:
+    if u["directory"] == "/sdk/go":
+        u["ignore"] = [{"dependency-name": "golang.org/x/net", "update-types": ["version-update:semver-major"]}]
+yaml.safe_dump(d, open(sys.argv[1], "w"))
+PY
+expect 1 "a new Dependabot ignore without a review date fails" hold
+fresh_holds
+sed -i 's/"zod": "4\.6\.7"/"zod": "4.6.8"/' "$T/holds/integrations/solana-agent-kit/package.json"
+expect 1 "an override moved without its hold fails" hold
+fresh_holds
+python3 -I - "$T/holds/.github/dependency-holds.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d["holds"].append({"kind": "npm-override", "file": "dashboard/package.json", "package": "left-pad",
+                   "value": "1.3.0", "since": "2026-10-24", "review_by": "2027-01-20", "why": "stale"})
+json.dump(d, open(sys.argv[1], "w"))
+PY
+expect 1 "a hold for an override that no longer exists fails (prune it)" hold
+fresh_holds
+python3 -I - "$T/holds/.github/dependency-holds.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d["holds"][0]["review_by"] = "2099-01-01"
+json.dump(d, open(sys.argv[1], "w"))
+PY
+expect 1 "a review-by date beyond max_days after the hold was recorded fails" hold
+fresh_holds
+python3 -I - "$T/holds/.github/dependency-holds.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d["holds"][0]["why"] = ""
+json.dump(d, open(sys.argv[1], "w"))
+PY
+expect 1 "a hold without a reason fails" hold
+
+echo "== rulesets (D2-4) and ruleset-drift.py (R37-8)"
+expect 0 "the committed rulesets bypass only where they say" python3 -I - "$root/.github/rulesets" <<'PY'
+import json, os, sys
+d = sys.argv[1]
+r = {f: json.load(open(os.path.join(d, f))) for f in os.listdir(d) if f.endswith(".json")}
+want = {
+    "main.json": [],
+    "release-tags.json": [],
+    "release-tags-create.json": [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}],
+    # D2-4: a single maintainer cannot approve their own pull request, so
+    # without a bypass this ruleset blocks every merge. The admin role may
+    # bypass it through a pull request only (never by a direct push), and
+    # every such merge is logged as a bypass.
+    "main-review.json": [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "pull_request"}],
+}
+for f, b in want.items():
+    if f not in r:
+        sys.exit(f"{f} is missing")
+    if r[f].get("bypass_actors") != b:
+        sys.exit(f"{f}: bypass_actors {r[f].get('bypass_actors')} (wanted {b})")
+    if r[f].get("enforcement") != "active":
+        sys.exit(f"{f}: enforcement {r[f].get('enforcement')}")
+PY
+D=(python3 -I "$here/ruleset-drift.py")
+# A live API answer made from the committed files: what GET rulesets and
+# GET rulesets/{id} return once the owner applied them, as GITHUB_TOKEN sees
+# it (bypass_actors withheld, current_user_can_bypass "never").
+mklive() { # mklive DIR [show-bypass]
+  rm -rf "$1" && mkdir -p "$1"
+  python3 -I - "$root/.github/rulesets" "$root/.github/environments/release.json" "$1" "${2:-}" <<'PY'
+import json, os, sys
+src, env_file, out, show = sys.argv[1:5]
+listing = []
+for i, f in enumerate(sorted(x for x in os.listdir(src) if x.endswith(".json") and x != "main-review.json"), 1):
+    r = json.load(open(os.path.join(src, f)))
+    rid = 100 + i
+    listing.append({"id": rid, "name": r["name"], "target": r["target"], "enforcement": r["enforcement"],
+                    "source_type": "Repository", "source": "Stan-lee13/graphite"})
+    live = dict(r, id=rid, source_type="Repository", source="Stan-lee13/graphite", current_user_can_bypass="never")
+    if not show:
+        live.pop("bypass_actors")
+    # GitHub adds default parameters the committed file does not name.
+    for rule in live["rules"]:
+        if rule["type"] == "pull_request":
+            rule["parameters"]["automatic_copilot_code_review_enabled"] = False
+            rule["parameters"]["required_reviewers"] = []
+    json.dump(live, open(os.path.join(out, f"ruleset-{rid}.json"), "w"))
+json.dump(listing, open(os.path.join(out, "rulesets.json"), "w"))
+env = json.load(open(env_file))
+json.dump({"name": "release", "can_admins_bypass": True,
+           "protection_rules": [{"type": "required_reviewers", "prevent_self_review": False,
+                                 "reviewers": [{"type": "User", "reviewer": {"login": "owner", "id": 1}}]},
+                                {"type": "branch_policy"}],
+           "deployment_branch_policy": env["deployment_branch_policy"]},
+          open(os.path.join(out, "environment-release.json"), "w"))
+json.dump({"total_count": len(env["branch_policies"]),
+           "branch_policies": [dict(p, id=7 + n) for n, p in enumerate(env["branch_policies"])]},
+          open(os.path.join(out, "environment-release-policies.json"), "w"))
+PY
+}
+drift() { "${D[@]}" --live "$1"; }
+edit_live() { # edit_live DIR PYTHON (d = the directory, j/w = load/save)
+  # A fixture edit that fails is a failed test, never an unedited fixture.
+  python3 -I - "$1" "$2" <<'PY' || bad "the fixture edit failed: $2"
+import json, os, sys
+d = sys.argv[1]
+def j(f): return json.load(open(os.path.join(d, f)))
+def w(f, v): json.dump(v, open(os.path.join(d, f), "w"))
+exec(sys.argv[2])
+PY
+}
+L="$T/live"
+mklive "$L"
+expect 0 "the committed rulesets and environment, applied as committed: no drift" drift "$L"
+mklive "$L" show
+expect 0 "the same with bypass_actors visible (an admin token) and equal: no drift" drift "$L"
+printf '[]' >"$T/empty-rulesets.json"
+rm -rf "$T/live0" && mkdir -p "$T/live0" && cp "$T/empty-rulesets.json" "$T/live0/rulesets.json"
+expect 1 "today's state (no ruleset, no release environment) fails" drift "$T/live0"
+mklive "$L"
+edit_live "$L" 'l = j("rulesets.json"); r = [x for x in l if x["name"].startswith("release tags — only")][0]; os.remove(os.path.join(d, "ruleset-%d.json" % r["id"])); w("rulesets.json", [x for x in l if x is not r])'
+expect 1 "the tag-creation ruleset absent fails" drift "$L"
+mklive "$L"
+edit_live "$L" 'f = [x for x in os.listdir(d) if x.startswith("ruleset-")][0]; r = j(f); r["enforcement"] = "evaluate"; w(f, r)'
+expect 1 "a ruleset switched to evaluate (not enforced) fails" drift "$L"
+mklive "$L"
+edit_live "$L" 'f = [x for x in os.listdir(d) if x.startswith("ruleset-") and "integrity" in j(x)["name"]][0]; r = j(f); r["rules"] = [x for x in r["rules"] if x["type"] != "required_status_checks"]; w(f, r)'
+expect 1 "main without its required CI gate check fails" drift "$L"
+mklive "$L"
+edit_live "$L" 'f = [x for x in os.listdir(d) if x.startswith("ruleset-") and "integrity" in j(x)["name"]][0]; r = j(f); [x["parameters"].update(required_status_checks=[{"context": "CI gate"}]) for x in r["rules"] if x["type"] == "required_status_checks"]; w(f, r)'
+expect 1 "a CI gate check required from any app (integration_id dropped) fails" drift "$L"
+mklive "$L"
+edit_live "$L" 'f = [x for x in os.listdir(d) if x.startswith("ruleset-") and "integrity" in j(x)["name"]][0]; r = j(f); [x["parameters"].update(require_last_push_approval=True, bypass_pull_request_allowances=True) for x in r["rules"] if x["type"] == "pull_request"]; w(f, r)'
+expect 1 "an extra parameter switched on live fails" drift "$L"
+mklive "$L" show
+edit_live "$L" 'f = [x for x in os.listdir(d) if x.startswith("ruleset-") and "immutable" in j(x)["name"]][0]; r = j(f); r["bypass_actors"] = [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}]; w(f, r)'
+expect 1 "a bypass actor added to the immutable-tags ruleset (visible) fails" drift "$L"
+mklive "$L"
+edit_live "$L" 'f = [x for x in os.listdir(d) if x.startswith("ruleset-")][0]; r = j(f); r["current_user_can_bypass"] = "always"; w(f, r)'
+expect 1 "a ruleset the workflow token can bypass fails" drift "$L"
+mklive "$L"
+rm "$L/environment-release.json" "$L/environment-release-policies.json"
+expect 1 "no release environment fails" drift "$L"
+mklive "$L"
+edit_live "$L" 'e = j("environment-release.json"); e["protection_rules"] = [x for x in e["protection_rules"] if x["type"] != "required_reviewers"]; w("environment-release.json", e)'
+expect 1 "a release environment without a required reviewer fails" drift "$L"
+mklive "$L"
+edit_live "$L" 'p = j("environment-release-policies.json"); p["branch_policies"].append({"id": 99, "name": "*", "type": "branch"}); w("environment-release-policies.json", p)'
+expect 1 "a release environment that also admits any branch fails" drift "$L"
+mklive "$L"
+printf '{"message":"Resource not accessible by integration"}' >"$L/rulesets.json"
+expect 2 "an API error instead of the ruleset list is an error, never a pass" drift "$L"
+
+echo "== the release workflows (R37-8, D2-3)"
+expect 0 "release.yml: publish re-reads the tag the gate verified, before pushing and around the release" python3 -I - "$root/.github/workflows/release.yml" <<'PY'
+import sys, yaml
+jobs = yaml.safe_load(open(sys.argv[1]))["jobs"]
+gate, pub = jobs["gate"], jobs["publish"]
+for k in ("tag_object", "commit"):
+    if k not in gate.get("outputs", {}):
+        sys.exit(f"gate does not output {k}")
+names = [s.get("name") or s.get("uses", "") for s in pub["steps"]]
+i_check = next((i for i, s in enumerate(pub["steps"]) if "same-tag" in (s.get("run") or "")), None)
+i_push = next((i for i, n in enumerate(names) if n.startswith("Push the image")), None)
+if i_check is None or i_push is None or i_check > i_push:
+    sys.exit("no same-tag check before the image push")
+rel = next(s for s in pub["steps"] if s.get("name") == "GitHub Release")["run"]
+a, c = rel.find("same_tag\n"), rel.find("gh release create")
+if a < 0 or c < 0 or a > c or "if ! same_tag" not in rel[c:] or "gh release delete" not in rel[c:]:
+    sys.exit("the GitHub Release step does not re-check the tag before and after creating the release")
+sig = next(s for s in gate["steps"] if s.get("id") == "signature")["run"]
+if ".github/revoked_signers" not in sig:
+    sys.exit("the gate does not pass the revocation list")
+PY
+expect 0 "release-guard.yml: runs from main on every Release run, checks read-only, stops a refused one" python3 -I - "$root/.github/workflows/release-guard.yml" "$root/.github/workflows/release.yml" <<'PY'
+import sys, yaml
+g = yaml.safe_load(open(sys.argv[1]))
+rel_name = yaml.safe_load(open(sys.argv[2]))["name"]
+on = g.get(True) or g.get("on")
+wr = on.get("workflow_run") or sys.exit("not triggered by workflow_run")
+if wr.get("workflows") != [rel_name]:
+    sys.exit(f"workflow_run.workflows {wr.get('workflows')} is not [{rel_name!r}]")
+if not {"requested", "completed"} <= set(wr.get("types", [])):
+    sys.exit("must run when a Release run is requested and when it completes")
+if set(on) != {"workflow_run"}:
+    sys.exit(f"other triggers: {sorted(set(on) - {'workflow_run'})}")
+if g.get("permissions") != {}:
+    sys.exit("workflow-level permissions must be {}")
+check, stop = g["jobs"]["check"], g["jobs"]["stop"]
+if check.get("permissions") != {"contents": "read"}:
+    sys.exit(f"check job permissions {check.get('permissions')}")
+if stop.get("permissions") != {"actions": "write", "contents": "write"}:
+    sys.exit(f"stop job permissions {stop.get('permissions')}")
+co = next(s for s in check["steps"] if str(s.get("uses", "")).startswith("actions/checkout@"))
+if "ref" in (co.get("with") or {}) or (co.get("with") or {}).get("persist-credentials") is not False:
+    sys.exit("check must check out main (no ref) without persisted credentials")
+run = "\n".join(s.get("run") or "" for s in check["steps"])
+for needle in ("release-gate.sh ancestor", "release-gate.sh tag-signature", ".github/revoked_signers"):
+    if needle not in run:
+        sys.exit(f"check does not run {needle!r}")
+if "verdict" not in str(stop.get("if")) or "always()" not in str(stop.get("if")):
+    sys.exit("stop must run on any verdict but 'allowed', including a failed check")
+srun = "\n".join(s.get("run") or "" for s in stop["steps"])
+for needle in ("/cancel", "gh release delete", "exit 1"):
+    if needle not in srun:
+        sys.exit(f"stop does not {needle!r}")
+PY
+# Every main commit before the gate carries a release.yml of the name the
+# guard watches (it changed only at 99948c6 and at the gate's own commit).
+old_name="$(git -C "$root" show 99948c6:.github/workflows/release.yml 2>/dev/null | sed -n 's/^name: //p' | head -n 1)"
+[ "$old_name" = "Release" ] && ok "the pre-gate release.yml (99948c6) is named Release, which the guard watches" || bad "99948c6's release.yml is named '${old_name:-?}'"
+changes="$(git -C "$root" log --format=%h ad3f7ad9e41e932869a1f68322396b1ef86254f4^ -- .github/workflows/release.yml 2>/dev/null | wc -l)"
+[ "$changes" = 1 ] && ok "release.yml changed once before the gate (one pre-gate copy to watch)" || bad "release.yml changed $changes times before the gate"
+expect 0 "ruleset-drift.yml: weekly, read-only, GITHUB_TOKEN only" python3 -I - "$root/.github/workflows/ruleset-drift.yml" <<'PY'
+import re, sys, yaml
+text = open(sys.argv[1]).read()
+w = yaml.safe_load(text)
+on = w.get(True) or w.get("on")
+if not on.get("schedule"):
+    sys.exit("no schedule")
+perms = [w.get("permissions") or {}] + [j.get("permissions") or {} for j in w["jobs"].values()]
+for p in perms:
+    if not isinstance(p, dict) or any(v != "read" for v in p.values()):
+        sys.exit(f"a permission that is not read: {p}")
+if w.get("permissions") != {"contents": "read", "actions": "read"}:
+    sys.exit(f"workflow permissions {w.get('permissions')}")
+secrets = set(re.findall(r"secrets\.([A-Za-z_]+)", text))
+if secrets - {"GITHUB_TOKEN"}:
+    sys.exit(f"uses secrets {sorted(secrets)}")
+if re.search(r"gh api[^\n]*-X *(POST|PUT|PATCH|DELETE)|--method *(POST|PUT|PATCH|DELETE)", text):
+    sys.exit("writes through the API")
+if "ruleset-drift.py" not in text:
+    sys.exit("does not run ruleset-drift.py")
+PY
+
+echo "== test-count.sh per test binary (D2-8)"
+TC=(bash "$here/test-count.sh")
+cat >"$T/cargo.log" <<'LOG'
+     Running unittests src/lib.rs (target/ci-test/deps/graphite_core-0a1b)
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+     Running tests/alpha.rs (target/ci-test/deps/alpha-1c2d)
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/beta.rs (target/ci-test/deps/beta-3e4f)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+   Doc-tests graphite_core
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+LOG
+: >"$T/allow.txt"
+printf '# floor binary\n40 unittests src/lib.rs\n7 tests/alpha.rs\n3 tests/beta.rs\n' >"$T/floors.txt"
+expect 0 "the summed floor alone still passes" "${TC[@]}" cargo "$T/cargo.log" 52 "$T/allow.txt"
+out="$("${TC[@]}" cargo "$T/cargo.log" 52 "$T/allow.txt" 2>&1)"
+grep -q '7 passed  tests/alpha.rs' <<<"$out" && ok "the count of each test binary is printed" || bad "no per-binary table: $out"
+expect 0 "every binary at its floor passes" "${TC[@]}" cargo "$T/cargo.log" 52 "$T/allow.txt" "$T/floors.txt"
+sed 's/^test result: ok\. 3 passed/test result: ok. 0 passed/' "$T/cargo.log" >"$T/cargo-beta0.log"
+sed -i 's/^test result: ok\. 40 passed/test result: ok. 43 passed/' "$T/cargo-beta0.log"
+expect 0 "the summed floor misses a binary that fell to 0 while another grew (the D2-8 hole)" "${TC[@]}" cargo "$T/cargo-beta0.log" 52 "$T/allow.txt"
+expect 1 "a per-binary floor catches it" "${TC[@]}" cargo "$T/cargo-beta0.log" 52 "$T/allow.txt" "$T/floors.txt"
+grep -v 'tests/alpha.rs' "$T/cargo.log" | grep -v '^test result: ok\. 7 passed' >"$T/cargo-noalpha.log"
+expect 1 "a listed binary missing from the log fails" "${TC[@]}" cargo "$T/cargo-noalpha.log" 40 "$T/allow.txt" "$T/floors.txt"
+expect 1 "a floors file that does not exist fails" "${TC[@]}" cargo "$T/cargo.log" 52 "$T/allow.txt" "$T/no-floors.txt"
+printf '# nothing listed\n' >"$T/floors-empty.txt"
+expect 1 "a floors file that lists no binary fails (empty is not 'no floor')" "${TC[@]}" cargo "$T/cargo.log" 52 "$T/allow.txt" "$T/floors-empty.txt"
+
+echo "== Dockerfile: the apt layer is pinned (D-8)"
+expect 0 "the runtime image's apt sources are one dated snapshot, recorded in pinned-tools.json" python3 -I - "$root/Dockerfile" "$root/.github/pinned-tools.json" <<'PY'
+import json, re, sys
+text = open(sys.argv[1]).read()
+runtime = text[text.rindex("\nFROM debian:"):]
+stamps = set(re.findall(r"snapshot\.debian\.org/archive/debian(?:-security)?/(\d{8}T\d{6}Z)", runtime))
+if len(stamps) != 1:
+    sys.exit(f"snapshot timestamps in the runtime stage: {sorted(stamps)}")
+for needle in ("archive/debian/", "archive/debian-security/", "Check-Valid-Until=false", "/etc/apt/sources.list.d/debian.sources"):
+    if needle not in runtime:
+        sys.exit(f"the runtime stage lacks {needle!r}")
+if "deb.debian.org" in runtime.split("RUN", 1)[1]:
+    sys.exit("deb.debian.org is still a source")
+apt = [l for l in runtime.splitlines() if "apt-get" in l and not l.lstrip().startswith("#")]
+if not apt:
+    sys.exit("no apt-get line")
+tools = {t["name"]: t for t in json.load(open(sys.argv[2]))["tools"]}
+t = tools.get("debian snapshot (runtime image apt layer)") or sys.exit("pinned-tools.json does not list the snapshot")
+if t["version"] != next(iter(stamps)):
+    sys.exit(f"pinned-tools.json says {t['version']}, the Dockerfile {stamps}")
 PY
 
 echo

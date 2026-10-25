@@ -266,6 +266,11 @@ pub enum CliCommand {
 pub enum RegistryAction {
     /// List registered reviewers (G5 identities) and the acceptance log.
     Reviewers { state: Option<PathBuf> },
+    /// Check every acceptance record from its own contents (Round 36, F-008;
+    /// Round 38, V-5: `verify_offline` had no caller outside a unit test).
+    /// Exit 0 when every record verifies, 1 when one does not, 2 when none
+    /// fails and one predates retained signatures and cannot be checked.
+    VerifyRecords { state: Option<PathBuf> },
     /// Register a reviewer identity with a demonstrated reputation score
     /// (operator-verified stake/GitHub claim in Phase 2).
     RegisterReviewer {
@@ -425,11 +430,13 @@ pub enum AuditAction {
     /// the MACs, and against `checkpoint` when one is given. Exits 0 when
     /// nothing failed, 1 on a break or a checkpoint that does not hold, 2
     /// when the walk could not prove what it was asked to (MACs under a key
-    /// not supplied, a trail with no chained record, a checkpoint whose
-    /// records were pruned), 3 when the trail could not be read, 4 when
+    /// not supplied that a checked key-adoption record covers, a trail with
+    /// no chained record, a checkpoint whose records were pruned), 3 when
+    /// the trail, a key file or the checkpoint could not be read, 4 when
     /// keys were supplied and something is not covered by them (unkeyed
-    /// records no key-adoption record covers, a checkpoint with no MAC or
-    /// under a key not supplied). docs/ops/keys.md has the table.
+    /// records no key-adoption record covers, MACs under keys not supplied
+    /// that nothing covers, a checkpoint with no MAC or under a key not
+    /// supplied), 64 on a usage error. docs/ops/keys.md has the table.
     Verify {
         data_dir: Option<PathBuf>,
         /// Key files whose MACs to check; `GRAPHITE_AUDIT_KEY_FILE` is
@@ -439,8 +446,11 @@ pub enum AuditAction {
         json: bool,
     },
     /// Verify the trail, then print (or write to `out`, never over an
-    /// existing file) a checkpoint of its head — MAC'd when a key is given —
-    /// for the operator to keep where the writer cannot alter it.
+    /// existing file) a checkpoint of its head — MAC'd under the key the
+    /// head is under — for the operator to keep where the writer cannot
+    /// alter it. Refused (with `verify`'s exit code) unless the keys given
+    /// cover the head (Round 38, T-13): `verify` exits 0 under them, or 2
+    /// only for a lost key a checked key-adoption record closes.
     Checkpoint {
         data_dir: Option<PathBuf>,
         key_file: Option<PathBuf>,
@@ -470,6 +480,17 @@ pub enum AuditAction {
         data_dir: Option<PathBuf>,
         file: String,
         offset: u64,
+        key_file: Option<PathBuf>,
+    },
+    /// Record a prune that nothing recorded (Round 38, R37-14), with the
+    /// server stopped: a trail pruned before prune records existed starts
+    /// above seq 0 and `verify` reports that as a break. Once the operator
+    /// has checked the trail against an anchored checkpoint or a backup,
+    /// this appends a prune record naming where the trail starts now —
+    /// MAC'd under the key the head is under (`key_file`, else
+    /// `GRAPHITE_AUDIT_KEY_FILE`). Refuses a trail broken by anything else.
+    AcknowledgePrune {
+        data_dir: Option<PathBuf>,
         key_file: Option<PathBuf>,
     },
 }
@@ -502,12 +523,18 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
             json,
         } => {
             let dir = data_dir_path(data_dir);
-            let keys = audit_keys(&key_files, &dir)?;
+            // Round 38 (T-14): an input that cannot be read is exit 3 (the
+            // check could not be made), never 1, which a monitor reads as a
+            // break.
+            let keys = match audit_keys(&key_files, &dir) {
+                Ok(k) => k,
+                Err(e) => return Ok(unreadable(&e)),
+            };
             let checkpoint = match checkpoint {
-                Some(p) => Some(
-                    serde_json::from_slice::<crate::durable::Checkpoint>(&std::fs::read(&p)?)
-                        .map_err(|e| format!("checkpoint {}: {e}", p.display()))?,
-                ),
+                Some(p) => match read_checkpoint(&p) {
+                    Ok(cp) => Some(cp),
+                    Err(e) => return Ok(unreadable(&e)),
+                },
                 None => None,
             };
             let report = match crate::durable::verify_audit_trail(
@@ -527,9 +554,12 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                 println!("integrity        {:?}", report.integrity);
                 println!("files            {}", report.files.len());
                 println!(
-                    "records          {} chained, {} legacy (unchained)",
-                    report.chained_records, report.legacy_unchained_records
+                    "records          {} chained, {} legacy (unchained; {} listed by a checked key-adoption record)",
+                    report.chained_records, report.legacy_unchained_records, report.legacy_adopted
                 );
+                if let Some(id) = &report.trail_id {
+                    println!("trail id         {id}");
+                }
                 println!(
                     "MACs             {} verified, {} under a key not supplied, {} records unkeyed ({} covered by a key-adoption record)",
                     report.macs_verified,
@@ -566,6 +596,17 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                         report.unkeyed_not_adopted()
                     );
                 }
+                if report.keys_supplied && report.legacy_not_adopted() > 0 {
+                    println!(
+                        "LEGACY           {} record(s) without a chain link that no checked key-adoption record lists: not covered by the key, and not read by a server that holds it{} (docs/ops/keys.md, `graphite audit adopt-key`)",
+                        report.legacy_not_adopted(),
+                        if report.legacy_before_keyed_genesis {
+                            "; before a chain keyed from seq 0 they are a break — inserted, unless you know where they came from"
+                        } else {
+                            ""
+                        }
+                    );
+                }
                 if report.unparseable_lines > 0 {
                     println!(
                         "unparseable      {} line(s): torn writes the writer named when it resumed, or the active file's unterminated last line — never read; any other line that is not a record is a break",
@@ -576,7 +617,21 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                     println!("head             seq {seq} hash {hash}");
                 }
                 if let Some(first) = report.first_seq.filter(|s| *s > 0) {
-                    println!("first on disk    seq {first} (older records pruned or missing)");
+                    if report.pruned_without_record {
+                        println!(
+                            "first on disk    seq {first}: NO prune record names it — the records before it were deleted, or pruned by a writer before Round 38. Check the trail against an anchored checkpoint or a backup; `graphite audit acknowledge-prune` records the prune"
+                        );
+                    } else {
+                        println!(
+                            "first on disk    seq {first} (older records pruned; a prune record names this start)"
+                        );
+                    }
+                }
+                if report.keys_supplied && report.macs_not_covered > 0 {
+                    println!(
+                        "NOT COVERED      {} MAC(s) under a key not supplied that no checked key-adoption record after them covers: the keys given do not reach them (a trail under another key, or its newest key not given)",
+                        report.macs_not_covered
+                    );
                 }
                 if let Some(b) = &report.first_break {
                     println!(
@@ -600,41 +655,87 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
             out,
         } => {
             let dir = data_dir_path(data_dir);
-            let keys = audit_keys(key_file.as_slice(), &dir)?;
+            let keys = match audit_keys(key_file.as_slice(), &dir) {
+                Ok(k) => k,
+                Err(e) => return Ok(unreadable(&e)),
+            };
             let path = crate::durable::audit_path(&dir);
-            let report = crate::durable::verify_audit_trail(&path, &keys, None)?;
+            let report = match crate::durable::verify_audit_trail(&path, &keys, None) {
+                Ok(r) => r,
+                Err(e) => {
+                    return Ok(unreadable(&format!(
+                        "audit trail {} could not be read: {e}",
+                        dir.display()
+                    )))
+                }
+            };
             if let Some(b) = &report.first_break {
-                return Err(format!(
+                eprintln!(
                     "the trail is broken at {} line {}: {} — no checkpoint of a broken trail",
                     b.file, b.line, b.reason
-                )
-                .into());
+                );
+                return Ok(1);
             }
             let (Some(seq), Some(hash)) = (report.head_seq, report.head_hash.clone()) else {
-                return Err("the trail holds no chained record yet; nothing to checkpoint".into());
+                eprintln!("the trail holds no chained record yet; nothing to checkpoint");
+                return Ok(2);
+            };
+            // Round 38 (T-13): a checkpoint vouches for the head and, through
+            // the hash chain, for everything before it. It is signed only when
+            // the keys given cover that — `audit verify` exits 0 under them,
+            // or 2 only for MACs under keys a checked key-adoption record
+            // closes (a lost key) — and under the key the head is MAC'd
+            // under. It used to sign whatever head the walk ended at, under
+            // the first key given: a head under a key not given (its MAC never
+            // checked), or, with no key, an unsigned checkpoint of a keyed
+            // trail.
+            if !report.head_covered() {
+                let code = report.exit_code();
+                eprintln!(
+                    "the keys given do not cover the trail's head (`graphite audit verify` exits {code} with them): no checkpoint of a head they do not cover. Give the key the server writes under ({})",
+                    report.head_key_id.as_deref().unwrap_or("the trail is unkeyed")
+                );
+                return Ok(code);
+            }
+            let signer = match &report.head_key_id {
+                Some(id) => match keys.iter().find(|k| k.id() == id) {
+                    Some(k) => Some(k),
+                    None => {
+                        eprintln!("the trail's head is under key {id}, which is not a key given: no checkpoint");
+                        return Ok(4);
+                    }
+                },
+                None if keys.is_empty() => None,
+                None => {
+                    eprintln!("the trail's head carries no MAC and a key is given: no checkpoint");
+                    return Ok(4);
+                }
             };
             let log = path
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            let cp = crate::durable::Checkpoint::new(
-                &log,
-                seq,
-                &hash,
-                report.chained_records,
-                keys.first(),
-            );
+            let cp =
+                crate::durable::Checkpoint::new(&log, seq, &hash, report.chained_records, signer);
             let text = serde_json::to_string_pretty(&cp)?;
             match out {
                 Some(out) => {
                     use std::io::Write;
-                    let mut f = std::fs::OpenOptions::new()
+                    let written = std::fs::OpenOptions::new()
                         .write(true)
                         .create_new(true)
-                        .open(&out)?;
-                    f.write_all(text.as_bytes())?;
-                    f.write_all(b"\n")?;
-                    f.sync_all()?;
+                        .open(&out)
+                        .and_then(|mut f| {
+                            f.write_all(text.as_bytes())?;
+                            f.write_all(b"\n")?;
+                            f.sync_all()
+                        });
+                    if let Err(e) = written {
+                        return Ok(unreadable(&format!(
+                            "checkpoint {} could not be written: {e}",
+                            out.display()
+                        )));
+                    }
                     eprintln!(
                         "checkpoint seq {seq} written to {} — keep it where the server cannot alter it (WORM, object lock, another system)",
                         out.display()
@@ -650,10 +751,17 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
             previous_key_file,
         } => {
             let dir = data_dir_path(data_dir);
-            let key = crate::durable::AuditKey::load(&key_file, Some(&dir))?;
-            let previous = previous_key_file
+            let key = match crate::durable::AuditKey::load(&key_file, Some(&dir)) {
+                Ok(k) => k,
+                Err(e) => return Ok(unreadable(&e)),
+            };
+            let previous = match previous_key_file
                 .map(|p| crate::durable::AuditKey::load(&p, Some(&dir)))
-                .transpose()?;
+                .transpose()
+            {
+                Ok(p) => p,
+                Err(e) => return Ok(unreadable(&e)),
+            };
             let path = crate::durable::audit_path(&dir);
             let mut keys = vec![key.clone()];
             keys.extend(previous.iter().cloned());
@@ -664,24 +772,31 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                     return Ok(3);
                 }
             };
-            if let Some(b) = &report.first_break {
+            // Round 38 (R37-2): legacy records before a chain keyed from
+            // seq 0 are a break only because nothing lists them; the
+            // operator who has checked them lists them here. Any other
+            // break refuses.
+            let only_legacy = report.legacy_before_keyed_genesis && report.other_break.is_none();
+            if let Some(b) = report.first_break.as_ref().filter(|_| !only_legacy) {
                 eprintln!(
                     "the trail is broken at {} line {}: {} — a key adoption would vouch for it; nothing written",
                     b.file, b.line, b.reason
                 );
                 return Ok(1);
             }
-            if report.chained_records == 0 {
+            if report.chained_records == 0 && report.legacy_unchained_records == 0 {
                 println!(
-                    "nothing to adopt: the trail holds no chained record, and a server with key {} starts its chain under it",
+                    "nothing to adopt: the trail holds no record, and a server with key {} starts its chain under it",
                     key.id()
                 );
                 return Ok(0);
             }
-            if report.head_key_id.as_deref() == Some(key.id()) && report.unkeyed_not_adopted() == 0
+            if report.head_key_id.as_deref() == Some(key.id())
+                && report.unkeyed_not_adopted() == 0
+                && report.legacy_not_adopted() == 0
             {
                 println!(
-                    "nothing to adopt: the trail is under key {} and no unkeyed record is uncovered",
+                    "nothing to adopt: the trail is under key {} and no unkeyed or legacy record is uncovered",
                     key.id()
                 );
                 return Ok(0);
@@ -693,19 +808,26 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                 adopt_key: true,
                 ..Default::default()
             };
-            let log = crate::durable::AuditLog::open_with_options(&path, options).map_err(|e| {
-                format!(
-                    "the audit trail {} cannot be opened to write the adoption ({e}); stop the server first",
-                    path.display()
-                )
-            })?;
+            let log = match crate::durable::AuditLog::open_with_options(&path, options) {
+                Ok(log) => log,
+                Err(e) => {
+                    return Ok(writer_refused(
+                        &e,
+                        &format!(
+                            "the audit trail {} cannot be opened to write the adoption ({e}); stop the server first",
+                            path.display()
+                        ),
+                    ))
+                }
+            };
             let head = log.health().chain_head_seq;
             drop(log);
             println!(
-                "key {} adopted at seq {}: the {} unkeyed record(s) before it{} are now covered by its MAC. Run `graphite audit verify --key-file {}`",
+                "key {} adopted at seq {}: the {} unkeyed record(s) and {} legacy record(s) before it{} are now covered by its MAC. Run `graphite audit verify --key-file {}`",
                 key.id(),
                 head.map(|s| s.to_string()).unwrap_or_else(|| "?".into()),
                 report.unkeyed_not_adopted(),
+                report.legacy_not_adopted(),
                 match &report.head_key_id {
                     Some(id) if id != key.id() => format!(", and the switch from key {id},"),
                     _ => String::new(),
@@ -721,7 +843,10 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
             key_file,
         } => {
             let dir = data_dir_path(data_dir);
-            let keys = audit_keys(key_file.as_slice(), &dir)?;
+            let keys = match audit_keys(key_file.as_slice(), &dir) {
+                Ok(k) => k,
+                Err(e) => return Ok(unreadable(&e)),
+            };
             let path = crate::durable::audit_path(&dir);
             let report = match crate::durable::verify_audit_trail(&path, &keys, None) {
                 Ok(r) => r,
@@ -730,10 +855,12 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                     return Ok(3);
                 }
             };
-            if let Some(b) = report.other_break.as_ref().or(report
-                .first_break
+            if let Some(b) = report
+                .other_break
                 .as_ref()
-                .filter(|_| report.unacknowledged_tears.is_empty()))
+                .or(report.first_break.as_ref().filter(|_| {
+                    report.unacknowledged_tears.is_empty() || report.legacy_before_keyed_genesis
+                }))
             {
                 eprintln!(
                     "the trail is broken at {} line {} by more than a torn write: {} — nothing written",
@@ -775,12 +902,18 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                     .as_deref(),
                 &dir,
             )?;
-            let log = crate::durable::AuditLog::open_with_options(&path, options).map_err(|e| {
-                format!(
-                    "the audit trail {} cannot be opened to write the acknowledgement ({e}); stop the server first",
-                    path.display()
-                )
-            })?;
+            let log = match crate::durable::AuditLog::open_with_options(&path, options) {
+                Ok(log) => log,
+                Err(e) => {
+                    return Ok(writer_refused(
+                        &e,
+                        &format!(
+                            "the audit trail {} cannot be opened to write the acknowledgement ({e}); stop the server first",
+                            path.display()
+                        ),
+                    ))
+                }
+            };
             log.acknowledge_tear(tear)?;
             drop(log);
             println!(
@@ -789,7 +922,112 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
             );
             Ok(0)
         }
+        AuditAction::AcknowledgePrune { data_dir, key_file } => {
+            let dir = data_dir_path(data_dir);
+            let keys = match audit_keys(key_file.as_slice(), &dir) {
+                Ok(k) => k,
+                Err(e) => return Ok(unreadable(&e)),
+            };
+            let path = crate::durable::audit_path(&dir);
+            let report = match crate::durable::verify_audit_trail(&path, &keys, None) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("audit trail {} could not be read: {e}", dir.display());
+                    return Ok(3);
+                }
+            };
+            if !report.pruned_without_record {
+                eprintln!(
+                    "nothing to acknowledge: {}",
+                    match report.first_seq {
+                        Some(s) if s > 0 =>
+                            format!("a prune record already names the trail's start (seq {s})"),
+                        _ => "the trail starts at seq 0".to_string(),
+                    }
+                );
+                return Ok(1);
+            }
+            if let Some(b) = &report.other_break {
+                eprintln!(
+                    "the trail is broken at {} line {} by more than a missing prune record: {} — nothing written",
+                    b.file, b.line, b.reason
+                );
+                return Ok(1);
+            }
+            // Written under the key the trail's head is under.
+            let key = match &report.head_key_id {
+                Some(id) => match keys.iter().find(|k| k.id() == id) {
+                    Some(k) => Some(k.clone()),
+                    None => {
+                        eprintln!("the trail's head is under key {id}, which is not a key given: nothing written");
+                        return Ok(4);
+                    }
+                },
+                None => None,
+            };
+            let options = crate::durable::AuditOptions {
+                rotate_bytes: 0,
+                key,
+                ..Default::default()
+            };
+            let log = match crate::durable::AuditLog::open_with_options(&path, options) {
+                Ok(log) => log,
+                Err(e) => {
+                    return Ok(writer_refused(
+                        &e,
+                        &format!(
+                            "the audit trail {} cannot be opened to write the prune record ({e}); stop the server first",
+                            path.display()
+                        ),
+                    ))
+                }
+            };
+            let (seq, prev) = log.acknowledge_prune()?;
+            drop(log);
+            println!(
+                "acknowledged the prune: the trail starts at seq {seq} (after the record with hash {prev}); run `graphite audit verify`"
+            );
+            Ok(0)
+        }
     }
+}
+
+/// Report an input `audit` could not read — a key file, a checkpoint, the
+/// trail — or an output it could not write: exit 3 (Round 38, T-14). It was
+/// an error out of `main`, exit 1, which reads as a break.
+fn unreadable(why: &str) -> i32 {
+    eprintln!("{why}");
+    3
+}
+
+/// Report a writer the trail refused to open: exit 75 when another writer
+/// holds it (the server is running; `restore.sh` and `backup.sh` use 75 for
+/// that too), 1 otherwise (the trail refused it: a break, or a head the
+/// writer cannot continue).
+fn writer_refused(e: &std::io::Error, why: &str) -> i32 {
+    eprintln!("{why}");
+    if e.kind() == std::io::ErrorKind::WouldBlock {
+        75
+    } else {
+        1
+    }
+}
+
+/// A checkpoint file, read up to 64 KiB (Round 38, T-15: a checkpoint is a
+/// few hundred bytes; anything longer is not one).
+fn read_checkpoint(path: &Path) -> Result<crate::durable::Checkpoint, String> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .and_then(|f| f.take(64 * 1024 + 1).read_to_end(&mut bytes))
+        .map_err(|e| format!("checkpoint {}: {e}", path.display()))?;
+    if bytes.len() > 64 * 1024 {
+        return Err(format!(
+            "checkpoint {}: longer than 64 KiB, not a checkpoint",
+            path.display()
+        ));
+    }
+    serde_json::from_slice(&bytes).map_err(|e| format!("checkpoint {}: {e}", path.display()))
 }
 
 /// The server's durable state directory: `--data-dir`, else
@@ -817,6 +1055,13 @@ fn release_eval_root() -> Option<PathBuf> {
 }
 
 pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
+    // Round 38 (Round 37, V-2): the CLI reads the same variables the server
+    // does (`GRAPHITE_DATA_DIR`, `GRAPHITE_AUDIT_KEY_FILE`, the L4 opt-outs),
+    // and a misspelled one is a decision it never sees either.
+    let env_names: Vec<String> = std::env::vars_os()
+        .filter_map(|(k, _)| k.into_string().ok())
+        .collect();
+    crate::operator_boundary::check_env_names(env_names.iter().map(String::as_str))?;
     match command {
         CliCommand::Verify { input, profile } => {
             // The SERVER'S durable semantic graph, registry and boundary
@@ -1898,12 +2143,34 @@ fn run_execution(
         ))
         .map_err(|e| format!("{source}: {e}"))?;
     }
+    // Round 38 (Round 37, V-3): `GRAPHITE_L8_HIGH_ASSURANCE` was the server's
+    // alone, so the same reconciliation read `executed` here on one provider's
+    // word where the server would have withheld it. Honoured the same way:
+    // a conclusion needs an independent witness that agrees, and with none
+    // configured the check refuses to run rather than run at an assurance the
+    // operator did not choose.
+    if crate::operator_boundary::env_flag(
+        "GRAPHITE_L8_HIGH_ASSURANCE",
+        std::env::var("GRAPHITE_L8_HIGH_ASSURANCE").ok().as_deref(),
+    )? {
+        if !core.has_inclusion_witness() {
+            return Err("GRAPHITE_L8_HIGH_ASSURANCE=1 needs an independent witness: pass --witness-url or set GRAPHITE_RPC_WITNESS_URL".into());
+        }
+        core.set_require_independent_witness(true);
+    }
 
     // Read the same audit trail the server writes, so the CLI reconciles
     // against the real record rather than a second source of truth. Read
     // only (Round 30): this runs beside the server, which holds the trail's
-    // writer lock, and appends nothing.
-    let audit = match crate::durable::AuditLog::open_read_only(crate::durable::audit_path(&dir)) {
+    // writer lock, and appends nothing. With the server's keys (Round 38,
+    // T-11), so it reads the trail as the server's own readers do.
+    let audit = match execution_audit_log(
+        &dir,
+        std::env::var(crate::durable::AUDIT_KEY_ENV).ok().as_deref(),
+        std::env::var(crate::durable::AUDIT_PREVIOUS_KEY_ENV)
+            .ok()
+            .as_deref(),
+    ) {
         Ok(log) => Some(log),
         Err(e) => {
             eprintln!(
@@ -2006,6 +2273,33 @@ fn run_execution(
         result.chain_inconsistent.is_some(),
         result.inclusion_witness.as_ref().is_some_and(|w| !w.agrees),
     ))
+}
+
+/// The trail `graphite execution` reconciles against (Round 38, T-11): read
+/// only, with the keys the server is configured with —
+/// `GRAPHITE_AUDIT_KEY_FILE` and, during a rotation,
+/// `GRAPHITE_AUDIT_PREVIOUS_KEY_FILE` (`key_file`, `previous_key_file`) —
+/// so its readers check MACs as the server's do. It read the trail without
+/// them, to which a self-hashed forgery claiming a MAC was a verdict. A key
+/// that cannot be loaded, a keyed trail with no key configured, or a head
+/// under none of the keys refuses the trail; the reconciliation is then
+/// unavailable (exit 3), never answered from a trail it cannot check.
+#[cfg(any(feature = "rpc", test))]
+pub(crate) fn execution_audit_log(
+    dir: &Path,
+    key_file: Option<&str>,
+    previous_key_file: Option<&str>,
+) -> Result<crate::durable::AuditLog, String> {
+    let options = crate::durable::AuditOptions::default()
+        .with_env_values(key_file, None, dir)?
+        .with_previous_key_value(previous_key_file, dir)?;
+    let keys: Vec<crate::durable::AuditKey> = options
+        .key
+        .into_iter()
+        .chain(options.previous_key)
+        .collect();
+    crate::durable::AuditLog::open_read_only_keyed(crate::durable::audit_path(dir), keys)
+        .map_err(|e| e.to_string())
 }
 
 /// `graphite execution`'s exit status: a discrepancy (the gate was bypassed).
@@ -2553,6 +2847,37 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
                     "  {} v{} — {:?} — source {}",
                     rec.program_id, rec.version_label, rec.trust_tier, rec.source
                 );
+            }
+            Ok(())
+        }
+        RegistryAction::VerifyRecords { state } => {
+            let path = registry_state_path(state);
+            let engine = load_registry(&path)?;
+            let (mut failed, mut unproven) = (0usize, 0usize);
+            for rec in engine.records() {
+                let outcome = rec.verify_offline();
+                let label = match &outcome {
+                    Ok(()) => "verified".to_string(),
+                    Err(e) if rec.signing_domain.is_none() || rec.manifest.is_none() => {
+                        unproven += 1;
+                        format!("UNPROVEN: {e}")
+                    }
+                    Err(e) => {
+                        failed += 1;
+                        format!("FAILED: {e}")
+                    }
+                };
+                println!("  {} v{}: {label}", rec.program_id, rec.version_label);
+            }
+            println!(
+                "{} record(s): {failed} failed, {unproven} unproven",
+                engine.records().len()
+            );
+            if failed > 0 {
+                std::process::exit(1);
+            }
+            if unproven > 0 {
+                std::process::exit(2);
             }
             Ok(())
         }

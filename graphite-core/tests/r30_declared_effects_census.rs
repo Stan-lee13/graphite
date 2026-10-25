@@ -536,3 +536,78 @@ fn debit_lines_that_name_no_account_are_counted() {
         "(instructions, unscoped debit lines, instructions with one, of them with no named debit, grants with one, grants)"
     );
 }
+
+/// Round 38 (R37-6): how many shipped declarations carry a line that
+/// declares an authority, delegate, close or freeze effect without naming an
+/// account, counted with the real parser, and how many of them are in a
+/// class an intent can be granted (an `authority` class never is: no intent
+/// declares an authority hand-over). Since Round 38 such a line no longer
+/// excuses that effect on an account a signer holds (`covers_by_name`); it
+/// still covers a pool's or a program's own accounts. Pinned so a manifest
+/// change re-measures the rule.
+#[test]
+fn authority_delegate_close_and_freeze_lines_that_name_no_account_are_counted() {
+    use std::collections::BTreeMap;
+    let reg = load_seed_manifests();
+    let mut by_effect: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
+    let mut by_class: BTreeMap<String, usize> = BTreeMap::new();
+    let mut any = 0;
+    let mut outside: Vec<String> = Vec::new();
+    for m in reg.list() {
+        for ix in &m.instructions {
+            let e = DeclaredEffects::parse(&ix.expected_state_changes);
+            let mut hit = false;
+            for effect in ["authority", "delegate", "close", "freeze"] {
+                if e.covers(effect, &[]) {
+                    let slot = by_effect.entry(effect).or_default();
+                    slot.0 += 1;
+                    if ix.risk_class != "authority" {
+                        slot.1 += 1;
+                    }
+                    hit = true;
+                }
+            }
+            if hit {
+                any += 1;
+                *by_class.entry(ix.risk_class.clone()).or_default() += 1;
+                if !matches!(ix.risk_class.as_str(), "authority" | "close") {
+                    outside.push(format!(
+                        "{}::{} ({})",
+                        m.protocol.name, ix.name, ix.risk_class
+                    ));
+                }
+            }
+        }
+    }
+    eprintln!("[R37-6 census] instructions with one {any}; by effect (all, outside the authority class) {by_effect:?}; by class {by_class:?}; outside the authority and close classes: {outside:#?}");
+    // Measured at Round 38. The Round 37 review counted about 1,057
+    // authority lines; the parser finds 1,057 instructions with one, 12 of
+    // them outside the `authority` class. No `close`-class instruction with
+    // such a line is executable (a `close` intent is served by the token
+    // programs, Jupiter DCA and the close grants, which all name the
+    // accounts they close); the 13 in other classes are listed above.
+    let effects: Vec<(&str, (usize, usize))> = by_effect.into_iter().collect();
+    let classes: Vec<(String, usize)> = by_class.into_iter().collect();
+    assert_eq!(
+        (any, effects, classes, outside.len()),
+        (
+            1201,
+            vec![
+                ("authority", (1057, 12)),
+                ("close", (144, 137)),
+                ("delegate", (1, 1)),
+                ("freeze", (4, 3))
+            ],
+            vec![
+                ("authority".to_string(), 1051),
+                ("close".to_string(), 137),
+                ("create".to_string(), 9),
+                ("inert".to_string(), 1),
+                ("transfer".to_string(), 1),
+                ("withdraw".to_string(), 2)
+            ],
+            13
+        ),
+        "(instructions with one, by effect (all, outside authority), by class, outside authority and close)"
+    );
+}

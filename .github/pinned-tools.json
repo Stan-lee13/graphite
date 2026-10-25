@@ -4,7 +4,8 @@
     "`reviewed` is the date the pin was last set or checked against upstream; bump it when you re-check.",
     "Every `pinned_in` text must occur verbatim in its file (CI, pinned-tools.py check-pins), so a bump",
     "in a workflow without this list fails CI. The weekly workflow pinned-tools.yml runs `report`: it",
-    "fails when a newer upstream release exists or a pin is older than max_age_days."
+    "fails when a newer upstream release exists or a pin is older than max_age_days.",
+    "Round 38 (D2-6): `consistent` names the patterns each pin is written under and the files to search; every match must carry the one version (or `expect`), so a second, different pin of a tool fails CI. `except` allows an exact text, with its reason, and fails once it no longer occurs."
   ],
   "max_age_days": 90,
   "tools": [
@@ -14,7 +15,15 @@
       "version": "v2.11.7",
       "reviewed": "2026-10-22",
       "source": { "github": "caddyserver/caddy" },
-      "pinned_in": [{ "file": ".github/workflows/ci.yml", "text": "CADDY_VERSION: v2.11.7" }]
+      "pinned_in": [
+        { "file": ".github/workflows/ci.yml", "text": "CADDY_VERSION: v2.11.7" }
+      ],
+      "consistent": [
+        {
+          "files": [".github/workflows/*.yml"],
+          "pattern": "CADDY_VERSION: (\\S+)"
+        }
+      ]
     },
     {
       "name": "prometheus (promtool)",
@@ -25,6 +34,17 @@
       "pinned_in": [
         { "file": ".github/workflows/ci.yml", "text": "PROMETHEUS_TAG: v3.15.1" },
         { "file": ".github/workflows/ci.yml", "text": "PROMETHEUS_COMMIT: bae3eced0a5369e050e83ea73bc381d7c4b1a719" }
+      ],
+      "consistent": [
+        {
+          "files": [".github/workflows/*.yml"],
+          "pattern": "PROMETHEUS_TAG: (\\S+)"
+        },
+        {
+          "files": [".github/workflows/*.yml"],
+          "pattern": "PROMETHEUS_COMMIT: ([0-9a-f]{40})",
+          "expect": "bae3eced0a5369e050e83ea73bc381d7c4b1a719"
+        }
       ]
     },
     {
@@ -35,7 +55,21 @@
       "source": { "github": "anza-xyz/agave" },
       "pinned_in": [
         { "file": ".github/workflows/live-devnet.yml", "text": "AGAVE_VERSION: v4.2.2" },
-        { "file": ".github/workflows/live-devnet.yml", "text": "AGAVE_SHA256: 5fc8684f7430038105fde953d4308ed56addf627f658daa61709f345448247ee" }
+        {
+          "file": ".github/workflows/live-devnet.yml",
+          "text": "AGAVE_SHA256: 5fc8684f7430038105fde953d4308ed56addf627f658daa61709f345448247ee"
+        }
+      ],
+      "consistent": [
+        {
+          "files": [".github/workflows/*.yml"],
+          "pattern": "AGAVE_VERSION: (\\S+)"
+        },
+        {
+          "files": [".github/workflows/*.yml"],
+          "pattern": "AGAVE_SHA256: ([0-9a-f]{64})",
+          "expect": "5fc8684f7430038105fde953d4308ed56addf627f658daa61709f345448247ee"
+        }
       ]
     },
     {
@@ -44,7 +78,15 @@
       "version": "0.22.2",
       "reviewed": "2026-09-16",
       "source": { "crate": "cargo-audit" },
-      "pinned_in": [{ "file": ".github/workflows/ci.yml", "text": "cargo install cargo-audit --locked --version 0.22.2" }]
+      "pinned_in": [
+        { "file": ".github/workflows/ci.yml", "text": "cargo install cargo-audit --locked --version 0.22.2" }
+      ],
+      "consistent": [
+        {
+          "files": [".github/workflows/*.yml"],
+          "pattern": "cargo install cargo-audit [^\\n]*--version (\\S+)"
+        }
+      ]
     },
     {
       "name": "cargo-cyclonedx",
@@ -52,7 +94,15 @@
       "version": "0.5.9",
       "reviewed": "2026-10-22",
       "source": { "crate": "cargo-cyclonedx" },
-      "pinned_in": [{ "file": ".github/workflows/release.yml", "text": "cargo install cargo-cyclonedx --locked --version 0.5.9" }]
+      "pinned_in": [
+        { "file": ".github/workflows/release.yml", "text": "cargo install cargo-cyclonedx --locked --version 0.5.9" }
+      ],
+      "consistent": [
+        {
+          "files": [".github/workflows/*.yml"],
+          "pattern": "cargo install cargo-cyclonedx [^\\n]*--version (\\S+)"
+        }
+      ]
     },
     {
       "name": "cargo-fuzz",
@@ -60,7 +110,15 @@
       "version": "0.13.2",
       "reviewed": "2026-10-21",
       "source": { "crate": "cargo-fuzz" },
-      "pinned_in": [{ "file": ".github/workflows/assurance.yml", "text": "CARGO_FUZZ_VERSION: 0.13.2" }]
+      "pinned_in": [
+        { "file": ".github/workflows/assurance.yml", "text": "CARGO_FUZZ_VERSION: 0.13.2" }
+      ],
+      "consistent": [
+        {
+          "files": [".github/workflows/*.yml"],
+          "pattern": "CARGO_FUZZ_VERSION: (\\S+)"
+        }
+      ]
     },
     {
       "name": "cargo-mutants",
@@ -68,7 +126,15 @@
       "version": "27.1.0",
       "reviewed": "2026-10-21",
       "source": { "crate": "cargo-mutants" },
-      "pinned_in": [{ "file": ".github/workflows/assurance.yml", "text": "CARGO_MUTANTS_VERSION: 27.1.0" }]
+      "pinned_in": [
+        { "file": ".github/workflows/assurance.yml", "text": "CARGO_MUTANTS_VERSION: 27.1.0" }
+      ],
+      "consistent": [
+        {
+          "files": [".github/workflows/*.yml"],
+          "pattern": "CARGO_MUTANTS_VERSION: (\\S+)"
+        }
+      ]
     },
     {
       "name": "cargo-llvm-cov",
@@ -76,7 +142,15 @@
       "version": "0.9.1",
       "reviewed": "2026-10-21",
       "source": { "crate": "cargo-llvm-cov" },
-      "pinned_in": [{ "file": ".github/workflows/assurance.yml", "text": "CARGO_LLVM_COV_VERSION: 0.9.1" }]
+      "pinned_in": [
+        { "file": ".github/workflows/assurance.yml", "text": "CARGO_LLVM_COV_VERSION: 0.9.1" }
+      ],
+      "consistent": [
+        {
+          "files": [".github/workflows/*.yml"],
+          "pattern": "CARGO_LLVM_COV_VERSION: (\\S+)"
+        }
+      ]
     },
     {
       "name": "fuzz nightly toolchain",
@@ -84,7 +158,19 @@
       "version": "nightly-2026-10-22",
       "reviewed": "2026-10-22",
       "source": { "none": "dated nightly" },
-      "pinned_in": [{ "file": ".github/workflows/assurance.yml", "text": "FUZZ_TOOLCHAIN: nightly-2026-10-22" }]
+      "pinned_in": [
+        { "file": ".github/workflows/assurance.yml", "text": "FUZZ_TOOLCHAIN: nightly-2026-10-22" }
+      ],
+      "consistent": [
+        {
+          "files": [".github/workflows/*.yml"],
+          "pattern": "FUZZ_TOOLCHAIN: (\\S+)"
+        },
+        {
+          "files": [".github/workflows/*.yml"],
+          "pattern": "\\b(nightly-\\d{4}-\\d{2}-\\d{2})\\b"
+        }
+      ]
     },
     {
       "name": "rust toolchain",
@@ -94,8 +180,62 @@
       "source": { "github": "rust-lang/rust" },
       "pinned_in": [
         { "file": ".github/workflows/ci.yml", "text": "toolchain: 1.99.1" },
-        { "file": ".github/workflows/release.yml", "text": "rust:1.99.1-bookworm@sha256:48b7f435b8fc6378ce43b44f15e3a47fd8919b2825f835c39bd4bd3da50af5b8" },
-        { "file": "Dockerfile", "text": "FROM rust:1.99.1-bookworm@sha256:48b7f435b8fc6378ce43b44f15e3a47fd8919b2825f835c39bd4bd3da50af5b8 AS builder" }
+        {
+          "file": ".github/workflows/release.yml",
+          "text": "rust:1.99.1-bookworm@sha256:48b7f435b8fc6378ce43b44f15e3a47fd8919b2825f835c39bd4bd3da50af5b8"
+        },
+        {
+          "file": "Dockerfile",
+          "text": "FROM rust:1.99.1-bookworm@sha256:48b7f435b8fc6378ce43b44f15e3a47fd8919b2825f835c39bd4bd3da50af5b8 AS builder"
+        }
+      ],
+      "consistent": [
+        {
+          "files": [".github/workflows/*.yml", "Dockerfile"],
+          "pattern": "toolchain: (\\d+\\.\\d+\\.\\d+)\\b",
+          "except": [
+            {
+              "file": ".github/workflows/ci.yml",
+              "text": "toolchain: 1.89.0",
+              "why": "the msrv job builds the declared rust-version (graphite-core/Cargo.toml), which its own step checks"
+            }
+          ]
+        },
+        {
+          "files": [".github/workflows/*.yml", "Dockerfile"],
+          "pattern": "rust:(\\d+\\.\\d+\\.\\d+)-bookworm"
+        },
+        {
+          "files": [".github/workflows/*.yml", "Dockerfile"],
+          "pattern": "rust:\\d+\\.\\d+\\.\\d+-bookworm@sha256:([0-9a-f]{64})",
+          "expect": "48b7f435b8fc6378ce43b44f15e3a47fd8919b2825f835c39bd4bd3da50af5b8"
+        },
+        {
+          "files": [".github/workflows/*.yml"],
+          "pattern": "expected rustc (\\d+\\.\\d+\\.\\d+)"
+        },
+        {
+          "files": [".github/workflows/*.yml"],
+          "pattern": "'\\^rustc ([0-9\\\\.]+) '",
+          "expect": "1\\.99\\.1"
+        }
+      ]
+    },
+    {
+      "name": "debian snapshot (runtime image apt layer)",
+      "use": "Dockerfile: the runtime image's ca-certificates (and its openssl dependency) come from this dated snapshot.debian.org archive, not the moving bookworm archive (Round 38, D-8). Re-pin it at least every max_age_days: a stale snapshot is a stale CA trust store and stale openssl. Dependabot's docker entry moves the base digest, not this.",
+      "version": "20261021T000000Z",
+      "reviewed": "2026-10-24",
+      "source": { "none": "a dated snapshot; age only" },
+      "pinned_in": [
+        { "file": "Dockerfile", "text": "http://snapshot.debian.org/archive/debian/20261021T000000Z" },
+        { "file": "Dockerfile", "text": "http://snapshot.debian.org/archive/debian-security/20261021T000000Z" }
+      ],
+      "consistent": [
+        {
+          "files": ["Dockerfile"],
+          "pattern": "snapshot\\.debian\\.org/archive/debian(?:-security)?/(\\d{8}T\\d{6}Z)"
+        }
       ]
     }
   ]

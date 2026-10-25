@@ -29,8 +29,11 @@ commit is green.
 |---|---:|---:|
 | P0 (code) | 0 | 0 |
 | P1 (code) | 3: F-001 dependency DoS gate, F-003 unbound intent, F-004 dust minimum | 0 |
-| P2 (code) | 8: F-005, F-008, F-009, F-013, F-014, F-017, F-019, F-020 | 0 open; the residuals are in §E |
+| P2 (code) | 10: F-005, F-006, F-008, F-009, F-013, F-014, F-017, F-019, F-020, R36-D1 | F-006 not changed (a capability limitation that fails closed, verified); the other nine fixed; the residuals are in §E |
 | External / owner | F-002, private reporting, audit, deployment, live data, F-016 holdout | unchanged: STOP-SHIP |
+
+*Corrected after the Round 37 re-audit:* this table first listed 8 P2 findings and left out F-006
+and R36-D1, which §B classes P2.
 
 ## A. What changed for an operator
 
@@ -85,7 +88,7 @@ branch; "fail-before" says how that was shown.
 | F-012 | Token-2022 / state-diff attribution | coverage limitation | unchanged; fail-closed paths unchanged | — |
 | F-013 | Spend parity, concurrency, outcome unknown | integration footgun / P2 | confirmed fixed with regression proof | Guard: a send whose RPC never answers is now `SubmissionOutcomeUnknown` at the deadline, the reservation is kept and the identical repeat is refused (it used to hang). Parallel-reservation and swap-reserve proofs added (`guard-round35.test.ts`) |
 | F-014 | web3.js `Connection` unbounded | availability / P2 | confirmed fixed with regression proof | `integrations/agent-guard/rpc-transport.ts`. 9 of the 12 new guard tests fail with enforcement reverted: hang, trickle, 33 MiB body, 429 retries, websocket, malformed timeout, stale verdict ×2, a send that never answers |
-| F-015 | Mutation floors unmeasured | test/assurance gap | open: still not measured to completion | The first hosted run ([40059300806](https://github.com/Stan-lee13/graphite/actions/runs/40059300806)) hit the six-hour limit on all six shards before scoring. The modules hold 235, 199, 324 and 1,004 mutants (risk engine, simulation integrity, artifact parser, state diff). The job is resharded to 44 shards of about 40 mutants each. `mutation_floor.py` now reports a shard that did not account for every one of its `total_mutants` as INCOMPLETE instead of scoring the part that ran. The mutate step stops short of the job limit so the floor step always runs. Artifacts are named per shard; that run's were all named `mutants-`. No score is claimed until a complete run exists |
+| F-015 | Mutation floors unmeasured | test/assurance gap | open: measured in part, gaps found | The first hosted run ([40059300806](https://github.com/Stan-lee13/graphite/actions/runs/40059300806)) hit the six-hour limit on all six shards before scoring. The modules hold 235, 199, 324 and 1,004 mutants (risk engine, simulation integrity, artifact parser, state diff), so the job was resharded to 44 shards. The second run ([40083338181](https://github.com/Stan-lee13/graphite/actions/runs/40083338181), after the merge) finished 23 shards by 18:30Z; 18 were killed at 330 minutes (a mutant costs one 6–9 minute rebuild) and 2 were still running. **No module has a complete score.** The run also exposed a fail-open in this round's own fix: `mutation_floor.py` read the shard's count from `total_mutants`, which cargo-mutants raises per outcome, so 16 of the 18 killed shards printed a pass. It now counts from `mutants.json` and requires `end_time` (follow-up change; the CI scripts' tests fail on the old script). Six finished shards are below floor: risk engine 0/6 (0.886 < 0.90); state diff 9, 16, 17, 18 of 25 (0.459, 0.585, 0.167, 0.250: created-authority and kept-lamport checks, Token-2022 fee replay, transfer-hook reach, extension judgement); simulation integrity 4/5 (0.333: the shape baseline's account-write and CPI-hop update). Record: [mutation-run-40083338181.md](audit-r36/mutation-run-40083338181.md). No floor was raised |
 | F-016 | 38-row holdout | data limitation | owner/external | No safety claim is made from it (§F) |
 | F-017 | Durable nonce / verdict age | design weakness / P2 | confirmed fixed with regression proof | The guard never signs a durable-nonce transaction (existing tests). New verdict-age bound immediately before signing (`StaleVerdict`) |
 | F-018 | Audit chain is not WORM | operational | owner/external | Anchors are a local directory until an operator points them at object-lock storage |
@@ -147,7 +150,13 @@ Hosted CI on PR #53:
 - [run 40054717819](https://github.com/Stan-lee13/graphite/actions/runs/40054717819) on `574c207`
   (F-001) passed every job.
 - [Run 40059292984](https://github.com/Stan-lee13/graphite/actions/runs/40059292984) on `ce94157`
-  and the final head are recorded on the PR.
+  was **cancelled** (its conclusion on the GitHub API is `cancelled`), so it is not evidence.
+- CI on the PR's final head, `80b3906`:
+  [run 40083327865](https://github.com/Stan-lee13/graphite/actions/runs/40083327865) (CI, pull
+  request) passed, as did the Assurance workflow's pull-request run
+  [40083327860](https://github.com/Stan-lee13/graphite/actions/runs/40083327860).
+- *Corrected after the Round 37 re-audit:* this list first cited the cancelled run as the record
+  and named no run for the final head.
 - The Assurance workflow was dispatched on the branch
   ([run 40059300806](https://github.com/Stan-lee13/graphite/actions/runs/40059300806), on `ce94157`).
   - The line-coverage floor passed.
@@ -155,7 +164,16 @@ Hosted CI on PR #53:
     `lookup_table`, `manifest_json`, `token_extensions`, `state_diff`, `rpc_json`.
   - All six mutation shards hit the 360-minute job limit before the floor step, so **no mutation
     score was measured** (F-015 above). The job is resharded and the floor script hardened.
-    The re-dispatched run is recorded on the PR.
+- The re-dispatched Assurance run on `80b3906`
+  ([run 40083338181](https://github.com/Stan-lee13/graphite/actions/runs/40083338181), finished
+  after PR #53 merged):
+  - The coverage floor passed. All six 30-minute fuzz runs passed with 0 crashes.
+  - Of the 44 mutation shards, by 18:30Z 23 had finished, 18 were killed at the 330-minute step
+    limit, and 2 were still running. No module has a complete score.
+  - Over the finished shards only: risk engine 136 caught / 9 missed, simulation integrity 49 / 29,
+    artifact parser 132 / 23, state diff 358 / 170. Six finished shards are below their floor.
+  - The floor script passed 16 of the 18 killed shards; fixed in the follow-up change.
+  - The full record is in [mutation-run-40083338181.md](audit-r36/mutation-run-40083338181.md).
 - CI on `1e9c9b2`, [run 40059774745](https://github.com/Stan-lee13/graphite/actions/runs/40059774745):
   every job green, including the CI gate, the three Rust legs at the new floors, the deploy kit
   (162) and the browser smoke with the new fault-state suite.

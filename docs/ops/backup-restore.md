@@ -36,18 +36,31 @@ START_CMD="docker compose -f deploy/compose/docker-compose.prod.yml start graphi
 `--key-file /etc/graphite/audit.key`, `/var/lib/graphite`.) The script refuses
 to copy while a server still holds `graphite.lock` after `STOP_CMD`, so a stop
 command that did not stop it is caught. Pass every audit key the trail was
-written under (`--key-file`, repeatable, the current key last).
+written under (`--key-file`, repeatable, in any order).
 
 It writes `graphite-<stamp>.tar.gz`, its `.sha256` and `<archive>.mac`: an
-HMAC-SHA256 under the audit key over the archive's name and bytes (Round 34,
-R33 D-6). Copy all three off the host: an audit trail kept only on the machine
-it audits is lost with that machine. `restore.sh` refuses an archive without a
-`.mac` that verifies under a key it is given (`ALLOW_UNKEYED_ARCHIVE=1` for a
-deployment with no audit key), a `.sha256` that names any file but the archive
-itself, and a run without `--anchor-dir` (`ALLOW_NO_ANCHOR=1` to override,
-recorded in your drill notes). The `.sha256` alone detects corruption, not
-substitution: anyone who can write the backup store can write a matching
-checksum, but not a matching MAC.
+HMAC-SHA256 over the archive's name and bytes (Round 34, R33 D-6) under the
+**current** audit key — the key the copied trail's head is MAC'd under, which
+the verify checked (Round 38, R37-11; it used to be the last `--key-file`
+given, a retired key whenever that one was listed last). A keyed head whose key
+is not among those given refuses the backup. Copy all three off the host: an
+audit trail kept only on the machine it audits is lost with that machine.
+
+`restore.sh` accepts the `.mac` under the current key only: `--current-key-file
+<file>`, else `GRAPHITE_AUDIT_KEY_FILE`, else the `--key-file` when exactly one
+is given; with several keys and none named current it refuses (exit 64). It
+used to accept a MAC under any key it was given, so whoever still held a
+retired key could forge `registry_state.json` or the graph snapshot and MAC
+the archive under that key: a retired key's MAC proves nothing about when the
+archive was made. A backup taken before a key rotation is therefore refused
+after it: take a fresh backup after every rotation. To restore such a backup
+anyway, name its key with `--current-key-file` — your explicit decision, for
+the incident log. `restore.sh` also refuses an archive without a `.mac`
+(`ALLOW_UNKEYED_ARCHIVE=1` for a deployment with no audit key), a `.sha256`
+that names any file but the archive itself, and a run without `--anchor-dir`
+(`ALLOW_NO_ANCHOR=1` to override, recorded in your drill notes). The `.sha256`
+alone detects corruption, not substitution: anyone who can write the backup
+store can write a matching checksum, but not a matching MAC.
 
 ## Hot backup (the server keeps running)
 
@@ -70,7 +83,13 @@ backup for anything you plan to restore from.
      --owner 10001:10001 /srv/graphite-backups/graphite-<stamp>.tar.gz "$DATA"
    ```
    (systemd: no `--owner`; `StateDirectory=` fixes the ownership at start.)
+   With more than one `--key-file`, name the current one with
+   `--current-key-file` (or set `GRAPHITE_AUDIT_KEY_FILE`).
    The previous directory is kept beside it as `<dir>.pre-restore-<stamp>`.
+   The newest anchored checkpoint is the one whose content has the highest
+   `seq` (Round 38, T-9: never chosen by file name, which nothing
+   authenticates); a checkpoint file in the anchor directory that cannot be
+   read refuses the restore.
    An archive older than the newest anchored checkpoint is refused until
    `ACCEPT_STALE_RESTORE=1`: the verdicts recorded after it are lost, and that
    belongs in the incident log first. After a lost audit key, add

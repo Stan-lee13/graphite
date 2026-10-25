@@ -340,10 +340,12 @@ enum AuditAction {
     ///
     /// Exits 0 when nothing failed, 1 on a break or a checkpoint that does
     /// not hold, 2 when the walk could not prove what it was asked to (MACs
-    /// under a key not supplied, no chained record, a pruned checkpoint), 3
-    /// when the trail could not be read, 4 when keys were supplied and
+    /// under a key not supplied that a checked key-adoption record covers,
+    /// no chained record, a pruned checkpoint), 3 when the trail, a key file
+    /// or the checkpoint could not be read, 4 when keys were supplied and
     /// something is not covered by them (unkeyed records no key-adoption
-    /// record covers, an unsigned checkpoint). See docs/ops/keys.md.
+    /// record covers, MACs under keys not supplied that nothing covers, an
+    /// unsigned checkpoint), 64 on a usage error. See docs/ops/keys.md.
     Verify {
         /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
         #[arg(long)]
@@ -361,6 +363,10 @@ enum AuditAction {
         json: bool,
     },
     /// Verify the trail, then export a checkpoint of its head for anchoring
+    ///
+    /// MAC'd under the key the head is under. Refused, with `verify`'s exit
+    /// code, unless the keys given cover the head: `verify` exits 0 with
+    /// them, or 2 only for a lost key a checked key-adoption record closes.
     Checkpoint {
         /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
         #[arg(long)]
@@ -412,6 +418,22 @@ enum AuditAction {
         #[arg(long)]
         key_file: Option<PathBuf>,
     },
+    /// Record a prune of the oldest archives that nothing recorded
+    ///
+    /// With the server stopped. A trail pruned before Round 38 starts above
+    /// seq 0 with no prune record, and `audit verify` reports a break: the
+    /// records before it could as well have been deleted. Check the trail
+    /// against an anchored checkpoint or a backup first; this then appends a
+    /// prune record naming where the trail starts now. Refuses a trail
+    /// broken by anything else.
+    AcknowledgePrune {
+        /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+        /// Key file the trail's head is under (default: GRAPHITE_AUDIT_KEY_FILE)
+        #[arg(long)]
+        key_file: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -449,6 +471,13 @@ enum QuarantineAction {
 enum RegistryAction {
     /// List registered reviewers and the acceptance log
     Reviewers {
+        /// Registry state file (default: registry_state.json)
+        #[arg(long)]
+        state: Option<PathBuf>,
+    },
+    /// Check every acceptance record from its own contents: exit 0 all
+    /// verified, 1 one failed, 2 one predates retained signatures
+    VerifyRecords {
         /// Registry state file (default: registry_state.json)
         #[arg(long)]
         state: Option<PathBuf>,
@@ -542,7 +571,22 @@ enum RegistryAction {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cli = Cli::parse();
+    // Round 38 (T-14): a usage error under `audit` exits 64, not clap's 2,
+    // which `audit verify` uses for "unproven": a script reading 2 as a lost
+    // key went on to check a report a mistyped command never produced. Help
+    // and version still exit 0; every other command keeps clap's 2 (which
+    // `graphite execution` documents as its usage error).
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(e) => {
+            let audit = std::env::args_os().nth(1).is_some_and(|a| a == "audit");
+            if audit && e.use_stderr() {
+                let _ = e.print();
+                std::process::exit(64);
+            }
+            e.exit()
+        }
+    };
     match cli.command {
         Commands::Verify {
             file: Some(path),
@@ -616,6 +660,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             RegistryAction::Reviewers { state } => {
                 graphite_core::cli::run(graphite_core::cli::CliCommand::Registry {
                     action: graphite_core::cli::RegistryAction::Reviewers { state },
+                })
+            }
+            RegistryAction::VerifyRecords { state } => {
+                graphite_core::cli::run(graphite_core::cli::CliCommand::Registry {
+                    action: graphite_core::cli::RegistryAction::VerifyRecords { state },
                 })
             }
             RegistryAction::RegisterReviewer {
@@ -757,6 +806,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     key_file,
                 },
             }),
+            AuditAction::AcknowledgePrune { data_dir, key_file } => {
+                graphite_core::cli::run(graphite_core::cli::CliCommand::Audit {
+                    action: graphite_core::cli::AuditAction::AcknowledgePrune {
+                        data_dir,
+                        key_file,
+                    },
+                })
+            }
         },
         Commands::Quarantine { action } => match action {
             QuarantineAction::Add {

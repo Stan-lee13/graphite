@@ -21,10 +21,17 @@ gh attestation verify graphite-0.3.0-beta-x86_64-unknown-linux-gnu.tar.gz --repo
 The tag is built by `.github/workflows/release.yml` (two independent builds,
 compared byte for byte; SLSA provenance and SBOMs attested), so the binary and
 image you can verify are the ones built from the source you read. Until the tag
-exists, the reviewed base is **`bdc9dab`** (Round 31: every dependency at its
-latest release, on top of the Round 30 remediation `9f4556e`) plus the
-Round 32 changes merged after it; agree the exact SHA with the maintainer
-before starting and record it in your report.
+exists, the base to review is the head of the branch
+`claude/admiring-archimedes-lfhr7n`: Round 38's answers to the Round 37 re-audit,
+on top of `8b3d8a4` (`main` after Round 36, PR #53). That branch is not merged to
+`main` yet, and it moves while the remaining Round 37 items are answered, so agree
+the exact SHA with the maintainer before starting and record it in your report.
+[`docs/CURRENT.md`](../CURRENT.md) says which round the code is at; `git log -1 --
+docs/CURRENT.md` says when it last changed.
+
+The state of the code is: **conditionally ready for an independent audit, with the
+owner gates open** (`docs/ops/production-checklist.md`). Release is blocked on
+those gates. Every review so far was internal engineering work.
 
 ## 2. Scope
 
@@ -151,56 +158,28 @@ reports). Paths are under `graphite-core/tests/` unless stated.
 ## 6. Known residuals
 
 We know these and have not fixed them; do not spend time rediscovering them,
-but do tell us if one is worse than we say. Detail:
-`docs/round30-forensic-audit-and-remediation-2026-10-22.md` §H and
-`docs/audit-r30/findings-registry.md`.
+but do tell us if one is worse than we say.
 
-From Round 30 §H:
+**The one current list is [`docs/CURRENT.md`](../CURRENT.md)** ("Security status",
+"What is NOT enforced" and "Not yet done"). This page does not copy it,
+so the two cannot drift. Where each residual came from, newest first:
 
-1. **No light-client proof.** L8 independence is a heuristic over URLs, DNS and operator-named
-   providers; two companies on one cloud are not detected; behind an HTTPS proxy only the proxy's
-   address is checked.
-2. **Shape baselines and anchors** are unmeasured on real RPC traffic (false-positive rate unknown).
-3. **The trail's limits.** Without an anchored checkpoint a keyed trail cannot show a dropped tail or
-   a stale restore; anchor immutability is the operator's storage; the post-rename directory sync is
-   fixed by inspection, not power-loss injection; a full disk was fault-injected, not filled.
-4. **The guard's reach.** Code loaded before it is out of reach; `deliveredAs: "wrapped_sol"` has
-   no end-to-end fixture. (Two guards with one key, and the fee missing from the cap, were fixed in
-   Round 32: R32-P2-1, R32-P2-2. The one-guard-per-wallet lock reaches only guards on the same host
-   that share a pid namespace.)
-5. **Withdrawals.** Only three grants carry a minimum output Graphite can read (Raydium CLMM
-   `decrease_liquidity_v2`, Raydium CPMM `withdraw`, Pump AMM `withdraw`; an unbounded one is
-   refused since Round 32, R32-P1-4); the Meteora DLMM remove and claim grants carry none, so they
-   are not judged. Pump AMM `withdraw` and `update_offer` rest on the shipped manifests' layouts,
-   not IDLs.
-6. **Value-moving declarations.** Since Round 32 a signer's loss under an unreadable declaration is
-   refused by default (R32-P1-1; opt-out `GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS`), and so is
-   W19 (R32-P1-3; opt-out `GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT`). 139
-   value-moving instructions still have placeholder prose (no IDL in the repository), so they are
-   refused when they cost the signer value. The false-refusal cost of these defaults on real
-   traffic: W19 refused 1 of 200 replayed live mainnet transactions (0.5%, Round 32); the other
-   rates are measured by `.github/workflows/live-mainnet.yml`, not by the committed blocks, which
-   carry no state diffs.
-7. **Tests not run** in that round: the proptest suites under the risk mutants; `/health` with an
-   RPC attached; the live-server SDK suites outside CI; the ignored live-network tests.
-8. **Fuzzing, mutation, coverage.** Six fuzz targets run 30 minutes each on GitHub's runners (hosted
-   run 39798389463: 0 crashes); no differential fuzzing against agave; the mutation floors for the
-   state diff, artifact parser and simulation integrity are still provisional (0.60), unmeasured;
-   the line-coverage floor (78%) held on the hosted run.
-9. **The release evaluation** holdout is 38 rows; its false-refusal rate means almost nothing.
-10. **Single replica**: the rate limiter and caps are per process.
-11. **Ledger depth**: 294 files were pattern-scanned, not read by a person.
+| Round | Where its residuals are recorded |
+|---|---|
+| 38 (the Round 37 re-audit answered, in part) | [`round38-…-2026-10-24.md`](../round38-the-round-37-re-audit-answered-2026-10-24.md) §E and §F. The Round 37 findings past its first seven P1s were open when that report was written; later commits on the branch answer more of them by finding id (`git log --oneline 8b3d8a4..`) |
+| 37 (internal re-audit of `8b3d8a4`) | The owner's re-audit report. It is not in the repository; Round 38 and the commits after it cite its findings by id (R37-n) |
+| 36 (the owner's forensic brief, F-001..F-022) | [`round36-…-2026-10-24.md`](../round36-the-request-is-bound-to-the-bytes-2026-10-24.md) §E and §F |
+| 35 (live mainnet, parsed CPIs) | [`round35-…-2026-10-23.md`](../round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md) |
+| 34 (the Round 33 deep audit answered) | [`round34-…-2026-10-23.md`](../round34-the-deep-audit-remediated-2026-10-23.md) §G. The Round 33 audit report and the Round 34 remediation brief it cites (R33-n, DOC-n) are not in the repository |
+| 31–32 (dependencies, production readiness) | [`round32-…-2026-10-22.md`](../round32-production-readiness-2026-10-22.md); the dependency holds, with reasons, in `.github/dependency-holds.json` and `graphite-core/CHANGELOG.md` |
+| 30 (forensic audit of `29e4356`) | [`round30-…-2026-10-22.md`](../round30-forensic-audit-and-remediation-2026-10-22.md) §H and [`docs/audit-r30/findings-registry.md`](../audit-r30/findings-registry.md) |
 
-From Round 31 (dependencies held back, with reasons — `graphite-core/CHANGELOG.md`):
-
-12. The runtime oracle's `solana-transaction`/`solana-message` stay below 6.0: 6.0 removes the v1
-    `MAX_SIGNATURES`/`MAX_ADDRESSES`/`MAX_INSTRUCTIONS` limits the oracle checks Graphite against.
-13. `bincode` stays on 1.x (the runtime's packet crate still decodes with bincode 1).
-14. `@solana/web3.js` stays on 1.x and `@types/node` on 22.x.
-
-From Round 32 (this hand-off's own work): the release workflow had not run on GitHub when this was
-written; ACME/TLS, the systemd units under a running systemd and the S3 Object-Lock upload were
-validated with their tools and a loopback test, not in a real deployment (`deploy/README.md`).
+A residual recorded in an older report may since have been fixed or changed;
+CURRENT says which. The owner and external gates (the rulesets, the `release`
+environment, private vulnerability reporting, the dependency pull requests, the
+sign-off of the nine medium-confidence declaration rewrites, deployment, WORM
+anchoring, RPC independence, a live-mainnet replay, a larger holdout and this
+audit) are items in [`docs/ops/production-checklist.md`](../ops/production-checklist.md).
 
 ## 7. What we want you to answer
 
@@ -216,7 +195,7 @@ validated with their tools and a loopback test, not in a real deployment (`deplo
    splice the trail undetected, given an anchored checkpoint? Without one?
 4. **Witness independence** (I-9): is the heuristic a reasonable basis for
    `GRAPHITE_L8_HIGH_ASSURANCE`, and what would you require instead?
-5. **The 21 intent grants' facts**: does each grant's declared effect match what the program does?
+5. **The 27 intent grants' facts** (`graphite-core/src/intent_grants.rs`): does each grant's declared effect match what the program does?
 6. **Declared effects** (I-3): can value leave a signer under a manifest that declares something
    narrower — through CPIs, Token-2022 extensions, close/realloc, lookup-table indirection?
 7. **Trust learning** (I-2): any path, including concurrency and the registry, by which callers

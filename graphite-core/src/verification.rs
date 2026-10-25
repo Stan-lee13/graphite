@@ -2005,6 +2005,13 @@ pub enum UnobservedCode {
     /// approval carrying it says the transaction is not a known attack, not
     /// that it is the transaction the user asked for.
     IntentParameters,
+    /// Whether a manifested program the transaction invokes was redeployed
+    /// since its evidence was gathered (roadmap R-M1): its deployment could
+    /// not be read — the read failed, ran out of budget, or the account does
+    /// not decode as its loader's. Round 38 (R37-16): this was a log line,
+    /// and the verdict rested on evidence that may describe replaced code.
+    /// Never inherent.
+    ProgramDeployments,
 }
 
 impl UnobservedCode {
@@ -2039,12 +2046,13 @@ impl UnobservedCode {
             UnobservedCode::FeePayerBlockhashSigners => "fee_payer_blockhash_signers",
             UnobservedCode::NoRealEffects => "no_real_effects",
             UnobservedCode::IntentParameters => "intent_parameters",
+            UnobservedCode::ProgramDeployments => "program_deployments",
         }
     }
 
     /// Every code, in declaration order — what the SDKs and the bridge's
     /// policy validate an operator's accepted list against.
-    pub const ALL: [UnobservedCode; 16] = [
+    pub const ALL: [UnobservedCode; 17] = [
         UnobservedCode::NotSimulated,
         UnobservedCode::NoStateDiff,
         UnobservedCode::SimulationFailed,
@@ -2061,6 +2069,7 @@ impl UnobservedCode {
         UnobservedCode::FeePayerBlockhashSigners,
         UnobservedCode::NoRealEffects,
         UnobservedCode::IntentParameters,
+        UnobservedCode::ProgramDeployments,
     ];
 }
 
@@ -2194,12 +2203,22 @@ fn verification_scope(
     lookups: Option<Result<usize, String>>,
     instruction_located: bool,
     intent_unbound: Option<&str>,
+    deployments_unread: &[String],
 ) -> VerificationScope {
     let intent_residual = |r: &mut Residuals| {
         if let Some(why) = intent_unbound {
             r.push(
                 UnobservedCode::IntentParameters,
                 format!("whether this is the transaction the request asked for: {why}"),
+            );
+        }
+        if !deployments_unread.is_empty() {
+            r.push(
+                UnobservedCode::ProgramDeployments,
+                format!(
+                    "whether the programs this transaction invokes still run the code their evidence describes: their deployments were not read ({})",
+                    deployments_unread.join("; ")
+                ),
             );
         }
     };
@@ -3809,10 +3828,11 @@ impl GraphiteCore {
         &self,
         programs: &[String],
         deployments: Vec<crate::rpc_client::ProgramDeployment>,
-    ) -> (Vec<ProgramUpgrade>, Vec<String>) {
+    ) -> (Vec<ProgramUpgrade>, Vec<String>, Vec<String>) {
         use crate::semantic_graph_store::{DeploymentChange, ObservedDeployment};
         let mut upgrades = Vec::new();
         let mut notes = Vec::new();
+        let mut unread = Vec::new();
         let mut store_changed = false;
         for (program, deployment) in programs.iter().zip(deployments) {
             let (deploy_slot, upgrade_authority) = match deployment {
@@ -3834,6 +3854,10 @@ impl GraphiteCore {
                         ));
                     }
                     (deploy_slot, authority)
+                }
+                crate::rpc_client::ProgramDeployment::Unreadable { why } => {
+                    unread.push(why);
+                    continue;
                 }
                 // Final code (BPF loader 2, a builtin) or no account: nothing
                 // to track.
@@ -3926,7 +3950,7 @@ impl GraphiteCore {
         if store_changed {
             self.persist_state_async().await;
         }
-        (upgrades, notes)
+        (upgrades, notes, unread)
     }
 
     /// Set the total wall-clock budget one verification may spend on RPC.
@@ -7060,6 +7084,9 @@ impl GraphiteCore {
         // Round 36 (F-004): a grounded withdrawal's minimum outputs and the
         // accounts they bound, held below to what the simulation delivered.
         let mut withdrawal_minimums: Option<Vec<(&'static str, u64, String)>> = None;
+        // Round 38 (R37-1): every grounded withdrawal has what rides beside
+        // it held (`intent_binding::withdrawal_keeps_value`), minimum or not.
+        let mut grounded_withdrawal = false;
         let declared_intent =
             crate::risk_engine::canonical_intent(&input.proposed_intent.intent_type);
         let (expected_account_count, variable_accounts, manifest_risk_class) = match manifest {
@@ -7079,19 +7106,15 @@ impl GraphiteCore {
                             self.allow_unbounded_withdrawals,
                         ) {
                             crate::intent_grants::GrantOutcome::Grounded(class) => {
-                                // The operator's GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS
-                                // covers the economic bound too: it is the
-                                // same decision, to sign a withdrawal the
-                                // chain does not hold to an amount.
-                                if !self.allow_unbounded_withdrawals {
-                                    withdrawal_minimums = crate::intent_grants::withdrawal_minimums(
-                                        &input.program_id,
-                                        i,
-                                        &declared_intent,
-                                        &input.account_addresses,
-                                        input.instruction_data.as_deref(),
-                                    );
-                                }
+                                grounded_withdrawal =
+                                    class == crate::intent_grants::WITHDRAW_TO_OWNER;
+                                withdrawal_minimums = crate::intent_grants::withdrawal_minimums(
+                                    &input.program_id,
+                                    i,
+                                    &declared_intent,
+                                    &input.account_addresses,
+                                    input.instruction_data.as_deref(),
+                                );
                                 class.to_string()
                             }
                             crate::intent_grants::GrantOutcome::Ungrounded(why) => {
@@ -9163,12 +9186,15 @@ impl GraphiteCore {
         // redeployed, or had its upgrade authority changed, since Graphite
         // last saw it? Read from the loader (two batched header reads, under
         // the RPC budget). An answer that cannot be read records nothing and
-        // changes nothing: it is neither a refusal nor an approval.
+        // changes nothing, and is the `program_deployments` residual (Round
+        // 38, R37-16): not a refusal, and not an executable approval either.
         #[cfg(feature = "rpc")]
-        let (program_upgrades, deployment_notes): (Vec<ProgramUpgrade>, Vec<String>) = match &self
-            .rpc_client
-        {
-            None => (Vec::new(), Vec::new()),
+        let (program_upgrades, deployment_notes, deployments_unread): (
+            Vec<ProgramUpgrade>,
+            Vec<String>,
+            Vec<String>,
+        ) = match &self.rpc_client {
+            None => (Vec::new(), Vec::new(), Vec::new()),
             Some(client) => {
                 let registry = self.registry();
                 let mut programs: Vec<String> = invoked_programs(
@@ -9183,22 +9209,33 @@ impl GraphiteCore {
                 programs.sort();
                 programs.dedup();
                 if programs.is_empty() {
-                    (Vec::new(), Vec::new())
+                    (Vec::new(), Vec::new(), Vec::new())
                 } else {
                     match within_budget(&budget, client.get_program_deployments(&programs)).await {
                         Ok(Ok(deployments)) => self.note_deployments(&programs, deployments).await,
                         Ok(Err(e)) => {
                             tracing::warn!("R-M1: the program deployments could not be read: {e}");
-                            (Vec::new(), Vec::new())
+                            (
+                                Vec::new(),
+                                Vec::new(),
+                                vec![format!("the read failed: {e}")],
+                            )
                         }
-                        Err(()) => (Vec::new(), Vec::new()),
+                        Err(()) => (
+                            Vec::new(),
+                            Vec::new(),
+                            vec!["the RPC budget ran out before they were read".to_string()],
+                        ),
                     }
                 }
             }
         };
         #[cfg(not(feature = "rpc"))]
-        let (program_upgrades, deployment_notes): (Vec<ProgramUpgrade>, Vec<String>) =
-            (Vec::new(), Vec::new());
+        let (program_upgrades, deployment_notes, deployments_unread): (
+            Vec<ProgramUpgrade>,
+            Vec<String>,
+            Vec<String>,
+        ) = (Vec::new(), Vec::new(), Vec::new());
 
         let quarantined_hits: Vec<(String, String)> = {
             #[cfg(feature = "rpc")]
@@ -9604,28 +9641,52 @@ impl GraphiteCore {
         let binding_diff = observed_diff
             .as_ref()
             .filter(|d| d.provenance == crate::state_diff::DiffProvenance::RpcSimulated);
+        let (instructions, signers) = binding_instructions(
+            input,
+            artifact_message.as_ref(),
+            resolved_lookups.as_ref().and_then(|r| r.as_ref().ok()),
+        );
+        let beside = crate::intent_binding::WithdrawalContext {
+            instructions: instructions.as_deref().map_err(|e| e.as_str()),
+            signers: &signers,
+            program_id: &input.program_id,
+        };
+        let bind_request = || {
+            crate::intent_binding::bind(&crate::intent_binding::BindingInput {
+                canonical_intent: &declared_intent,
+                params: input.proposed_intent.extracted_parameters.as_ref(),
+                instructions: instructions.as_deref().map_err(|e| e.as_str()),
+                signers: &signers,
+                diff: binding_diff,
+                mint_decimals: &binding_mint_decimals,
+            })
+        };
         let intent_binding = match &withdrawal_minimums {
-            Some(minimums) => crate::intent_binding::bind_withdrawal(
-                &instruction_name,
-                minimums,
-                input.proposed_intent.extracted_parameters.as_ref(),
-                binding_diff,
-            ),
-            None => {
-                let (instructions, signers) = binding_instructions(
-                    input,
-                    artifact_message.as_ref(),
-                    resolved_lookups.as_ref().and_then(|r| r.as_ref().ok()),
-                );
-                crate::intent_binding::bind(&crate::intent_binding::BindingInput {
-                    canonical_intent: &declared_intent,
-                    params: input.proposed_intent.extracted_parameters.as_ref(),
-                    instructions: instructions.as_deref().map_err(|e| e.as_str()),
-                    signers: &signers,
-                    diff: binding_diff,
-                    mint_decimals: &binding_mint_decimals,
-                })
+            // The operator's GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS covers the
+            // economic bound too: it is the same decision, to sign a
+            // withdrawal the chain does not hold to an amount. It never
+            // covers what rides beside the withdrawal (R37-1).
+            Some(minimums) if !self.allow_unbounded_withdrawals => {
+                crate::intent_binding::bind_withdrawal(
+                    &instruction_name,
+                    minimums,
+                    input.proposed_intent.extracted_parameters.as_ref(),
+                    binding_diff,
+                    &beside,
+                )
             }
+            minimums if grounded_withdrawal => {
+                match crate::intent_binding::withdrawal_keeps_value(
+                    &instruction_name,
+                    minimums.as_deref().unwrap_or(&[]),
+                    binding_diff,
+                    &beside,
+                ) {
+                    Err(b) => b,
+                    Ok(()) => bind_request(),
+                }
+            }
+            _ => bind_request(),
         };
         let mut intent_unbound: Option<String> = None;
         let risk_summary = match intent_binding {
@@ -10424,6 +10485,7 @@ impl GraphiteCore {
                         .map(|r| r.as_ref().map(|l| l.len()).map_err(|e| e.clone())),
                     artifact_instruction_located,
                     intent_unbound.as_deref(),
+                    &deployments_unread,
                 )
             },
             resolved_accounts: resolution.resolved_accounts.clone(),

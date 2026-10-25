@@ -52,9 +52,12 @@ approves is signed and submitted on whatever cluster `SOLANA_RPC_URL` names.
 - **One guard per wallet** (Round 32). The aggregate limit is kept per guard, so the server
   takes a lock named for its wallet and refuses to start while another guard (another MCP
   server, a CLI run, an SDK-built guard) holds the same wallet on this host for the same
-  OS user. Since Round 34 the lock lives where no temp cleaner removes it
-  (`GRAPHITE_GUARD_LOCK_DIR`, else `$XDG_RUNTIME_DIR`, `/run`, or `~/.local/state`; on
-  Windows `%LOCALAPPDATA%`), and it is re-checked before every spend: a server whose lock
+  OS user. Since Round 34 the lock lives where no temp cleaner removes it, and since
+  Round 38 (R37-17) the default is one directory per user that no session variable moves
+  (`GRAPHITE_GUARD_LOCK_DIR`, else `<home>/.local/state/graphite-guard`, `<home>` being the
+  account's home directory, not `$HOME`; on Windows `<profile>\AppData\Local`), so a
+  server started from a login session and a guard started from cron find the same lock.
+  It is re-checked before every spend: a server whose lock
   was deleted refuses to move funds until it is restarted. `GRAPHITE_GUARD_ALLOW_SHARED_WALLET=1`
   lets a second guard start, and the limits then hold per guard, not per wallet. Guards
   on other hosts or in other containers are not seen; one per wallet across them is the

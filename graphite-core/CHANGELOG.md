@@ -5,6 +5,26 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 
 ## [0.3.0-beta] — unreleased (the contract since v0.2.0-beta)
 
+Round 38 (2026-10-24) — the Round 37 re-audit of `8b3d8a4` answered: its P1s, P2s and P3s ([report](../docs/round38-the-round-37-re-audit-answered-2026-10-24.md)):
+
+- **Contract:** `scope.unobserved_codes` gains `program_deployments` (both scope kinds): the deployment of a manifested program the transaction invokes could not be read (the read failed, ran out of budget, or the account does not decode as its loader's), so whether its evidence describes the code now on chain is unknown (R37-16). Never inherent. The TS and Go SDKs know it; the guard refuses it by default.
+- **Behaviour (stricter), from the P2/P3 pass:**
+  - L4 (R37-7 residual): a declared creation's rent is no longer netted out of the wallet's loss before the comparison with the located instruction's stated lamports, which already pay it.
+  - `intent_binding` (R37-9): a swap's effect is measured on the one signer whose token accounts change, not on `signers.first()`; tokens changing for two signers, or a co-signer gaining lamports, is a mismatch.
+  - `intent_binding` (R37-10): a transfer, approve or burn beside a top-level instruction of a program other than System, the token programs, compute budget, memo or ATA `Create`/`CreateIdempotent` is unbound.
+  - `intent_binding` (B-6): a native Stake `Withdraw` is held to the lamports the request states.
+  - `intent_binding` (B-7): `le_u64`/`le_u32` check their end offset; a `CreateAccountWithSeed` seed length near `usize::MAX` panicked in a debug build.
+  - Startup (R37-15, V-2): any `GRAPHITE_*` name no Graphite component reads refuses to start, and so does a name within two edits of a Core name outside the prefix; the CLI checks too. `operator_boundary::check_env_names` returns `Result<(), String>`.
+  - `graphite execution` honours `GRAPHITE_L8_HIGH_ASSURANCE` and refuses to run without a witness (V-3).
+  - `rpc_client::ProgramDeployment::Unreadable`: one undecodable entry no longer fails the batch (R37-16).
+- **Registry (V-5):** `RegistryRecord::verify_offline` also checks the record's `source`, its tier against its distinct attesters, and duplicate attesters; `graphite registry verify-records` runs it over the acceptance log (exit 0 verified, 1 failed, 2 unproven).
+
+- **Behaviour (stricter):**
+  - `intent_binding::keeps_value` (R37-1): beside a swap or a withdrawal, every top-level System or token movement under a signer's authority goes to a signer's own account, `Approve` / `SetAuthority` / `Burn` by a signer is a mismatch, and no account outside the signers' and the route's gains lamports or a swapped mint. A swap's spend is held to the route's decoded `amount_in`. A swap into SOL counts every lamport that reached the signer's own accounts, so the owner's own unwrap is bound. `bind_withdrawal` takes a `WithdrawalContext` (the instructions, signers and program).
+  - `intent_binding::bind_create` (R37-7): `create` is bound. Every account the transaction creates holds at most its rent-exempt minimum plus the SOL amount the request states; without a simulated diff it is `intent_parameters` (it was `NotApplicable`). `state_diff::rent_exempt_minimum` is public.
+  - L4 (R37-6): on an account a signer holds, the owner, closure, delegate, close-authority, freeze and every authority judgement asks `covers_by_name`; a line naming no account still covers pool, vault and program accounts.
+- **Audit trail (R37-2..5):** every reader walks the chain as `verify` does, carried across files (`chain::Cursor`): a legacy line under a key needs a checked adoption that lists it (`KeyAdoption.legacy`), an unkeyed line is refused once the chain is keyed, a record under a retired key is never read and is a break, a key switch without an adoption is accepted only before the first adoption, and a chained line is read only when it continues the last one. Links are `chain.v = 2` with `chain.trail` (a random trail id, bound into the link hash and so the MAC); v1 trails stay readable, but a Round 30–37 binary cannot read v2 lines, so upgrade verifiers first. `graphite audit verify` exit 4 also covers unlisted legacy records; exit 1 also covers a retired-key record, a switch without adoption after an adoption, another trail's id, and legacy records before a keyed seq 0. The writer refuses to resume onto a legacy-only trail (run `audit adopt-key`), a head under a retired key, or a head the readers' walk does not reach. The server warns while `GRAPHITE_AUDIT_PREVIOUS_KEY_FILE` stays set.
+
 Round 36 (2026-10-24) — the whole-repository forensic audit remediated ([report](../docs/round36-the-request-is-bound-to-the-bytes-2026-10-24.md)):
 
 - **Contract:** `scope.unobserved_codes` gains `intent_parameters` (both scope kinds: `verification-result-v1.json:scope<oneOf0>.unobserved_codes[]`, `verification-result-v1.json:scope<oneOf1>.unobserved_codes[]`): the request states an amount, recipient or asset the Core could not tie to the bytes. It is never inherent, so a verdict carrying it is `analysis_only`. The TS and Go SDKs know it; a client that predates it refuses the verdict as an unknown code, which is the fail-closed reading.
@@ -15,6 +35,7 @@ Round 36 (2026-10-24) — the whole-repository forensic audit remediated ([repor
   - The server refuses to start on a near-miss of a `GRAPHITE_*` variable it reads (F-020).
 - **Registry:** a `RegistryRecord` keeps `signature_hex`, `attestation_signatures` and `signing_domain`, and `RegistryRecord::verify_offline` checks it alone (F-008). Older records deserialize unchanged.
 - **Manifests:** 35 declarations rewritten from their IDLs, so no withdrawal grant's debit line names no account (F-005, `docs/audit-r36/declaration-rewrites.json`).
+- **Assurance (follow-up, F-015):** `scripts/mutation_floor.py` counts a shard's mutants from `mutants.json` and requires `end_time`. cargo-mutants' `total_mutants` counts only the outcomes recorded, so it had scored 15 shards killed by the step timeout as complete. Run 40083338181 is recorded in `docs/audit-r36/mutation-run-40083338181.md`: no module is complete yet, and six finished shards are below their floor.
 
 Round 35 (2026-10-23) — Round 34 on real mainnet traffic ([report](../docs/round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md)):
 

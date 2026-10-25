@@ -1,0 +1,279 @@
+{
+  "_comment": [
+    "Round 38 (D2-7): every decision NOT to take an update, with a date to re-decide it by.",
+    "Read by .github/scripts/dependency-holds.py in CI (ci-scripts) and weekly (pinned-tools.yml).",
+    "A Dependabot `ignore` (.github/dependabot.yml) hides every later major; an npm `overrides` entry",
+    "forces one version and hides every later one. Each must be listed here with the same value, a",
+    "reason and a review_by date no more than max_days after `since`; a passed date fails CI until the",
+    "hold is re-decided (take the update, or re-check and move both dates). `since` is when the hold was",
+    "recorded here, not a claim that it was re-reviewed then. Same review date as the npm-audit",
+    "allowlists' entries (2027-01-20), which these holds mostly explain."
+  ],
+  "max_days": 120,
+  "holds": [
+    {
+      "kind": "dependabot-ignore",
+      "ecosystem": "cargo",
+      "directory": "/tools/runtime-oracle",
+      "package": "bincode",
+      "value": {
+        "update-types": ["version-update:semver-major"]
+      },
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "bincode 1.3 is the version agave's packet decoder uses; the oracle must decode exactly as the runtime does, so it moves when agave does (dependabot.yml)."
+    },
+    {
+      "kind": "dependabot-ignore",
+      "ecosystem": "cargo",
+      "directory": "/tools/runtime-oracle",
+      "package": "solana-transaction",
+      "value": {
+        "update-types": ["version-update:semver-major"]
+      },
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "moves together with solana-message, and 6.0 changes the v1 limits the oracle pins Graphite to: a deliberate, hand-made change of the referee (Round 36, PRs #47/#48)."
+    },
+    {
+      "kind": "dependabot-ignore",
+      "ecosystem": "cargo",
+      "directory": "/tools/runtime-oracle",
+      "package": "solana-message",
+      "value": {
+        "update-types": ["version-update:semver-major"]
+      },
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "must be the version the pinned parser / solana-transaction is built on; a lone major bump does not compile (Round 36, PRs #47/#48/#52)."
+    },
+    {
+      "kind": "dependabot-ignore",
+      "ecosystem": "cargo",
+      "directory": "/tools/inner-instruction-oracle",
+      "package": "bincode",
+      "value": {
+        "update-types": ["version-update:semver-major"]
+      },
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "bincode 1.3 is the version agave's packet decoder uses; the oracle must decode exactly as the runtime does, so it moves when agave does (dependabot.yml)."
+    },
+    {
+      "kind": "dependabot-ignore",
+      "ecosystem": "cargo",
+      "directory": "/tools/inner-instruction-oracle",
+      "package": "solana-message",
+      "value": {
+        "update-types": ["version-update:semver-major"]
+      },
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "must be the version the pinned parser / solana-transaction is built on; a lone major bump does not compile (Round 36, PRs #47/#48/#52)."
+    },
+    {
+      "kind": "dependabot-ignore",
+      "ecosystem": "npm",
+      "directory": "/integrations/vercel-ai",
+      "package": "@types/node",
+      "value": {
+        "update-types": ["version-update:semver-major"]
+      },
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "follows the Node major CI and the docs run (22 LTS): types from a later major would typecheck APIs the runtime does not have."
+    },
+    {
+      "kind": "dependabot-ignore",
+      "ecosystem": "npm",
+      "directory": "/integrations/mcp-server",
+      "package": "@types/node",
+      "value": {
+        "update-types": ["version-update:semver-major"]
+      },
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "follows the Node major CI and the docs run (22 LTS): types from a later major would typecheck APIs the runtime does not have."
+    },
+    {
+      "kind": "dependabot-ignore",
+      "ecosystem": "npm",
+      "directory": "/integrations/agent-guard",
+      "package": "@types/node",
+      "value": {
+        "update-types": ["version-update:semver-major"]
+      },
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "follows the Node major CI and the docs run (22 LTS): types from a later major would typecheck APIs the runtime does not have."
+    },
+    {
+      "kind": "dependabot-ignore",
+      "ecosystem": "npm",
+      "directory": "/integrations/agent-guard",
+      "package": "@solana/web3.js",
+      "value": {
+        "update-types": ["version-update:semver-major"]
+      },
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "stays on 1.x (Round 34, D-7): 2.x/3.x changes the guard's public types; the move is planned work. Same date as the npm-audit allowlist entries it explains."
+    },
+    {
+      "kind": "dependabot-ignore",
+      "ecosystem": "npm",
+      "directory": "/integrations/solana-agent-kit",
+      "package": "@types/node",
+      "value": {
+        "update-types": ["version-update:semver-major"]
+      },
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "follows the Node major CI and the docs run (22 LTS): types from a later major would typecheck APIs the runtime does not have."
+    },
+    {
+      "kind": "dependabot-ignore",
+      "ecosystem": "npm",
+      "directory": "/integrations/solana-agent-kit",
+      "package": "@solana/web3.js",
+      "value": {
+        "update-types": ["version-update:semver-major"]
+      },
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "stays on 1.x (Round 34, D-7): 2.x/3.x changes the guard's public types; the move is planned work. Same date as the npm-audit allowlist entries it explains."
+    },
+    {
+      "kind": "dependabot-ignore",
+      "ecosystem": "npm",
+      "directory": "/sdk/typescript",
+      "package": "@types/node",
+      "value": {
+        "update-types": ["version-update:semver-major"]
+      },
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "follows the Node major CI and the docs run (22 LTS): types from a later major would typecheck APIs the runtime does not have."
+    },
+    {
+      "kind": "dependabot-ignore",
+      "ecosystem": "npm",
+      "directory": "/dashboard",
+      "package": "@types/node",
+      "value": {
+        "update-types": ["version-update:semver-major"]
+      },
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "follows the Node major CI and the docs run (22 LTS): types from a later major would typecheck APIs the runtime does not have."
+    },
+    {
+      "kind": "npm-override",
+      "file": "integrations/solana-agent-kit/package.json",
+      "package": "fast-uri",
+      "value": "3.1.9",
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "forces a patched release of a transitive dependency where the parent had not moved (.github/npm-audit/solana-agent-kit.allow). Exact: later patches, security fixes included, arrive only by moving this."
+    },
+    {
+      "kind": "npm-override",
+      "file": "integrations/solana-agent-kit/package.json",
+      "package": "nanoid",
+      "value": "3.3.20",
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "forces a patched release of a transitive dependency where the parent had not moved (.github/npm-audit/solana-agent-kit.allow). Exact: later patches, security fixes included, arrive only by moving this."
+    },
+    {
+      "kind": "npm-override",
+      "file": "integrations/solana-agent-kit/package.json",
+      "package": "jsondiffpatch",
+      "value": "0.7.6",
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "forces a patched release of a transitive dependency where the parent had not moved (.github/npm-audit/solana-agent-kit.allow). Exact: later patches, security fixes included, arrive only by moving this."
+    },
+    {
+      "kind": "npm-override",
+      "file": "integrations/solana-agent-kit/package.json",
+      "package": "langsmith",
+      "value": "0.6.3",
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "forces a patched release of a transitive dependency where the parent had not moved (.github/npm-audit/solana-agent-kit.allow). Exact: later patches, security fixes included, arrive only by moving this."
+    },
+    {
+      "kind": "npm-override",
+      "file": "integrations/solana-agent-kit/package.json",
+      "package": "hono",
+      "value": "4.13.13",
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "forces a patched release of a transitive dependency where the parent had not moved (.github/npm-audit/solana-agent-kit.allow). Exact: later patches, security fixes included, arrive only by moving this."
+    },
+    {
+      "kind": "npm-override",
+      "file": "integrations/solana-agent-kit/package.json",
+      "package": "ip-address",
+      "value": "10.7.4",
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "forces a patched release of a transitive dependency where the parent had not moved (.github/npm-audit/solana-agent-kit.allow). Exact: later patches, security fixes included, arrive only by moving this."
+    },
+    {
+      "kind": "npm-override",
+      "file": "integrations/solana-agent-kit/package.json",
+      "package": "qs",
+      "value": "6.16.1",
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "forces a patched release of a transitive dependency where the parent had not moved (.github/npm-audit/solana-agent-kit.allow). Exact: later patches, security fixes included, arrive only by moving this."
+    },
+    {
+      "kind": "npm-override",
+      "file": "integrations/solana-agent-kit/package.json",
+      "package": "@modelcontextprotocol/sdk",
+      "value": "^1.32.1",
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "keeps solana-agent-kit's MCP SDK at or above 1.32.1, past the advisories below 1.32.0 (.github/npm-audit/solana-agent-kit.allow)."
+    },
+    {
+      "kind": "npm-override",
+      "file": "integrations/solana-agent-kit/package.json",
+      "package": "proxy-addr",
+      "value": "2.0.8",
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "forces a patched release of a transitive dependency where the parent had not moved (.github/npm-audit/solana-agent-kit.allow). Exact: later patches, security fixes included, arrive only by moving this."
+    },
+    {
+      "kind": "npm-override",
+      "file": "integrations/solana-agent-kit/package.json",
+      "package": "zod",
+      "value": "4.6.7",
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "forces the development tree's Zod past GHSA-mrhx-c7xc-m3w5 (every Zod below 4.6.6; Round 36, F-001). Exact: a newer Zod is taken by moving this."
+    },
+    {
+      "kind": "npm-override",
+      "file": "integrations/solana-agent-kit/package.json",
+      "package": "@openai/zod",
+      "value": "npm:zod@4.6.7",
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "the same Zod 4.6.7, under the alias the OpenAI agents SDK imports (Round 36, F-001)."
+    },
+    {
+      "kind": "npm-override",
+      "file": "dashboard/package.json",
+      "package": "source-map-js",
+      "value": "1.2.2",
+      "since": "2026-10-24",
+      "review_by": "2027-01-20",
+      "why": "forces a patched release of a transitive dependency where the parent had not moved (.github/npm-audit/dashboard.allow). Exact: later patches, security fixes included, arrive only by moving this."
+    }
+  ]
+}

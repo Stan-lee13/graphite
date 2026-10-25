@@ -89,18 +89,43 @@ FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2
 # binary's own `healthcheck` subcommand instead, keeping curl and its
 # transitive libraries (libcurl, libssh2, libpsl, …) out of the runtime image.
 #
-# Not pinned, deliberately (A6-14). The base image is pinned by digest, but
-# `apt-get update` resolves ca-certificates from the bookworm archive at build
-# time, so two builds of one commit can carry different versions of that one
-# package. That was accepted rather than pinned: the package is a trust store,
-# and a stale one is the larger risk (a revoked CA stays trusted); the Debian
-# stable archive only ever moves it forward through security/point releases;
-# and a snapshot.debian.org pin would need a timestamp bumped by hand, which
-# in practice means never. If byte-reproducible images become a requirement,
-# replace this with `snapshot.debian.org/archive/debian/<timestamp>` sources
-# and `ca-certificates=<version>`.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+# Pinned to a dated archive snapshot (Round 38, D-8 residual; was A6-14's
+# deliberate float). The base image is pinned by digest, but `apt-get update`
+# against the live bookworm archive resolved ca-certificates (and openssl,
+# which it depends on) at build time, so two builds of one commit could ship
+# different packages, and the image a release attested was not the image a
+# rebuild produced. The sources are now ONE snapshot.debian.org timestamp for
+# the main and security archives: every build of this file installs the same
+# versions. apt still checks every index against the archive keyring in the
+# base image (so plain http is safe here, and the image has no CA store to do
+# https with yet); Check-Valid-Until is off because a snapshot's Release files
+# are old by design.
+#
+# The cost A6-14 named is real: a snapshot freezes the trust store and openssl
+# too. It is held in check, not ignored: the timestamp is listed in
+# .github/pinned-tools.json (max_age_days), the weekly pinned-tools workflow
+# goes red once it is older than that, and check-pins fails if the two
+# timestamps below ever differ. To re-pin: set both timestamps to a recent
+# snapshot (any time; the archive serves the latest snapshot at or before
+# it), update pinned-tools.json in the same change, and read the versions the
+# build prints (dpkg-query below).
+RUN rm -f /etc/apt/sources.list \
+    && printf '%s\n' \
+        'Types: deb' \
+        'URIs: http://snapshot.debian.org/archive/debian/20261021T000000Z' \
+        'Suites: bookworm bookworm-updates' \
+        'Components: main' \
+        'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+        '' \
+        'Types: deb' \
+        'URIs: http://snapshot.debian.org/archive/debian-security/20261021T000000Z' \
+        'Suites: bookworm-security' \
+        'Components: main' \
+        'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+        > /etc/apt/sources.list.d/debian.sources \
+    && apt-get -o Acquire::Check-Valid-Until=false -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends ca-certificates \
+    && dpkg-query -W ca-certificates openssl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=binary /graphite /usr/local/bin/graphite

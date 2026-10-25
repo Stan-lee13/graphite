@@ -10,10 +10,17 @@ mutant at all fails: an empty run is not a pass.
 Round 36 (F-015): a run that did not finish its shard fails too. The first
 hosted run of these jobs hit the job's six-hour limit on every shard, and a
 score over the mutants that happened to run would read as the module's
-score. The outcomes must account for every one of `total_mutants`, the
-shard's own count; otherwise the partial score is printed and the run is
-reported INCOMPLETE.
+score. The outcomes must account for every mutant the shard was given;
+otherwise the partial score is printed and the run is reported INCOMPLETE.
+
+The shard's count is read from `mutants.json`, written beside
+`outcomes.json` before the first mutant runs. `outcomes.json`'s own
+`total_mutants` is NOT that count: cargo-mutants 27.1.0 raises it as each
+outcome lands, so on a shard killed by the step timeout it equals the
+outcomes recorded, and 16 of the 18 killed shards of run 40083338181 were
+scored as if complete. An interrupted run also leaves `end_time` null.
 """
+import os
 import json
 import sys
 
@@ -43,11 +50,18 @@ def main() -> int:
         print(f"no mutant was tested: {counts}", file=sys.stderr)
         return 1
     score = (counts["caught"] + counts["timeout"]) / tested
-    total = doc.get("total_mutants")
+    listed = os.path.join(os.path.dirname(path) or ".", "mutants.json")
+    try:
+        with open(listed) as f:
+            total = len(json.load(f))
+    except (OSError, ValueError, TypeError) as e:
+        print(f"INCOMPLETE: cannot read the shard's mutant list {listed}: {e}", file=sys.stderr)
+        return 1
     seen = tested + counts["unviable"]
-    if not isinstance(total, int) or seen < total:
+    if seen != total or doc.get("end_time") is None:
         print(
-            f"INCOMPLETE: {seen} of {total} mutants in this shard have an outcome; "
+            f"INCOMPLETE: {seen} of {total} mutants in this shard have an outcome"
+            f"{'' if doc.get('end_time') else ' and the run never finished (no end_time)'}; "
             f"partial score {score:.3f} is not the module's (floor {floor:.3f}): {counts}",
             file=sys.stderr,
         )

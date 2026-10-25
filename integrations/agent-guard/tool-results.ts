@@ -24,7 +24,9 @@ export interface GraphiteToolResult {
    * `submission-unknown`: signed and handed to the RPC, outcome unknown —
    * `signature` is set and must be checked before any retry (Round 29, L2).
    * `stale-verdict`: the verdict aged past the deployment's bound before it
-   * could be signed; nothing was signed or sent (Round 35, F-017).
+   * could be signed; nothing was signed or sent (Round 35, F-017). Since
+   * Round 38 (G2-3) also before it could be sent: then it was signed and the
+   * signed bytes dropped, and still nothing was sent.
    */
   refusedBy?:
     | "spend-policy"

@@ -3,8 +3,9 @@
 One list, in order, for taking Graphite Core to production. Every item names the
 artifact in this repository and the exact command or click. Items 1–12 are the
 owner and operator release gate of Round 30 (`docs/round30-forensic-audit-and-remediation-2026-10-22.md`,
-§G), in its numbering; A–F are what a production service needs around them.
-**Launch stays blocked until items 1, 2, 3 and 9 are done.**
+§G), in its numbering; item 13 and the pull requests in item 6 are owner gates of Round 36
+(`docs/round36-the-request-is-bound-to-the-bytes-2026-10-24.md`, §F); A–F are what a production
+service needs around them. **Launch stays blocked until items 1, 2, 3, 9 and 13 are done.**
 
 Commands assume the repository `Stan-lee13/graphite`, a checkout at its root,
 and `gh` authenticated as a repository admin.
@@ -23,6 +24,9 @@ and `gh` authenticated as a repository admin.
   Then delete or protect the stale branches (K-14): `git ls-remote --heads origin`, and for each one
   not in use, `git push origin --delete <branch>`.
   When a second maintainer exists: `gh api -X POST repos/Stan-lee13/graphite/rulesets --input .github/rulesets/main-review.json`.
+  (Round 38, D2-4: it lets the admin role bypass it through a pull request only, so importing it with
+  one maintainer no longer blocks every merge; each such merge is logged as a bypass. Delete that
+  `bypass_actors` entry once two maintainers review each other.)
 - [ ] **2. Private vulnerability reporting.**
   `gh api -X PUT repos/Stan-lee13/graphite/private-vulnerability-reporting`
   (or Settings → Security → Code security → Private vulnerability reporting → Enable).
@@ -46,7 +50,18 @@ and `gh` authenticated as a repository admin.
 - [ ] **6. Dependabot majors.** Round 31 took every update except, with reasons: the oracle's
   `solana-transaction`/`solana-message` 6 and `bincode` 3 (`graphite-core/CHANGELOG.md`),
   `@solana/web3.js` 1.x, `@types/node` 22.x. Each stays an explicit decision; close or re-open the
-  corresponding Dependabot PRs to match.
+  corresponding Dependabot PRs to match. The pull requests named as owner items so far:
+  - [ ] **PR #46** (`@solana/web3.js` 1.99.0 → 3.1.0 in `integrations/agent-guard`; Round 34, D-7:
+    the semver-major ignore in `.github/dependabot.yml` holds it back).
+  - [ ] **PRs #47, #48 and #52** (`solana-transaction` 6.0.0 and `solana-message` 6.0.0 in
+    `tools/runtime-oracle`, `solana-message` 6.0.0 in `tools/inner-instruction-oracle`; Round 36,
+    R36-L2: each bumps one of two crates that move in lockstep, so none compiles alone, and 6.0
+    changes the v1 limits the oracle checks Graphite against; the holds are in
+    `.github/dependency-holds.json`).
+
+  On 2026-10-24 the GitHub API shows all four closed unmerged, by Dependabot (#46 on 2026-10-22,
+  the other three on 2026-10-24, after its ignore rules merged). The owner's item: confirm that is
+  the decision, and re-open one only together with the paired bump and a re-run of the oracles.
 - [ ] **7. Assurance budgets.** After the first scheduled run of the weekly mutation and coverage jobs on
   the hosted runners: Actions → the run → read the measured scores; replace the three provisional
   mutation-score floors (each at 0.60) with measured ones in a PR.
@@ -54,17 +69,26 @@ and `gh` authenticated as a repository admin.
   (in `graphite-core/`): the holdout is 38 rows and every offline approval is `analysis_only`; say so
   next to any number quoted.
 
-## Release integrity (owner only — Round 34, R33-9)
+## Release integrity (owner only — Round 34, R33-9; Round 38, R37-8)
 
 A `v*` tag runs the tagged commit's own copy of `.github/workflows/release.yml`. The workflow's gate
-(`.github/scripts/release-gate.sh`) now requires the commit to be on `main`, its `CI gate` to have
-passed in a **push** run of `ci.yml` on `main` (GitHub Actions app 15368), and the tag to be SSH-signed
-by a key in `.github/allowed_signers` — but a tag on an unmerged branch runs that branch's copy of the
-workflow, which can drop the gate. Only repository settings close that, and only an admin can apply
-them. **Until R1–R4 are done, anyone with write access can still publish a release.**
+(`.github/scripts/release-gate.sh`) requires the commit to be on `main` and to descend from the commit
+that introduced the gate (`ad3f7ad`), its `CI gate` to have passed in a **push** run of `ci.yml` on
+`main` (GitHub Actions app 15368), and the tag to be SSH-signed by a key in `.github/allowed_signers`
+that is not in `.github/revoked_signers`. But a tag on an unmerged branch runs that branch's copy of
+the workflow, which can drop the gate, and a tag on a `main` commit older than the gate (`99948c6`, on
+`main` at 0.3.0-beta) runs a copy that never had one. `.github/workflows/release-guard.yml` runs from
+`main` on every `Release` run and cancels one that fails those checks, but it is a second line: it
+does not see a workflow under another name, cannot revoke an attestation, and an admin can disable
+it. Only repository settings close this, and only an admin can apply them. **Until R1 and R2 are
+done, anyone with write access can still publish a release with genuine provenance.**
 
-- [ ] **R1. Rulesets.** Item 1's two rulesets, plus the tag-creation ruleset (only a repository admin
-  may create a `v*` tag; `release-tags.json` keeps every tag immutable for everyone, admins included):
+Exactly what to apply, in order:
+
+- [ ] **R1. Three rulesets** — `main.json` (main: no force-push or deletion, every change by pull
+  request, the `CI gate` check from app 15368), `release-tags.json` (`v*` tags immutable for
+  everyone, admins included) and `release-tags-create.json` (only a repository admin creates a `v*`
+  tag):
   ```sh
   gh api -X POST repos/Stan-lee13/graphite/rulesets --input .github/rulesets/main.json
   gh api -X POST repos/Stan-lee13/graphite/rulesets --input .github/rulesets/release-tags.json
@@ -73,7 +97,8 @@ them. **Until R1–R4 are done, anyone with write access can still publish a rel
   ```
   Check: a collaborator with write (not admin) access runs `git push origin <commit>:refs/tags/v9.9.9-test`
   and is rejected.
-- [ ] **R2. A protected `release` environment** with a `v*` tag policy and you as required reviewer:
+- [ ] **R2. A protected `release` environment** (`.github/environments/release.json`): you as required
+  reviewer, and a single deployment policy, the tag pattern `v*`:
   ```sh
   me=$(gh api user --jq .id)
   gh api -X PUT repos/Stan-lee13/graphite/environments/release --input - <<EOF
@@ -86,19 +111,36 @@ them. **Until R1–R4 are done, anyone with write access can still publish a rel
     --jq '[.protection_rules[].type, .deployment_branch_policy]'   # required_reviewers, branch_policy; custom policies
   ```
   (Or Settings → Environments → New environment → `release` → Required reviewers: you; Deployment
-  branches and tags → Selected branches and tags → Add rule → Tag → `v*`.)
+  branches and tags → Selected branches and tags → Add rule → Tag → `v*`.) Every copy of
+  `release.yml` since Round 32, the pre-gate one included, publishes from this environment, so R2 is
+  what stops a pre-gate tag: approve a deployment only for a run whose gate job is named
+  `Release gate — version, main, signature and CI` (the pre-gate copy's is `Release gate — version
+  and CI`) and passed, and whose `Release guard` run is green.
 - [ ] **R3. Your release signing key in `.github/allowed_signers`.** The file is committed EMPTY on
   purpose: while it names no key, every release fails at the gate ("names no signer"). Sign tags with
   an SSH key (the same key can sign commits):
   ```sh
   git config --global gpg.format ssh
   git config --global user.signingkey ~/.ssh/id_ed25519.pub
-  printf '%s namespaces="git" %s\n' "$(git config user.email)" "$(cut -d' ' -f1,2 ~/.ssh/id_ed25519.pub)" \
-    >> .github/allowed_signers      # then commit it through a pull request to main
+  printf '%s namespaces="git",valid-before="%s" %s\n' "$(git config user.email)" "$(date -u -d '+1 year' +%Y%m%d)" \
+    "$(cut -d' ' -f1,2 ~/.ssh/id_ed25519.pub)" >> .github/allowed_signers   # then commit it through a pull request to main
   ```
-- [ ] **R4. Check the gate refuses.** After R1–R3: an unsigned annotated tag, or a signed tag on a
-  commit that is not on `main`, must stop at the `Release gate` job (and R1 already rejects the push
-  of such a tag from a non-admin).
+  `valid-after` / `valid-before` (Round 38, D2-5) bound when a key may sign a release; the gate judges
+  them at release time, not by the tag's own date. To **revoke** a key (lost, leaked, its holder
+  left): in one pull request, add its public key line to `.github/revoked_signers` (never remove a
+  line from it) and delete its line in `allowed_signers` or end it with `valid-before`. The guard
+  applies `main`'s lists to every release run, so a revocation merged to `main` also covers tags on
+  older commits.
+- [ ] **R4. Check the gate refuses.** After R1–R3: an unsigned annotated tag, a signed tag on a commit
+  that is not on `main`, or one on a commit older than `ad3f7ad` must stop at the `Release gate` job or
+  be cancelled by `Release guard` (and R1 already rejects the push of such a tag from a non-admin).
+- [ ] **R5. Read the drift check** (Round 38). Actions → Ruleset drift → Run workflow. It is red until
+  R1 and R2 are done, and green only while the three rulesets and the environment match the
+  committed files; it runs every Monday after that. It uses GITHUB_TOKEN, which cannot read who may
+  bypass a ruleset, so check that once by hand:
+  `gh api repos/Stan-lee13/graphite/rulesets/<id> --jq .bypass_actors` for each of the three:
+  `[]` for `main.json` and `release-tags.json`, the admin role (`actor_id` 5, `always`) only for
+  `release-tags-create.json`.
 
 ## Release (owner)
 
@@ -192,14 +234,26 @@ Pick one form: `deploy/compose/docker-compose.prod.yml` or `deploy/systemd/` (bo
   and the volume's mountpoint), then copy the archive, its `.sha256` and its `.mac` off the host
   (`restore.sh` refuses an archive without a `.mac` that verifies, and runs without `--anchor-dir`).
   Before go-live and quarterly: restore the latest archive into a scratch directory on another host,
-  `deploy/scripts/restore.sh --key-file <every audit key> --anchor-dir <anchors> <archive> <scratch dir>`,
-  start a Core on it and check `/health`. Record the drill (date, archive, result).
+  `deploy/scripts/restore.sh --key-file <every audit key> --current-key-file <current audit key> --anchor-dir <anchors> <archive> <scratch dir>`,
+  start a Core on it and check `/health`. The `.mac` is accepted under the current key only (Round 38):
+  take a fresh backup after every audit-key rotation. Record the drill (date, archive, result).
   After an audit key was lost and replaced (`graphite audit adopt-key`, [keys.md](keys.md)), both
   scripts need `--lost-key <key id>` from then on: `audit verify` can no longer check that key's MACs.
 - [ ] **11. Real baselines.** Tier 3+ baselines with `sample_count ≥ 20` (R-P7) exist only after
   production traffic; until then confidence for programs without history stays at its floor and
   refusals of them are expected. Check progress on `GET /api/graph` (read key).
 - [ ] **12. MMM `updatePool`** stays ungranted until its IDL is in the repository.
+- [ ] **13. Sign off the 9 medium-confidence declaration rewrites — STOP-SHIP (Round 36, F-005).**
+  Round 36 rewrote 35 declarations from their IDLs (`docs/audit-r36/declaration-rewrites.json`); 26
+  are `"confidence": "high"`, and 9 are `"confidence": "medium"` because the repository holds no IDL
+  file for them: SPL Stake Pool `WithdrawSol`, `WithdrawSolWithSlippage`, `WithdrawStake`,
+  `WithdrawStakeWithSlippage`; Marinade `liquidUnstake`; Raydium AMM v4 `SwapBaseIn`, `SwapBaseOut`,
+  `SwapBaseInV2`, `SwapBaseOutV2`. Read each row's `old_lines`, `new_lines`, `idl_source` and
+  `justification` against the program's own interface, and record the sign-off (or the correction)
+  in a pull request that changes the row's `confidence`.
+  ```sh
+  jq -r '.rewrites[] | select(.confidence=="medium") | "\(.manifest) \(.instruction)"' docs/audit-r36/declaration-rewrites.json
+  ```
 
 ## Running it
 

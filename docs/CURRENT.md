@@ -5,7 +5,7 @@ other file in `docs/` is a dated record of what was true when it was written;
 each carries a banner pointing here. When this file and a report disagree,
 this file is current and the report is history.
 
-Updated: 2026-10-24, after Round 36 — the owner's whole-repository forensic brief (F-001..F-022) remediated: an approval is executable only when the request's amount, recipient and asset are the transaction's, and anything the Core cannot bind is the `intent_parameters` residual (F-003); a withdrawal's minimum is held to the simulation (F-004); 35 declarations rewritten from their IDLs (F-005); the SAK adapter loads no Zod (F-001, the CI gate green again); loader-v4 is read (F-009); registry records carry their signatures (F-008); misspelled switches refuse to start (F-020); the guard's RPC transport is bounded and a stale verdict is not signed (F-014, F-017); one Core per data directory is enforced and its failures rehearsed (F-019, F-021); the dashboard draws what it did not read as unknown (report: [`round36-the-request-is-bound-to-the-bytes-2026-10-24.md`](round36-the-request-is-bound-to-the-bytes-2026-10-24.md)). Round 35 — Round 34 run on real mainnet traffic: a transaction that makes a CPI is approvable on a real RPC again (Agave reports inner instructions only in parsed form, and Graphite read only the compiled one, so every CPI was refused as incomplete; `parsed_inner` now rebuilds them, checked against Agave's own parser by `tools/inner-instruction-oracle`); the live runners seed under the audit key and fetch enough blocks (report: [`round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md`](round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md)). Round 34 — the Round 33 deep audit of `b473a31` (1 P0, 9 P1, 13 P2, ~30 P3) remediated: a `stake` intent declares no withdrawal and staking withdrawals are grounded under `withdraw` (R33-1); a debit line naming no account no longer excuses a signer's loss, and signer netting is per signer (R33-5/6/7/10); the audit trail has one line grammar shared by verify and every reader, keyed readers check MACs, and a keyed trail cannot be downgraded (R33-2/3/4); releases need a signed tag on `main`; the CI Rust job is split (report: [`round34-the-deep-audit-remediated-2026-10-23.md`](round34-the-deep-audit-remediated-2026-10-23.md)). Round 32 — production readiness: a signer's loss under a declaration Graphite cannot read, the W19 lamport debit and a granted withdrawal with no minimum output are refused by default (each with an operator opt-out); one guard per wallet; a release pipeline, a deployment kit and live mainnet/devnet measurement workflows; an audit hand-off pack (report: [`round32-production-readiness-2026-10-22.md`](round32-production-readiness-2026-10-22.md)). Round 31 updated every dependency. Before that, Round 30 — the forensic whole-repository audit of `29e4356` remediated: every verdict says whether it permits signing (`decision`, `executable`); evidence trains only at the built-in floor; baselines are per shape and anchored; an upgrade withdraws evidence; the audit trail is hash-chained and, keyed, tamper-evident; L8 says what its answer rests on; honest intents for 21 grounded withdraw/claim/close/burn/configure instructions (see `git log -1 -- docs/CURRENT.md`). Round 30 report: [`round30-forensic-audit-and-remediation-2026-10-22.md`](round30-forensic-audit-and-remediation-2026-10-22.md).
+Updated: 2026-10-25, after Round 38 — the Round 37 re-audit of `8b3d8a4` answered in full, every finding fixed, owner-decided or a documented limitation. Second pass: the sibling rule now holds beside every granted withdrawal, and the unbounded-withdrawal waiver no longer switches it off (R38-1: a Stake `Withdraw` beside a 30 SOL transfer to a stranger was `executable_approved`); every unknown `GRAPHITE_*` name refuses to start (R37-15); an unread program deployment is the `program_deployments` residual (R37-16); audit indexes are MAC'd, prunes are chained records, lines are bounded and `graphite execution` reads with the keys (R37-11..14, T-6..15); backups are MAC'd and checked under the current key only; the guard's lock directory no longer depends on `XDG_*` (R37-17); the release gate refuses a pre-gate commit and a weekly check watches the rulesets (R37-8, code half; the rulesets themselves are the owner's). First pass: nothing beside a swap or a withdrawal may take value from a signer (R37-1: a Jupiter swap skimmed by a sibling `TransferChecked`, and a CLMM withdrawal skimmed the same way, were `executable_approved`); a creation is held to the rent of what it creates (R37-7: 5 SOL into a zero-byte account the attacker's program owns was `executable_approved`); a line that names no account no longer excuses an owner, authority, delegate, close or freeze effect on an account a signer holds (R37-6); and every audit-trail reader walks the chain as `verify` does, so a legacy, unkeyed, retired-key or copied record is never read under a key (R37-2..5; chain link version 2 with a trail id) (report: [`round38-the-round-37-re-audit-answered-2026-10-24.md`](round38-the-round-37-re-audit-answered-2026-10-24.md)). Round 36 — the owner's whole-repository forensic brief (F-001..F-022) remediated: an approval is executable only when the request's amount, recipient and asset are the transaction's, and anything the Core cannot bind is the `intent_parameters` residual (F-003); a withdrawal's minimum is held to the simulation (F-004); 35 declarations rewritten from their IDLs (F-005); the SAK adapter loads no Zod (F-001, the CI gate green again); loader-v4 is read (F-009); registry records carry their signatures (F-008); misspelled switches refuse to start (F-020); the guard's RPC transport is bounded and a stale verdict is not signed (F-014, F-017); one Core per data directory is enforced and its failures rehearsed (F-019, F-021); the dashboard draws what it did not read as unknown (report: [`round36-the-request-is-bound-to-the-bytes-2026-10-24.md`](round36-the-request-is-bound-to-the-bytes-2026-10-24.md)). Round 35 — Round 34 run on real mainnet traffic: a transaction that makes a CPI is approvable on a real RPC again (Agave reports inner instructions only in parsed form, and Graphite read only the compiled one, so every CPI was refused as incomplete; `parsed_inner` now rebuilds them, checked against Agave's own parser by `tools/inner-instruction-oracle`); the live runners seed under the audit key and fetch enough blocks (report: [`round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md`](round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md)). Round 34 — the Round 33 deep audit of `b473a31` (1 P0, 9 P1, 13 P2, ~30 P3) remediated: a `stake` intent declares no withdrawal and staking withdrawals are grounded under `withdraw` (R33-1); a debit line naming no account no longer excuses a signer's loss, and signer netting is per signer (R33-5/6/7/10); the audit trail has one line grammar shared by verify and every reader, keyed readers check MACs, and a keyed trail cannot be downgraded (R33-2/3/4); releases need a signed tag on `main`; the CI Rust job is split (report: [`round34-the-deep-audit-remediated-2026-10-23.md`](round34-the-deep-audit-remediated-2026-10-23.md)). Round 32 — production readiness: a signer's loss under a declaration Graphite cannot read, the W19 lamport debit and a granted withdrawal with no minimum output are refused by default (each with an operator opt-out); one guard per wallet; a release pipeline, a deployment kit and live mainnet/devnet measurement workflows; an audit hand-off pack (report: [`round32-production-readiness-2026-10-22.md`](round32-production-readiness-2026-10-22.md)). Round 31 updated every dependency. Before that, Round 30 — the forensic whole-repository audit of `29e4356` remediated: every verdict says whether it permits signing (`decision`, `executable`); evidence trains only at the built-in floor; baselines are per shape and anchored; an upgrade withdraws evidence; the audit trail is hash-chained and, keyed, tamper-evident; L8 says what its answer rests on; honest intents for 21 grounded withdraw/claim/close/burn/configure instructions (see `git log -1 -- docs/CURRENT.md`). Round 30 report: [`round30-forensic-audit-and-remediation-2026-10-22.md`](round30-forensic-audit-and-remediation-2026-10-22.md).
 If that commit is not HEAD, later commits may have moved things;
 `git log --oneline -- docs/CURRENT.md` shows when this page last changed.
 
@@ -26,11 +26,13 @@ observe is refused rather than assumed (P12).
 ## Security status
 
 ```
-Overall:                         CONDITIONAL — security-hardened alpha. Verdict (Rounds 30–36): RELEASE BLOCKED on
+Overall:                         CONDITIONAL — security-hardened alpha. Verdict (Rounds 30–38): RELEASE BLOCKED on
                                  owner and external gates (branch rules and the release environment not applied, no
-                                 independent audit, no production deployment or operations); the code is READY FOR
-                                 INDEPENDENT AUDIT. Round 33's internal deep audit found a P0 the earlier rounds
-                                 missed (R33-1, fixed in Round 34)
+                                 independent audit, no production deployment or operations); the code is conditionally
+                                 ready for an independent audit, with the owner gates open. Round 33's internal deep audit found a P0 the earlier rounds
+                                 missed (R33-1, fixed in Round 34); Round 37's re-audit found two more that were
+                                 executable end to end (R37-1 sibling skims, R37-7 creation overfunding; fixed in
+                                 Round 38)
 Exact transaction identity:      enforced (artifact_bound scope, transaction_sha256, message-equality at signing);
                                  an artifact without instruction_data, or one that does not parse, FAILS L2 (Round 9)
 Execution decision:              every verdict carries `decision` (executable_approved | analysis_only |
@@ -59,7 +61,11 @@ Instruction identity for risk:   the instruction's own leading bytes, never the 
                                  a non-hex one never reaches a verdict, and the known-risky table is keyed on
                                  the bytes so a truncated but truthful label hides nothing (Round 13)
 Authority changes in the diff:   the SPL owner field, mint authority and freeze authority are each watched;
-                                 an undeclared change is Critical, so a hand-over that moves no value is seen
+                                 an undeclared change is Critical, so a hand-over that moves no value is seen.
+                                 On an account a signer holds, only a line that NAMES the account declares it
+                                 (Round 38, R37-6): "updates protocol configuration or authority" (1,018
+                                 instructions) no longer excuses a delegate, owner change, close authority or
+                                 closure on the signer's own account
 Measured on real mainnet:        19,458 transactions fetched 2026-09-23 (12,134 legacy, 4,022 v0, 3,302 v1),
                                  283 programs, run artifact-bound through the whole pipeline: 0 parse failures,
                                  0 verify errors, 0 false refusals from the L2 self-consistency check. Round 19's
@@ -129,7 +135,7 @@ L4 under an unreadable manifest: a signer's token debit or lamport loss under a 
                                  own token accounts (Round 32; GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT=1
                                  restores the warning). Since Round 34: a debit line that names no account is
                                  unreadable for the signer's judgement (SignerLamportsUnderUnscopedDebit,
-                                 SignerTokenDebitUnderUnscopedDebit, R33-5; 1,802 instructions carry one); losses are
+                                 SignerTokenDebitUnderUnscopedDebit, R33-5; 1,767 instructions carry one since Round 36); losses are
                                  netted per signer, value kept counts only toward the signer that holds it, rent only
                                  for a declared created account owned by the located program or a token program,
                                  and a vault's payout offsets nothing (R33-6/7/10); a created stake, vote or nonce
@@ -311,8 +317,12 @@ Audit trail integrity:           hash-chained since Round 30: every record carri
                                  never returned as a verdict; a keyed trail cannot be silently downgraded (exit 4;
                                  `graphite audit adopt-key`), an unsigned checkpoint is not Confirmed, a key change is
                                  a chained adoption record (GRAPHITE_AUDIT_PREVIOUS_KEY_FILE for the rotation
-                                 restart), a historic crash tear is acknowledged by `graphite audit acknowledge-tear`
-                                 (docs/ops/keys.md)
+                                 restart only), a historic crash tear is acknowledged by `graphite audit acknowledge-tear`
+                                 (docs/ops/keys.md). Since Round 38 (R37-2..5): every reader walks the chain as
+                                 verify does, so a copied or transplanted record is never read; a rotation is
+                                 one-way (a record under the retired key is a break and never read); unkeyed and
+                                 legacy records are read under a key only when a checked adoption record covers
+                                 them; links are version 2 with a trail id bound into the MAC
 Request objects:                 every nested request object refuses unknown fields, not only the top level (Round 29)
 Agent guard (the signing side):  a transfer must match one grammar ([please] send|transfer|pay <amount> SOL to
                                  <address>); a swap runs only on six decoded programs, exact-in, its route's own
@@ -338,8 +348,12 @@ Agent guard (the signing side):  a transfer must match one grammar ([please] sen
 Release and deployment:          a release workflow (Round 32, .github/workflows/release.yml): a v* tag matching the
                                  crate version, an SSH-signed tag on a commit of `main` whose key is in
                                  .github/allowed_signers, and a passed `CI gate` from a push run on `main` (Round 34,
-                                 R33-9: .github/scripts/release-gate.sh; it fails closed while allowed_signers is
-                                 empty); the binary built twice and compared
+                                 R33-9: .github/scripts/release-gate.sh; the gated copies of release.yml fail closed
+                                 while allowed_signers is empty; since Round 38 (R37-8) the commit must also descend
+                                 from the gate's own, revoked and expired signers are refused, and the tag is
+                                 re-checked right before `gh release create`; a tag on a pre-gate commit runs that
+                                 commit's ungated release.yml, which only the owner's tag ruleset and the `release`
+                                 environment stop); the binary built twice and compared
                                  byte for byte; CycloneDX and SPDX SBOMs; the image smoke-tested, pushed to GHCR by
                                  digest, with SLSA provenance and SBOM attestations (verify with --signer-workflow,
                                  --source-ref and --deny-self-hosted-runners, R33-18); the image carries build a's
@@ -378,7 +392,7 @@ transaction under the stated threat model, and no external party has yet tried.
 |---|---|---|
 | The signed message is the verified message | `BoundTransaction.signApproved` (TS): digest re-check, signer set derived from the compiled message, message-slice equality | `integrations/agent-guard/bound-transaction.test.ts`, `execution-boundary-fuzz.test.ts` |
 | A descriptive verdict never reaches execution | `ResidualPolicy.assertExecutable` requires `scope.kind === "artifact_bound"` | `residual-policy.test.ts`, `toctou-signing-boundary.test.ts` |
-| An approved verdict with an unaccepted residual never reaches execution | `ResidualPolicy` (bridge): every non-inherent `unobserved_codes` entry refuses unless named in `GRAPHITE_ACCEPT_UNOBSERVED` / `acceptUnobserved`; a server reporting no codes refuses | `residual-policy.test.ts` (each of the 14 non-inherent codes), `execution-lifecycle.test.ts` |
+| An approved verdict with an unaccepted residual never reaches execution | `ResidualPolicy` (bridge): every non-inherent `unobserved_codes` entry refuses unless named in `GRAPHITE_ACCEPT_UNOBSERVED` / `acceptUnobserved`; a server reporting no codes refuses | `residual-policy.test.ts` (each of the 15 non-inherent codes), `execution-lifecycle.test.ts` |
 | `artifact_bound` means the described instruction was located in the bytes | L2 artifact branch: parse failure fails; missing `instruction_data` fails; exact-data match at one position under the described program and accounts | `tests/round9_identity_requires_data.rs` (100 SOL under a 0.002 SOL description, refused), `tests/artifact_binding.rs` |
 | Instruction identity is positional and complete | `compare_instruction_accounts`, `sibling_coverage` | `tests/instruction_account_identity.rs`, `tests/described_siblings.rs` |
 | An artifact the network would refuse is refused before it is parsed | `MAX_TRANSACTION_BYTES` = 1232 (4,096 for a v1 frame: `max_frame_bytes`, Round 19) at `/verify` entry, in `parse_transaction`, and in TS `messageOf`; `MAX_TRANSACTION_INSTRUCTIONS` = 256 | `tests/round9_resource_bounds.rs` (122 s → 1.6 ms) |
@@ -525,7 +539,9 @@ transaction under the stated threat model, and no external party has yet tried.
   `liquidUnstake` (fee bounded by the pool's configured maximum), Stake
   `Withdraw` and the Stake Pool withdrawals (rate moves only at the epoch
   update) and the claims are not held to a minimum. `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS=1`
-  (operator-only) waives both checks. The agent guard builds no withdrawals.
+  (operator-only) waives both checks; it never waives what rides beside a
+  withdrawal (Round 38: a sibling that skims a granted withdrawal is refused either
+  way). The agent guard builds no withdrawals.
 - **The Core binds the request's parameters to the bytes it can decode, and
   nothing else is executable (Round 36, F-003).** `intent_binding`: a transfer's
   amount, asset and recipient are compared with every top-level System
@@ -551,6 +567,39 @@ transaction under the stated threat model, and no external party has yet tried.
   W19, Round 32). Swaps run only on six decoded programs, exact-in; wSOL
   wrapping and unwrapping are not supported (the Risk Engine refuses
   `CloseAccount`).
+- **What rides beside a swap or a withdrawal is held, and a creation is held
+  to its rent (Round 38, R37-1 / R37-7).** Round 36 judged a swap by the fee
+  payer's NET change and a withdrawal by its recipient's net credit, so a
+  sibling that moved part of the output on left the remainder inside every
+  bound (a Jupiter route paying 100 beside a `TransferChecked` of 49.6 to
+  someone else, minimum 50, was `executable_approved`; so was a Raydium CLMM
+  `decrease_liquidity_v2` skimmed the same way). `intent_binding::keeps_value`:
+  every top-level System or token instruction that moves value under a
+  signer's authority (transfers, account creation, `CloseAccount`) sends it to
+  a signer's own account, and `Approve`, `SetAuthority` and `Burn` by a signer
+  beside a swap or a withdrawal are mismatches; and no account outside the
+  signers' own and the route's gains lamports or a swapped mint in the
+  simulated diff (a skim by CPI is caught the same way). A swap's spend is
+  held to the route's decoded `amount_in`, not to the request. Under `create`,
+  every account the transaction creates holds at most its rent-exempt minimum
+  plus, in all, the SOL amount the request states (5 SOL into a zero-byte
+  account the attacker's program owns was `executable_approved`), and nothing
+  else that is not a signer's gains lamports. Not covered: a sibling's effect
+  on value the signer does not hold.
+- **L4 judges the whole transaction against the primary's declaration, and
+  some honest swaps are refused (documented, measured in Round 38's tests, not
+  on live traffic).** The declarations of Raydium CPMM `swap_base_input` /
+  `swap_base_output`, every Raydium CLMM and AMM v4 swap, Meteora DLMM's swaps
+  but `swap_2`, Orca `swapV2` / `twoHopSwapV2` and every Jupiter exact-out
+  route name no debit of the user's input account, so an honest swap through
+  them is refused at L4 (`SignerTokenDebitUnderUnscopedDebit`); rewriting them
+  from their IDLs (the Round 36 F-005 method) is the fix. Beside a Jupiter
+  `route`, the user's own wSOL wrap (`SignerLamportsOutsideDeclaredDebit`: the
+  SOL leaves the wallet as lamports and reaches the vault as a declared wSOL
+  debit, which a net diff cannot tell from the wallet paying the vault) and
+  unwrap (`UndeclaredAccountClosure`) are refused at L4, though the binding
+  holds both. Their cost on live traffic is unmeasured (the live-mainnet run
+  needs the owner's permission).
 - **A lookup table's freshness is the simulator's (Round 36, F-007,
   disposition).** A table's entries are append-only and cannot change while it
   exists, and its address cannot be re-created after a close (the derivation
@@ -726,28 +775,40 @@ transaction under the stated threat model, and no external party has yet tried.
   accepts the trade.
 - **Round 34's L4 defaults refuse more, and their live cost is not yet measured.**
   A signer's loss under a debit line that names no account is refused (R33-5):
-  1,802 of 3,541 instructions carry such a line, and so do 18 of the 27 withdrawal
-  grants — including the new Stake Pool and Marinade staking grants, whose pool-token
-  or mSOL burn is a signer token debit — so an honest withdrawal under one of those
-  grants is refused until its declaration is rewritten from its IDL to name the
-  accounts it debits (a manifest change awaiting the owner's sign-off). Rent paid
+  1,767 of 3,541 instructions carry such a line (1,802 before Round 36). None of
+  the 27 withdrawal grants does since Round 36 (F-005: 35 declarations rewritten
+  from their IDLs, the 18 withdrawal grants among them); the 9 medium-confidence
+  rewrites (Stake Pool, Raydium AMM v4: no IDL file in the repository) await the
+  owner's sign-off. Rent paid
   into a recipient's associated token account (~0.002 SOL) or a Metaplex metadata
   account is no longer credited to the signer. No committed corpus row carries a
   state diff, so the committed data cannot show the rate; the live mainnet workflow
-  can, and has not run against Round 34. Opt-out:
+  can. It ran on the Round 35 head (runs 39950918074, 39950924519): 200 of 200
+  replays blocked in each, none executable, so the rate of honest flows refused is
+  not separable from that sample; it has not run on Round 36–38 code. Opt-out:
   `GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS=1` (value classes only).
-- **Amounts are bound for System transfers only.** Since Round 34 a System
-  `Transfer`/`CreateAccount` binds its stated lamports (R33-15); token amounts
-  (`TransferChecked`) and `TransferWithSeed` are not bound by the Core.
+- **What binds an amount.** L4 binds a System `Transfer`/`CreateAccount`'s stated
+  lamports (Round 34, R33-15). The request's own amount, recipient and asset are
+  bound by `intent_binding` (Round 36, F-003): System and SPL Token / Token-2022
+  movements (`Transfer`, `TransferWithSeed`, `TransferChecked`,
+  `TransferCheckedWithFee`, `Approve`, `Burn`), the decoded swap routes, the
+  withdrawal minimums, a native Stake `Withdraw`'s lamports (Round 38, B-6) and a
+  creation's rent (Round 38, R37-7). Anything else is the `intent_parameters`
+  residual, never executable. Since Round 38 (R37-10) a transfer, approve or burn
+  beside a top-level instruction of any other program (compute budget, memo and
+  ATA creation aside) is unbound too.
 - **Netting residuals (Round 34).** A named created account owned by the located
   program is credited up to its full rent; created lookup tables and loader
   buffers are not judged.
 - **Only three withdrawals carry a minimum output to judge.** `UnboundedWithdrawal`
   reads Raydium CLMM, Raydium CPMM and Pump AMM withdrawals and refuses any zero
-  minimum (Round 34); a non-zero dust minimum is not judged (the expected output is
-  not in the bytes); Meteora DLMM's five remove and two claim grants have no
-  minimum-output argument, so an unbounded one is not detectable from its bytes.
-  Marinade `liquidUnstake` has no minimum in its IDL either.
+  minimum (Round 34); since Round 36 (F-004) a non-zero dust minimum is
+  `WithdrawalUnderbounded` when it sits more than the request's slippage below what
+  the simulation delivered (above). Meteora DLMM's five remove and two claim grants
+  have no minimum-output argument: those verdicts carry `intent_parameters` and are
+  never executable. Marinade `liquidUnstake` has no minimum in its IDL either, and
+  the pool and Marinade withdrawals' amounts (pool tokens, mSOL) are not compared
+  with the SOL a request names (Round 38, a documented limitation of B-6).
 - **Staking residuals (Round 34, R33-1).** Stake `Initialize` under `stake` takes the
   new account's authorities from its data (judged by R33-14 when the account is
   created in the same transaction); Marinade `claim`, `removeLiquidity`,
@@ -757,9 +818,18 @@ transaction under the stated threat model, and no external party has yet tried.
   `GRAPHITE_AUDIT_KEY_FILE` the server's readers refuse a line without a valid MAC;
   `graphite execution` opens the trail read-only without a key and stays
   corruption-evident. A reader holding only the new key after a rotation admits
-  records under the old key on the adoption record's word (keep the previous key
-  configured to have them checked). Records written before Round 30 stay readable,
-  unauthenticated.
+  records under the old key, up to the adoption record, on that record's word
+  (their MACs are not checked; a forgery among them takes the place of the
+  record it displaces, and the server then refuses to start). Records written
+  before Round 30 stay readable without a key; under a key, only those a
+  checked adoption record lists (Round 38). A genuine record of the same trail
+  copied to the very top of the oldest file on disk starts the readers' walk
+  there, as a pruned trail does: the readers then see a shorter trail (records
+  hidden, never one read out of its place in the chain), which is what
+  truncation looks like, caught only by `verify` and an anchored checkpoint. A
+  record of another trail is refused there by the trail id the readers pin
+  (the newest record's); a whole trail replaced by another one under the same
+  key is caught only by a checkpoint, as before.
 - **Manifest account counts (K-7).** 75 instructions whose account count differs
   from their on-chain IDL (64 Orca instructions without a trailing
   `whirlpool_program`, 10 Kamino admin instructions without
@@ -814,14 +884,14 @@ transaction under the stated threat model, and no external party has yet tried.
 |---|---|---|
 | Independent third-party audit | Not performed | Owner |
 | External review R2/R3 (a declared intent clearing a dangerous instruction) | **Closed in Round 24**: reproduced on `eb17aa5`, fixed by one intent-to-class table read by L5 and the Risk Engine, and by the control-change rules; one more case (R3-b) found by the round's own mainnet re-measurement and fixed | — |
-| Honest intents for withdrawals, claims and protocol closes | **Partly done (Round 30, R-M14/R-M13)**: 21 grounded grants (`src/intent_grants.rs`); the rest stays refused; the 219 / 9 measured costs not re-measured (sample not in the repository); MMM `updatePool` needs its IDL | Engineering |
+| Honest intents for withdrawals, claims and protocol closes | **Partly done (Round 30, R-M14/R-M13; Round 34)**: 27 grounded grants (`src/intent_grants.rs`: 21 in Round 30, the 6 staking withdrawals in Round 34); the rest stays refused; the 219 / 9 measured costs not re-measured (sample not in the repository); MMM `updatePool` needs its IDL | Engineering |
 | Protocol upgrade detection (ProgramData slot / upgrade authority watch) | **Done (Round 27; evidence reset Round 30)**: with an RPC, a manifested program redeployed or handed to a new upgrade authority since last seen is reported on the verdict (`program_upgrades`), on `/health` and in the metrics; `GRAPHITE_QUARANTINE_ON_UPGRADE=1` also quarantines it. Since Round 30 the upgrade withdraws the program's evidence and a first sighting whose deployment is newer than the evidence withdraws it too. Loader-v4 deployments are read since Round 36 | — |
 | Execution decision (approved ≠ permission to sign) | **Done (Round 30, G-01)**: `decision` / `executable` on every verdict, recomputed by every client | — |
 | Tamper-evident audit trail | **Done when keyed (Round 30, G-07)**: hash chain + HMAC, `graphite audit verify` / `checkpoint`, anchor directory. Making the anchor storage immutable (WORM / object lock) and scheduling checkpoints is the operator's | Owner (deployment) |
 | The 155 unreadable value-moving declarations that only warn (R30-F-1), and the W19 rule | **Tightened (Round 32)**: both refuse by default, each with a logged operator opt-out; 16 declarations rewritten from IDLs; the false-refusal rate on real traffic with state diffs is measured by the live mainnet workflow, not by the committed blocks | Owner (keep or opt out after measuring) |
-| A release pipeline | **Built (Round 32), gated (Round 34, R33-9)**: `.github/workflows/release.yml` publishes only a signed tag on `main` with a passed push-event CI gate; it fails closed until the owner applies the three rulesets, creates the protected `release` environment and adds a key to `.github/allowed_signers` (R1–R4 in `docs/ops/production-checklist.md`); never run against a real tag | Owner (R1–R4, then tag) |
+| A release pipeline | **Built (Round 32), gated (Round 34, R33-9; Round 38, R37-8)**: `.github/workflows/release.yml` publishes only a signed tag on `main`, on a commit no older than the gate, with a passed push-event CI gate. That holds only for the copies of `release.yml` that contain the gate: until the owner applies the three rulesets and creates the protected `release` environment (R1–R2 in `docs/ops/production-checklist.md`), anyone with write access can still publish a release with genuine provenance, by tagging a branch commit (its own `release.yml` runs) or a `main` commit older than the gate (`99948c6`, whose `release.yml` has no gate). `release-guard.yml` cancels such a run from `main` and deletes its release; it is a second line, not the stop. `ruleset-drift.yml` checks weekly that the rulesets and the environment are applied, and stays red until they are. The empty `.github/allowed_signers` stops only the gated copies; never run against a real tag | Owner (R1–R5, then tag) |
 | The Round 34 L4 defaults' cost on live traffic | Unmeasured: run `.github/workflows/live-mainnet.yml` (label `live-measure` or a dispatch) | Owner (permission to run) |
-| Declarations of the 18 withdrawal grants with a debit line naming no account | Rewrite them from their IDLs to name the debited accounts and declare the LP or receipt burns, so honest withdrawals stop being refused under R33-5 | Owner (manifest sign-off) / Engineering |
+| Declarations of the 18 withdrawal grants with a debit line naming no account | **Rewritten (Round 36, F-005)** from their IDLs, with 17 other high-traffic declarations (35 in all, `docs/audit-r36/declaration-rewrites.json`); 9 are medium-confidence (Stake Pool, Raydium AMM v4: no IDL file in the repository) | Owner (sign-off of the 9) |
 | A production deployment (TLS, monitoring, on-call, backups) | **Kit built and CI-tested (Round 32)**: `deploy/`, `docs/ops/production-checklist.md`; nothing deployed | Owner (infrastructure) |
 | Repository rulesets for `main` and release tags | **Prepared (Round 30)**: `.github/rulesets/main.json`, `main-review.json`, `release-tags.json`, `.github/CODEOWNERS`, steps in `docs/ops/branch-protection.md`; not applied | Owner |
 | Dependabot majors deferred in Round 30 | #41 (graphite-core group: 13 new crates incl. a compression backend), #12 (sha2 0.11 in the oracle), TypeScript 7 in six packages (#14, #18, #21, #23, #27, #28), #22 (React 19), #26 (rust 1.99 image, with the CI toolchain) | Owner / Engineering |
@@ -841,7 +911,7 @@ transaction under the stated threat model, and no external party has yet tried.
 | `content_hash` → a name that says it is an instruction-level identifier | **Done in the result (Round 30, R-M10)**: `instruction_bind_key` carries the value, `content_hash` is deprecated for one minor version; lifecycle requests accept `instruction_bind_key` as an alias of `content_hash` since Round 32 (server, CLI `--instruction-bind-key`, TypeScript and Go) | — |
 | Runtime-decoder oracle over the mutation corpus | Done (Round 12: `tools/runtime-oracle`, in CI) | — |
 | Coverage-guided fuzzing of `parse_transaction` | **Done (Round 30)**: `graphite-core/fuzz/` (cargo-fuzz, its own lockfile) fuzzes `parse_transaction`, lookup tables, manifest JSON, Token-2022 extensions, the state-diff check and RPC JSON, each with invariants beyond "no panic"; a deterministic smoke on every PR, 30 minutes per target daily (`.github/workflows/assurance.yml`). Its first minute found R30-WSE-1. No differential fuzzing against agave yet | Engineering (differential) |
-| Scheduled mutation testing and a coverage floor (R-P12, R-P15) | **Wired (Round 30)**: weekly `cargo mutants` per module, judged by `graphite-core/scripts/mutation_floor.py` (risk engine 0.90, measured on a quarter of its mutants; state diff, artifact and simulation-integrity floors 0.60 are provisional, unmeasured); a line-coverage floor of 78 % (the library's unit tests measured 78.42 %). First hosted run (Round 32, run 39798389463 at `bdc9dab`): all six fuzz targets 30 minutes each, 0 crashes; the coverage floor held (the job now prints the measured total and per-file figures); the mutation jobs' scores are recorded HERE, on this page, when a run finishes (this page owns them; the round reports point here). Round 36: the first dispatched run of the mutation jobs (run 40059300806 at `ce94157`) hit the six-hour limit on all six shards before scoring, so **no mutation score has been measured yet**; the job is resharded to 44 shards (~40 mutants each) and `mutation_floor.py` reports an unfinished shard INCOMPLETE rather than scoring it. The same run's coverage floor held and the six fuzz targets ran 30 minutes each with 0 crashes | Engineering (raise each provisional floor to its measured score) |
+| Scheduled mutation testing and a coverage floor (R-P12, R-P15) | **Wired (Round 30)**: weekly `cargo mutants` per module, judged by `graphite-core/scripts/mutation_floor.py` (risk engine 0.90, measured on a quarter of its mutants; state diff, artifact and simulation-integrity floors 0.60 are provisional, unmeasured); a line-coverage floor of 78 % (the library's unit tests measured 78.42 %). First hosted run (Round 32, run 39798389463 at `bdc9dab`): all six fuzz targets 30 minutes each, 0 crashes; the coverage floor held (the job now prints the measured total and per-file figures); the mutation jobs' scores are recorded HERE, on this page, when a run finishes (this page owns them; the round reports point here). Round 36: the first dispatched run of the mutation jobs (run 40059300806 at `ce94157`) hit the six-hour limit on all six shards before scoring. The second ([run 40083338181](https://github.com/Stan-lee13/graphite/actions/runs/40083338181) at `80b3906`, 44 shards of ~41 mutants) still gives **no module a complete score**: by 18:30Z 23 shards had finished, 18 were killed by the 330-minute Mutate step (a mutant costs one 6–9 minute rebuild) and 2 were still running. It also showed that `mutation_floor.py` scored killed shards as complete (16 of 18 printed a pass), because cargo-mutants' `total_mutants` counts only the outcomes recorded; the script now counts the shard from `mutants.json` and requires `end_time`, pinned by the CI scripts' tests. Over the finished shards only (not a module score, and no floor raised from it): risk engine 0.938 (155 of 235 mutants), simulation integrity 0.628 (79 of 199), artifact parser 0.852 (160 of 324), state diff 0.678 (553 of 1,004). Six finished shards are below their floor: risk engine 0/6 at 0.886 (floor 0.90); state diff 9, 16, 17 and 18 of 25 at 0.459, 0.585, 0.167 and 0.250, which cover the created-authority and kept-lamport checks, the Token-2022 fee replay, transfer-hook reach and extension judgement; and simulation integrity 4/5 at 0.333, where every missed mutant is in the shape baseline's account-write and CPI-hop update. 351 mutants were missed by the selected suites. The shard-by-shard record, the missed mutants and a whole-suite sample (of 5 sampled misses, 3 are caught by suites the job does not select and 2, the vote-account authority check and the fee replay's running sum, are real gaps) are in [mutation-run-40083338181.md](audit-r36/mutation-run-40083338181.md). The same runs' coverage floors held and the fuzz targets ran 30 minutes each with 0 crashes | Engineering: close the state-diff gaps with tests; fit a shard into the step (smaller shards or a cheaper rebuild, a runner-time decision for the owner); then raise each provisional floor to its measured score |
 | A generated, test-pinned release evaluation (R-P1) | **Done (Round 30)**: `graphite benchmark --json` (`src/release_eval.rs`) scores every split from committed inputs with Wilson intervals, counts verification errors apart from refusals, and is pinned by `tests/release_evaluation.rs`; the sealed holdout is pinned by hash and only the guarded builder may write it. It scores the core's `approved` offline (every offline approval is `analysis_only`). The holdout is still 38 rows | Engineering (a larger, independent holdout) |
 | Persisted archive index for the L8 / lifecycle join | **Done (Round 28)**: a count over three 64 MiB archives went from 822 ms to 2.2 ms | — |
 | Shared rate limiter for a horizontally deployed Graphite (single-instance today; 452 ns/check at one million buckets) | Open | Engineering |
@@ -853,15 +923,15 @@ transaction under the stated threat model, and no external party has yet tried.
 document links here, and `tests/docs_numbers_match_the_code.rs` fails if a live
 document states one elsewhere.
 
-Rust, from the integrated runs of Round 36 on 2026-10-24 (`cargo test --locked`, debug
+Rust, from the integrated runs of Round 38's second pass on 2026-10-25 (`cargo test --locked`, debug
 profile without debug info, on one build target; logs kept outside the repository):
 
-- the default features CI runs: **2,363 Rust tests pass**, 0 failed,
+- the default features CI runs: **2,414 Rust tests pass**, 0 failed,
   14 ignored (network- or sample-dependent, plus three benchmarks, each named in
-  `.github/test-allowlists/rust-ignored.txt`), across 168 test targets;
-- the featureless library (`--no-default-features --lib`): **513 passed, 3 ignored**;
-- the cli-only build (`--no-default-features --features cli`): **1,942 passed, 5 ignored**,
-  across 168 test targets.
+  `.github/test-allowlists/rust-ignored.txt`), across 173 test targets;
+- the featureless library (`--no-default-features --lib`): **529 passed, 3 ignored**;
+- the cli-only build (`--no-default-features --features cli`): **1,967 passed, 5 ignored**,
+  across 173 test targets.
 
 CI's test-count gate holds each leg at these floors (`rust-test` matrix in
 `.github/workflows/ci.yml`).
@@ -869,14 +939,15 @@ CI's test-count gate holds each leg at these floors (`rust-test` matrix in
 Clippy `-D warnings` (all three feature legs) and fmt clean on the integrated tree;
 the release build (`--features server,cli`, thin LTO) builds.
 
-TypeScript (Round 36, run as CI runs them): agent guard 316 (301 at Round 35; the
-transport, verdict-age, spend and F-003 tests); SolanaAgentKit adapter 10; MCP server
-10; Vercel AI adapter 12 (each +1 for the Round 36 Zod bound); TypeScript SDK 66 (62
-hermetic, 4 against a live server — run in CI's container job); dashboard 35 (31 at
-Round 35), production build OK, and the e2e harness (`.github/scripts/dashboard-e2e.sh`:
+TypeScript (Round 38, run as CI runs them): agent guard 330 (316 at Round 36; the
+lock-directory, repeat-key, verdict-age, not-sent, residual and `program_deployments`
+tests); SolanaAgentKit adapter 10; MCP server 10; Vercel AI adapter 12; TypeScript SDK 66
+(62 hermetic, 4 against a live server — run in CI's container job); dashboard 36 (35 at
+Round 36: the response bound), production build OK, and the e2e harness (`.github/scripts/dashboard-e2e.sh`:
 smoke at three sizes and the Round 36 fault states, axe included). Go SDK: `go vet` and
 `go test` pass. Python: 114 across the AI layer, `tools/mainnet-sample` and
-`tools/live-measure`. Deploy kit: 162 checks (`deploy/tests/run.sh`; 109 at Round 35).
+`tools/live-measure`. Deploy kit: 163 checks (`deploy/tests/run.sh`; 162 at Round 36), plus
+`deploy/tests/backup-keys.test.sh`, 22 checks (Round 38: the `.mac` under the current key only).
 The npm advisory gate passes for all six packages with no new allowlist entry, and
 `cargo audit` reports nothing but the allowed bincode-unmaintained warning in the two
 oracles. The runtime oracle: ~628,500 frames per CI seed, bincode and wincode, legacy,
@@ -895,6 +966,8 @@ SHA — the runs endpoint, not the combined-status endpoint.
 
 | Date | Report | What it records |
 |---|---|---|
+| 2026-10-24 | [`round38-the-round-37-re-audit-answered-2026-10-24.md`](round38-the-round-37-re-audit-answered-2026-10-24.md) (Round 37's re-audit, answered) | The first seven P1s of the owner's Round 37 re-audit of `8b3d8a4`, each reproduced end to end first: a swap and a withdrawal skimmed by a sibling, and a creation funding an attacker's account with 5 SOL, were `executable_approved`; unscoped authority and close lines excused effects on a signer's own accounts; four audit-trail reader gaps (legacy, unkeyed, retired-key and copied records). The rest of Round 37 (the P0 candidate, an eighth P1, 9 P2s, ~25 P3s) was not in this session |
+| 2026-10-24 | [`round36-the-request-is-bound-to-the-bytes-2026-10-24.md`](round36-the-request-is-bound-to-the-bytes-2026-10-24.md) (the whole-repository forensic brief) | F-001..F-022: the request's amount, recipient and asset bound to the bytes (F-003), withdrawal minimums held to the simulation (F-004), 35 declarations rewritten from IDLs (F-005), the SAK adapter loading no Zod (F-001), loader-v4, registry signatures, misspelled switches refused; the mutation measurement and its fail-open floor script (F-015, follow-up PR #54) |
 | 2026-10-23 | [`round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md`](round35-live-mainnet-and-the-parsed-cpi-report-2026-10-23.md) (Round 34 on real traffic) | The live-mainnet and live-devnet workflows run on Round 34's code, every suite run: a keyed Core refused a runner's unkeyed evidence seeding (runner fixed; operators told to seed with the key), a two-block sample was too small (fetch tops up), and — the real finding — every transaction with a CPI was unapprovable on a real RPC, because Agave reports inner instructions only in parsed form; `parsed_inner` rebuilds them, proven against Agave's own parser by a new CI oracle. Honest swaps remain refused by R33-5 until their declarations name the accounts they debit (owner decision) |
 | 2026-10-23 | [`round34-the-deep-audit-remediated-2026-10-23.md`](round34-the-deep-audit-remediated-2026-10-23.md) (Round 33's deep audit, remediated) | An internal deep audit of `b473a31` (1 P0, 9 P1, 13 P2, ~30 P3) answered in one round by five workstreams: a `stake` intent could withdraw a user's stake to any account (R33-1, P0) and a debit line naming no account excused a signer's drain for about half the registry (R33-5, P0 by test), both fixed; per-signer netting; one audit-trail line grammar for verify and every reader, keyed readers, no silent downgrade; releases need a signed tag on `main`; the CI Rust job split; the guard's lock hardened; operator documents corrected. Pinned outputs moved on 3 corpus rows and 1 mainnet row, none refused → approved. Release still blocked on owner items (rulesets, release environment, independent audit, deployment) |
 | 2026-10-22 | [`round32-production-readiness-2026-10-22.md`](round32-production-readiness-2026-10-22.md) (Rounds 31–32) | Everything code and CI can do toward production: a signer's loss under an unreadable declaration, the W19 lamport debit and a granted withdrawal with no minimum output refused by default, each with a logged opt-out; 16 declarations rewritten from IDLs and a wrong Pump.fun account name fixed; one agent guard per wallet and the fee in its cap; `instruction_bind_key` in lifecycle requests; a dashboard browser smoke, the deployment kit and its tests, a release workflow, and live mainnet/devnet workflows in CI (first results: 0 defects; the gated path end to end on a real validator); an auditor hand-off pack. Release still blocked on the owner and external items it lists |

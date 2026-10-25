@@ -1332,7 +1332,7 @@ pub const MAX_PLAUSIBLE_FEE_LAMPORTS: u64 = 100_000_000;
 /// overhead) — 890,880 lamports for an empty account, 2,039,280 for a token
 /// account (F7). It bounds what an account creation may be said to cost a
 /// signer: lamports put into a new account beyond it are a transfer.
-fn rent_exempt_minimum(data_len: usize) -> i128 {
+pub fn rent_exempt_minimum(data_len: usize) -> i128 {
     const LAMPORTS_PER_BYTE_YEAR: i128 = 3_480;
     const EXEMPTION_THRESHOLD_YEARS: i128 = 2;
     const ACCOUNT_STORAGE_OVERHEAD: i128 = 128;
@@ -1492,13 +1492,49 @@ fn lamports_kept_by(
 /// is a cost to the payer only as above. A signer whose account another
 /// program owns after the transaction is still judged as a signer for its
 /// own losses; lamports it receives are its gain, not the user's.
+/// Whether a signer holds `d` (Round 38, R37-6): it is a signer that held
+/// lamports before the transaction (a keypair funded and built in this
+/// transaction holds nothing yet), or on either side of the transaction it
+/// is a token account a signer owns, a native account whose recorded
+/// authority is a signer, or a mint whose mint, freeze or extension
+/// authority is a signer.
+fn signer_holds(d: &AccountDelta, signers: &std::collections::HashSet<&str>) -> bool {
+    let is = |who: &str| signers.contains(who);
+    let some = |who: &Option<String>| who.as_deref().is_some_and(is);
+    (is(&d.pubkey) && d.lamports_before() > 0)
+        || [d.before.as_ref(), d.after.as_ref()]
+            .into_iter()
+            .flatten()
+            .any(|s| {
+                s.token.as_ref().is_some_and(|t| is(&t.owner))
+                    || s.native_authorities.iter().any(|(_, who)| is(who))
+                    || s.mint
+                        .as_ref()
+                        .is_some_and(|m| some(&m.mint_authority) || some(&m.freeze_authority))
+                    || s.token2022_powers.as_ref().is_some_and(|p| {
+                        p.extension_authorities.iter().any(|(_, who)| some(who))
+                            || p.permanent_delegate.as_ref().is_some_and(some)
+                            || p.close_authority.as_ref().is_some_and(some)
+                    })
+            })
+}
+
+/// What one signer lost: `unexplained` after what stayed its own and the
+/// rent of declared creations, and `rent` — the part of that rent netted
+/// against it (Round 37, R37-7).
+#[derive(Debug, Clone, Copy, Default)]
+struct SignerLoss {
+    unexplained: i128,
+    rent: i128,
+}
+
 fn signer_lamport_losses(
     changed: &[&AccountDelta],
     signers: &std::collections::HashSet<&str>,
     fee_payer: Option<&str>,
     fee: i128,
     declared_creation: &dyn Fn(&AccountDelta) -> bool,
-) -> std::collections::BTreeMap<String, i128> {
+) -> std::collections::BTreeMap<String, SignerLoss> {
     use std::collections::BTreeMap;
     let mut out: BTreeMap<String, i128> = BTreeMap::new();
     let mut kept_in: BTreeMap<String, i128> = BTreeMap::new();
@@ -1553,17 +1589,24 @@ fn signer_lamport_losses(
     let mut losses = BTreeMap::new();
     for s in order {
         let mut lost = out[&s];
+        let mut rent = 0;
         if lost > 0 {
             let kept = lost
                 .min(kept_in.get(&s).copied().unwrap_or(0))
                 .min(kept_pool);
             kept_pool -= kept;
             lost -= kept;
-            let rent = lost.min(creation_rent);
+            rent = lost.min(creation_rent);
             creation_rent -= rent;
             lost -= rent;
         }
-        losses.insert(s, lost);
+        losses.insert(
+            s,
+            SignerLoss {
+                unexplained: lost,
+                rent,
+            },
+        );
     }
     losses
 }
@@ -4053,7 +4096,22 @@ pub fn check_state_diff_with(input: &StateDiffCheck<'_>, relax: L4Relaxations) -
             .get(d.pubkey.as_str())
             .map(Vec::as_slice)
             .unwrap_or(&[]);
-        let declares = |effect: &str| declared.covers(effect, names);
+        // Round 38 (R37-6): for an account a signer holds, an effect is
+        // declared only by a line that names it. Round 34 moved the debit and
+        // create judgements to `covers_by_name` (R33-5) and left these on
+        // `covers`, so "updates protocol configuration or authority", a line
+        // that names no account, excused a delegate granted on the signer's
+        // own token account, an owner or close authority handed away, or the
+        // signer's account closed. Pool and vault accounts keep `covers`: a
+        // program's own state is what such a line is about.
+        let held = signer_holds(d, &signers);
+        let declares = |effect: &str| {
+            if held {
+                declared.covers_by_name(effect, names)
+            } else {
+                declared.covers(effect, names)
+            }
+        };
         let is_fee_payer = input.fee_payer == Some(d.pubkey.as_str());
 
         // A write to an account the transaction did not mark writable is
@@ -4494,12 +4552,19 @@ pub fn check_state_diff_with(input: &StateDiffCheck<'_>, relax: L4Relaxations) -
     // R33-15: a wallet the located instruction's data debits by a stated
     // amount, which lost more.
     let mut beyond_stated: Vec<(String, u64, i128)> = Vec::new();
-    for (signer, unexplained) in &losses {
+    for (signer, loss) in &losses {
+        let unexplained = &loss.unexplained;
         let names = names_of_signer(signer);
         let named = declared.covers_by_name("debit", &names);
         if let Some((_, amount)) = declared.lamport_amounts.iter().find(|(a, _)| a == signer) {
-            if named && *unexplained > i128::from(*amount) {
-                beyond_stated.push((signer.clone(), *amount, *unexplained));
+            // The stated amount already pays the rent of what the located
+            // instruction creates — a stated amount comes only from a System
+            // `Transfer` or `CreateAccount`, and only a `CreateAccount`
+            // declares a creation. Netting that rent out again before the
+            // comparison counted it twice (Round 37, R37-7).
+            let lost = unexplained + loss.rent;
+            if named && lost > i128::from(*amount) {
+                beyond_stated.push((signer.clone(), *amount, lost));
             }
         }
         if !declared.debit || named || !signer_wallets.contains(signer.as_str()) {
@@ -4513,7 +4578,7 @@ pub fn check_state_diff_with(input: &StateDiffCheck<'_>, relax: L4Relaxations) -
             }
         }
     }
-    let signer_net_loss: i128 = losses.values().map(|u| (*u).max(0)).sum();
+    let signer_net_loss: i128 = losses.values().map(|u| u.unexplained.max(0)).sum();
     // The Round 30/32 rule for a declaration Graphite cannot read, applied
     // to a debit line that names no account (R33-5).
     let unscoped_relaxed = relax.unreadable_value_declarations && declared.class_moves_value();
@@ -4551,7 +4616,7 @@ pub fn check_state_diff_with(input: &StateDiffCheck<'_>, relax: L4Relaxations) -
     }
     for (signer, amount, lost) in beyond_stated {
         let detail = format!(
-            "{lost} lamports left this signer's wallet beyond the fee, what stayed the signer's and the rent of accounts this instruction declares it creates; the located instruction's data debits it by {amount}, so {} lamports more left than the instruction states",
+            "{lost} lamports left this signer's wallet beyond the fee and what stayed the signer's; the located instruction's data debits it by {amount}, which already pays the rent of any account it creates, so {} lamports more left than the instruction states",
             lost - i128::from(amount)
         );
         findings.push(if relax.signer_lamports_outside_declared_debit {
@@ -6972,6 +7037,62 @@ mod w19_scope_tests {
             &declared,
         );
         assert!(!r.blocked, "{:?}", r.findings);
+    }
+
+    /// Round 37 (R37-7, the double count): a `CreateAccount`'s stated
+    /// lamports ARE what funds the account it creates, rent included. Netting
+    /// that account's rent out of the wallet's loss before comparing it with
+    /// the stated amount counted the rent twice, and let a sibling take one
+    /// more rent's worth from the wallet unnamed.
+    #[test]
+    fn a_created_accounts_rent_is_not_netted_on_top_of_the_stated_amount() {
+        let created = "Crea7ed111111111111111111111111111111111111";
+        let program = "Prog111111111111111111111111111111111111111";
+        let rent = u64::try_from(rent_exempt_minimum(1 << 10)).unwrap();
+        let made = AccountDelta {
+            pubkey: created.to_string(),
+            before: None,
+            after: Some(AccountSnapshot::from_raw(
+                created,
+                rent,
+                program,
+                &vec![0u8; 1 << 10],
+            )),
+        };
+        // The taker is an account the transaction names (a sibling's), so
+        // only the amount can tell the skim apart.
+        let accounts = [
+            named(WALLET, "from", true),
+            named(created, "to", true),
+            named(ATTACKER, "sibling", false),
+        ];
+        let declared = [
+            "debits accounts.from by data.lamports".to_string(),
+            "creates accounts.to".to_string(),
+            instruction_program_line(program),
+            lamport_amount_line(WALLET, rent),
+        ];
+        let declared: Vec<&str> = declared.iter().map(String::as_str).collect();
+        // Honest: the wallet pays exactly the stated amount into the account.
+        let r = report(
+            vec![wallet_spends(rent), made.clone()],
+            &accounts,
+            &declared,
+        );
+        assert!(!r.blocked, "{:?}", r.findings);
+        // A sibling takes one more rent's worth to someone else.
+        let r = report(
+            vec![wallet_spends(2 * rent), made, system(ATTACKER, 1, rent + 1)],
+            &accounts,
+            &declared,
+        );
+        let f = finding(&r, "SignerLamportsBeyondDeclaredAmount");
+        assert_eq!(f.severity, DiffSeverity::Critical);
+        assert!(
+            f.detail.contains(&format!("so {rent} lamports more")),
+            "{}",
+            f.detail
+        );
     }
 
     /// The System layouts whose data states the debit, decoded exactly.

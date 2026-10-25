@@ -9,7 +9,7 @@ The Rust verification engine — the heart of Graphite.
 | `account_resolution` | PDA derivation (Solana hash-chain algorithm), account role validation | L1 |
 | `verification` | 8-layer pipeline orchestrator (L1–L8) — implements L2 Instruction Verification and L4 State Verification inline | L2/L4 |
 | `transaction_builder` | `InstructionPlan` / `InstructionSummary`: a validated summary of one instruction and a compute-unit ESTIMATE, not wire bytes (renamed in Round 30; the old names are deprecated aliases) | — |
-| `risk_engine` | 10 of the 12 detection patterns in 16 checks, hard gate (the other two come from `tx_pattern_analysis`; `PluginBlock` names a plugin veto) | L7 |
+| `risk_engine` | 10 of the 13 detection patterns in 16 checks, hard gate (two more come from `tx_pattern_analysis` and `UnboundedWithdrawal` from `intent_grants`; the 14th `RiskPattern`, `PluginBlock`, names a plugin veto) | L7 |
 | `confidence_engine` | Weighted signal scoring + trust tier ceilings | L6 |
 | `policy_engine` | Per-wallet profile thresholds (Treasury, TradingBot, Gaming, Enterprise) | L6 |
 | `simulation_integrity` | 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm + MAD baseline | L3 |

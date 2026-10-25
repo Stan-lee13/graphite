@@ -44,6 +44,16 @@ export const ACCEPT_UNOBSERVED_ENV = "GRAPHITE_ACCEPT_UNOBSERVED";
 const KNOWN: ReadonlySet<string> = new Set<string>(UNOBSERVED_CODES);
 
 /**
+ * Codes no deployment may accept (Round 38, G2-5). `intent_parameters` says
+ * the Core could not tie the request's amount, recipient or asset to the
+ * bytes (Round 36, F-003). Accepting it signs whatever the bytes do whatever
+ * the request said: it switches F-003 off for the whole deployment, for
+ * every request, not one residual about one property of a program. Naming it
+ * in GRAPHITE_ACCEPT_UNOBSERVED or `acceptUnobserved` refuses to start.
+ */
+export const NEVER_ACCEPTABLE: ReadonlySet<UnobservedCode> = new Set<UnobservedCode>(["intent_parameters"]);
+
+/**
  * The Core's execution decision (Round 30, G-01): `decision` on a verdict,
  * with `executable` true exactly when it is `executable_approved`. Only that
  * value permits signing; `approved` alone never did. Any other string is a
@@ -140,6 +150,13 @@ export class ResidualPolicy {
           `[Graphite] ResidualPolicy: "${code}" is not an unobserved code. Known codes: ${UNOBSERVED_CODES.join(", ")}.`,
         );
       }
+      if (NEVER_ACCEPTABLE.has(code as UnobservedCode)) {
+        throw new Error(
+          `[Graphite] ResidualPolicy: "${code}" cannot be accepted: it means the Core could not tie the request's ` +
+            "amount, recipient or asset to the transaction (F-003), and accepting it would sign whatever the bytes do " +
+            `for every request. Remove it from ${ACCEPT_UNOBSERVED_ENV} / acceptUnobserved. REFUSING TO START.`,
+        );
+      }
       set.add(code as UnobservedCode);
     }
     this.#acceptedCodes = set;
@@ -204,6 +221,8 @@ export class ResidualPolicy {
         inherent.push(code);
       } else if (this.#acceptedCodes.has(code)) {
         accepted.push(code);
+      } else if (NEVER_ACCEPTABLE.has(code)) {
+        refused.push(`${code} (never acceptable): ${scope.unobserved[i]}`);
       } else {
         refused.push(`${code}: ${scope.unobserved[i]}`);
       }
@@ -215,7 +234,8 @@ export class ResidualPolicy {
             `${refused.length} propert(ies) this deployment has not accepted:`,
           ...refused.map((r) => `  - ${r}`),
           `To execute under a residual, name its code in ${ACCEPT_UNOBSERVED_ENV} (comma-separated) ` +
-            "or in VerifiedSakAgent.create({ acceptUnobserved: [...] }). ABORTING.",
+            "or in VerifiedSakAgent.create({ acceptUnobserved: [...] }); a code marked never acceptable cannot " +
+            "be named (Round 38): the request must be one the Core can bind. ABORTING.",
         ].join("\n"),
       );
     }

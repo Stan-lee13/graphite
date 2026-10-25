@@ -1,0 +1,12 @@
+{
+  "_comment": [
+    "Round 38 (R37-8): the protected `release` environment the publish job of release.yml runs in,",
+    "as .github/scripts/ruleset-drift.py compares it with the live one every week. The owner creates it",
+    "(docs/ops/production-checklist.md, R2). A reviewer is named by user id, which is the owner's, so",
+    "only a count is committed: at least `min` required reviewers."
+  ],
+  "name": "release",
+  "required_reviewers": { "min": 1 },
+  "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true },
+  "branch_policies": [{ "name": "v*", "type": "tag" }]
+}

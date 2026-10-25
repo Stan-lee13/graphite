@@ -47,8 +47,12 @@ release tag, so a moved tag would move the baseline it checks against.
 `.github/rulesets/main-review.json` adds one approving review, code-owner
 review (`.github/CODEOWNERS`), dismissal of stale approvals and approval of the
 last push. It is a separate file because GitHub does not let an author approve
-their own pull request: with a single maintainer it blocks every merge. Apply
-it the day a second person with write access can review:
+their own pull request. Since Round 38 (D2-4) it lets the repository admin role
+bypass it through a pull request only (`bypass_mode: pull_request`; never a
+direct push, and `main.json`'s CI gate still applies), so importing it with a
+single maintainer no longer blocks every merge; each such merge is logged as a
+bypass. Delete that `bypass_actors` entry once two maintainers review each
+other. Apply it the day a second person with write access can review:
 
 ```sh
 gh api -X POST repos/Stan-lee13/graphite/rulesets --input .github/rulesets/main-review.json

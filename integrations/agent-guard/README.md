@@ -81,7 +81,10 @@ submitted — and nothing is signed under a residual the operator has not accept
   `instruction_not_located`, `intent_parameters` (Round 36) — **refuses execution** unless the operator names it in
   `GRAPHITE_ACCEPT_UNOBSERVED` (comma-separated) or `create({ acceptUnobserved })`. A
   typo in that list is a startup error; a Core that reports no codes (pre-Round-9) is
-  refused. The codes accepted for an execution are recorded on
+  refused. `intent_parameters` cannot be named at all (Round 38, G2-5): it says the Core
+  could not tie the request's amount, recipient or asset to the bytes, and accepting it
+  switched that binding (F-003) off for every request of the deployment. Naming it refuses
+  to start, before anything is contacted. The codes accepted for an execution are recorded on
   `outcome.lifecycle.acceptedUnobserved`. See `residual-policy.ts`.
 - **The lifecycle is on Graphite's trail, in order, under the exact keys (Rounds 9–10).**
   `execution-lifecycle.ts` is the only path from verdict to network: policy →
@@ -136,7 +139,7 @@ submitted — and nothing is signed under a residual the operator has not accept
   (`"SOL"` for the native mint), not the symbols as written: the Core binds the stated
   amount and tokens to the bytes, reads a token only as `"SOL"` or a base58 mint, and
   names whatever it could not bind `intent_parameters` — a non-inherent residual the
-  residual policy refuses unless the operator names it in `GRAPHITE_ACCEPT_UNOBSERVED`.
+  residual policy always refuses (since Round 38 no operator can accept it).
 - **A request that negates or cancels what it names is refused** (`assertAffirmative`):
   "Don't send 1 SOL to …", "Never swap …", "Cancel the transfer …", "Hold off …", "Please
   refrain …". Grounding establishes what a request names; this establishes that it asks
@@ -197,7 +200,9 @@ submitted — and nothing is signed under a residual the operator has not accept
   `GRAPHITE_ALLOW_UNCAPPED=1`, logs the policy in force at startup, and can bound a
   rolling window: `GRAPHITE_MAX_TOTAL_LAMPORTS` per `GRAPHITE_SPEND_WINDOW_SECONDS`
   (default 3600) across executed transactions — reserved before signing, kept once the
-  bytes may have left, per guard process. Since Round 30 the reservations are written to
+  bytes may have left, per guard process. Since Round 38 (G2-4) a reservation kept for a
+  submission whose outcome was unknown is returned once that submission provably did not
+  land and cannot (see the ambiguous-submission item below), not only when the window ends. Since Round 30 the reservations are written to
   `GRAPHITE_GUARD_STATE_FILE` (or `stateFile`) before signing when it is set, so a restart
   inside the window still counts them; without it they are in memory, and the startup log
   says a restart forgets them.
@@ -225,34 +230,66 @@ submitted — and nothing is signed under a residual the operator has not accept
   an `executable` that contradicts the decision, and (since Round 34) a response without
   `decision` — a Core older than Round 30, which was judged by the residual codes alone —
   are refused.
-- **An ambiguous submission is not retried blind (Round 29, L2; Round 30).** The
+- **An ambiguous submission is not retried blind (Round 29, L2; Round 30; Round 38).** The
   transaction id is computed from the signed bytes before sending, and since Round 30 the
   submission is recorded as unresolved BEFORE the bytes are handed to the RPC and resolved
   only once it is seen confirmed. If `sendRawTransaction` fails, the attempt is recorded on
   the trail with that signature and `SubmissionOutcomeUnknown` carries it; a send whose
   confirmation did not complete stays unresolved too. A repeat of the same request — the
-  same destination and lamports, or the same route program, mints and amount, however it
-  is worded — is refused (`PriorSubmissionUnresolved`, naming the signature) while that
-  signature can still land, and refused once, naming it, if it did. With
-  `GRAPHITE_GUARD_STATE_FILE` this survives a restart. A second call for a request already
-  running (a model's double call, a missing `await`, a confirmation hook calling back in)
-  is refused with `RequestInFlight` before anything is built.
+  same destination and lamports, or the same wallet, mints and amount of a swap through
+  any route, however it is worded — is refused (`PriorSubmissionUnresolved`, naming the
+  signature) while that signature can still land, and refused once, naming it, if it did.
+  With `GRAPHITE_GUARD_STATE_FILE` this survives a restart. A second call for a request
+  already running (a model's double call, a missing `await`, a confirmation hook calling
+  back in) is refused with `RequestInFlight` before anything is built.
+  - *Route-independent (Round 38, G2-2).* A swap's key named its route program, so after a
+    Jupiter swap failed ambiguously the same swap through Raydium was a new request and both
+    could land. The key is now the wallet, input mint, output mint and amount in. An
+    unresolved swap a state file holds under the older route-specific key still holds back
+    the same swap on any route.
+  - *Not sent (Round 38, G2-4).* Only one send failure proves nothing left the process: the
+    connection was refused, or the RPC's host name did not resolve (`ECONNREFUSED`,
+    `ENOTFOUND`, `EAI_AGAIN`, read from the error's code, never its message). That is
+    `SubmissionNotSent`: the signed bytes are dropped, the reservation returned, nothing is
+    left unresolved and the trail gets no submission event. Every other failure — a reset, a
+    broken pipe, a timeout, an HTTP or JSON-RPC error, a preflight failure — can follow bytes
+    the RPC received and forwarded, and stays `SubmissionOutcomeUnknown`.
+  - *Its reservation comes back once the chain says so (Round 38, G2-4).* An unresolved
+    submission records the reservation that pays for it. It is returned when the RPC knows
+    no status for the signature, the confirmed block height is past its last valid height,
+    and the RPC still knows none when asked again after that height was read. The guard
+    asks on a repeat of the same request, and before the aggregate limit would refuse
+    another one. An RPC that cannot answer keeps it counted; one that landed keeps it. A
+    record written before Round 38 names no reservation, and its spend counts until the
+    window ends.
 - **One guard per wallet (Round 32; Round 34).** The aggregate cap and the repeat record
   are kept per guard, so two guards signing for one key would each spend the whole
   allowance. Every guard takes a lock named for its wallet's public key in a directory its
   user's guards on a host share, and a second guard for the same wallet refuses to start
   while the first runs. `GRAPHITE_GUARD_ALLOW_SHARED_WALLET=1` lets it start, logged as
   limits that hold per guard. The network fee counts toward the aggregate cap.
-  - *Where (Round 34).* `GRAPHITE_GUARD_LOCK_DIR` (or `walletLockDir`), else a directory
-    no temp cleaner sweeps: `$XDG_RUNTIME_DIR/graphite-guard`, else `/run/graphite-guard`
-    where the user can write, else `$XDG_STATE_HOME/graphite-guard` (default
-    `~/.local/state/graphite-guard`); on Windows `%LOCALAPPDATA%\graphite-guard`. It was
-    `<tmpdir>/graphite-guard`, which systemd-tmpfiles, macOS and Storage Sense empty. The
-    directory must be a real directory (not a symbolic link) owned by the guard's user with
-    mode 0700, an existing one included, or the guard refuses to start (owner and mode are
-    not checked on Windows). A lock under `~/.local/state` survives a reboot: if a crash
-    left one whose pid now belongs to another process, the guard refuses to start naming the
-    file, and the operator removes it.
+  - *Where (Round 34; Round 38).* `GRAPHITE_GUARD_LOCK_DIR` (or `walletLockDir`), else one
+    directory per user, derived from the account alone:
+    `<home>/.local/state/graphite-guard` (Windows: `<profile>\AppData\Local\graphite-guard`),
+    where `<home>` is the home directory of the guard's user as the user database holds it
+    (`os.userInfo()`), not `$HOME`. Until Round 38 (R37-17) the default followed the
+    session's variables (`$XDG_RUNTIME_DIR`, else `/run`, else `$XDG_STATE_HOME`): an SSH
+    login sets `XDG_RUNTIME_DIR` and cron does not, so a guard started from each, for one
+    wallet and one user, took two locks and each spent the whole aggregate allowance. No
+    session variable moves the default now. An account with no absolute home directory
+    refuses to start and asks for `GRAPHITE_GUARD_LOCK_DIR`; a directory the operator names
+    is the operator's to name the same way for every guard of the wallet. Before Round 34 it
+    was `<tmpdir>/graphite-guard`, which systemd-tmpfiles, macOS and Storage Sense empty. The
+    directory is created 0700 and must be a real directory (not a symbolic link) owned by the
+    guard's user with mode 0700, an existing one included, or the guard refuses to start. A
+    lock under `~/.local/state` survives a reboot: if a crash left one whose pid now belongs
+    to another process, the guard refuses to start naming the file, and the operator removes
+    it.
+  - *Windows (a limitation, Round 38, G2-6).* The directory's owner and access are not
+    checked on Windows: it has no uid or mode bits, its ACLs cannot be read from Node without
+    a native addon, and the guard loads none. The default sits in the user's own profile,
+    whose ACL admits the user, SYSTEM and the Administrators only; a `GRAPHITE_GUARD_LOCK_DIR`
+    named on Windows must be kept private by the operator. The startup log says so.
   - *Held, not just taken (Round 34).* Node cannot hold an flock/fcntl/LockFileEx lock
     without a native addon, so the lock is a file holding the owner's pid and a random
     token. The guard remembers its inode and re-reads it before every reservation, before
@@ -302,7 +339,7 @@ submitted — and nothing is signed under a residual the operator has not accept
 - **Transport (Round 29, M3).** `SOLANA_RPC_URL` is held to the Core's rule (https://, or
   http:// to loopback), and no RPC request follows a redirect. The AI layer's answer is
   read through a 64 KiB bound.
-  - *Every RPC request is bounded (Round 35, F-014).* The guard's raw JSON-RPC reads were
+  - *Every RPC request is bounded (Round 36, F-014).* The guard's raw JSON-RPC reads were
     bounded since Round 25, but web3.js's `Connection` — blockhashes, lookup tables, the
     advisory simulation, `sendRawTransaction` and the confirmation and repeat-check polls —
     called `fetch` with no deadline and read the answer whole: an RPC that never answered
@@ -312,8 +349,9 @@ submitted — and nothing is signed under a residual the operator has not accept
     the configured URL only, no redirect, one deadline over the headers and the whole body
     (`GRAPHITE_RPC_TIMEOUT_MS` / `rpcTimeoutMs`, default 30 s, at most 120 s; a malformed
     value refuses to start), 32 MiB at most, no 429 retry. A send that times out is
-    `SubmissionOutcomeUnknown`: its reservation is kept and the repeat waits for it.
-  - *No websocket (Round 35, F-014).* web3.js opens `ws(s)://<host>:<port + 1>` for every
+    `SubmissionOutcomeUnknown`: its reservation is kept and the repeat waits for it (until
+    the chain says it cannot land; Round 38).
+  - *No websocket (Round 36, F-014).* web3.js opens `ws(s)://<host>:<port + 1>` for every
     subscription and for its own `confirmTransaction` — an endpoint the transport rule never
     checked. The guard has confirmed by polling over HTTP since Round 29; the connection
     `getConnection()` hands out is now a `BoundedConnection` too: its `confirmTransaction`
@@ -322,11 +360,15 @@ submitted — and nothing is signed under a residual the operator has not accept
     `onLogs`, …) throws `RpcTransportRefusal` before a socket exists. It is still a
     web3.js 1.x `Connection` (R-M15 is not a migration off web3.js); a caller who needs
     subscriptions builds its own, outside the guard's policy.
-- **A verdict is signed young (Round 35, F-017).** Immediately before the digest is
-  recomputed and the bytes signed, a verdict older than `GRAPHITE_MAX_VERDICT_AGE_MS` /
-  `maxVerdictAgeMs` (default 150 s, at most 600 s), counted on a monotonic clock from
-  before the verification was asked for, is refused with `StaleVerdict`: nothing signed,
-  the reservation returned. A confirmation hook slower than the bound is answered too late
+- **A verdict is signed and sent young (Round 36, F-017; Round 38, G2-3).** Immediately
+  before the digest is recomputed and the bytes signed, a verdict older than
+  `GRAPHITE_MAX_VERDICT_AGE_MS` / `maxVerdictAgeMs` (default 150 s, at most 600 s), counted
+  on a monotonic clock from before the verification was asked for, is refused with
+  `StaleVerdict`: nothing signed, the reservation returned. Since Round 38 the age is checked
+  again immediately before the send, after the signing is recorded on the trail (a round
+  trip to the Core), with nothing awaited in between: a verdict that aged past the bound
+  there is `StaleVerdict` with `signed: true` — the signed bytes are dropped, nothing is
+  sent, the reservation returned. A confirmation hook slower than the bound is answered too late
   to sign (the guard warns at startup when `confirmTimeoutMs` is not below it). The guard
   never builds a durable-nonce transaction whatever the Core permits
   (`GRAPHITE_ALLOW_DURABLE_NONCE` is the Core's), so this bound and the blockhash both

@@ -104,9 +104,16 @@ const sends = (g: G) => g.rpc.calls.filter((c) => c.method === "sendTransaction"
 // ---------------------------------------------------------------------------
 // R33-16: the default directory, and a lock that disappears under its guard.
 
-test("lock dir: the default is a runtime directory no temp cleaner sweeps, never the system temp directory", () => {
+// Re-pinned in Round 38 (R37-17). This test pinned the Round 34 order
+// ($XDG_RUNTIME_DIR, then /run, then $XDG_STATE_HOME): a default that
+// follows the session's variables, so an SSH guard and a cron guard for one
+// wallet took two locks and two allowances. What it still pins: never the
+// temp directory, an override that wins. What changed: the default is the
+// account's own (its home directory as the user database holds it), and no
+// session variable moves it (guard-round38.test.ts holds the rest).
+test("lock dir: the default is a directory no temp cleaner sweeps, never the system temp directory, and no session variable moves it", () => {
   const def = (guardState as unknown as Record<string, unknown>).defaultWalletLockDir as
-    | ((env: Record<string, string | undefined>, o?: Record<string, unknown>) => string)
+    | ((o?: Record<string, unknown>) => string)
     | undefined;
   // Whatever this host has: not under the temp directory.
   const plan = walletLockPlan({}, {});
@@ -114,23 +121,11 @@ test("lock dir: the default is a runtime directory no temp cleaner sweeps, never
   const dir = (plan as { dir: string }).dir;
   assert.ok(!dir.startsWith(tmpdir()), `the default lock directory ${dir} is under ${tmpdir()}, which temp cleaners empty`);
   assert.equal(typeof def, "function", "defaultWalletLockDir is exported");
-  const never = () => false;
-  const always = () => true;
-  // XDG_RUNTIME_DIR first (a per-user tmpfs, not aged by systemd-tmpfiles).
-  assert.equal(def!({ XDG_RUNTIME_DIR: "/run/user/1000" }, { platform: "linux", canWrite: always }), "/run/user/1000/graphite-guard");
-  // Then /run/graphite-guard when this user can write there.
-  assert.equal(def!({}, { platform: "linux", canWrite: always }), "/run/graphite-guard");
-  // Then the user's state directory, never the temp directory.
-  assert.equal(def!({ XDG_STATE_HOME: "/home/a/.st" }, { platform: "linux", canWrite: never }), "/home/a/.st/graphite-guard");
-  assert.equal(def!({}, { platform: "darwin", canWrite: never, homedir: () => "/Users/a" }), "/Users/a/.local/state/graphite-guard");
-  // A relative XDG value is not a directory to trust (the spec says ignore it).
-  assert.equal(def!({ XDG_RUNTIME_DIR: "run" }, { platform: "linux", canWrite: always }), "/run/graphite-guard");
-  // Windows: %LOCALAPPDATA%\graphite-guard; none named refuses to start.
-  assert.equal(
-    def!({ LOCALAPPDATA: "C:\\Users\\a\\AppData\\Local" }, { platform: "win32", canWrite: always }),
-    join("C:\\Users\\a\\AppData\\Local", "graphite-guard"),
-  );
-  assert.throws(() => def!({}, { platform: "win32", canWrite: always }), /GRAPHITE_GUARD_LOCK_DIR/);
+  const account = (homedir: string) => () => ({ homedir });
+  assert.equal(def!({ platform: "linux", userInfo: account("/home/a") }), "/home/a/.local/state/graphite-guard");
+  assert.equal(def!({ platform: "darwin", userInfo: account("/Users/a") }), "/Users/a/.local/state/graphite-guard");
+  // The XDG variables an SSH session sets (and cron does not) change nothing.
+  assert.deepEqual(walletLockPlan({}, { XDG_RUNTIME_DIR: "/run/user/1000", XDG_STATE_HOME: "/home/a/.st" }), plan);
   // The override still wins.
   assert.deepEqual(walletLockPlan({}, { GRAPHITE_GUARD_LOCK_DIR: "/srv/locks" }), { shared: false, dir: "/srv/locks" });
 });

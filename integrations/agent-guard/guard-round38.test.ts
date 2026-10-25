@@ -1,0 +1,681 @@
+/**
+ * Round 38: the guard's findings of the Round 37 re-audit, end to end against
+ * loopback stand-ins. Nothing here reaches a public RPC.
+ *
+ *   R37-17  the default wallet-lock directory depended on the session's
+ *           XDG variables, so a guard started from an SSH session and one
+ *           started from cron, for one wallet, each took a lock of their own
+ *           and each spent the whole aggregate allowance
+ *   G2-2    after an outcome-unknown swap, the same swap through another
+ *           route was not a repeat
+ *   G2-3    the verdict's age was checked before the Core round trip that
+ *           records the signing, not immediately before the send
+ *   G2-4    every send failure was outcome-unknown, and an outcome-unknown
+ *           reservation was never returned before its window ended
+ *   G2-5    GRAPHITE_ACCEPT_UNOBSERVED could accept `intent_parameters`,
+ *           which switched off the Core's binding of the request (F-003)
+ */
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { createHash, randomBytes } from "node:crypto";
+import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { tmpdir, userInfo } from "node:os";
+import { join, win32 } from "node:path";
+import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
+import bs58 from "bs58";
+import {
+  BoundTransaction,
+  GraphiteGuard,
+  GuardStateError,
+  PriorSubmissionUnresolved,
+  SpendPolicyRefusal,
+  StaleVerdict,
+  SubmissionOutcomeUnknown,
+  swapPolicyFromEnv,
+  type GuardConfig,
+  type SpendPolicy,
+} from "./guard.js";
+import * as guardModule from "./guard.js";
+import { GuardState, walletLockPlan } from "./guard-state.js";
+import * as guardState from "./guard-state.js";
+import { ResidualPolicy } from "./residual-policy.js";
+import { executeBoundTransaction } from "./execution-lifecycle.js";
+import * as lifecycleModule from "./execution-lifecycle.js";
+import { firstSignatureOf } from "./artifact.js";
+import { toolRefusalOf } from "./tool-results.js";
+import { RpcTransportRefusal } from "./rpc-transport.js";
+import {
+  mockApprovingCore,
+  mockHostileRpcFront,
+  mockRpc,
+  mockService,
+  tokenAccountData,
+  type HostileFront,
+  type MockRpc,
+  type MockService,
+} from "./loopback-mocks.js";
+import { jupiterRouteData, raydiumAmmV4Data } from "./swap-fixtures.js";
+import { associatedTokenAddress, SPL_TOKEN_PROGRAM } from "./swap-envelope.js";
+import type { UnobservedCode, VerificationResult } from "../../sdk/typescript/src/types.js";
+
+// Read off the modules rather than imported by name, so that this file runs
+// (and its tests fail one by one) against a guard that predates them.
+const SubmissionNotSent = (guardModule as unknown as Record<string, unknown>).SubmissionNotSent as typeof Error;
+const neverReachedTheRpc = (lifecycleModule as unknown as Record<string, unknown>).neverReachedTheRpc as (e: unknown) => boolean;
+const defaultWalletLockDir = (guardState as unknown as Record<string, unknown>).defaultWalletLockDir as (o?: {
+  platform?: NodeJS.Platform;
+  userInfo?: () => { homedir: string };
+}) => string;
+
+const DEST = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
+const OTHER = "p2Yicb86aZig616Eav2VWG9vuXR5mEqhtzshZYBxzsV";
+const REQUEST = `Transfer 1.5 SOL to ${DEST}`;
+const SWAP = "Swap 1 SOL for USDC";
+const SYSTEM = "11111111111111111111111111111111";
+const SPL_TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const WSOL = "So11111111111111111111111111111111111111112";
+const JUPITER_V6 = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+const RAYDIUM_AMM_V4 = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
+const SOL = 1_000_000_000;
+const FEE = 5_000;
+const RENT = 2_039_280;
+const INHERENT: UnobservedCode[] = ["program_semantics", "inner_instructions"];
+const TWO_SOL: SpendPolicy = { maxTransferLamports: 2n * BigInt(SOL), maxTotalLamports: 2n * BigInt(SOL) };
+
+function transferParse(text: string) {
+  const m = /Transfer ([0-9.]+) SOL to ([1-9A-HJ-NP-Za-km-z]{32,44})/.exec(text);
+  return {
+    intent_type: "transfer",
+    raw_natural_language: text,
+    confidence_of_parse: 0.9,
+    extracted_parameters: { amount: m?.[1] ?? "0", input_token: "SOL", destination: m?.[2] ?? DEST },
+  };
+}
+
+interface H {
+  agent: GraphiteGuard;
+  wallet: Keypair;
+  rpc: MockRpc;
+  front: HostileFront;
+  core: MockService;
+  ai: MockService;
+  close(): Promise<void>;
+}
+
+/** The guard against an honest RPC stand-in behind a (here, passing) front. */
+async function harness(
+  o: {
+    wallet?: Keypair;
+    spendPolicy?: SpendPolicy;
+    config?: Partial<GuardConfig>;
+    rpc?: (w: Keypair) => Parameters<typeof mockRpc>[0];
+    parse?: (text: string) => unknown;
+  } = {},
+): Promise<H> {
+  const wallet = o.wallet ?? Keypair.generate();
+  const w = wallet.publicKey.toBase58();
+  const rpc = await mockRpc(
+    o.rpc?.(wallet) ?? {
+      ledger: { [w]: { lamports: 10 * SOL, owner: SYSTEM } },
+      afterSimulation: { [w]: { lamports: 10 * SOL - FEE, owner: SYSTEM } },
+    },
+  );
+  const front = await mockHostileRpcFront(rpc.url);
+  const core = await mockApprovingCore();
+  const ai = await mockService();
+  ai.respond.set("POST /parse", (body) => ({
+    status: 200,
+    body: (o.parse ?? transferParse)((body as { text: string }).text),
+  }));
+  let agent: GraphiteGuard;
+  try {
+    agent = await GraphiteGuard.create({
+      privateKey: bs58.encode(wallet.secretKey),
+      rpcUrl: front.url,
+      graphiteCoreUrl: core.url,
+      aiLayerUrl: ai.url,
+      spendPolicy: o.spendPolicy ?? { maxTransferLamports: 100n * BigInt(SOL) },
+      swapPolicy: swapPolicyFromEnv({ GRAPHITE_SWAP_MIN_RATES: "SOL/USDC=100" }),
+      swapEnvelope: {},
+      rpcTimeoutMs: 2_000,
+      ...o.config,
+    });
+  } catch (e) {
+    await Promise.all([front.close(), rpc.close(), core.close(), ai.close()]);
+    throw e;
+  }
+  return {
+    agent,
+    wallet,
+    rpc,
+    front,
+    core,
+    ai,
+    close: async () => {
+      agent.close();
+      await Promise.all([front.close(), rpc.close(), core.close(), ai.close()]);
+    },
+  };
+}
+
+const sent = (h: H) => h.rpc.calls.filter((c) => c.method === "sendTransaction").length;
+const coreAsked = (h: H) => h.core.calls.filter((c) => c.method === "POST /verify").length;
+const trail = (h: H) =>
+  h.core.calls.filter((c) => c.method === "POST /audit/event").map((c) => c.params as { event_type: string; detail?: string });
+
+/** A fresh directory only this user can enter. */
+const privateTmp = () => mkdtempSync(join(tmpdir(), "graphite-r38-"));
+
+/** Run `fn` with these variables set (undefined: unset), and put them back. */
+async function withEnv<T>(vars: Record<string, string | undefined>, fn: () => T | Promise<T>): Promise<T> {
+  const saved: Record<string, string | undefined> = {};
+  for (const [k, v] of Object.entries(vars)) {
+    saved[k] = process.env[k];
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+  try {
+    return await fn();
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
+
+/**
+ * An honest 1 SOL → 150 USDC swap for `wallet`, and two routes for it: a
+ * Jupiter v6 `route` and a Raydium AMM v4 `SwapBaseIn`, the same amount and
+ * the same mints, the same minimum output.
+ */
+function swapFixture(wallet: Keypair) {
+  const w = wallet.publicKey.toBase58();
+  const ata = associatedTokenAddress(wallet.publicKey, new PublicKey(USDC), new PublicKey(SPL_TOKEN_PROGRAM)).toBase58();
+  const accounts = [
+    { pubkey: w, isSigner: true, isWritable: true },
+    { pubkey: DEST, isSigner: false, isWritable: true },
+    { pubkey: ata, isSigner: false, isWritable: true },
+  ];
+  return {
+    state: {
+      ledger: {
+        [w]: { lamports: 10 * SOL, owner: SYSTEM },
+        [DEST]: { lamports: RENT, owner: SPL_TOKEN, data: tokenAccountData(WSOL, w, BigInt(SOL)) },
+      },
+      afterSimulation: {
+        [w]: { lamports: 10 * SOL - FEE, owner: SYSTEM },
+        [DEST]: { lamports: RENT, owner: SPL_TOKEN, data: tokenAccountData(WSOL, w, 0n) },
+        [ata]: { lamports: RENT, owner: SPL_TOKEN, data: tokenAccountData(USDC, w, 150_000_000n) },
+      },
+      decimals: { [USDC]: 6, [WSOL]: 9 },
+    },
+    jupiter: { programId: JUPITER_V6, discriminator: "e517cb977ae3ad2a", accounts, instructionData: jupiterRouteData() },
+    raydium: {
+      programId: RAYDIUM_AMM_V4,
+      discriminator: "09",
+      accounts,
+      instructionData: raydiumAmmV4Data(BigInt(SOL), 149_250_000n),
+    },
+    parse: (text: string) => ({
+      intent_type: "swap",
+      raw_natural_language: text,
+      confidence_of_parse: 0.99,
+      extracted_parameters: { input_token: "SOL", output_token: "USDC", amount: "1" },
+    }),
+  };
+}
+
+const payer = Keypair.generate();
+
+function verdictFor(bound: BoundTransaction): VerificationResult {
+  return {
+    approved: true,
+    decision: "executable_approved",
+    executable: true,
+    layers: [],
+    confidence: 0.64,
+    breakdown: [],
+    trust_tier: "OfficialManifest",
+    risk_verdict: { status: "Clear", findings: [] },
+    policy_verdict: "Approved",
+    audit_trail_id: "gr-test",
+    content_hash: "48c65c638aceb5de",
+    transaction: { instructions: [], signers: [], recent_blockhash: SYSTEM } as unknown as VerificationResult["transaction"],
+    resolved_accounts: [],
+    protocol_name: "System Program",
+    instruction_name: "Transfer",
+    manifest_found: true,
+    unknown_protocol: false,
+    summary: "APPROVED",
+    scope: {
+      kind: "artifact_bound",
+      transaction_sha256: createHash("sha256").update(bound.artifactBytes).digest("hex"),
+      transaction_bytes: bound.artifactBytes.length,
+      simulated: true,
+      unobserved: INHERENT.map((c) => `prose ${c}`),
+      unobserved_codes: INHERENT,
+    },
+  } as unknown as VerificationResult;
+}
+
+const boundTransfer = () =>
+  BoundTransaction.build({
+    instructions: [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: new PublicKey(DEST), lamports: 1_000 })],
+    feePayer: payer.publicKey,
+    recentBlockhash: SYSTEM,
+    lastValidBlockHeight: 42,
+  });
+
+const receipt = (event_type: string) => ({
+  recorded: true,
+  event_type,
+  content_hash: "48c65c638aceb5de",
+  verdict_on_record: "approved",
+  verdict_on_record_key: "audit_trail_id",
+  sequence_anomalies: [],
+});
+
+// ---------------------------------------------------------------------------
+// R37-17: one wallet lock per user, whatever the session's environment.
+
+test("R37-17 (repro): a guard started from an SSH session and one from cron, for one wallet, take one lock — the second refuses to start", async () => {
+  const wallet = Keypair.generate();
+  const ssh = privateTmp();
+  const cron = privateTmp();
+  // An SSH login: pam_systemd sets XDG_RUNTIME_DIR, a profile sets XDG_STATE_HOME.
+  const sshEnv = { GRAPHITE_GUARD_LOCK_DIR: undefined, XDG_RUNTIME_DIR: ssh, XDG_STATE_HOME: join(ssh, "state") };
+  // cron: no runtime directory, and here another state directory.
+  const cronEnv = { GRAPHITE_GUARD_LOCK_DIR: undefined, XDG_RUNTIME_DIR: undefined, XDG_STATE_HOME: cron };
+  const a = await withEnv(sshEnv, () => harness({ wallet, spendPolicy: TWO_SOL }));
+  try {
+    const second = await withEnv(cronEnv, () => harness({ wallet, spendPolicy: TWO_SOL }).catch((e: unknown) => e));
+    if (!(second instanceof Error)) {
+      await (second as H).close();
+      assert.fail("both guards started, each with the whole aggregate allowance");
+    }
+    assert.ok(second instanceof GuardStateError, String(second));
+    assert.match(second.message, /another guard \(process \d+\) is running for wallet/);
+    // One allowance: the guard that runs spends it, and no second guard does.
+    assert.equal((await a.agent.executeTransfer(REQUEST)).executed, true);
+    await assert.rejects(a.agent.executeTransfer(`Transfer 1.5 SOL to ${OTHER}`), SpendPolicyRefusal);
+    // Neither session's XDG directory holds a lock.
+    assert.deepEqual(readdirSync(ssh), [], "nothing under the SSH session's XDG_RUNTIME_DIR");
+    assert.deepEqual(readdirSync(cron), [], "nothing under cron's XDG_STATE_HOME");
+  } finally {
+    await a.close();
+  }
+  // Once the first is gone, the cron guard takes the same lock.
+  const b = await withEnv(cronEnv, () => harness({ wallet, spendPolicy: TWO_SOL }));
+  await b.close();
+});
+
+test("R37-17: the default lock directory is derived from this user's account (its passwd home), never from the session's variables", async () => {
+  const expected = join(userInfo().homedir, ".local", "state", "graphite-guard");
+  const sessions: Record<string, string | undefined>[] = [
+    {}, // cron
+    { XDG_RUNTIME_DIR: "/run/user/1000", XDG_STATE_HOME: "/home/a/.st" }, // an SSH login
+    { XDG_STATE_HOME: "/elsewhere" },
+    { HOME: "/tmp/not-home", XDG_RUNTIME_DIR: "/tmp/x" }, // sudo -E, a container's HOME
+    { LOCALAPPDATA: "C:\\Users\\b\\AppData\\Local" },
+  ];
+  for (const env of sessions) {
+    assert.deepEqual(walletLockPlan({}, env), { shared: false, dir: expected }, JSON.stringify(env));
+  }
+  // The process's own HOME is not read either.
+  await withEnv({ HOME: "/nowhere", XDG_RUNTIME_DIR: "/run/user/9", GRAPHITE_GUARD_LOCK_DIR: undefined }, () =>
+    assert.deepEqual(walletLockPlan({}), { shared: false, dir: expected }),
+  );
+  // A directory the operator names still overrides it.
+  assert.deepEqual(walletLockPlan({}, { GRAPHITE_GUARD_LOCK_DIR: "/srv/locks", XDG_RUNTIME_DIR: "/run/user/1" }), {
+    shared: false,
+    dir: "/srv/locks",
+  });
+  assert.deepEqual(walletLockPlan({ lockDir: "/cfg/locks" }, { GRAPHITE_GUARD_LOCK_DIR: "/srv/locks" }), {
+    shared: false,
+    dir: "/cfg/locks",
+  });
+  // Per platform, from the account's home directory.
+  const account = (homedir: string) => () => ({ homedir });
+  assert.equal(defaultWalletLockDir({ platform: "linux", userInfo: account("/home/a") }), "/home/a/.local/state/graphite-guard");
+  assert.equal(defaultWalletLockDir({ platform: "darwin", userInfo: account("/Users/a") }), "/Users/a/.local/state/graphite-guard");
+  assert.equal(
+    defaultWalletLockDir({ platform: "win32", userInfo: account("C:\\Users\\a") }),
+    win32.join("C:\\Users\\a", "AppData", "Local", "graphite-guard"),
+  );
+  // No account home (a uid with no passwd entry), or not an absolute one: refuse, naming the override.
+  const none = () => {
+    throw new Error("ENOENT: no such user");
+  };
+  for (const userInfoOf of [none, account(""), account("relative/home")]) {
+    assert.throws(() => defaultWalletLockDir({ platform: "linux", userInfo: userInfoOf }), (e: unknown) => {
+      assert.ok(e instanceof GuardStateError, String(e));
+      assert.match((e as Error).message, /GRAPHITE_GUARD_LOCK_DIR.*REFUSING TO START/);
+      return true;
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// G2-2: the repeat of an outcome-unknown swap, whatever its route.
+
+test("G2-2 (repro): after an outcome-unknown swap, the same swap through another route is refused as a repeat", async () => {
+  const wallet = Keypair.generate();
+  const f = swapFixture(wallet);
+  const h = await harness({ wallet, rpc: () => ({ ...f.state, sendFails: "lost" }), parse: f.parse });
+  try {
+    await assert.rejects(h.agent.executeSwap(SWAP, f.jupiter), SubmissionOutcomeUnknown);
+    h.rpc.behaviour.sendFails = false;
+    // Same wallet, same mints, same amount; Raydium AMM v4 instead of Jupiter.
+    await assert.rejects(h.agent.executeSwap(SWAP, f.raydium), (e: unknown) => {
+      assert.ok(e instanceof PriorSubmissionUnresolved, String(e));
+      assert.match((e as Error).message, /can still land until block height 1000/);
+      return true;
+    });
+    await assert.rejects(h.agent.executeSwap(SWAP, f.jupiter), PriorSubmissionUnresolved);
+    assert.equal(coreAsked(h), 1, "no second verification");
+    assert.equal(sent(h), 1, "one send");
+    // Once the first cannot land, the swap may be built again, on either route.
+    h.rpc.behaviour.blockHeight = 5_000;
+    assert.equal((await h.agent.executeSwap(SWAP, f.raydium)).executed, true);
+  } finally {
+    await h.close();
+  }
+});
+
+test("G2-2: an unresolved swap recorded under an earlier version's route-specific key still holds back that swap on any route", async () => {
+  const dir = privateTmp();
+  const stateFile = join(dir, "guard.state");
+  const wallet = Keypair.generate();
+  const f = swapFixture(wallet);
+  const signature = bs58.encode(randomBytes(64));
+  writeFileSync(
+    stateFile,
+    `${JSON.stringify({ v: 1, t: "unresolved", key: `swap:${JUPITER_V6}:${WSOL}:${USDC}:${SOL}`, signature, lvbh: 1_000, at: Date.now() })}\n`,
+    { mode: 0o600 },
+  );
+  const h = await harness({ wallet, rpc: () => f.state, parse: f.parse, config: { stateFile, walletLockDir: dir } });
+  try {
+    for (const payload of [f.raydium, f.jupiter]) {
+      await assert.rejects(h.agent.executeSwap(SWAP, payload), (e: unknown) => {
+        assert.ok(e instanceof PriorSubmissionUnresolved, String(e));
+        assert.equal((e as PriorSubmissionUnresolved).signature, signature);
+        return true;
+      });
+    }
+    assert.equal(coreAsked(h), 0);
+    h.rpc.behaviour.blockHeight = 5_000;
+    assert.equal((await h.agent.executeSwap(SWAP, f.raydium)).executed, true, "and it resolves once it cannot land");
+  } finally {
+    await h.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// G2-3: the verdict's age, immediately before the send.
+
+test("G2-3 (repro): the verdict's age is checked again immediately before the send, after the signing is recorded", async () => {
+  const calls: string[] = [];
+  let clock = 1_000;
+  let submitted = 0;
+  const fakes = {
+    sendRawTransaction: async (raw: Uint8Array) => (calls.push("send"), firstSignatureOf(raw)),
+    confirmTransaction: async () => (calls.push("confirm"), { value: { err: null } }),
+    // The Core's answer to the signing event takes past the bound.
+    recordLifecycleEvent: async (e: { event_type: string }) => {
+      calls.push(`record:${e.event_type}`);
+      clock += 150_001;
+      return receipt(e.event_type);
+    },
+    verifyExecution: async () => {
+      calls.push("l8");
+      throw new Error("unreachable");
+    },
+  };
+  const bound = boundTransfer();
+  await assert.rejects(
+    executeBoundTransaction({
+      bound,
+      verification: verdictFor(bound),
+      signers: [payer],
+      connection: fakes,
+      graphite: fakes as never,
+      policy: new ResidualPolicy([]),
+      reportedBy: "test",
+      label: "transfer",
+      log: () => {},
+      beforeSubmit: () => {
+        submitted++;
+      },
+      verdictAge: { requestedAt: 1_000, maxMs: 150_000, now: () => clock },
+    }),
+    (e: unknown) => {
+      assert.ok(e instanceof StaleVerdict, String(e));
+      assert.match((e as Error).message, /150001 ms old, over the 150000 ms bound.*signed, but nothing was sent/);
+      assert.equal(toolRefusalOf(e).refusedBy, "stale-verdict");
+      return true;
+    },
+  );
+  assert.deepEqual(calls, ["record:signing"], "signed and recorded, never sent");
+  assert.equal(submitted, 0, "never recorded as in flight either");
+});
+
+test("G2-3: through the guard — a slow signing record ages the verdict past the bound; nothing is sent and the reservation comes back", async () => {
+  const h = await harness({ spendPolicy: TWO_SOL, config: { maxVerdictAgeMs: 1_500, confirmTimeoutMs: 1_000 } });
+  try {
+    const record = h.core.respond.get("POST /audit/event")!;
+    let slow = true;
+    h.core.respond.set("POST /audit/event", (body) => {
+      // A Core that takes 1.7 s to answer the signing event (a synchronous
+      // sleep: this process, the guard included, waits as a slow Core makes it).
+      if (slow && (body as { event_type: string }).event_type === "signing") {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1_700);
+      }
+      return record(body);
+    });
+    await assert.rejects(h.agent.executeTransfer(REQUEST), StaleVerdict);
+    assert.equal(sent(h), 0, "nothing was sent");
+    assert.deepEqual(trail(h).map((e) => e.event_type), ["signing"], "signed, never submitted");
+    // Not in flight, and its reservation returned: the same request executes
+    // under an allowance that holds one.
+    slow = false;
+    assert.equal((await h.agent.executeTransfer(REQUEST)).executed, true);
+    assert.equal(sent(h), 1);
+  } finally {
+    await h.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// G2-4: what counts as outcome-unknown, and returning its reservation.
+
+test("G2-4: only a send that provably never reached the RPC is 'not sent'", async () => {
+  const { createServer } = await import("node:net");
+  const s = createServer();
+  await new Promise<void>((resolve) => s.listen(0, "127.0.0.1", () => resolve()));
+  const port = (s.address() as { port: number }).port;
+  await new Promise<void>((resolve) => s.close(() => resolve()));
+  // What fetch throws when nothing listens: the connection was refused before a byte was written.
+  const refused = await fetch(`http://127.0.0.1:${port}/`, { method: "POST", body: "{}" }).then(
+    () => null,
+    (e: unknown) => e,
+  );
+  assert.ok(refused, "the closed port refused the connection");
+  assert.equal(neverReachedTheRpc(refused), true);
+  const coded = (code: string) => Object.assign(new Error(code), { code });
+  assert.equal(neverReachedTheRpc(new TypeError("fetch failed", { cause: coded("ENOTFOUND") })), true);
+  // Everything else may have reached it.
+  for (const e of [
+    new TypeError("fetch failed", { cause: coded("ECONNRESET") }),
+    new TypeError("fetch failed", { cause: coded("UND_ERR_SOCKET") }),
+    new TypeError("fetch failed", { cause: coded("EPIPE") }),
+    new RpcTransportRefusal("the RPC answer to sendTransaction did not complete within 1000 ms"),
+    new Error("failed to send transaction: Transaction simulation failed: Blockhash not found"),
+    new Error("502 Bad Gateway: bad gateway"),
+    new Error("ECONNREFUSED"), // the word in a message is not the error
+    new TypeError("fetch failed", { cause: new AggregateError([coded("ECONNREFUSED"), coded("ETIMEDOUT")]) }),
+    null,
+    "ECONNREFUSED",
+  ]) {
+    assert.equal(neverReachedTheRpc(e), false, String((e as Error)?.message ?? e));
+  }
+  // Every attempt refused (happy eyeballs over two addresses): never reached.
+  assert.equal(
+    neverReachedTheRpc(new TypeError("fetch failed", { cause: new AggregateError([coded("ECONNREFUSED"), coded("ECONNREFUSED")]) })),
+    true,
+  );
+});
+
+test("G2-4 (repro): a send the RPC refused at connect is 'not sent' — its reservation is returned and nothing is left unresolved", async () => {
+  const dir = privateTmp();
+  const stateFile = join(dir, "guard.state");
+  const h = await harness({ spendPolicy: TWO_SOL, config: { stateFile, walletLockDir: dir } });
+  let refusal: unknown;
+  try {
+    await assert.rejects(
+      h.agent.executeTransfer(REQUEST, {
+        // The RPC goes away after everything was measured and before the send.
+        confirm: async () => (await h.front.close(), true),
+      }),
+      (e: unknown) => {
+        refusal = e;
+        assert.ok(e instanceof SubmissionNotSent, String(e));
+        assert.ok(!(e instanceof SubmissionOutcomeUnknown));
+        assert.match((e as Error).message, /ECONNREFUSED/);
+        assert.match((e as Error).message, /never reached the RPC.*nothing was sent/);
+        return true;
+      },
+    );
+    assert.equal(h.front.counts.get("sendTransaction") ?? 0, 0, "the RPC never received it");
+    assert.equal(toolRefusalOf(refusal).refusedBy, "error");
+    assert.equal(toolRefusalOf(refusal).signature, undefined, "no signature to check: it was never sent");
+  } finally {
+    await h.close();
+  }
+  // What the state file says once the guard is gone: nothing in flight, nothing reserved.
+  const replay = GuardState.open(stateFile);
+  try {
+    assert.match(replay.describe(), /\(0 unresolved submission\(s\), 0 reserved spend\(s\) replayed\)/);
+  } finally {
+    replay.close();
+  }
+});
+
+test("G2-4 (repro): an outcome-unknown reservation is returned once the chain says it did not land and cannot", async () => {
+  const h = await harness({
+    spendPolicy: TWO_SOL,
+    rpc: (w) => ({
+      ledger: { [w.publicKey.toBase58()]: { lamports: 10 * SOL, owner: SYSTEM } },
+      afterSimulation: { [w.publicKey.toBase58()]: { lamports: 10 * SOL - FEE, owner: SYSTEM } },
+      sendFails: "lost",
+    }),
+  });
+  try {
+    await assert.rejects(h.agent.executeTransfer(REQUEST), SubmissionOutcomeUnknown);
+    h.rpc.behaviour.sendFails = false;
+    // While it can still land, its 1.5 SOL counts.
+    await assert.rejects(h.agent.executeTransfer(`Transfer 0.5 SOL to ${OTHER}`), SpendPolicyRefusal);
+    // An RPC that cannot say keeps it counted.
+    h.rpc.behaviour.blockHeight = 5_000;
+    h.rpc.behaviour.statusesFail = true;
+    await assert.rejects(h.agent.executeTransfer(`Transfer 0.5 SOL to ${OTHER}`), SpendPolicyRefusal);
+    // Not landed, and its blockhash expired: the allowance comes back.
+    h.rpc.behaviour.statusesFail = false;
+    assert.equal((await h.agent.executeTransfer(`Transfer 0.5 SOL to ${OTHER}`)).executed, true);
+    // And the repeat of the first request is a new transaction, counted once:
+    // 0.5 + 1.5 SOL and two fees are over the 2 SOL allowance.
+    await assert.rejects(h.agent.executeTransfer(REQUEST), SpendPolicyRefusal);
+    assert.equal(sent(h), 2);
+  } finally {
+    await h.close();
+  }
+});
+
+test("G2-4: a repeat of the same request returns the expired submission's reservation before it reserves its own", async () => {
+  const h = await harness({
+    spendPolicy: TWO_SOL,
+    rpc: (w) => ({
+      ledger: { [w.publicKey.toBase58()]: { lamports: 10 * SOL, owner: SYSTEM } },
+      afterSimulation: { [w.publicKey.toBase58()]: { lamports: 10 * SOL - FEE, owner: SYSTEM } },
+      sendFails: "lost",
+    }),
+  });
+  try {
+    await assert.rejects(h.agent.executeTransfer(REQUEST), SubmissionOutcomeUnknown);
+    h.rpc.behaviour.sendFails = false;
+    h.rpc.behaviour.blockHeight = 5_000;
+    // 1.5 SOL twice does not fit in 2 SOL: this executes only because the
+    // first, which did not land and cannot, no longer counts.
+    assert.equal((await h.agent.executeTransfer(REQUEST)).executed, true);
+  } finally {
+    await h.close();
+  }
+});
+
+test("G2-4: a submission that landed keeps its reservation", async () => {
+  const h = await harness({
+    spendPolicy: TWO_SOL,
+    rpc: (w) => ({
+      ledger: { [w.publicKey.toBase58()]: { lamports: 10 * SOL, owner: SYSTEM } },
+      afterSimulation: { [w.publicKey.toBase58()]: { lamports: 10 * SOL - FEE, owner: SYSTEM } },
+      sendFails: "landed",
+    }),
+  });
+  try {
+    await assert.rejects(h.agent.executeTransfer(REQUEST), SubmissionOutcomeUnknown);
+    h.rpc.behaviour.sendFails = false;
+    h.rpc.behaviour.blockHeight = 5_000;
+    await assert.rejects(h.agent.executeTransfer(`Transfer 0.5 SOL to ${OTHER}`), SpendPolicyRefusal);
+    await assert.rejects(h.agent.executeTransfer(REQUEST), /LANDED/);
+    await assert.rejects(h.agent.executeTransfer(`Transfer 0.5 SOL to ${OTHER}`), SpendPolicyRefusal);
+  } finally {
+    await h.close();
+  }
+});
+
+test("G2-4: the reservation an unresolved submission names survives a restart; a record without one (before Round 38) still reads", () => {
+  const dir = privateTmp();
+  const path = join(dir, "guard.state");
+  const old = { v: 1, t: "unresolved", key: "transfer:old", signature: "s1", lvbh: 10, at: 1 };
+  writeFileSync(path, `${JSON.stringify(old)}\n`, { mode: 0o600 });
+  const a = GuardState.open(path);
+  const id = a.reserve(7n, Date.now());
+  a.markUnresolved("transfer:new", "s2", 20, Date.now(), id);
+  a.close();
+  const b = GuardState.open(path);
+  try {
+    const entries = new Map(b.unresolvedEntries());
+    assert.equal(entries.get("transfer:old")?.reservation, undefined);
+    assert.equal(entries.get("transfer:new")?.reservation, id);
+    assert.equal(b.reservedSince(0).length, 1);
+    b.release(id);
+    assert.equal(b.reservedSince(0).length, 0);
+  } finally {
+    b.close();
+  }
+  // A reservation id that is not a string is a record this guard cannot read: refuse to start.
+  writeFileSync(path, `${JSON.stringify({ ...old, rid: 5 })}\n`);
+  assert.throws(() => GuardState.open(path), /not a complete `unresolved` record.*REFUSING TO START/);
+});
+
+// ---------------------------------------------------------------------------
+// G2-5: intent_parameters is never an accepted residual.
+
+test("G2-5 (repro): intent_parameters cannot be accepted — by the policy, GRAPHITE_ACCEPT_UNOBSERVED or acceptUnobserved; the guard refuses to start", async () => {
+  const named = /intent_parameters.*F-003.*REFUSING TO START/;
+  assert.throws(() => new ResidualPolicy(["intent_parameters"]), named);
+  assert.throws(() => new ResidualPolicy([" intent_parameters "]), named);
+  assert.throws(() => ResidualPolicy.fromEnv({ GRAPHITE_ACCEPT_UNOBSERVED: "no_state_diff,intent_parameters" }), named);
+  // Any other code is still accepted by name.
+  assert.deepEqual(new ResidualPolicy(["no_state_diff"]).accepts(), ["no_state_diff"]);
+  const base = {
+    privateKey: bs58.encode(Keypair.generate().secretKey),
+    rpcUrl: "http://127.0.0.1:1",
+    graphiteCoreUrl: "http://127.0.0.1:1",
+    spendPolicy: { maxTransferLamports: 1n },
+  };
+  // Refused before anything is contacted (the Core here does not exist).
+  await withEnv({ GRAPHITE_ACCEPT_UNOBSERVED: "intent_parameters" }, () => assert.rejects(GraphiteGuard.create(base), named));
+  await assert.rejects(GraphiteGuard.create({ ...base, acceptUnobserved: ["no_state_diff", "intent_parameters"] }), named);
+});

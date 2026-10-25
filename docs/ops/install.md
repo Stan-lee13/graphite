@@ -38,7 +38,12 @@ build-from-source stack.
    (`GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS`,
    `GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT`) and the intent-grant
    relaxation `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS` unset unless you have read what each
-   one opens in `.env.example`.
+   one opens in `.env.example`. `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS=1` waives two
+   checks, not one: the grant refusal `UnboundedWithdrawal` (a zero minimum output) and
+   the withdrawal binding `WithdrawalUnderbounded` (minimum outputs held to the simulated
+   credit, and a Meteora DLMM remove with no minimum held unbound). It never waives what
+   rides beside the withdrawal: a sibling instruction that skims the payout is refused
+   either way (Round 38, R37-1).
 
 3. **Validate, then start:**
    ```sh
@@ -67,7 +72,9 @@ build-from-source stack.
    - `/metrics` (authenticated) → audit write/rotation failures, snapshot
      failures, refusals by layer.
    - A periodic `graphite execution` reconciliation for each signed
-     transaction (exit codes in incidents.md).
+     transaction (exit codes in incidents.md), run with the server's
+     `GRAPHITE_AUDIT_KEY_FILE`: since Round 38 it reads a keyed trail only
+     with its key, and is unavailable (exit 3) without it (keys.md).
 
 7. **Back up the volume** (backup-restore.md) before the first real traffic,
    so a restore procedure has been run once while nothing depends on it.

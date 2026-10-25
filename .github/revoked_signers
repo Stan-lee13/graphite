@@ -1,0 +1,16 @@
+# Revoked release tag signers (Round 38, D2-5). Read by
+# .github/scripts/release-gate.sh tag-signature, from release.yml (the tagged
+# commit's copy) and from release-guard.yml (main's copy, on every Release
+# run). A tag signed by a key listed here is refused even if the key is still
+# in .github/allowed_signers and inside its validity window.
+#
+# One public key per line, exactly as in the key's .pub file:
+#
+#   ssh-ed25519 AAAA... comment
+#
+# To revoke a key (lost, leaked, or its holder left), in ONE pull request to
+# main: add its public key here, and in .github/allowed_signers either delete
+# its line or end it with valid-before="YYYYMMDD" (keeping the line shows
+# which tags it once signed). Never delete a line from this file: a revocation
+# is permanent. Lines starting with # and blank lines are ignored; the file
+# must exist (a missing list stops every release).

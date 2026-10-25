@@ -24,6 +24,7 @@ fn writable(address: &str, signer: bool) -> ResolvedAccount {
     serde_json::from_value(serde_json::json!({
         "address": address,
         "role": "account",
+        "name": "account",
         "is_pda": false,
         "is_signer": signer,
         "is_writable": true,
@@ -32,19 +33,20 @@ fn writable(address: &str, signer: bool) -> ResolvedAccount {
     .expect("a ResolvedAccount from its required fields")
 }
 
-/// A funded, zero-data System account handed to another program.
-fn assigned(pubkey: &str) -> AccountDelta {
+/// A zero-data System account holding `before` lamports, handed to another
+/// program (and, when it held any, paying the fee).
+fn assigned(pubkey: &str, before: u64) -> AccountDelta {
     AccountDelta {
         pubkey: pubkey.to_string(),
         before: Some(AccountSnapshot::from_raw(
             pubkey,
-            5_000_000_000,
+            before,
             SYSTEM_PROGRAM,
             &[],
         )),
         after: Some(AccountSnapshot::from_raw(
             pubkey,
-            4_999_995_000,
+            before.saturating_sub(5_000),
             ATTACKER_PROGRAM,
             &[],
         )),
@@ -52,13 +54,22 @@ fn assigned(pubkey: &str) -> AccountDelta {
 }
 
 fn owner_reassignment_is_critical(pubkey: &str, fee_payer: &str) -> bool {
+    owner_reassignment_is_critical_under(pubkey, fee_payer, "initialize account", 5_000_000_000)
+}
+
+fn owner_reassignment_is_critical_under(
+    pubkey: &str,
+    fee_payer: &str,
+    line: &str,
+    before: u64,
+) -> bool {
     let diff = StateDiff {
-        deltas: vec![assigned(pubkey)],
+        deltas: vec![assigned(pubkey, before)],
         fee_lamports: 5_000,
         ..Default::default()
     };
     let accounts = [writable(pubkey, true)];
-    let declared = ["initialize account".to_string()];
+    let declared = [line.to_string()];
     let report = check_state_diff(&StateDiffCheck {
         diff: &diff,
         resolved_accounts: &accounts,
@@ -83,7 +94,27 @@ fn a_creation_declaration_never_excuses_reassigning_the_fee_payer() {
 /// Benign control: the allocation excuse still stands for an account that is
 /// not the fee payer — `allocate` + `assign` of a pre-funded account under an
 /// instruction that declares the creation.
+///
+/// Re-pinned in Round 38 (R37-6). `FRESH` signs and held 5 SOL before the
+/// transaction: it is a signer's wallet, and handing a signer's wallet to a
+/// program under a creation line that names no account ("initialize
+/// account") is the takeover the fee-payer rule above refuses. Since Round 38
+/// a line excuses an effect on an account a signer holds only when it names
+/// that account, so the excuse stands under a line that does, and for an
+/// account the transaction itself funded (it held nothing before).
 #[test]
 fn a_declared_allocation_of_another_account_is_still_excused() {
-    assert!(!owner_reassignment_is_critical(FRESH, WALLET));
+    assert!(owner_reassignment_is_critical(FRESH, WALLET));
+    assert!(!owner_reassignment_is_critical_under(
+        FRESH,
+        WALLET,
+        "initializes accounts.account",
+        5_000_000_000
+    ));
+    assert!(!owner_reassignment_is_critical_under(
+        FRESH,
+        WALLET,
+        "initialize account",
+        0
+    ));
 }

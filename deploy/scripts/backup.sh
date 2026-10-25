@@ -29,12 +29,18 @@
 # The .mac (Round 34, D-6) authenticates the WHOLE archive — the graph
 # snapshot and registry_state.json as well as the trail, which `audit verify`
 # already covers — under the audit MAC key: HMAC-SHA256 over the archive's
-# file name and bytes, keyed with the last --key-file given (else
-# GRAPHITE_AUDIT_KEY_FILE), the key the server writes under now. A .sha256 is
-# a checksum anyone who can write the archive can recompute; the .mac is not.
-# restore.sh refuses an archive without a .mac that verifies. With no key at
-# all (an unkeyed trail) no .mac is written, and restoring it needs
-# ALLOW_UNKEYED_ARCHIVE=1.
+# file name and bytes. A .sha256 is a checksum anyone who can write the
+# archive can recompute; the .mac is not. restore.sh refuses an archive
+# without a .mac that verifies under the current key. With an unkeyed trail no
+# .mac is written, and restoring it needs ALLOW_UNKEYED_ARCHIVE=1.
+#
+# The .mac is under the CURRENT key only (Round 38, R37-11): the key the copied
+# trail's head is MAC'd under, which the verify above checked — the key the
+# server writes under now — whatever order the --key-file options come in
+# (GRAPHITE_AUDIT_KEY_FILE counts as one of them). It used to be the last
+# --key-file given: a retired key whenever it was listed last, and anyone who
+# still holds a retired key can compute a MAC under it over any bytes. A
+# keyed head whose key is not given refuses the backup.
 #
 # --lost-key KEY_ID (Round 36, F-021): after an audit key is LOST and the trail
 # continues under a new one (`graphite audit adopt-key`, docs/ops/keys.md),
@@ -192,6 +198,28 @@ if [ "$rc" != 0 ]; then
   exit 1
 fi
 
+# The key the copy's head is under (`audit verify --json`: head_key_id), and
+# the given key file with that id (the id is derived as the server derives it).
+candidates=("${keyfiles[@]+"${keyfiles[@]}"}")
+if [ -n "${GRAPHITE_AUDIT_KEY_FILE:-}" ]; then candidates+=("$GRAPHITE_AUDIT_KEY_FILE"); fi
+"$bin" audit verify --data-dir "$work/data" ${keys[@]+"${keys[@]}"} --json >"$work/head.json" 2>/dev/null || true
+mackey="$(python3 -I - "$work/head.json" ${candidates[@]+"${candidates[@]}"} <<'PY'
+import hashlib, json, sys
+try:
+    head = json.load(open(sys.argv[1])).get("head_key_id")
+except Exception:
+    sys.exit("backup: cannot read which key the trail's head is under")
+if head is None:
+    sys.exit(0)  # an unkeyed trail: no .mac
+for path in sys.argv[2:]:
+    material = bytes.fromhex(open(path).read().strip())
+    if hashlib.sha256(b"graphite-audit-key-id-v1\0" + material).hexdigest()[:16] == head:
+        print(path)
+        sys.exit(0)
+sys.exit(f"backup: the trail's head is under key {head} and no key file given is that key; pass the current key with --key-file")
+PY
+)" || exit 1
+
 archive="$out/graphite-$stamp.tar.gz"
 if [ -e "$archive" ]; then
   echo "backup: $archive already exists; not overwriting it" >&2
@@ -202,8 +230,6 @@ fi
 tar --sort=name --owner=0 --group=0 --numeric-owner -C "$work/data" -cf - . | gzip -n -9 >"$archive.partial"
 mv "$archive.partial" "$archive"
 (cd "$out" && sha256sum -- "${archive##*/}" >"${archive##*/}.sha256")
-mackey="${GRAPHITE_AUDIT_KEY_FILE:-}"
-if [ "${#keyfiles[@]}" -gt 0 ]; then mackey="${keyfiles[${#keyfiles[@]}-1]}"; fi
 if [ -n "$mackey" ]; then
   # The key is read from its file by python, never passed on a command line.
   python3 -I - "$mackey" "$archive" >"$archive.mac.partial" <<'PY'
@@ -220,7 +246,7 @@ print(f"hmac-sha256-v1 {m.hexdigest()} {name}")
 PY
   mv "$archive.mac.partial" "$archive.mac"
 else
-  echo "backup: no audit key given: no .mac written; restore.sh will need ALLOW_UNKEYED_ARCHIVE=1" >&2
+  echo "backup: the trail is unkeyed: no .mac written; restore.sh will need ALLOW_UNKEYED_ARCHIVE=1" >&2
 fi
 cp "$work/verify.txt" "$out/graphite-$stamp.verify.txt"
 echo "backup: $archive"

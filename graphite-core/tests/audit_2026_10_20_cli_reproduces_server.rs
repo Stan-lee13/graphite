@@ -150,3 +150,109 @@ fn an_execution_check_that_cannot_run_is_not_a_pass() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Round 38 (Round 37, V-3): `GRAPHITE_L8_HIGH_ASSURANCE` was read by the
+/// server only. `graphite execution` reconciled on one provider's word with
+/// it set; with no witness to require, it now refuses to run.
+#[cfg(feature = "rpc")]
+#[test]
+fn an_execution_check_under_high_assurance_needs_a_witness() {
+    let dir = scratch("execution-high-assurance");
+    let out = graphite()
+        .env("GRAPHITE_DATA_DIR", dir.join("data"))
+        .env("GRAPHITE_L8_HIGH_ASSURANCE", "1")
+        .args([
+            "execution",
+            "--rpc-url",
+            "http://127.0.0.1:9",
+            "--signature",
+        ])
+        .arg(bs58::encode([7u8; 64]).into_string())
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(3), "{stderr}");
+    assert!(
+        stderr.contains("GRAPHITE_L8_HIGH_ASSURANCE=1 needs an independent witness"),
+        "{stderr}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Round 38 (Round 37, V-2): the CLI checked no variable names. A
+/// misspelled protective switch is refused here as the server refuses it.
+#[test]
+fn the_cli_refuses_a_misspelled_switch() {
+    let out = graphite()
+        .env("GRAPHITE_AUDIT_KEY", "/run/secrets/audit.key")
+        .arg("profiles")
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success(), "{stderr}");
+    assert!(
+        stderr.contains("GRAPHITE_AUDIT_KEY") && stderr.contains("REFUSING TO START"),
+        "{stderr}"
+    );
+}
+
+/// Round 38 (Round 37, V-5): `RegistryRecord::verify_offline` had no caller
+/// outside a unit test. `graphite registry verify-records` runs it over the
+/// acceptance log: 0 all verified, 1 one failed, 2 one cannot be checked.
+#[test]
+fn registry_records_are_checked_from_their_own_contents() {
+    use graphite_core::manifest::load_seed_manifests;
+    use graphite_core::manifest_registry::ManifestRegistryEngine;
+    let dir = scratch("verify-records");
+    let state = dir.join("registry_state.json");
+    let run = |records: Vec<serde_json::Value>| {
+        let mut v: serde_json::Value =
+            serde_json::from_str(&ManifestRegistryEngine::new().to_json().unwrap()).unwrap();
+        v["records"] = serde_json::Value::Array(records);
+        std::fs::write(&state, v.to_string()).unwrap();
+        let out = graphite()
+            .args(["registry", "verify-records", "--state"])
+            .arg(&state)
+            .output()
+            .unwrap();
+        (
+            out.status.code(),
+            String::from_utf8_lossy(&out.stdout).to_string()
+                + &String::from_utf8_lossy(&out.stderr),
+        )
+    };
+    let (code, text) = run(vec![]);
+    assert_eq!(code, Some(0), "{text}");
+    let program = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc";
+    let manifest = serde_json::to_value(load_seed_manifests().get(program).unwrap()).unwrap();
+    let record = |manifest: Option<serde_json::Value>, domain: Option<&str>| {
+        let mut r = serde_json::json!({
+            "program_id": program,
+            "version_label": "v1",
+            "previous_version_ref": null,
+            "content_hash": "00".repeat(32),
+            "trust_tier": "CommunityVerified",
+            "source": "community",
+            "attesters": [],
+        });
+        if let Some(m) = manifest {
+            r["manifest"] = m;
+        }
+        if let Some(d) = domain {
+            r["signing_domain"] = serde_json::Value::String(d.to_string());
+        }
+        r
+    };
+    // From before Round 36: nothing in it can be checked.
+    let (code, text) = run(vec![record(None, None)]);
+    assert_eq!(code, Some(2), "{text}");
+    assert!(text.contains("UNPROVEN"), "{text}");
+    // A record whose manifest does not hash to what it names.
+    let (code, text) = run(vec![record(
+        Some(manifest),
+        Some("graphite-manifest-registry-v1"),
+    )]);
+    assert_eq!(code, Some(1), "{text}");
+    assert!(text.contains("FAILED"), "{text}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
