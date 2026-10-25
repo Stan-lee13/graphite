@@ -8,6 +8,8 @@
 //!   request that logged without a response.
 //! - R39-CB-3: `graphite healthcheck --strict` followed a redirect to any
 //!   host and passed on that host's answer.
+//! - R39-CB-6: `graphite audit verify` of a directory holding no trail
+//!   exited 2 ("no chained record") instead of 3 (nothing could be read).
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -282,5 +284,45 @@ fn a_server_does_not_resume_onto_another_trails_record() {
     for d in [&target, &other] {
         std::fs::remove_dir_all(d).ok();
     }
+    std::fs::remove_dir_all(key.parent().unwrap()).ok();
+}
+
+/// R39-CB-6: nothing to read is 3, not "unproven".
+#[test]
+fn audit_verify_of_a_directory_without_a_trail_is_unreadable() {
+    let empty = temp_dir("cb-6-empty");
+    let missing = empty.join("no-such-dir");
+    for dir in [&empty, &missing] {
+        let out = graphite(&["audit", "verify", "--data-dir", dir.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert_eq!(
+            out.status.code(),
+            Some(3),
+            "{}: {}",
+            dir.display(),
+            String::from_utf8_lossy(&out.stdout)
+        );
+    }
+    // Benign control: a trail with records verifies (exit 0).
+    let key = key_file("cb-6");
+    records(&empty, &key, 1);
+    let out = graphite(&[
+        "audit",
+        "verify",
+        "--data-dir",
+        empty.to_str().unwrap(),
+        "--key-file",
+        key.to_str().unwrap(),
+    ])
+    .output()
+    .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    std::fs::remove_dir_all(&empty).ok();
     std::fs::remove_dir_all(key.parent().unwrap()).ok();
 }

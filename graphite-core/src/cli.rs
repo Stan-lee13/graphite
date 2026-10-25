@@ -537,6 +537,28 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                 },
                 None => None,
             };
+            // Round 39 (R39-CB-6): a data directory with no trail in it (a
+            // mistyped --data-dir, an unmounted volume) walked zero files and
+            // exited 2, "a trail with no chained record". Nothing was read:
+            // that is 3.
+            let trail = crate::durable::audit_path(&dir);
+            let stem = crate::durable::AUDIT_FILENAME;
+            let any_file = std::fs::read_dir(&dir).is_ok_and(|mut entries| {
+                entries.any(|e| {
+                    e.ok().is_some_and(|e| {
+                        let name = e.file_name();
+                        let name = name.to_string_lossy();
+                        name == stem || name.starts_with(&format!("{stem}."))
+                    })
+                })
+            });
+            if !any_file {
+                return Ok(unreadable(&format!(
+                    "no audit trail in {} ({} does not exist, and no archive of it): nothing was verified",
+                    dir.display(),
+                    trail.display()
+                )));
+            }
             let report = match crate::durable::verify_audit_trail(
                 &crate::durable::audit_path(&dir),
                 &keys,

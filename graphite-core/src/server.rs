@@ -3931,59 +3931,79 @@ async fn quarantine(
     // disk is full would be failing open on the gate to protect the log.
     // The response says whether the record landed, and the log's own counters
     // mark the node degraded.
-    let audit_recorded = if let Some(log) = &state.audit {
-        append_lifecycle_off_runtime(
-            log,
-            LifecycleEventRecord {
-                event_type: LifecycleEvent::OperatorAction,
-                timestamp: crate::durable::now_utc_rfc3339(),
-                verdict_on_record: None,
-                verdict_on_record_key: None,
-                transaction_sha256: None,
-                content_hash: program_id.clone(),
-                audit_trail_id: None,
-                transaction_signature: None,
-                // Who acted is the credential that authorized it; the caller's
-                // own label is kept, marked as a claim.
-                reported_by: Some(match body.reported_by.as_deref().map(str::trim) {
-                    Some(label) if !label.is_empty() => format!(
-                        "operator key {} (label claimed by caller: {})",
-                        operator_key_id(&state),
-                        label.chars().take(128).collect::<String>()
-                    ),
-                    _ => format!("operator key {}", operator_key_id(&state)),
-                }),
-                detail: Some(if body.lift {
-                    format!("quarantine lifted for {program_id}")
-                } else {
-                    format!(
-                        "quarantined {program_id}: {}",
-                        body.reason.as_deref().unwrap_or("").trim()
-                    )
-                }),
-                observed_by_graphite: true,
-                sequence_anomalies: Vec::new(),
-            },
-        )
+    //
+    // Round 39 (R39-CB-7): the append and, for a lift it could not record,
+    // the quarantine's return run as ONE blocking task. They were an await
+    // and a step after it, so a request cut off while its append waited
+    // (the request timeout, under a stalled audit disk) dropped the step:
+    // the lift stayed in force with no record, the failing-open direction
+    // W21 refuses. A blocking task runs to completion whatever happens to
+    // the request that started it.
+    let record = state.audit.as_ref().map(|_| {
+        LifecycleEventRecord {
+            event_type: LifecycleEvent::OperatorAction,
+            timestamp: crate::durable::now_utc_rfc3339(),
+            verdict_on_record: None,
+            verdict_on_record_key: None,
+            transaction_sha256: None,
+            content_hash: program_id.clone(),
+            audit_trail_id: None,
+            transaction_signature: None,
+            // Who acted is the credential that authorized it; the caller's
+            // own label is kept, marked as a claim.
+            reported_by: Some(match body.reported_by.as_deref().map(str::trim) {
+                Some(label) if !label.is_empty() => format!(
+                    "operator key {} (label claimed by caller: {})",
+                    operator_key_id(&state),
+                    label.chars().take(128).collect::<String>()
+                ),
+                _ => format!("operator key {}", operator_key_id(&state)),
+            }),
+            detail: Some(if body.lift {
+                format!("quarantine lifted for {program_id}")
+            } else {
+                format!(
+                    "quarantined {program_id}: {}",
+                    body.reason.as_deref().unwrap_or("").trim()
+                )
+            }),
+            observed_by_graphite: true,
+            sequence_anomalies: Vec::new(),
+        }
+    });
+    let (audit_recorded, restored) = {
+        let log = state.audit.clone();
+        let core = Arc::clone(&state.core);
+        let lift = body.lift;
+        let program = program_id.clone();
+        off_runtime(move || {
+            let recorded = match (&log, &record) {
+                (Some(log), Some(record)) => log.append_lifecycle(record),
+                _ => false,
+            };
+            // W21 (external review, verified 2026-10-03): the reasoning
+            // above keeps a QUARANTINE in force when the trail cannot record
+            // it, because undoing it would fail open. The same reasoning
+            // refuses a LIFT that cannot be recorded: restoring trust with no
+            // record of who restored it is the failing-open direction. The
+            // quarantine is put back.
+            let restored = (!recorded && lift).then(|| {
+                core.quarantine_program_durably(
+                    &program,
+                    reason_before_lift
+                        .as_deref()
+                        .unwrap_or("quarantine restored"),
+                )
+                .is_ok()
+            });
+            (recorded, restored)
+        })
         .await
-    } else {
-        false
     };
-    if !audit_recorded && body.lift {
-        // W21 (external review, verified 2026-10-03): the reasoning above
-        // keeps a QUARANTINE in force when the trail cannot record it, because
-        // undoing it would fail open. The same reasoning refuses a LIFT that
-        // cannot be recorded: restoring trust with no record of who restored
-        // it is the failing-open direction. The quarantine is put back.
-        let restored = state.core.quarantine_program_durably(
-            &program_id,
-            reason_before_lift
-                .as_deref()
-                .unwrap_or("quarantine restored"),
-        );
+    if let Some(restored) = restored {
         tracing_server_error(&format!(
             "audit: the quarantine lift on {program_id} could not be recorded, so it was not applied (quarantine restored: {})",
-            if restored.is_ok() { "yes" } else { "NO" }
+            if restored { "yes" } else { "NO" }
         ));
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
@@ -3991,7 +4011,7 @@ async fn quarantine(
                 "error": "the audit trail could not record the lift, so the quarantine stays in force",
                 "error_type": "AuditUnavailable",
                 "program_id": program_id,
-                "quarantined": restored.is_ok(),
+                "quarantined": restored,
             })),
         ));
     }
@@ -5950,6 +5970,68 @@ mod tests {
             reloaded.quarantined_programs().len(),
             1,
             "nor persisted: a restart still has the quarantine"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Round 39 (R39-CB-7): the same lift, cut off while its append waits
+    /// (as the request timeout cuts off a request when the audit disk
+    /// stalls). The append and the quarantine's return were an await and a
+    /// step after it, so dropping the request dropped the return: the lift
+    /// stayed in force with no record. They are one blocking task now.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_lift_cut_off_while_its_append_waits_is_still_not_applied() {
+        let (state, dir, key) = keyed_state();
+        let core = state.core.clone();
+        let log = state.audit.clone().unwrap();
+        let app = build_app(state, vec![]);
+        let (status, json) = post_json(
+            &app,
+            "/admin/quarantine",
+            Some(&key),
+            serde_json::json!({"program_id": SYSTEM, "reason": "GHSA-2026-0003"}),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::OK, "{json}");
+        // Every append fails from here, and the next one waits for the
+        // append lock first: a stalled audit disk.
+        {
+            let ro = std::fs::OpenOptions::new()
+                .read(true)
+                .open(audit_path(&dir))
+                .unwrap();
+            *log.file.lock().unwrap() = ro;
+        }
+        let held = log.file.clone();
+        let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+        let stall = std::thread::spawn(move || {
+            let _g = held.lock().unwrap();
+            locked_tx.send(()).unwrap();
+            std::thread::sleep(Duration::from_millis(600));
+        });
+        locked_rx.recv().unwrap();
+        let lift = post_json(
+            &app,
+            "/admin/quarantine",
+            Some(&key),
+            serde_json::json!({"program_id": SYSTEM, "lift": true}),
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_millis(150), lift)
+                .await
+                .is_err(),
+            "the lift answered before its append could run"
+        );
+        stall.join().unwrap();
+        // The blocking task the request left behind finishes on its own.
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while core.quarantined_programs().is_empty() && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(
+            core.quarantined_programs(),
+            vec![(SYSTEM.to_string(), "GHSA-2026-0003".to_string())],
+            "a lift the trail never recorded is in force"
         );
         std::fs::remove_dir_all(&dir).ok();
     }
