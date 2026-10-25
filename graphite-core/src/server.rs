@@ -459,6 +459,15 @@ struct Metrics {
     /// record for their transaction: a duplicate, an out-of-order or
     /// unpreceded stage, or a conflicting signature (Round 12).
     lifecycle_sequence_anomalies: Arc<std::sync::atomic::AtomicU64>,
+    /// Round 39 (R39-CB-4): requests answered 413, 408 or a caught panic's
+    /// 500. These refusals reached no counter and no audit row, so a flood
+    /// of oversized or stalled bodies, a run of verifications cut off by the
+    /// request timeout (no verdict returned), or a panicking handler was
+    /// visible nowhere. Counted at the outermost layer; never on the trail
+    /// (most arrive before authentication).
+    payload_too_large: Arc<std::sync::atomic::AtomicU64>,
+    request_timeouts: Arc<std::sync::atomic::AtomicU64>,
+    handler_panics: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl Metrics {
@@ -759,14 +768,27 @@ fn init_tracing() {
         .unwrap_or(false);
     // `try_init` returns Err if a subscriber is already set — that is a
     // legitimate state (embedded use, tests), not a failure.
+    //
+    // Round 39 (R39-CB-2): `log_internal_errors(false)`. A log line that
+    // cannot be written to stdout was reported with `eprintln!`, which
+    // PANICS when stderr cannot be written either — both on one full disk
+    // (`graphite server >log 2>&1`), or a closed pipe. The server then
+    // exited 101 at its first log line, and once running, every request
+    // that logged died with its connection, no response: not the 503 and
+    // `degraded` the trail's own failure gets. A log line that cannot be
+    // written is dropped; the audit trail, not the log, is the record.
     let _ = if json {
         tracing_subscriber::fmt()
             .json()
             .with_env_filter(filter)
             .with_current_span(false)
+            .log_internal_errors(false)
             .try_init()
     } else {
-        tracing_subscriber::fmt().with_env_filter(filter).try_init()
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .log_internal_errors(false)
+            .try_init()
     };
 }
 
@@ -1863,6 +1885,8 @@ async fn serve_hardened(
 }
 
 fn build_app(state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
+    let metrics = state.metrics.clone();
+    let panics = state.metrics.handler_panics.clone();
     let cors = if cors_origins.is_empty() {
         // Default: no CORS headers — browsers cannot call cross-origin.
         // Server-to-server clients are unaffected.
@@ -1936,7 +1960,8 @@ fn build_app(state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
         // generic message (no internal details leaked to the client). Logging
         // of the panic happens in the handler via tracing.
         .layer(CatchPanicLayer::custom(
-            |_panic: Box<dyn std::any::Any + Send + 'static>| {
+            move |_panic: Box<dyn std::any::Any + Send + 'static>| {
+                Metrics::inc(&panics);
                 tracing_log("internal error: handler panicked (caught by CatchPanicLayer)");
                 axum::http::Response::builder()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
@@ -1952,6 +1977,17 @@ fn build_app(state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
             StatusCode::REQUEST_TIMEOUT,
             REQUEST_TIMEOUT,
         ))
+        // Outermost (R39-CB-4): every 413 and 408, whichever layer answered
+        // it — the body limit before authentication, the body read after
+        // it, the request timeout.
+        .layer(tower::util::MapResponseLayer::new(move |res: Response| {
+            match res.status() {
+                StatusCode::PAYLOAD_TOO_LARGE => Metrics::inc(&metrics.payload_too_large),
+                StatusCode::REQUEST_TIMEOUT => Metrics::inc(&metrics.request_timeouts),
+                _ => {}
+            }
+            res
+        }))
         .with_state(state)
 }
 
@@ -2759,8 +2795,10 @@ async fn verify_handler(
             }
 
             // Durability: rejected-by-error verifications are audit-worthy
-            // too — probing attacks against /verify (malformed payloads,
-            // oversized bodies, bad account counts) must leave a trail.
+            // too — probing attacks against /verify (malformed payloads, bad
+            // account counts) must leave a trail. (A body over 1 MiB never
+            // reaches a handler: it is refused with 413 and counted at
+            // /metrics, R39-CB-4.)
             // The record mirrors AuditRecord but carries the error instead
             // of a verdict.
             // Same reasoning as the 422 path above: a failed append is counted
@@ -3010,6 +3048,26 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
         "Non-verification requests (dashboard reads, lifecycle reports, operator actions, /manifests, /metrics) rejected with 503 because their own in-flight pool was full. Verification capacity is separate and unaffected.",
         "counter",
         m.aux_load_shed.load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
+        "graphite_payload_too_large_total",
+        "Requests refused with 413: a body over 1 MiB, declared (refused before authentication) or read past the bound. Not on the audit trail.",
+        "counter",
+        m.payload_too_large
+            .load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
+        "graphite_request_timeouts_total",
+        "Requests answered 408: a body not received within the body timeout, or a request past the request timeout (a verification cut off there returned no verdict). Not on the audit trail.",
+        "counter",
+        m.request_timeouts
+            .load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
+        "graphite_handler_panics_total",
+        "Requests whose handler panicked, answered 500 by the panic catcher: a bug in Graphite, never an approval. Not on the audit trail.",
+        "counter",
+        m.handler_panics.load(std::sync::atomic::Ordering::Relaxed),
     );
     push(
         "graphite_request_rejections_total",
@@ -9594,6 +9652,81 @@ mod route_surface {
             let (status, _) = call(&app, method, path, &[key], big.clone()).await;
             assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE, "{method} {path}");
         }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A body that never finishes arriving.
+    struct StalledBody;
+
+    impl axum::body::HttpBody for StalledBody {
+        type Data = axum::body::Bytes;
+        type Error = std::convert::Infallible;
+        fn poll_frame(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Option<Result<hyper::body::Frame<Self::Data>, Self::Error>>> {
+            std::task::Poll::Pending
+        }
+    }
+
+    /// Round 39 (R39-CB-4): the refusals of the transport — a body over the
+    /// bound (declared, before authentication; or read past it, after), a
+    /// body that stalls — reached no counter and no audit row. They are
+    /// counted at `/metrics` now, and still never on the trail.
+    #[tokio::test]
+    async fn refusals_of_the_transport_are_counted_and_never_on_the_trail() {
+        let (state, dir) = keyed(1000.0);
+        let audit = state.audit.clone().expect("the test state has a trail");
+        let rows_before = audit.health().writes_ok + audit.health().writes_failed;
+        let app = build_app(state.clone(), vec![]);
+        let big = vec![b' '; MAX_BODY_SIZE + 1];
+        // Read past the bound, after authentication.
+        let (status, _) = call(&app, "POST", "/verify", &[VERIFY], big.clone()).await;
+        assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+        // Declared over the bound, without a key: refused before
+        // authentication.
+        let mut req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/verify")
+            .header("content-type", "application/json")
+            .header("content-length", (MAX_BODY_SIZE + 1).to_string())
+            .body(Body::from(big))
+            .unwrap();
+        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+        req.extensions_mut().insert(ConnectInfo(addr));
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+        // A body that stalls past BODY_READ_TIMEOUT.
+        let mut req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/verify")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {VERIFY}"))
+            .body(Body::new(StalledBody))
+            .unwrap();
+        req.extensions_mut().insert(ConnectInfo(addr));
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::REQUEST_TIMEOUT);
+
+        let (status, text) = call(&app, "GET", "/metrics", &[READ], vec![]).await;
+        assert_eq!(status, StatusCode::OK);
+        let value = |name: &str| -> u64 {
+            text.lines()
+                .find_map(|l| l.strip_prefix(&format!("{name} ")))
+                .unwrap_or_else(|| panic!("{name} is not at /metrics"))
+                .trim()
+                .parse()
+                .unwrap()
+        };
+        assert_eq!(value("graphite_payload_too_large_total"), 2);
+        assert_eq!(value("graphite_request_timeouts_total"), 1);
+        assert_eq!(value("graphite_handler_panics_total"), 0);
+        // Benign control: nothing was written to the trail for any of them.
+        let rows_after = audit.health().writes_ok + audit.health().writes_failed;
+        assert_eq!(
+            rows_after, rows_before,
+            "a transport refusal wrote the trail"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 

@@ -1295,8 +1295,16 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
             let url = health_url(&host, port)?;
             let rt = tokio::runtime::Runtime::new()?;
             let verdict = rt.block_on(async move {
+                // Round 39 (R39-CB-3): no redirect and no proxy. The probe
+                // followed up to ten redirects, to any host, and went through
+                // HTTP_PROXY / ALL_PROXY from the environment: a 302 from
+                // whatever answers on the port, to anything that answers
+                // `{"degraded":false}`, passed the strict check. /health never
+                // redirects, and the probe is for the process on this host.
                 let client = reqwest::Client::builder()
                     .timeout(std::time::Duration::from_secs(4))
+                    .redirect(reqwest::redirect::Policy::none())
+                    .no_proxy()
                     .build()
                     .map_err(|_| "health check failed: no HTTP client".to_string())?;
                 let res = client
