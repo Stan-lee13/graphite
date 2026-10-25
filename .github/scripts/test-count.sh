@@ -51,7 +51,7 @@ case "$format" in
     [ -f "$allow" ] || fail "ignored-tests allowlist $allow is missing"
     unlisted=$(sed -n -E 's/^test (\S+) \.\.\. ignored.*/\1/p' "$log" | sort -u \
       | comm -23 - <(sed -e 's/#.*//' -e 's/[[:space:]]*$//' "$allow" | grep -v '^$' | sort -u))
-    [ -z "$unlisted" ] || fail "ignored tests not in $allow: $(echo $unlisted)"
+    [ -z "$unlisted" ] || fail "ignored tests not in $allow: $(tr '\n' ' ' <<<"$unlisted")"
     # Each `test result:` belongs to the `Running X (path)` / `Doc-tests X`
     # line before it.
     per_binary=$(awk '

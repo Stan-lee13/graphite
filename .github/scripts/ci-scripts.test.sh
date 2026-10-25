@@ -317,7 +317,7 @@ mklive() { # mklive DIR [show-bypass]
 import json, os, sys
 src, env_file, out, show = sys.argv[1:5]
 listing = []
-for i, f in enumerate(sorted(x for x in os.listdir(src) if x.endswith(".json") and x != "main-review.json"), 1):
+for i, f in enumerate(sorted(x for x in os.listdir(src) if x.endswith(".json")), 1):
     r = json.load(open(os.path.join(src, f)))
     rid = 100 + i
     listing.append({"id": rid, "name": r["name"], "target": r["target"], "enforcement": r["enforcement"],
@@ -396,6 +396,91 @@ expect 1 "a release environment that also admits any branch fails" drift "$L"
 mklive "$L"
 printf '{"message":"Resource not accessible by integration"}' >"$L/rulesets.json"
 expect 2 "an API error instead of the ruleset list is an error, never a pass" drift "$L"
+
+echo "== ruleset-drift.py against the live state of 2026-10-25 (Round 39)"
+# testdata/ruleset-drift-live-2026-10-25 is GET rulesets and GET rulesets/25817024
+# as the owner's token read them on 2026-10-25: one branch ruleset, "Main-review",
+# no tag ruleset; 0 required approvals; RepositoryRole 2 and 5 and 24 GitHub Apps
+# with bypass_mode "always"; an extra copilot_code_review rule. Round 38's check
+# matched rulesets by name and only NOTED one without a committed file, so it
+# compared this ruleset with nothing.
+SNAP="$here/testdata/ruleset-drift-live-2026-10-25"
+L1="$T/live-snap"
+rm -rf "$L1" && cp -r "$SNAP" "$L1"
+expect 1 "today's live state fails" drift "$L1"
+snap_out="$(drift "$L1" 2>&1)"
+for needle in "live ruleset 'Main-review' (id 25817024) has no committed file" \
+              "named 'Main-review', committed 'main — integrity (Round 30, G-11)'" \
+              "live rule 'copilot_code_review' is not in the committed file" \
+              "pull_request.required_approving_review_count is 0, committed 1" \
+              "pull_request.require_extra_approval_for_unattributed_changes is true live" \
+              "bypass actor RepositoryRole 2 (always) is live and not committed" \
+              "bypass actor RepositoryRole 5 (always) is live and not committed" \
+              "committed bypass actor RepositoryRole 5 (pull_request) is missing" \
+              "release-tags.json (release tags — immutable (Round 30, G-11)): not applied" \
+              "release-tags-create.json (release tags — only an admin creates one (Round 34, R33-9)): not applied" \
+              "environment 'release' does not exist"; do
+  grep -qF -- "$needle" <<<"$snap_out" && ok "the live state's difference is named: $needle" || bad "not named: $needle"
+done
+n_apps="$(grep -cE "vs committed main\.json: bypass actor Integration [0-9]+ \(always\) is live and not committed" <<<"$snap_out")"
+[ "$n_apps" = 24 ] && ok "each of the 24 always-bypass GitHub Apps is named" || bad "$n_apps always-bypass apps named, wanted 24"
+# The same ruleset as GITHUB_TOKEN reads it: bypass_actors withheld, and the
+# workflow token itself cannot bypass.
+edit_live "$L1" 'r = j("ruleset-25817024.json"); r.pop("bypass_actors"); r["current_user_can_bypass"] = "never"; w("ruleset-25817024.json", r)'
+expect 1 "today's live state as GITHUB_TOKEN reads it (no bypass list) still fails" drift "$L1"
+grep -qF "has no committed file" <<<"$(drift "$L1" 2>&1)" && ok "and names the uncommitted ruleset" || bad "the uncommitted ruleset is not named under GITHUB_TOKEN"
+# The Round 38 hole itself: every committed ruleset applied exactly, and the
+# uncommitted Main-review beside them. Round 38: exit 0 (a notice).
+mklive "$L"
+cp "$SNAP/ruleset-25817024.json" "$L/"
+edit_live "$L" 'l = j("rulesets.json"); l.append(j("ruleset-25817024.json")); w("rulesets.json", l)'
+expect 1 "an uncommitted ruleset beside the committed ones fails (Round 38: a notice, exit 0)" drift "$L"
+# Main-review renamed to main.json's name, its extra rule and parameter
+# removed: only its 26 always-bypass actors still differ.
+mk_renamed() { # mk_renamed DIR [hide-bypass]
+  mklive "$1" show
+  python3 -I - "$1" "$SNAP/ruleset-25817024.json" "${2:-}" <<'PY' || bad "the renamed fixture could not be built"
+import json, os, sys
+d, snap, hide = sys.argv[1:4]
+live = json.load(open(snap))
+listing = json.load(open(os.path.join(d, "rulesets.json")))
+main = next(x for x in listing if x["name"].startswith("main — integrity"))
+live.update(id=main["id"], name=main["name"])
+live["rules"] = [r for r in live["rules"] if r["type"] != "copilot_code_review"]
+for r in live["rules"]:
+    if r["type"] == "pull_request":
+        r["parameters"].pop("require_extra_approval_for_unattributed_changes")
+live["current_user_can_bypass"] = "never"
+if hide:
+    for f in os.listdir(d):
+        if f.startswith("ruleset-"):
+            x = json.load(open(os.path.join(d, f)))
+            x.pop("bypass_actors", None)
+            json.dump(x, open(os.path.join(d, f), "w"))
+    live.pop("bypass_actors")
+json.dump(live, open(os.path.join(d, f"ruleset-{main['id']}.json"), "w"))
+PY
+}
+mk_renamed "$L"
+expect 1 "main.json applied with Main-review's 26 always-bypass actors (visible) fails" drift "$L"
+grep -qF "main.json (main — integrity (Round 30, G-11)): bypass actor Integration 8329 (always) is live and not committed" <<<"$(drift "$L" 2>&1)" \
+  && ok "and names the bypass actors" || bad "the bypass actors are not named"
+# What GITHUB_TOKEN cannot see stays a limit, said plainly: the weekly run
+# passes with the bypass lists NOT VERIFIED, and the owner's run fails.
+mk_renamed "$L" hide
+expect 0 "the same, bypass lists hidden (GITHUB_TOKEN): passes, but only as far as it can see" drift "$L"
+grep -qF "bypass list(s) NOT VERIFIED" <<<"$(drift "$L" 2>&1)" && ok "and says the bypass lists are NOT VERIFIED" || bad "an unverified bypass list was reported as a match"
+expect 1 "the same with --require-bypass (the owner's run) fails" "${D[@]}" --live "$L" --require-bypass
+mklive "$L"
+expect 1 "applied as committed, bypass lists hidden, --require-bypass: fails (cannot verify)" "${D[@]}" --live "$L" --require-bypass
+mklive "$L" show
+edit_live "$L" 'l = j("rulesets.json"); r = [x for x in l if x["name"].startswith("release tags — only")][0]; f = "ruleset-%d.json" % r["id"]; x = j(f); x["current_user_can_bypass"] = "always"; w(f, x)'
+expect 0 "applied as committed, read by an admin (visible lists; it may bypass tag creation): no drift" "${D[@]}" --live "$L" --require-bypass
+grep -qF "their bypass lists and the release environment match" <<<"$("${D[@]}" --live "$L" --require-bypass 2>&1)" \
+  && ok "and claims the bypass lists only when it read them" || bad "the full-match line is missing"
+mklive "$L"
+edit_live "$L" 'l = j("rulesets.json"); r = [x for x in l if x["name"].startswith("main — independent review")][0]; os.remove(os.path.join(d, "ruleset-%d.json" % r["id"])); w("rulesets.json", [x for x in l if x is not r])'
+expect 1 "main-review.json absent (0 required approvals) fails: it is required since Round 39" drift "$L"
 
 echo "== the release workflows (R37-8, D2-3)"
 expect 0 "release.yml: publish re-reads the tag the gate verified, before pushing and around the release" python3 -I - "$root/.github/workflows/release.yml" <<'PY'
@@ -506,6 +591,22 @@ expect 1 "a listed binary missing from the log fails" "${TC[@]}" cargo "$T/cargo
 expect 1 "a floors file that does not exist fails" "${TC[@]}" cargo "$T/cargo.log" 52 "$T/allow.txt" "$T/no-floors.txt"
 printf '# nothing listed\n' >"$T/floors-empty.txt"
 expect 1 "a floors file that lists no binary fails (empty is not 'no floor')" "${TC[@]}" cargo "$T/cargo.log" 52 "$T/allow.txt" "$T/floors-empty.txt"
+# Round 39: the unlisted-ignored message (rewritten for shellcheck) still names each test.
+{ cat "$T/cargo.log"; printf 'test a::one ... ignored\ntest b::two ... ignored, slow\n'; } >"$T/cargo-ign.log"
+printf 'a::one  # listed\n' >"$T/allow-one.txt"
+out="$("${TC[@]}" cargo "$T/cargo-ign.log" 52 "$T/allow-one.txt" 2>&1)" && bad "an unlisted ignored test passed" || {
+  grep -q 'ignored tests not in .*: b::two' <<<"$out" && ! grep -q 'a::one' <<<"$out" \
+    && ok "an unlisted ignored test fails, named (the listed one is not)" || bad "unlisted-ignored message: $out"; }
+
+echo "== shellcheck: the CI scripts themselves (Round 39)"
+# deploy/tests/run.sh shellchecks deploy/; nothing checked .github/scripts
+# (actionlint reads only the workflows' inline run: blocks). shellcheck is on
+# the hosted runner image (the deploy job prints its version without installing it).
+if command -v shellcheck >/dev/null; then
+  expect 0 "shellcheck .github/scripts/*.sh" shellcheck -x "$here"/*.sh
+else
+  bad "shellcheck is not installed: the CI scripts were not checked (not a pass)"
+fi
 
 echo "== Dockerfile: the apt layer is pinned (D-8)"
 expect 0 "the runtime image's apt sources are one dated snapshot, recorded in pinned-tools.json" python3 -I - "$root/Dockerfile" "$root/.github/pinned-tools.json" <<'PY'

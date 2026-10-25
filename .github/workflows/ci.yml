@@ -291,6 +291,12 @@ jobs:
       - name: Audit the inner-instruction oracle's dependencies
         working-directory: tools/inner-instruction-oracle
         run: cargo audit --deny warnings --ignore RUSTSEC-2025-0141
+      # Round 39: the fuzz harness's own lockfile (graphite-core/fuzz/Cargo.lock,
+      # 204 crates) is built and run by assurance.yml on every pull request,
+      # and was the one Cargo lockfile no job audited. No exception.
+      - name: Audit the fuzz harness's dependencies
+        working-directory: graphite-core/fuzz
+        run: cargo audit --deny warnings
       # The six npm lockfiles (A6-05): the agent guard (the signing path),
       # the AI SDK tools, the MCP server, the SAK adapter, the TypeScript SDK
       # and the dashboard. `npm audit` reads the lockfile and asks the
@@ -1180,9 +1186,11 @@ jobs:
           bash .github/scripts/ci-scripts.test.sh 2>&1 | tee "$RUNNER_TEMP/ci-scripts.log"
           passed="$(sed -n 's/^ci-scripts tests: \([0-9]*\) passed, 0 failed$/\1/p' "$RUNNER_TEMP/ci-scripts.log")"
           # 33 at Round 36; 77 at Round 38 (D2-4, D2-6, D2-7, D2-8, D-8,
-          # R37-8 drift and guard, D2-3 publish structure).
-          if [ -z "$passed" ] || [ "$passed" -lt 77 ]; then
-            echo "::error::ci-scripts tests: ${passed:-no summary} passed, floor 77"; exit 1
+          # R37-8 drift and guard, D2-3 publish structure); 104 at Round 39
+          # (the live ruleset state of 2026-10-25, --require-bypass,
+          # main-review required, shellcheck of these scripts).
+          if [ -z "$passed" ] || [ "$passed" -lt 104 ]; then
+            echo "::error::ci-scripts tests: ${passed:-no summary} passed, floor 104"; exit 1
           fi
 
   # Round 30 (G-11): the one check the `main` ruleset requires
