@@ -204,10 +204,21 @@ type Pin = (
 // to a correct refusal, none from refused to approved. Nothing else moved
 // (the two Orca rows whose fixtures gained the `whirlpool_program` slot, K-7,
 // keep their labels and outcomes).
+//
+// Re-pinned in Round 40 (R39-SUPPLY-CHAIN-11): dev rows 12,943 → 12,897, TP
+// 11,804 → 11,761, TN 1,101 → 1,098. The 46 rows are the synthetic-manifest
+// `canonical` and `no-intent` fixtures of the 23 Jupiter v6 and Meteora DLMM
+// instructions removed because no committed IDL of their program has them
+// (docs/audit-r40/declaration-rewrites.json `removed_instructions`): 43
+// labelled refused and refused (TP), 3 swap canonicals labelled approved and
+// approved (TN). The other Jupiter and DLMM fixtures were regenerated with
+// new synthetic addresses (the generator seeds them by instruction position)
+// and keep their labels and outcomes; nothing else in any split moved, and
+// no row moved from refused to approved.
 const PINNED: &[Pin] = &[
     ("holdout", 38, 0, 0, 37, 0, 1, 0),
     ("regression", 32, 6, 0, 22, 4, 0, 0),
-    ("dev", 12_943, 38, 0, 11_804, 1_101, 0, 0),
+    ("dev", 12_897, 38, 0, 11_761, 1_098, 0, 0),
     ("hand-built", 24, 0, 2, 15, 7, 0, 0),
 ];
 
