@@ -697,12 +697,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .map(PathBuf::from)
                 });
                 let signer_key_hex = match key_file {
-                    Some(path) => {
-                        let raw = std::fs::read_to_string(&path).map_err(|e| {
-                            format!("failed to read signer key file {}: {e}", path.display())
-                        })?;
-                        Some(raw.trim().to_string())
-                    }
+                    // Round 40 (R39-CB-14): refused when group or others
+                    // can read or write it, as the audit key file is.
+                    Some(path) => Some(graphite_core::cli::read_signer_key_file(&path)?),
                     None => {
                         if signer_key.is_some() {
                             eprintln!(

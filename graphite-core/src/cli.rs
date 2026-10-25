@@ -3261,6 +3261,40 @@ pub fn verify_from_file(
     })
 }
 
+/// Read a `registry submit` signer key file (`--signer-key-file`,
+/// `GRAPHITE_SIGNER_KEY_FILE`): hex text, whitespace around it ignored.
+///
+/// Round 40 (R39-CB-14): it was read with no check at all, while the audit
+/// key file beside it is refused when group or others have any access
+/// (`durable::chain::AuditKey::load`). The signer key is a reviewer's
+/// ed25519 secret: whoever reads it signs manifests that earn a trust tier.
+/// The same refusal now applies, in the same words.
+pub fn read_signer_key_file(path: &std::path::Path) -> Result<String, String> {
+    let meta = std::fs::metadata(path)
+        .map_err(|e| format!("failed to read signer key file {}: {e}", path.display()))?;
+    if !meta.is_file() {
+        return Err(format!("signer key file {} is not a file", path.display()));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = meta.permissions().mode() & 0o777;
+        if mode & 0o077 != 0 {
+            return Err(format!(
+                "signer key file {} is readable or writable by group or others (mode {mode:03o}); chmod 600 it",
+                path.display()
+            ));
+        }
+    }
+    // Windows: the file's ACL is not inspected (docs/ops/keys.md, as for the
+    // audit key).
+    let raw = zeroize::Zeroizing::new(
+        std::fs::read_to_string(path)
+            .map_err(|e| format!("failed to read signer key file {}: {e}", path.display()))?,
+    );
+    Ok(raw.trim().to_string())
+}
+
 pub fn verify_from_stdin(profile: ProfileArg) -> Result<(), Box<dyn std::error::Error>> {
     use std::io::Read;
     let mut content = String::new();

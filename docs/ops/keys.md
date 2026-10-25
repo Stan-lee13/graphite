@@ -330,7 +330,9 @@ writes comes near it: a request body is at most 1 MiB.
 
 `graphite registry submit` signs with the ed25519 key in
 `GRAPHITE_SIGNER_KEY_FILE` (or `--signer-key-file`). Keep that file mode 600 on
-the reviewer's machine, never on the server. A compromised reviewer key is
+the reviewer's machine, never on the server: since Round 40 (R39-CB-14) the
+command refuses a key file group or others can read or write, as the server
+refuses such an audit key file (Windows: the ACL is not inspected). A compromised reviewer key is
 revoked with `graphite registry revoke-reviewer --pubkey <base58>`; its
 signatures and attestations stop counting and the tiers they helped earn are
 recomputed.
