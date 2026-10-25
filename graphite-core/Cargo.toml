@@ -29,7 +29,6 @@ hex = "0.4"
 # Already in the tree through the ed25519/curve25519 stack; naming it adds
 # no crate.
 zeroize = "1"
-anyhow = "1"
 # default-features = false is REQUIRED: reqwest's default-tls feature
 # pulls native-tls → openssl-sys, which fails to build on systems without
 # OpenSSL dev packages (CI containers, minimal Docker images). rustls-tls is
