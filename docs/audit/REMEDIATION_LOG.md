@@ -84,6 +84,9 @@ against it.
 | `b57b982` / CI | R39-SUPPLY-CHAIN-5 | `cargo audit` over `graphite-core/fuzz/Cargo.lock`. | CI step |
 | `f391953` | runner shellcheck | Two `A && B \|\| C` tests rewritten as explicit `if`s (SC2015, reported by the runner's shellcheck; 0.11.0 here did not). | ci-scripts |
 | `84de50a` | R39-SUPPLY-CHAIN-7 | `anyhow` removed from `graphite-core/Cargo.toml` and the lockfile (`cargo update -w --offline`). | all Rust legs (§3) |
+| `655fce4` | CI on `84de50a` | The runtime oracle, inner-instruction oracle and fuzz lockfiles drop `anyhow` with graphite-core (`cargo update -p graphite-core --offline`); `rust-ignored.txt` lists the R39-CB-5 measurement (a measurement, never a gate). | oracle jobs, CVE audit |
+| `9e166de` | CI on `84de50a` | The R39-CB-5 measurement takes two runs instead of re-running its own binary through `std::process::Command` (the AI-isolation scan is unchanged); `tests/round39_core_boundary.rs` is `cfg(feature = "server")`. | `ai_layer_isolation`, cli leg |
+| this round's last commit | — | Rust test floors in `ci.yml` raised to the measured counts: default 2,414 → 2,464, lib 529 → 530, cli 1,967 → 1,980. | test-count gate |
 | `50a7cb7`, `349fa63` | — | `parts/supply-chain.md`; one line rephrased so the repo-wide signer-pin scan does not read a partial `gh attestation verify` as a command. | ci-scripts 121 |
 
 ### 1.7 Deliverables and documentation
@@ -151,14 +154,15 @@ fix's tests, and was deleted. Continued in `AUDIT/01-findings.md` as B207–B244
 | `cargo clippy -j 4 --locked --all-targets --all-features -- -D warnings` | clean |
 | `cargo clippy -j 4 --locked --lib --no-default-features -- -D warnings` | clean |
 | `cargo clippy -j 4 --locked --all-targets --no-default-features --features cli -- -D warnings` | clean |
-| `cargo test -j 4 --locked --no-fail-fast` | RUST_DEFAULT |
-| `cargo test -j 4 --locked --lib --no-default-features` | RUST_LIB |
-| `cargo test -j 4 --locked --no-default-features --features cli --no-fail-fast` | RUST_CLI |
-| `cargo build --release --locked` | RUST_RELEASE |
+| `cargo test -j 4 --locked --no-fail-fast` | 2,464 passed, 0 failed, 15 ignored (all listed), 179 targets |
+| `cargo test -j 4 --locked --lib --no-default-features` | 530 passed, 0 failed, 4 ignored |
+| `cargo test -j 4 --locked --no-default-features --features cli --no-fail-fast` | 1,980 passed, 0 failed, 6 ignored, 179 targets |
+| `cargo build -j 4 --locked --release --all-features` | builds |
 | `bash .github/scripts/ci-scripts.test.sh` | 121 passed |
 | `bash .github/scripts/release-gate.test.sh` | 52 / 52 |
 | `bash deploy/scripts/backup-keys.test.sh` | 22 / 22 |
 | `python3 -I graphite-core/scripts/validate_corpora.py` | pass (63 pinned gaps) |
+| each Rust leg through `.github/scripts/test-count.sh` with `rust-ignored.txt` | ok at the new floors (2,464 / 530 / 1,980) |
 | TS SDK / guard / MCP / SAK / Vercel AI | 68 / 343 / 12 / 11 / 12 |
 | Go 1.26.10 and 1.27.3 | 66 / 66 |
 | pytest AI layer / mainnet-sample / live-measure | 51 / 7 / 60 |
@@ -172,7 +176,7 @@ each `parts/*.md` §6.
 
 PR #55's CI and Assurance runs on each pushed head are listed in the PR; the green runs on intermediate
 heads: `22b1e9a` (CI 40199619665, Assurance 40199619668), `cc6706d` (40200899050 / 40200899048),
-`1c884cf` (40202572519 / 40202572462). "CI gate" runs cancelled by a later push (concurrency) are not
+`1c884cf` (40202572519 / 40202572462). `84de50a` (CI 40204111251) was red: the oracle and fuzz lockfiles still listed `anyhow`, the new CB-5 measurement test was `#[ignore]`d without an allowlist line and spawned a process the AI-isolation scan forbids, and `round39_core_boundary` was not gated on `server`; fixed in `655fce4` and `9e166de`, which is green (CI 40205747414, Assurance 40205747377). "CI gate" runs cancelled by a later push (concurrency) are not
 failures of the code. The final head's runs are recorded in the PR.
 
 ### 3.3 Not run, and why
