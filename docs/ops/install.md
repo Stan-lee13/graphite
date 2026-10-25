@@ -38,7 +38,11 @@ build-from-source stack.
    (`GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS`,
    `GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT`) and the intent-grant
    relaxation `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS` unset unless you have read what each
-   one opens in `.env.example`.
+   one opens in `.env.example`. `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS=1` waives two
+   checks, not one: the grant refusal `UnboundedWithdrawal` (a zero minimum output) and
+   the withdrawal binding `WithdrawalUnderbounded` (minimum outputs held to the simulated
+   credit, a Meteora DLMM remove with no minimum held unbound, and, since Round 38, a
+   sibling instruction that skims the payout).
 
 3. **Validate, then start:**
    ```sh
