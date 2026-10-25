@@ -401,4 +401,98 @@ mod rpc {
             r.summary
         );
     }
+
+    /// Round 39 (core-identity, §2.3): every class of parsed inner
+    /// instruction `parsed_inner` documents as NOT rebuilt leaves the verdict
+    /// incomplete and never executable — not only `allocateWithSeed`. Each is
+    /// the shape Agave prints for its program, beside the clean transfer the
+    /// control above approves.
+    #[tokio::test]
+    async fn every_documented_unrebuildable_class_stays_inconclusive() {
+        const MEMO: &str = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
+        const TOKEN_2022: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+        const STAKE: &str = "Stake11111111111111111111111111111111111111";
+        const VOTE: &str = "Vote111111111111111111111111111111111111111";
+        const ALT: &str = "AddressLookupTab1e1111111111111111111111111";
+        const LOADER: &str = "BPFLoaderUpgradeab1e11111111111111111111111";
+        let keys = strings(&corpus_entry("legacy_single_transfer")["static_keys"]);
+        let (k0, k1) = (keys[0].as_str(), keys[1].as_str());
+        let cases: Vec<(&str, String)> = vec![
+            (
+                "memo",
+                format!(
+                    r#"{{"program":"spl-memo","programId":"{MEMO}","stackHeight":2,"parsed":"hello"}}"#
+                ),
+            ),
+            (
+                "assignWithSeed",
+                format!(
+                    r#"{{"program":"system","programId":"{SYSTEM}","stackHeight":2,"parsed":{{"type":"assignWithSeed","info":{{"account":"{k1}","base":"{k0}","seed":"s","owner":"{SYSTEM}"}}}}}}"#
+                ),
+            ),
+            (
+                "transferCheckedWithFee",
+                format!(
+                    r#"{{"program":"spl-token-2022","programId":"{TOKEN_2022}","stackHeight":2,"parsed":{{"type":"transferCheckedWithFee","info":{{"source":"{k0}","mint":"{k1}","destination":"{k1}","authority":"{k0}","tokenAmount":{{"amount":"1","decimals":0,"uiAmount":1.0,"uiAmountString":"1"}},"feeAmount":{{"amount":"0","decimals":0,"uiAmount":0.0,"uiAmountString":"0"}}}}}}}}"#
+                ),
+            ),
+            (
+                "token-2022 extension",
+                format!(
+                    r#"{{"program":"spl-token-2022","programId":"{TOKEN_2022}","stackHeight":2,"parsed":{{"type":"initializeTransferFeeConfig","info":{{"mint":"{k1}","transferFeeBasisPoints":1,"maximumFee":1}}}}}}"#
+                ),
+            ),
+            (
+                "token metadata",
+                format!(
+                    r#"{{"program":"spl-token-2022","programId":"{TOKEN_2022}","stackHeight":2,"parsed":{{"type":"updateTokenMetadataField","info":{{"metadata":"{k1}","updateAuthority":"{k0}","field":"name","value":"x"}}}}}}"#
+                ),
+            ),
+            (
+                "stake",
+                format!(
+                    r#"{{"program":"stake","programId":"{STAKE}","stackHeight":2,"parsed":{{"type":"deactivate","info":{{"stakeAccount":"{k1}","clockSysvar":"SysvarC1ock11111111111111111111111111111111","stakeAuthority":"{k0}"}}}}}}"#
+                ),
+            ),
+            (
+                "vote",
+                format!(
+                    r#"{{"program":"vote","programId":"{VOTE}","stackHeight":2,"parsed":{{"type":"withdraw","info":{{"voteAccount":"{k1}","destination":"{k0}","withdrawAuthority":"{k0}","lamports":1}}}}}}"#
+                ),
+            ),
+            (
+                "lookup table",
+                format!(
+                    r#"{{"program":"address-lookup-table","programId":"{ALT}","stackHeight":2,"parsed":{{"type":"freezeLookupTable","info":{{"lookupTableAccount":"{k1}","lookupTableAuthority":"{k0}"}}}}}}"#
+                ),
+            ),
+            (
+                "loader",
+                format!(
+                    r#"{{"program":"bpf-upgradeable-loader","programId":"{LOADER}","stackHeight":2,"parsed":{{"type":"setAuthority","info":{{"account":"{k1}","authority":"{k0}","newAuthority":"{k0}"}}}}}}"#
+                ),
+            ),
+        ];
+        for (case, ix) in cases {
+            let inner = format!(r#"[{{"index":0,"instructions":[{ix}]}}]"#);
+            let r = verify(&inner).await;
+            assert!(!r.approved, "{case}: approved: {}", r.summary);
+            assert!(!r.executable, "{case}");
+            assert_eq!(
+                r.decision,
+                ExecutionDecision::Inconclusive,
+                "{case}: {}",
+                r.summary
+            );
+            // The finding names the unrebuilt CPI tree; the warning names the
+            // instruction Graphite did not rebuild (a Memo's parsed form has
+            // no `type`, so it is named by its program alone).
+            assert!(
+                says(&r, "could not be rebuilt into the CPI tree")
+                    || says(&r, "Graphite does not rebuild to their bytes"),
+                "{case}: {}",
+                r.summary
+            );
+        }
+    }
 }
