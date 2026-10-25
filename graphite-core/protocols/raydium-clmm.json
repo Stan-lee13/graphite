@@ -2563,7 +2563,8 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: input_token_account, input_token_mint",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.input_token_account into the first pool of the path; the pools and the output account are remaining accounts",
+    "debits accounts.input_token_account by the input tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"

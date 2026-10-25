@@ -25,7 +25,7 @@ What exists today, all in the repository:
 
 - **A Rust core** with an eight-layer pipeline, an HTTP server with an append-only audit trail,
   a CLI, and a manifest registry with signed submissions and a replay gate.
-- **137 protocol manifests covering 3,541 instructions.** Every program id is verified
+- **137 protocol manifests covering 3,518 instructions.** Every program id is verified
   executable on mainnet. 113 carry a `BattleTested` tier backed by a recorded mainnet
   measurement, which the loader checks and lowers when the evidence does not support it
   ([`protocol-coverage.md`](protocol-coverage.md)).

@@ -7,7 +7,7 @@
 
 ## In one line
 
-**137 protocol manifests / 3541 instructions**, of which **113 carry a BattleTested tier that a mainnet measurement supports**.
+**137 protocol manifests / 3518 instructions**, of which **113 carry a BattleTested tier that a mainnet measurement supports**.
 
 ## What BattleTested means here
 
@@ -41,7 +41,7 @@ Transaction versions across the 80-block census above (77,589 successful transac
 | Gmsol Store (Gmso1uvJ) | `Gmso1uvJnLbawvw7yezdfCDcPydwW2s2iqG3w6MDucLo` | 130 | BattleTested | 1,000 | 7,416s | 79 | 100% |
 | Sage (SAGE2HAw) | `SAGE2HAwep459SNq61LHvjxPk4pLPEJLoMETef7f7EE` | 106 | BattleTested | 1,000 | 112s | 125 | 100% |
 | Mango V4 (4MangoMj) | `4MangoMjqJ2firMokCjjGgoK8d4MXcrgL7XJaL3w6fVg` | 103 | BattleTested | 1,982 | 5,920,115s | 253 | 100% |
-| Meteora DLMM | `LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo` | 84 | BattleTested | 1,191 | 5s | 306 | 100% |
+| Meteora DLMM | `LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo` | 76 | BattleTested | 1,191 | 5s | 306 | 100% |
 | Kamino Lending | `KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD` | 66 | BattleTested | 1,512 | 5,317s | 213 | 100% |
 | Orca Whirlpools | `whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc` | 66 | BattleTested | 1,061 | 15s | 201 | 100% |
 | Tuna (tuna4uSQ) | `tuna4uSQZncNeeiAMKbstuxA9CUkHH6HmC64wgmnogD` | 66 | BattleTested | 1,960 | 23,196s | 40 | 100% |
@@ -59,7 +59,6 @@ Transaction versions across the 80-block census above (77,589 successful transac
 | Byreal Clmm (REALQqNE) | `REALQqNEomY6cQGZJUGwywTBD2UmDT32rZcNnfxQ5N2` | 35 | BattleTested | 1,456 | 388s | 48 | 100% |
 | Fusionamm (fUSioN9Y) | `fUSioN9YKKSa3CUC2YUc4tPkHJ5Y6XW1yz8y6F7qWz9` | 33 | BattleTested | 1,548 | 4,999s | 39 | 100% |
 | Brrr Lend (G3v8Wxa6) | `G3v8Wxa6TU8rwjZ4J5ey7zbnp44VxYTyTVESa3P6ByjT` | 32 | BattleTested | 1,000 | 2,655s | 45 | 100% |
-| Jupiter V6 Aggregator | `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4` | 32 | BattleTested | 1,375 | 38s | 385 | 100% |
 | Crafting (CRAFT2RP) | `CRAFT2RPXPJWCEix4WpJST3E7NLf79GTqZUL75wngXo5` | 31 | BattleTested | 1,989 | 6,944s | 134 | 100% |
 | Marinade Staking | `MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD` | 29 | BattleTested | 1,977 | 295,528s | 40 | 100% |
 | Mmm (mmm3XBJg) | `mmm3XBJg5gk8XJxEKBvdgptZz6SgK4tXvn36sodowMc` | 29 | BattleTested | 1,000 | 414s | 63 | 100% |
@@ -91,6 +90,7 @@ Transaction versions across the 80-block census above (77,589 successful transac
 | Order Book (MzLoYnJ6) | `MzLoYnJ6sF6eeejs4vV95TNmXqS3W4cAtLGKkjT4ZrK` | 18 | BattleTested | 1,994 | 4,696,034s | 54 | 100% |
 | Swap Orchestrator (DF1ow4ts) | `DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH` | 18 | BattleTested | 1,733 | 83s | 270 | 100% |
 | Cargo (Cargo2VN) | `Cargo2VNTPPTi9c1vq1Jw5d3BWUNr18MjRtSupAghKEk` | 17 | BattleTested | 1,000 | 199s | 73 | 100% |
+| Jupiter V6 Aggregator | `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4` | 17 | BattleTested | 1,375 | 38s | 385 | 100% |
 | Mintfx (EmiytJ3z) | `EmiytJ3zWX9koH3emPsWDEs9RqNm6NNFp4CkMLoiA1KC` | 17 | BattleTested | 1,000 | 502,582s | 38 | 100% |
 | Score (FLEET1qq) | `FLEET1qqzpexyaDpqb2DGsSzE2sDCizewCg9WjrA6DBW` | 17 | BattleTested | 1,997 | 204,939s | 160 | 100% |
 | Marketplace (traderDn) | `traderDnaR5w6Tcoi3NFm53i48FTDNbGjBSZwWXDRrg` | 16 | BattleTested | 1,997 | 101,601s | 61 | 100% |

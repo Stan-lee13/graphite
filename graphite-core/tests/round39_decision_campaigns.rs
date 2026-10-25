@@ -2006,12 +2006,15 @@ fn update_offer(beside: GrantBeside) -> (Cluster, Vec<Ix>) {
 /// The controls: a granted claim and a granted close alone are executable,
 /// under the defaults and every waiver, before and after the Round 39 fix.
 ///
-/// The configure grant (`update_offer`) is pinned as REFUSED: its manifest
-/// line "modifies writable accounts: …, buyer_usdc_account" names no debit,
-/// so L4 refuses the buyer's own USDC moving into their own escrow
-/// (`UndeclaredTokenDebit`). That is a false refusal (R39-CORE-DECISION-5),
-/// and a declaration fix is the owner's decision; until then the grant
-/// cannot reach an executable verdict, and this test says so when it can.
+/// The marketplace `update_offer` is pinned as REFUSED. At Round 39 the
+/// configure grant held but its manifest line "modifies writable accounts:
+/// …, buyer_usdc_account" names no debit, so L4 refused the buyer's own USDC
+/// moving into their own escrow (`UndeclaredTokenDebit`), and the grant could
+/// never pass (R39-CORE-DECISION-5). Round 40 removed the grant: the committed
+/// IDL names the buyer's USDC account but says nothing of USDC moving, so no
+/// debit can be declared from it. The instruction is now what its manifest
+/// says (class `authority`), which no intent declares: L5 refuses it, and L4
+/// still names the undeclared debit.
 #[tokio::test]
 async fn campaign2_a_granted_claim_and_close_alone_are_executable() {
     for w in CONFIGS {
@@ -2024,9 +2027,14 @@ async fn campaign2_a_granted_claim_and_close_alone_are_executable() {
         let (c, ixs) = update_offer(GrantBeside::Nothing);
         let r = verify(c, OWNER, &ixs, 0, "configure", None, w).await;
         assert_not_executable(&format!("update_offer alone {w:?}"), &r);
+        let l5 = r
+            .layers
+            .iter()
+            .find(|l| l.layer.starts_with("L5"))
+            .expect("an L5 layer");
         assert!(
-            names(&r, "UndeclaredTokenDebit"),
-            "update_offer alone is refused for another reason now: {}",
+            l5.status == LayerStatus::Failed && l5.reason.contains("cannot declare update_offer"),
+            "update_offer is no longer refused as an ungranted authority instruction: {}",
             statuses(&r)
         );
     }
@@ -2516,9 +2524,11 @@ async fn campaign12_protocol_rules_for_an_unmanifested_program_approve_nothing()
 // reach directly. Each row is an honest swap — the owner's input account
 // pays `amount_in` into the pool's input vault, the pool's output vault pays
 // the owner's output account, nothing rides beside it — verified under the
-// defaults. What refuses it is the manifest line quoted in the row, not the
-// transaction; a declaration fix is an owner decision (no manifest is
-// changed here), so the rows pin today's outcome and name its cause.
+// defaults. What refused it at Round 39 was the manifest line quoted in the
+// row, not the transaction. Round 40 rewrote those lines from the committed
+// IDLs (R39-CORE-DECISION-4, docs/audit-r40/declaration-rewrites.json); every
+// row now names its input, and the attack controls for the rewritten venues
+// are `round40_a_rewritten_pool_swap_with_a_skim_is_never_executable`.
 
 /// The slots of one pool swap instruction.
 struct PoolSwap {
@@ -2607,13 +2617,17 @@ const POOL_SWAPS: &[PoolSwap] = &[
         tail: &[],
         decoded: false,
     },
-    // raydium-cpmm.json `swap_base_input`: "modifies writable accounts:
-    // pool_state, input_token_account, ..." (a list of names, which declares
-    // nothing) and "credits the output token account with the received
-    // amount for the swap". The word "swap" declares a debit and a credit,
-    // naming no account, so it does not say the owner's input may leave
-    // (R33-5). Relaxable by GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS
-    // (class `transfer` moves value).
+    // Round 40 (R39-CORE-DECISION-4): the four rows below were refused at
+    // Round 39 by L4 `SignerTokenDebitUnderUnscopedDebit` — their
+    // declarations said "credits the output token account with the received
+    // amount for the swap" or "debits user source token account", a debit
+    // naming no account (R33-5). Rewritten from the committed IDLs
+    // (docs/audit-r40/declaration-rewrites.json), each now names the owner's
+    // input account as debited and no other account of the owner's.
+    //
+    // raydium-cpmm.json `swap_base_input` (scripts/idls/raydium_cpmm.json:
+    // "The user token account for input token"): "transfers the input tokens
+    // from accounts.input_token_account to accounts.input_vault".
     PoolSwap {
         program: "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",
         name: "swap_base_input",
@@ -2622,12 +2636,14 @@ const POOL_SWAPS: &[PoolSwap] = &[
         dst: "output_token_account",
         in_vault: "input_vault",
         out_vault: "output_vault",
-        refused_with: Some("SignerTokenDebitUnderUnscopedDebit"),
+        refused_with: None,
         tail: &[],
         decoded: true,
     },
-    // cp-amm (Meteora DAMM v2) `swap`: the same two lines. Not decoded by
-    // the binding either, so the swap is unbound even when L4 is relaxed.
+    // cp-amm (Meteora DAMM v2) `swap`: "transfers the input tokens from
+    // accounts.input_token_account to the pool's vault". L4 passes it; the
+    // binding does not decode DAMM v2, so it stays unbound
+    // (`intent_parameters`) under every waiver.
     PoolSwap {
         program: "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG",
         name: "swap",
@@ -2636,12 +2652,15 @@ const POOL_SWAPS: &[PoolSwap] = &[
         dst: "output_token_account",
         in_vault: "token_a_vault",
         out_vault: "token_b_vault",
-        refused_with: Some("SignerTokenDebitUnderUnscopedDebit"),
+        refused_with: None,
         tail: &[],
         decoded: false,
     },
-    // orca-whirlpools.json `swap`: "debits user source token account" names
-    // no account, so it does not say whose tokens leave (R33-5).
+    // orca-whirlpools.json `swap` (on-chain IDL: "token_authority - The
+    // authority to withdraw tokens from the input token account"; `a_to_b`
+    // "True if swapping from A to B"): "when data.a_to_b is true, transfers
+    // the input tokens from accounts.token_owner_account_a to
+    // accounts.token_vault_a", and the B-to-A lines for the other direction.
     PoolSwap {
         program: "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
         name: "swap",
@@ -2650,14 +2669,11 @@ const POOL_SWAPS: &[PoolSwap] = &[
         dst: "token_owner_account_b",
         in_vault: "token_vault_a",
         out_vault: "token_vault_b",
-        refused_with: Some("SignerTokenDebitUnderUnscopedDebit"),
+        refused_with: None,
         tail: WHIRLPOOL_SWAP_TAIL,
         decoded: true,
     },
-    // orca-whirlpools.json `swapV2`: "Orca Whirlpools instruction" (unread)
-    // and "credits the output token account with the received amount for
-    // the swap": the unscoped debit of "swap" again (class unstated, which
-    // the relaxation treats as one that moves value).
+    // orca-whirlpools.json `swapV2`: the same four lines as `swap`.
     PoolSwap {
         program: "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
         name: "swapV2",
@@ -2666,7 +2682,7 @@ const POOL_SWAPS: &[PoolSwap] = &[
         dst: "token_owner_account_b",
         in_vault: "token_vault_a",
         out_vault: "token_vault_b",
-        refused_with: Some("SignerTokenDebitUnderUnscopedDebit"),
+        refused_with: None,
         tail: WHIRLPOOL_SWAP_V2_TAIL,
         decoded: true,
     },
@@ -2674,11 +2690,17 @@ const POOL_SWAPS: &[PoolSwap] = &[
 
 /// An honest swap of 1 MINT_Y for 100 MINT_X through `s`.
 fn pool_swap(s: &PoolSwap) -> (Cluster, Vec<Ix>) {
+    pool_swap_paying(s, OWNER)
+}
+
+/// The same swap, its output paid into `out_owner`'s associated account
+/// (Round 40: the owner's own, or a stranger's for the attack control).
+fn pool_swap_paying(s: &PoolSwap, out_owner: &str) -> (Cluster, Vec<Ix>) {
     let mut c = Cluster::default();
     base_programs(&mut c);
     c.program(s.program, LOADER);
     let d = def(s.program, s.name);
-    let (src, dst) = (ata(OWNER, MINT_Y), ata(OWNER, MINT_X));
+    let (src, dst) = (ata(OWNER, MINT_Y), ata(out_owner, MINT_X));
     let (in_vault, out_vault) = (key(91), key(92));
     let pool = key(90);
     let keys = accounts_for(
@@ -2719,8 +2741,8 @@ fn pool_swap(s: &PoolSwap) -> (Cluster, Vec<Ix>) {
     c.after(&out_vault, token(MINT_X, &pool, reserve - out));
     c.set(&src, token(MINT_Y, OWNER, amount_in + 10_000_000));
     c.after(&src, token(MINT_Y, OWNER, 10_000_000));
-    c.set(&dst, token(MINT_X, OWNER, 0));
-    c.after(&dst, token(MINT_X, OWNER, out));
+    c.set(&dst, token(MINT_X, out_owner, 0));
+    c.after(&dst, token(MINT_X, out_owner, out));
     c.set(OWNER, acct(10 * SOL, SYSTEM, vec![]));
     c.after(OWNER, acct(10 * SOL - FEE, SYSTEM, vec![]));
     (
@@ -2797,15 +2819,182 @@ async fn round39_honest_pool_swaps_and_the_declarations_that_refuse_them() {
     assert!(wrong.is_empty(), "{wrong:#?}");
 }
 
+// ─── Round 40: the rewritten venues hold against a skim ────────────────────
+//
+// R39-CORE-DECISION-4 rewrote the swap declarations to name the owner's input
+// account as debited. The controls below prove the rewrite opened no skim, on
+// each rewritten venue class: named input/output accounts (Raydium CPMM
+// `swap_base_input`, decoded; Meteora DAMM v2 `swap`, undecoded) and a
+// direction set by an argument (Orca `swap` and `swapV2`, decoded, whose
+// declaration names both owner accounts as debited, each under its
+// direction).
+
+/// What the Round 40 attack controls add to an honest pool swap.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum PoolAttack {
+    /// A sibling `TransferChecked` of `n` of the owner's input (MINT_Y) to
+    /// the attacker.
+    SiblingInputToStranger(u64),
+    /// The swap instruction also debits a second account of the owner's (a
+    /// MINT_Z account passed as an extra account), `n` of it to the attacker.
+    SecondOwnerAccountDebited(u64),
+    /// The swap debits the owner's output-side account by `n` instead of
+    /// paying it (both of the owner's accounts end lower).
+    BothOwnerSidesDebited(u64),
+    /// The output is credited to an account the owner does not hold.
+    OutputToStranger,
+}
+
+fn pool_swap_attacked(s: &PoolSwap, attack: PoolAttack) -> (Cluster, Vec<Ix>) {
+    let (mut c, mut ixs) = match attack {
+        PoolAttack::OutputToStranger => pool_swap_paying(s, ATTACKER),
+        _ => pool_swap(s),
+    };
+    let token =
+        |m: &str, owner: &str, amount: u64| acct(RENT, TOKEN, token_account(m, owner, amount));
+    let src = ata(OWNER, MINT_Y);
+    c.set(ATTACKER, acct(SOL, SYSTEM, vec![]));
+    match attack {
+        PoolAttack::SiblingInputToStranger(n) => {
+            let theirs = ata(ATTACKER, MINT_Y);
+            c.set(&theirs, token(MINT_Y, ATTACKER, 0));
+            c.after(&theirs, token(MINT_Y, ATTACKER, n));
+            c.after(&src, token(MINT_Y, OWNER, 10_000_000 - n));
+            ixs.push(ix(
+                TOKEN,
+                &[
+                    (&src, false, true),
+                    (MINT_Y, false, false),
+                    (&theirs, false, true),
+                    (OWNER, true, false),
+                ],
+                transfer_checked(n, 6),
+            ));
+        }
+        PoolAttack::SecondOwnerAccountDebited(n) => {
+            let (mine, theirs) = (ata(OWNER, MINT_Z), ata(ATTACKER, MINT_Z));
+            c.set(MINT_Z, acct(1_461_600, TOKEN, mint(10u64.pow(15), None)));
+            c.set(&mine, token(MINT_Z, OWNER, 5 * n));
+            c.after(&mine, token(MINT_Z, OWNER, 4 * n));
+            c.set(&theirs, token(MINT_Z, ATTACKER, 0));
+            c.after(&theirs, token(MINT_Z, ATTACKER, n));
+            ixs[0].accounts.push((mine, false, true));
+            ixs[0].accounts.push((theirs, false, true));
+        }
+        PoolAttack::BothOwnerSidesDebited(n) => {
+            let dst = ata(OWNER, MINT_X);
+            let out_vault = key(92);
+            let reserve = 10u64.pow(12);
+            c.set(&dst, token(MINT_X, OWNER, n));
+            c.after(&dst, token(MINT_X, OWNER, 0));
+            c.after(&out_vault, token(MINT_X, &key(90), reserve + n));
+        }
+        PoolAttack::OutputToStranger => {}
+    }
+    (c, ixs)
+}
+
+/// Round 40 (R39-CORE-DECISION-4): every rewritten venue class, with a skim,
+/// is never executable under the defaults or under every waiver; and the
+/// second owner account the swap debits is refused by L4 itself — the
+/// rewrite names the owner's input, not every account the owner holds.
+#[tokio::test]
+async fn round40_a_rewritten_pool_swap_with_a_skim_is_never_executable() {
+    let rewritten: Vec<&PoolSwap> = POOL_SWAPS
+        .iter()
+        .filter(|s| {
+            matches!(
+                (s.program, s.name),
+                (
+                    "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",
+                    "swap_base_input"
+                ) | ("cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG", "swap")
+                    | ("whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", "swap")
+                    | ("whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", "swapV2")
+            )
+        })
+        .collect();
+    assert_eq!(rewritten.len(), 4, "the four rewritten venues are rows");
+    let mut out = Outcomes::default();
+    let mut wrong = Vec::new();
+    for s in &rewritten {
+        for attack in [
+            PoolAttack::SiblingInputToStranger(300_000),
+            PoolAttack::SecondOwnerAccountDebited(7_000_000),
+            PoolAttack::BothOwnerSidesDebited(40_000_000),
+            PoolAttack::OutputToStranger,
+        ] {
+            for w in BOTH {
+                let (c, ixs) = pool_swap_attacked(s, attack);
+                let r = verify(
+                    c,
+                    OWNER,
+                    &ixs,
+                    0,
+                    "swap",
+                    swap_request("1", MINT_Y, MINT_X),
+                    w,
+                )
+                .await;
+                let tag = format!("{} {} {attack:?} {w:?}", &s.program[..6], s.name);
+                out.refused(&tag, &r);
+                // The owner's second account, and (where the declaration
+                // names only the input) the owner's output-side account: L4
+                // itself must refuse their debit, under every waiver.
+                let orca = s.program.starts_with("whirLbM");
+                let l4_must_refuse = matches!(attack, PoolAttack::SecondOwnerAccountDebited(_))
+                    || (matches!(attack, PoolAttack::BothOwnerSidesDebited(_)) && !orca);
+                if l4_must_refuse && !names(&r, "UndeclaredTokenDebit") {
+                    wrong.push(format!("{tag}: {}", statuses(&r)));
+                }
+                // An undecoded venue (DAMM v2): L4 does not bound how much of
+                // the named input leaves, and no binding reads the swap, so a
+                // skim beside it is held only by the swap staying unbound
+                // (`intent_parameters`), which no waiver makes executable.
+                // Before Round 40 the unscoped-debit rule Blocked it (and every
+                // honest swap through it). Pinned so the reliance is visible.
+                if !s.decoded
+                    && !l4_must_refuse
+                    && !format!("{:?}", r.scope.unobserved_codes()).contains("IntentParameters")
+                {
+                    wrong.push(format!(
+                        "{tag}: an undecoded swap is bound: {:?}",
+                        r.decision
+                    ));
+                }
+            }
+        }
+    }
+    out.assert_none_executable();
+    assert!(
+        wrong.is_empty(),
+        "an owner account the declaration does not name passed L4, or an undecoded swap was bound: {wrong:#?}"
+    );
+}
+
 /// Whether a manifest account name is one of the user's own accounts (by
 /// name: the user's token accounts and wallet, not a pool's, a vault's, a
 /// program's or a fee recipient's). A heuristic for the census below only;
 /// the end-to-end rows above are the evidence.
 fn user_side(name: &str) -> bool {
     let n = name.to_lowercase();
-    let user = ["user", "input", "source", "owner_account", "token_in"]
-        .iter()
-        .any(|w| n.contains(w));
+    // Round 40: "swapper" (Bonkswap/Guacswap swapperX/YAccount), "funding"
+    // (Jupiter Perpetuals fundingAccount) and Phoenix's trader accounts
+    // (baseAccount/quoteAccount, IDL desc "Trader base/quote token
+    // account") are the user's too; the Round 40 rewrites name them.
+    let user = [
+        "user",
+        "input",
+        "source",
+        "owner_account",
+        "token_in",
+        "swapper",
+        "funding",
+    ]
+    .iter()
+    .any(|w| n.contains(w))
+        || n == "baseaccount"
+        || n == "quoteaccount";
     let not = ["vault", "pool", "program", "reserve", "fee", "mint", "pda"]
         .iter()
         .any(|w| n.contains(w));
@@ -2889,7 +3078,21 @@ fn round39_swap_declaration_census() {
 /// refused by default; 8 (Jupiter's `*RouteCheck` variants, "Jupiter V6
 /// aggregator instruction") declare none Graphite can read. Pinned so a
 /// manifest change re-measures it.
-const MEASURED_SWAP_CENSUS: &[(&str, usize)] = &[("b", 8), ("d", 93), ("e", 14)];
+///
+/// Round 40 (`[("b", 8), ("d", 93), ("e", 14)]` -> `[("d", 26), ("e", 74)]`,
+/// 100 instructions; every moved row is in docs/audit-r40/declaration-rewrites.json):
+/// - 15 removed (R39-SUPPLY-CHAIN-11, in no committed IDL of their program):
+///   the 8 "b" `*RouteCheck`, and from "d" Jupiter's four
+///   `*AccountCompressionRoute`, `route_with_token_ledger_v2`,
+///   `shared_accounts_route_with_token_ledger_v2` and Meteora DLMM's `swap_2`;
+/// - 60 "d" rewritten from the committed IDLs to name the user's input
+///   account as debited: now "e" (the user-side words above gained
+///   "swapper", "funding" and Phoenix's two trader accounts for 5 of them);
+/// - 26 "d" left unchanged, each with its reason in the JSON's
+///   `left_unchanged` (no committed IDL for the instruction, the user's
+///   accounts are remaining accounts, or the instruction is not a user's
+///   swap: administration, keeper execution, a view, an assertion).
+const MEASURED_SWAP_CENSUS: &[(&str, usize)] = &[("d", 26), ("e", 74)];
 
 // ─── Round 40 (bootstrap): what the census import changes ──────────────────
 

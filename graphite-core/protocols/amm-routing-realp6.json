@@ -282,7 +282,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, pool_state, input_vault, output_vault, observation_state, user_input_token_account, user_output_token_account",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.user_input_token_account to accounts.input_vault",
+    "transfers the output tokens from accounts.output_vault to accounts.user_output_token_account",
+    "debits accounts.user_input_token_account by the input tokens",
+    "credits accounts.user_output_token_account with the output tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

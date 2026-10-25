@@ -1125,7 +1125,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool_state, input_token_account, output_token_account, input_vault, output_vault, observation_state",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.input_token_account to accounts.input_vault",
+    "transfers the output tokens from accounts.output_vault to accounts.output_token_account",
+    "debits accounts.input_token_account by the input tokens",
+    "credits accounts.output_token_account with the output tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
@@ -1241,7 +1244,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool_state, input_token_account, output_token_account, input_vault, output_vault, observation_state",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.input_token_account to accounts.input_vault",
+    "transfers the output tokens from accounts.output_vault to accounts.output_token_account",
+    "debits accounts.input_token_account by the input tokens",
+    "credits accounts.output_token_account with the output tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"

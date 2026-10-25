@@ -1983,8 +1983,9 @@ impl DeclaredEffects {
     /// Whether some line declares a debit without naming any account
     /// (Round 34, R33-5). For the signer judgements such a line is a
     /// declaration Graphite cannot read: it says value moves and not whose.
-    /// Measured on the shipped manifests: 1,767 of 3,541 instructions carry
-    /// one (1,802 before Round 36's IDL rewrites), none beside a named debit
+    /// Measured on the shipped manifests: 1,700 of 3,518 instructions carry
+    /// one (1,767 of 3,541 before Round 40's IDL rewrites and removals, 1,802
+    /// before Round 36's), none beside a named debit
     /// (`tests/r30_declared_effects_census.rs`).
     pub fn debit_names_no_account(&self) -> bool {
         self.scopes.get("debit").is_some_and(|s| s.anywhere)
