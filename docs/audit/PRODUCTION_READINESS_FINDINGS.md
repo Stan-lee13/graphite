@@ -25,7 +25,7 @@ reproductions, campaigns, commands — is in [`parts/`](parts/):
 | dashboard | the operator console, its e2e harness | [`parts/dashboard.md`](parts/dashboard.md) |
 | supply-chain | CI, release, deploy, containers, dependencies, rulesets, manifests and fixture data | [`parts/supply-chain.md`](parts/supply-chain.md) |
 
-Every tracked file's coverage is in [`EXHAUSTIVE_FILE_INVENTORY.csv`](EXHAUSTIVE_FILE_INVENTORY.csv).
+Every tracked file's coverage is in [`EXHAUSTIVE_FILE_INVENTORY.csv`](EXHAUSTIVE_FILE_INVENTORY.csv): 1,143 files at `833af24` (the remediated branch, the CSV's own commit aside), every one mapped to a workstream by [`review-map.tsv`](review-map.tsv); regenerate with `python3 -I docs/audit/build_inventory.py --commit HEAD`.
 
 **Severity:** P0 signing bypass / unauthorized value movement / audit-integrity or release-provenance
 bypass · P1 serious security or integrity defect, silent fail-open · P2 reliability, high-impact
