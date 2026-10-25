@@ -10,6 +10,9 @@ benchmark::tests::soak_sequential_verifies_report_scale
 durable::tests::archive_index_cost_on_64_mib_archives
 # Round 34 (R33-2): the keyed readers' MAC cost on a 64 MiB archive
 durable::chain_trail_tests::reader_mac_check_cost_on_a_64_mib_archive
+# Round 39 (R39-CB-5): a keyed reader's memory over an adopted unkeyed history
+# (a measurement in two runs, not an assertion)
+durable::chain_trail_tests::keyed_reader_memory_for_an_adopted_unkeyed_history
 # Need tools/mainnet-sample/mainnet_sample.json (fetched, not committed):
 every_mainnet_v1_transaction_in_the_sample_parses_and_binds
 real_mainnet_traffic_is_not_refused_for_contradicting_itself

@@ -5,6 +5,23 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 
 ## [0.3.0-beta] — unreleased (the contract since v0.2.0-beta)
 
+Round 39 (2026-10-25) — the exhaustive production-readiness audit of `c087bfb` (internal; [findings](../docs/audit/PRODUCTION_READINESS_FINDINGS.md), [remediation log](../docs/audit/REMEDIATION_LOG.md)):
+
+- **Contract:** unchanged (`schemas/verification-result-v1.json` is the same; both SDKs now test their enums against it).
+- **Behaviour (stricter):**
+  - `intent_binding::keeps_value` (R39-CORE-DECISION-1): value beside a swap, a grant or a creation is kept only when it stays in the owner's keeping (the swapping wallet, the grant's owner, the fee payer, as L4's `lamports_kept_by` judges it), not when it reaches any signer or a token account whose owner field names one.
+  - `intent_binding::grant_keeps_value` (R39-CORE-DECISION-2): claim, close and configure grants obey the sibling rule, as withdrawals have since Round 38.
+  - `plugin_orchestrator` (R39-CORE-DECISION-3): the Simulation family is fail-closed; a panicking Simulation plugin refuses.
+  - `verification` (R39-CORE-IDENTITY-2): a v0 simulation that returns no readable `loadedAddresses` is set aside, as a contradicting one is.
+  - `manifest_registry` `gate_decision` (R39-CORE-IDENTITY-1): a pinned refusal the candidate approves blocks the upgrade; the registry's own fixtures must meet the rate without the submitter's.
+  - `manifest::validate_manifest` (R39-CORE-IDENTITY-4): every `expected_address` is `{program_id}` or a base58 key.
+  - Audit trail (R39-CB-1): writers and keyed readers refuse a trail whose newest record is another trail's under the same key ("the audit trail holds records of another trail under the same key").
+  - Server (R39-CB-2, -7): logging failures cannot panic the server; a quarantine lift cut off while its append waits is not applied.
+- **CLI:** `audit verify` of a directory with no trail exits 3, not 2 (R39-CB-6); `healthcheck --strict` follows no redirect and no environment proxy (R39-CB-3); `protocol diff` compares role, PDA seeds, expected address, optional, alternative layouts and risk rules (R39-CB-12).
+- **Metrics (additive):** `graphite_payload_too_large_total`, `graphite_request_timeouts_total`, `graphite_handler_panics_total` (R39-CB-4).
+- **Dependencies:** `anyhow` removed (unused); the fuzz lockfile is audited in CI.
+- **Tests:** `round39_decision_campaigns`, `round39_registry_gate_dilution`, `round39_lookup_table_campaign`, `round39_manifest_expected_address`, `round39_core_boundary`, `round39_conformance_corpus` (the shared corpus `examples/decisions/conformance.json`).
+
 Round 38 (2026-10-24) — the Round 37 re-audit of `8b3d8a4` answered: its P1s, P2s and P3s ([report](../docs/round38-the-round-37-re-audit-answered-2026-10-24.md)):
 
 - **Contract:** `scope.unobserved_codes` gains `program_deployments` (both scope kinds): the deployment of a manifested program the transaction invokes could not be read (the read failed, ran out of budget, or the account does not decode as its loader's), so whether its evidence describes the code now on chain is unknown (R37-16). Never inherent. The TS and Go SDKs know it; the guard refuses it by default.

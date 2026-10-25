@@ -1,0 +1,103 @@
+# Round 39: which workstream covered each path, and how. Read by build_inventory.py.
+# pattern<TAB>workstream<TAB>review<TAB>findings<TAB>disposition
+# review: read-fully | read-in-part | machine-validated | run-only. The most specific pattern wins.
+# Detail per file: docs/audit/parts/<workstream>.md §1.
+#
+# ── core-decision (docs/audit/parts/core-decision.md) ──
+graphite-core/src/verification.rs	core-decision + core-identity + core-boundary	read-fully	R39-CORE-DECISION-1, R39-CORE-DECISION-2, R39-CORE-IDENTITY-2	fixed with tests
+graphite-core/src/intent_binding.rs	core-decision	read-fully	R39-CORE-DECISION-1	fixed with tests
+graphite-core/src/intent_grants.rs	core-decision	read-fully	R39-CORE-DECISION-2, R39-CORE-DECISION-5	fixed (2); owner decision (5)
+graphite-core/src/state_diff.rs	core-decision	read-in-part	none	check_state_diff_with read in full; Token-2022 model machine-validated by its suites
+graphite-core/src/risk_engine.rs	core-decision	read-fully	none	no finding
+graphite-core/src/policy_engine.rs	core-decision	read-fully	none	no finding
+graphite-core/src/confidence_engine.rs	core-decision	read-fully	none	no finding
+graphite-core/src/simulation_integrity.rs	core-decision	read-fully	none	no finding (campaign 8)
+graphite-core/src/semantic_graph_store.rs	core-decision	read-fully	none	no finding (campaign 8)
+graphite-core/src/tx_pattern_analysis.rs	core-decision	read-fully	none	no cumulative value cap: accepted limitation
+graphite-core/src/unknown_protocol_mode.rs	core-decision	read-fully	none	no finding
+graphite-core/src/plugin_orchestrator.rs	core-decision	read-fully	R39-CORE-DECISION-3	fixed with test
+graphite-core/src/plugins/*	core-decision	read-fully	none	P3 observations only
+graphite-core/src/regression_engine.rs	core-decision + core-identity	read-fully	R39-CORE-IDENTITY-1	gate_decision fixed with tests
+graphite-core/src/release_eval.rs	core-decision	read-fully	none	no finding
+# ── core-identity (docs/audit/parts/core-identity.md) ──
+graphite-core/src/tx_artifact.rs	core-identity	read-fully	none	no finding; panics classified
+graphite-core/src/solana_types.rs	core-identity	read-fully	none	no finding
+graphite-core/src/account_resolution.rs	core-identity	read-in-part	none	production read fully; unit tests by name
+graphite-core/src/parsed_inner.rs	core-identity	read-fully	none	unrebuildable classes tested end to end
+graphite-core/src/transaction_builder.rs	core-identity	read-fully	none	no finding
+graphite-core/src/manifest.rs	core-identity	read-in-part	R39-CORE-IDENTITY-4	production read fully; fixed with test
+graphite-core/src/manifest_registry.rs	core-identity	read-fully	R39-CORE-IDENTITY-1, R39-CORE-IDENTITY-7	fixed (1); owner decision (7)
+graphite-core/fuzz/fuzz_targets/*	core-identity	read-fully	R39-CORE-IDENTITY-5	assertions strengthened; each target fuzzed 120 s
+graphite-core/fuzz/*	core-identity	read-fully	none	fuzz harness and lockfile (lockfile audited in CI since Round 39)
+graphite-core/fuzz/seeds/*	core-identity	machine-validated	none	seed corpora replayed by the fuzz targets
+tools/runtime-oracle/*	core-identity	read-in-part	R39-CORE-IDENTITY-6	differential oracle; --inputs added
+tools/inner-instruction-oracle/*	core-identity	read-in-part	none	run 200,000 iterations, PASS
+# ── core-boundary (docs/audit/parts/core-boundary.md) ──
+graphite-core/src/durable.rs	core-boundary	read-fully	R39-CB-1, R39-CB-4, R39-CB-5	production read fully; fixed with tests
+graphite-core/src/durable/*	core-boundary	read-fully	R39-CB-1, R39-CB-5	fixed with tests
+graphite-core/src/server.rs	core-boundary	read-in-part	R39-CB-2, R39-CB-4, R39-CB-7, R39-CB-8	production read fully; fixed (2,4,7); owner decision (8)
+graphite-core/src/cli.rs	core-boundary	read-in-part	R39-CB-3, R39-CB-6, R39-CB-12, R39-CB-14, R39-CB-15	production read fully; fixed (3,6,12); recorded (14,15)
+graphite-core/src/bin/graphite.rs	core-boundary	read-fully	R39-CB-14	recorded
+graphite-core/src/rpc_client.rs	core-boundary	read-in-part	R39-CB-13	production read fully; owner decision
+graphite-core/src/operator_boundary.rs	core-boundary	read-fully	none	no finding
+graphite-core/src/live_corpus.rs	core-boundary	read-in-part	none	production read fully; offline tooling
+graphite-core/src/benchmark.rs	core-boundary	read-in-part	none	production read fully; offline tooling
+graphite-core/src/lib.rs	core-boundary	read-fully	none	no finding
+deploy/scripts/*	core-boundary + supply-chain	read-fully	R39-CB-9	shellcheck clean; accepted
+# ── tests: run in full by every Rust workstream; read in part ──
+graphite-core/tests/*	core workstreams	run-only	see parts files	every suite run (2,4xx passed); the suites in each scope read in part
+graphite-core/tests/round39_*	core workstreams	read-fully	R39 campaigns	added this round
+graphite-core/tests/fixtures/*	core workstreams	machine-validated	none	consumed by the suites that pass
+graphite-core/proptest-regressions/*	core-decision	machine-validated	none	replayed by proptest
+# ── clients (docs/audit/parts/clients.md) ──
+sdk/*	clients	read-fully	R39-CLIENTS-1, R39-CLIENTS-3	fixed with tests
+sdk/typescript/src/*.test.ts	clients	read-in-part	none	test files
+sdk/go/*_test.go	clients	read-in-part	none	test files
+sdk/*/package-lock.json	clients	machine-validated	none	npm ci + audit gate
+integrations/agent-guard/*	clients	read-fully	R39-CLIENTS-4, R39-CLIENTS-6, R39-CLIENTS-7, R39-CLIENTS-9	fixed with tests
+integrations/agent-guard/*.test.ts	clients	read-in-part	none	test files
+integrations/solana-agent-kit/*	clients	read-fully	R39-CLIENTS-2	documented limitation, pinned
+integrations/mcp-server/*	clients	read-fully	none	no finding; prompt-injection test added
+integrations/vercel-ai/*	clients	read-fully	none	no finding
+integrations/*/package-lock.json	clients	machine-validated	none	npm ci + audit gate
+python-ai-layer/*	clients	read-fully	R39-CLIENTS-5	fixed with test
+tools/live-measure/*	clients	read-fully	R39-CLIENTS-8	fixed with test
+tools/mainnet-sample/*	clients	read-fully	none	no finding
+examples/*	clients	read-fully	none	conformance corpus extended
+schemas/*	clients	read-fully	none	SDK enums pinned to the schema
+# ── dashboard (docs/audit/parts/dashboard.md) ──
+dashboard/*	dashboard	read-fully	R39-DASH-1..13	fixed with tests
+dashboard/src/styles.css	dashboard	read-in-part	R39-DASH-10	rest checked by axe contrast and screenshots
+dashboard/public/*	dashboard	machine-validated	none	image headers checked
+dashboard/*package-lock.json	dashboard	machine-validated	none	npm ci + audit (0)
+dashboard/e2e/package-lock.json	dashboard	machine-validated	none	npm ci + audit (0)
+# ── supply-chain (docs/audit/parts/supply-chain.md) ──
+.github/*	supply-chain	read-fully	R39-SUPPLY-CHAIN-1..6, -8, -15	fixed (2-5); owner (1); recommendation (6); accepted (8)
+.github/ISSUE_TEMPLATE/*	supply-chain	read-fully	R39-SUPPLY-CHAIN-9	owner (security contact)
+Dockerfile	supply-chain	read-fully	none	image built in PR CI (container job)
+docker-compose.yml	supply-chain	read-fully	none	one replica; read-only; caps dropped
+.dockerignore	supply-chain	read-fully	none	no finding
+.gitignore	supply-chain	read-fully	none	no finding
+.gitattributes	supply-chain	read-fully	none	no finding
+deploy/*	supply-chain	read-in-part	none	Caddy and promtool checks BLOCKED here; green in PR CI
+graphite-core/Cargo.toml	supply-chain	read-fully	R39-SUPPLY-CHAIN-7	anyhow removed
+graphite-core/Cargo.lock	supply-chain	machine-validated	none	cargo audit + metadata --locked
+graphite-core/protocols/*	supply-chain	machine-validated	R39-SUPPLY-CHAIN-11, R39-SUPPLY-CHAIN-12	validate_corpora.py; owner (11); pinned (12)
+graphite-core/fixtures/*	supply-chain	machine-validated	none	validate_corpora.py; provenance labels checked
+graphite-core/scripts/*	supply-chain	read-in-part	none	generators re-run byte-identical
+graphite-core/scripts/out/*	supply-chain	machine-validated	R39-SUPPLY-CHAIN-13	generated; rebuilt byte-identical
+graphite-core/scripts/idls/*	supply-chain	machine-validated	none	committed IDLs; parse checked
+docs/evidence/*	supply-chain	machine-validated	none	validate_corpora.py
+docs/audit-r36/*.json	supply-chain	machine-validated	none	rebuilt by build_ledger.py byte-identical
+# ── main session: documentation reconciliation (Phase B) ──
+*.md	main session	read-in-part	see PRODUCTION_READINESS_FINDINGS.md	checked against code: env names, CLI commands, counts (docs_numbers_match_the_code)
+docs/round*.md	main session	read-in-part	none	historical reports; not rewritten
+docs/audit-r30/*	main session	machine-validated	none	historical Round 30 record
+docs/audit-r36/*	main session	machine-validated	none	historical Round 36 record
+docs/audit/*	main session	read-fully	none	this round's deliverables
+AUDIT/*	main session	read-in-part	none	break log and findings register
+docs/ops/*	main session + supply-chain + core-boundary	read-fully	none	runbooks checked against scripts and env names
+.env.example	main session	read-fully	none	every Core variable present (checked by script)
+LICENSE	main session	read-fully	none	no finding
+assets/*	main session	machine-validated	none	image headers checked
+graphite-core/build_manifests.py	supply-chain	read-in-part	none	manifest generator; outputs validated by validate_corpora.py
