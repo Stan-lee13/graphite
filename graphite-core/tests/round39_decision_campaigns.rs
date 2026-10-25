@@ -2183,8 +2183,12 @@ enum Act {
     BlockEmpty,
     /// A Block whose pattern is the one a Note is recorded under.
     BlockWarning,
-    /// Finds nothing after 300 ms: there is no per-plugin timeout.
+    /// Finds nothing after 50 ms, inside the plugin deadline. Re-pinned in
+    /// Round 40: it slept 300 ms to show there was no per-plugin timeout,
+    /// and 300 ms is now past the 250 ms deadline.
     Slow,
+    /// Finds nothing after 3 s, far past the deadline (Round 40).
+    Hang,
 }
 
 fn act(a: Act) -> PluginVerdict {
@@ -2208,7 +2212,11 @@ fn act(a: Act) -> PluginVerdict {
             reason: "a block shaped like a note".to_string(),
         },
         Act::Slow => {
-            std::thread::sleep(std::time::Duration::from_millis(300));
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            PluginVerdict::NoFinding
+        }
+        Act::Hang => {
+            std::thread::sleep(std::time::Duration::from_secs(3));
             PluginVerdict::NoFinding
         }
     }
@@ -2327,8 +2335,8 @@ async fn swap_with_plugins(
 }
 
 /// The benign control: a plugin of any family in any layer that finds
-/// nothing, or takes 300 ms to find nothing, leaves an honest swap
-/// executable. (A harness in which any plugin refused would prove nothing
+/// nothing, or takes 50 ms (inside its deadline) to find nothing, leaves an
+/// honest swap executable. (A harness in which any plugin refused would prove nothing
 /// about the vetoes below.)
 #[tokio::test]
 async fn campaign12_a_plugin_that_finds_nothing_leaves_an_honest_swap_executable() {
@@ -2338,7 +2346,8 @@ async fn campaign12_a_plugin_that_finds_nothing_leaves_an_honest_swap_executable
             assert_executable(&format!("{f:?} NoFinding {w:?}"), &r);
         }
     }
-    // No timeout: a slow plugin delays the verdict by what it takes.
+    // A plugin inside its deadline delays the verdict by what it takes and
+    // changes nothing else (Round 40).
     let started = std::time::Instant::now();
     let r = swap_with_plugins(
         Beside::Nothing,
@@ -2348,9 +2357,38 @@ async fn campaign12_a_plugin_that_finds_nothing_leaves_an_honest_swap_executable
     .await;
     assert_executable("Risk Slow", &r);
     assert!(
-        started.elapsed() >= std::time::Duration::from_millis(300),
+        started.elapsed() >= std::time::Duration::from_millis(50),
         "the slow plugin ran to completion inside the request"
     );
+}
+
+/// Round 40 (core-decision P3, "No per-plugin timeout"): a plugin of any
+/// family that does not answer within its deadline refuses the honest swap
+/// it would have let through, at the deadline — not when it finishes — and
+/// names why. Before, it held the request for as long as it took (bounded
+/// only by the server's 10 s request timeout, which answers no verdict) and
+/// the swap was executable once it returned.
+#[tokio::test]
+async fn round40_a_plugin_past_its_deadline_refuses_at_the_deadline() {
+    use graphite_core::plugin_orchestrator::PLUGIN_DEADLINE;
+    let mut o = Outcomes::default();
+    for f in FAMILIES {
+        let started = std::time::Instant::now();
+        let r = swap_with_plugins(Beside::Nothing, Waivers::None, vec![plugin(f, Act::Hang)]).await;
+        let took = started.elapsed();
+        o.refused(&format!("{f:?} Hang"), &r);
+        assert!(
+            names(&r, "timed-out") && names(&r, "deadline"),
+            "{f:?}: the overrun is named"
+        );
+        // The plugin sleeps 3 s; the verdict came at its deadline, plus the
+        // verification's own time.
+        assert!(
+            took >= PLUGIN_DEADLINE && took < std::time::Duration::from_millis(2500),
+            "{f:?}: answered after {took:?}"
+        );
+    }
+    o.assert_none_executable();
 }
 
 /// The attack controls: a plugin of any family that blocks — with a proper
