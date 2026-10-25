@@ -69,7 +69,9 @@ case "$format" in
         line="${line%%#*}"
         [ -n "${line//[[:space:]]/}" ] || continue
         f_min="${line%% *}" f_bin="${line#* }"
-        [[ "$f_min" =~ ^[0-9]+$ ]] && [ -n "$f_bin" ] && [ "$f_bin" != "$line" ] || fail "per-binary floors $floors: bad line '$line'"
+        if ! [[ "$f_min" =~ ^[0-9]+$ ]] || [ -z "$f_bin" ] || [ "$f_bin" = "$line" ]; then
+          fail "per-binary floors $floors: bad line '$line'"
+        fi
         listed=$((listed + 1))
         got=$(printf '%s\n' "$per_binary" | awk -F'\t' -v b="$f_bin" '$2 == b { print $1; n++ } END { if (n != 1) print "x" n }' | tail -n 1)
         case "$got" in

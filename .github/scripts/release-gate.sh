@@ -206,7 +206,7 @@ PY
 
   same-tag)
     [ $# -eq 5 ] || usage
-    [ -n "$4" ] && [ -n "$5" ] || usage
+    if [ -z "$4" ] || [ -z "$5" ]; then usage; fi
     rc=0
     python3 -I - "$@" <<'PY' || rc=$?
 import json, sys
