@@ -142,7 +142,7 @@ services:
   # makes a security decision (Constitution P1).
   ai:
     profiles: [ai]
-    image: python:3.13-slim-bookworm@sha256:e32be0e55814a08977501ca863271d9bd02443710db8f2afaf8372e2c4508530
+    image: python:3.15-slim-bookworm@sha256:575f8bc12ec26542e0678bc6b60e385218248019d433157ec327264a78c3a853
     restart: unless-stopped
     command: ["python3", "-I", "/app/python-ai-layer/intent_parser.py", "--serve", "--port", "8081"]
     environment:
