@@ -28,6 +28,17 @@ build-from-source stack.
      verdict by default; a direct `/verify` caller must refuse it too.
    - `GRAPHITE_RPC_WITNESS_URL` — a second RPC **from a different provider**
      for L8 inclusion checks. Two URLs on one provider are one witness.
+
+   RPC egress must be direct (Round 40, R39-CB-13). The Core's RPC and
+   witness clients ignore `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` and
+   `NO_PROXY`: every connection goes straight to the provider's address, and
+   the connect-time address guard judges that address. Through an environment
+   proxy the guard would judge only the proxy's address, and the proxy would
+   resolve the provider's host name itself — a name that resolves to a private,
+   loopback or metadata address would reach it without the guard seeing it.
+   If the host can only reach the internet through a proxy, allow the RPC
+   providers' addresses through the firewall instead; a forward proxy in
+   front of the Core's RPC traffic is not supported.
    - `GRAPHITE_WALLET_PROFILE` — pin the policy profile whenever the caller is
      not the wallet operator (an agent's request body would otherwise choose it).
    - `GRAPHITE_ADMIN_API_KEY` — only if you will use `/admin/*`; must differ
@@ -66,6 +77,21 @@ build-from-source stack.
    `GRAPHITE_TRUST_PROXY` to the exact number of proxy hops you control
    (`1` for one nginx/ALB). Never higher: an over-count lets a caller choose
    its own rate-limit bucket through `X-Forwarded-For`.
+
+   Then set `GRAPHITE_TRUSTED_PROXIES` to the address (or CIDR range) the
+   proxy connects to the Core FROM, as the Core sees it (Round 40, R39-CB-8):
+   `127.0.0.1,::1` for a proxy on the same host talking to loopback; for a
+   proxy outside the container reaching the published port, the address the
+   connection arrives from inside the container (the Docker bridge gateway,
+   typically `172.17.0.1` — the Core logs the list it trusts at startup and,
+   at most once a minute, the address of a peer whose `X-Forwarded-For` it
+   ignored). `X-Forwarded-For` is believed only on a connection from a listed
+   address; any other peer is rate-limited by its own address. The server
+   refuses to start with `GRAPHITE_TRUST_PROXY` of 1 or more and
+   `GRAPHITE_TRUSTED_PROXIES` unset or empty, and on an entry that is not an
+   IP address or CIDR range. List the proxy only: a range wide enough to
+   include other hosts or containers lets each of them choose its own
+   rate-limit bucket.
 
 6. **Wire the signals** into your monitoring before taking traffic:
    - `/health` → alert on `degraded: true`; `degraded_reasons` names the cause.

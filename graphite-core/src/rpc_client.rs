@@ -1838,9 +1838,19 @@ impl SolanaRpcClient {
         // including a plaintext one. A JSON-RPC endpoint that answers 3xx is
         // an endpoint that is not answering, and that is what it is reported
         // as (Round 12).
+        //
+        // No environment proxy either (Round 40, R39-CB-13). With
+        // `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` set, reqwest connected to
+        // the proxy and handed it the RPC host name: the connect-time guard
+        // (`GuardedResolver`) then judged only the proxy's address, and the
+        // proxy resolved the provider's name itself — a name pointing at a
+        // private, loopback or metadata address reached it unjudged. RPC
+        // egress is direct (docs/ops/install.md), so the guard always judges
+        // the endpoint the request actually goes to.
         let http_client = HttpClient::builder()
             .timeout(config.timeout)
             .redirect(reqwest::redirect::Policy::none())
+            .no_proxy()
             .dns_resolver(std::sync::Arc::new(GuardedResolver))
             .tls_certs_only(bundled_root_certificates())
             .build()
