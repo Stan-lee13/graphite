@@ -580,13 +580,21 @@ def test_seeding_covers_system_and_spl_token():
     doc = lm.seed("graphite", "/d", run=lambda c, **k: ran.append(c) or Done())
     assert doc["ok"] and set(doc["programs"]) == {lm.SYSTEM_PROGRAM, lm.SPL_TOKEN_PROGRAM}
     seeded = [(c[2], c[c.index("--program") + 1]) for c in ran]
+    # Round 40: the evidence is the measured census, imported in one
+    # command; no `evidence seed` with typed numbers is run.
+    imported = [c for c in ran if c[2] == "import-census"]
+    assert len(imported) == 1 and not any(c[2] == "seed" for c in ran)
+    assert [imported[0][i + 1] for i, a in enumerate(imported[0]) if a == "--program"] == [
+        lm.SYSTEM_PROGRAM, lm.SPL_TOKEN_PROGRAM]
     for p in (lm.SYSTEM_PROGRAM, lm.SPL_TOKEN_PROGRAM):
-        assert ("seed", p) in seeded and ("baseline", p) in seeded and ("show", p) in seeded
+        assert ("baseline", p) in seeded and ("show", p) in seeded
     token_baseline = next(c for c in ran if c[2] == "baseline" and lm.SPL_TOKEN_PROGRAM in c)
     assert token_baseline[token_baseline.index("--mean-compute-units") + 1] == "5000"
     assert all(c[c.index("--data-dir") + 1] == "/d" for c in ran)
     failed = lm.seed("graphite", "/d", run=lambda c, **k: Done(1 if c[2] == "baseline" else 0))
     assert not failed["ok"] and "baseline" in failed["error"]
+    failed = lm.seed("graphite", "/d", run=lambda c, **k: Done(1 if c[2] == "import-census" else 0))
+    assert not failed["ok"] and "import-census" in failed["error"]
 
 
 def test_a_seeded_run_reports_the_seeded_programs_and_the_caveat():
