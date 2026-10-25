@@ -229,6 +229,17 @@ reach ("… does not continue the chain the readers walk …"): a copied or
 transplanted record at the end of the trail. Continuing after it would fork
 the chain. Run `graphite audit verify` and move the line aside.
 
+Since Round 39 (R39-CB-1) a server, `graphite execution` and every `graphite
+audit` command that writes also refuse a trail that holds records of two
+trails under one key ("… holds records of another trail under the same key
+…"): a record whose trail id is not the newest record's and whose MAC
+verifies, wherever it stands. The readers pin the newest record's trail id,
+and a record of another trail appended at the end used to become that pin:
+every genuine record then read as the other trail's, and a restarted server
+resumed onto the other trail with none of its own history readable.
+`graphite audit verify` names the first record of the other trail ("a record
+of another trail"); move it aside, or restore the trail from a backup.
+
 **Trail id (chain link version 2, Round 38).** Every record now carries
 `chain.v = 2` and `chain.trail`, a random 16-byte id drawn when the chain
 starts (at genesis, or at the first record a Round 38 writer appends to a
