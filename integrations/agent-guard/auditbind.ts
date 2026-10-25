@@ -53,7 +53,17 @@ export class AuditBind {
     for (const addr of params.accountAddresses) {
       field(Buffer.from(addr, "utf8"));
     }
-    field(Buffer.from(params.instructionData ?? []));
+    // Round 39 (R39-CLIENTS-9): every element a byte, as the SDK's
+    // `checkedBytes` has required since the 2026-10-20 audit (T3).
+    // `Buffer.from(number[])` reduces each element modulo 256, so `[256]`
+    // hashed as `[0]` here while the SDK and the Core refused it.
+    const data = params.instructionData ?? [];
+    data.forEach((b, i) => {
+      if (typeof b !== "number" || !Number.isInteger(b) || b < 0 || b > 255) {
+        throw new Error(`[AuditBind] instructionData[${i}] is ${String(b)}, not a byte (an integer from 0 to 255). ABORTING.`);
+      }
+    });
+    field(Buffer.from(data));
     const cpis = params.cpiTargets ?? [];
     hasher.update(u32(cpis.length));
     for (const target of cpis) {

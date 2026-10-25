@@ -20,6 +20,7 @@ import { readFileSync } from "node:fs";
 import { parseJsonStrict, validateVerificationResult } from "../../sdk/typescript/src/client.js";
 import { isExecutable, UNOBSERVED_CODES, type VerificationResult } from "../../sdk/typescript/src/types.js";
 import { NEVER_ACCEPTABLE, ResidualPolicy, ResidualPolicyRefusal } from "./residual-policy.js";
+import { AuditBind } from "./auditbind.js";
 
 type Edit = { op: "set" | "delete" | "push"; path: (string | number)[]; value?: unknown };
 interface Vector {
@@ -102,6 +103,28 @@ test("Round 39 corpus: under the default policy the guard signs exactly what isE
     const sdk = verdict !== null && isExecutable(verdict);
     assert.equal(guardOutcome(strict, verdict) === "signs", sdk, v.name);
     if (sdk) assert.equal(v.expect.rust, "executable", `${v.name}: signed where the Core's rule does not execute`);
+  }
+});
+
+test("Round 39 corpus: the guard's own AuditBind computes the corpus's content hashes, and refuses a non-byte", () => {
+  const vectors = (JSON.parse(readFileSync(new URL("conformance.json", DIR), "utf8")) as {
+    content_hash: { name: string; program_id: string; discriminator: string; accounts: string[]; data: number[] | null; cpi_targets: string[]; expect: string }[];
+  }).content_hash;
+  assert.ok(vectors.length >= 5);
+  for (const c of vectors) {
+    let hash: string;
+    try {
+      hash = AuditBind.computeHash({
+        programId: c.program_id,
+        instructionDiscriminator: c.discriminator,
+        accountAddresses: c.accounts,
+        ...(c.data === null ? {} : { instructionData: c.data }),
+        cpiTargets: c.cpi_targets,
+      });
+    } catch {
+      hash = "error";
+    }
+    assert.equal(hash, c.expect, c.name);
   }
 });
 
