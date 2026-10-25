@@ -41,8 +41,9 @@ build-from-source stack.
    one opens in `.env.example`. `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS=1` waives two
    checks, not one: the grant refusal `UnboundedWithdrawal` (a zero minimum output) and
    the withdrawal binding `WithdrawalUnderbounded` (minimum outputs held to the simulated
-   credit, a Meteora DLMM remove with no minimum held unbound, and, since Round 38, a
-   sibling instruction that skims the payout).
+   credit, and a Meteora DLMM remove with no minimum held unbound). It never waives what
+   rides beside the withdrawal: a sibling instruction that skims the payout is refused
+   either way (Round 38, R37-1).
 
 3. **Validate, then start:**
    ```sh

@@ -28,8 +28,8 @@ observe is refused rather than assumed (P12).
 ```
 Overall:                         CONDITIONAL — security-hardened alpha. Verdict (Rounds 30–38): RELEASE BLOCKED on
                                  owner and external gates (branch rules and the release environment not applied, no
-                                 independent audit, no production deployment or operations); the code is READY FOR
-                                 INDEPENDENT AUDIT. Round 33's internal deep audit found a P0 the earlier rounds
+                                 independent audit, no production deployment or operations); the code is conditionally
+                                 ready for an independent audit, with the owner gates open. Round 33's internal deep audit found a P0 the earlier rounds
                                  missed (R33-1, fixed in Round 34); Round 37's re-audit found two more that were
                                  executable end to end (R37-1 sibling skims, R37-7 creation overfunding; fixed in
                                  Round 38)
@@ -135,7 +135,7 @@ L4 under an unreadable manifest: a signer's token debit or lamport loss under a 
                                  own token accounts (Round 32; GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT=1
                                  restores the warning). Since Round 34: a debit line that names no account is
                                  unreadable for the signer's judgement (SignerLamportsUnderUnscopedDebit,
-                                 SignerTokenDebitUnderUnscopedDebit, R33-5; 1,802 instructions carry one); losses are
+                                 SignerTokenDebitUnderUnscopedDebit, R33-5; 1,767 instructions carry one since Round 36); losses are
                                  netted per signer, value kept counts only toward the signer that holds it, rent only
                                  for a declared created account owned by the located program or a token program,
                                  and a vault's payout offsets nothing (R33-6/7/10); a created stake, vote or nonce
@@ -539,7 +539,9 @@ transaction under the stated threat model, and no external party has yet tried.
   `liquidUnstake` (fee bounded by the pool's configured maximum), Stake
   `Withdraw` and the Stake Pool withdrawals (rate moves only at the epoch
   update) and the claims are not held to a minimum. `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS=1`
-  (operator-only) waives both checks. The agent guard builds no withdrawals.
+  (operator-only) waives both checks; it never waives what rides beside a
+  withdrawal (Round 38: a sibling that skims a granted withdrawal is refused either
+  way). The agent guard builds no withdrawals.
 - **The Core binds the request's parameters to the bytes it can decode, and
   nothing else is executable (Round 36, F-003).** `intent_binding`: a transfer's
   amount, asset and recipient are compared with every top-level System
@@ -781,7 +783,9 @@ transaction under the stated threat model, and no external party has yet tried.
   into a recipient's associated token account (~0.002 SOL) or a Metaplex metadata
   account is no longer credited to the signer. No committed corpus row carries a
   state diff, so the committed data cannot show the rate; the live mainnet workflow
-  can, and has not run against Round 34. Opt-out:
+  can. It ran on the Round 35 head (runs 39950918074, 39950924519): 200 of 200
+  replays blocked in each, none executable, so the rate of honest flows refused is
+  not separable from that sample; it has not run on Round 36–38 code. Opt-out:
   `GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS=1` (value classes only).
 - **What binds an amount.** L4 binds a System `Transfer`/`CreateAccount`'s stated
   lamports (Round 34, R33-15). The request's own amount, recipient and asset are
