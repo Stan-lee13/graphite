@@ -111,6 +111,24 @@ def test_an_executable_verdict_its_own_fields_contradict_is_a_defect():
     assert any("own fields make it analysis_only" in d for d in lm.defects_for(ENTRY, v))
 
 
+@pytest.mark.parametrize(
+    "edit",
+    [
+        lambda s: s.pop("unobserved_codes"),
+        lambda s: s["unobserved"].append("a residual nobody named"),
+        lambda s: s.update(transaction_sha256="E" * 64),
+    ],
+    ids=["codes missing", "prose without a code", "digest not lower-hex"],
+)
+def test_an_executable_verdict_over_an_unnamed_residual_is_a_defect(edit):
+    # Round 39 (R39-CLIENTS-8): the recomputation read missing codes as none
+    # and prose without a code as nothing, so these were not defects.
+    v = fixture("executable_approved")
+    edit(v["scope"])
+    assert lm.recomputed_decision(v) == "analysis_only"
+    assert any("own fields make it analysis_only" in d for d in lm.defects_for(ENTRY, v))
+
+
 def test_executable_and_decision_must_agree():
     v = fixture("executable_approved")
     v["executable"] = False

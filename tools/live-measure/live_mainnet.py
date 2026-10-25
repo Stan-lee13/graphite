@@ -190,14 +190,27 @@ def recomputed_decision(result):
         patterns = {str(f.get("pattern", "")) for f in findings if isinstance(f, dict)}
         return "inconclusive" if patterns and patterns <= {"VerificationIncomplete"} else "blocked"
     scope = result.get("scope") or {}
-    codes = scope.get("unobserved_codes") or []
+    # Round 39 (R39-CLIENTS-8): as the SDKs read it — codes present and naming
+    # every unobserved entry, a digest of what was bound, layers reported.
+    # Missing codes used to read as none, and prose without a code as nothing,
+    # so a Core verdict executable over an unnamed residual was not a defect.
+    codes = scope.get("unobserved_codes")
+    prose = scope.get("unobserved")
+    digest = scope.get("transaction_sha256")
+    layers = result.get("layers")
     executable = (
         (result.get("risk_verdict") or {}).get("status") == "Clear"
         and result.get("policy_verdict") == "Approved"
         and scope.get("kind") == "artifact_bound"
+        and isinstance(digest, str)
+        and re.fullmatch(r"[0-9a-f]{64}", digest) is not None
         and scope.get("simulated") is True
+        and isinstance(codes, list)
+        and isinstance(prose, list)
+        and len(codes) == len(prose)
         and all(c in INHERENT for c in codes)
-        and not any(l.get("status") == "failed" for l in result.get("layers") or [])
+        and isinstance(layers, list)
+        and not any(isinstance(l, dict) and l.get("status") == "failed" for l in layers)
     )
     return "executable_approved" if executable else "analysis_only"
 
