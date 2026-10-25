@@ -8,8 +8,12 @@
 # (D2-6), dependency-holds.py (D2-7), the rulesets and ruleset-drift.py
 # (D2-4, R37-8), the release workflows (R37-8, D2-3), test-count.sh per test
 # binary (D2-8) and the Dockerfile's apt snapshot (D-8). Round 39: the live
-# ruleset state, shellcheck of these scripts and validate_corpora.py. Needs git and the
-# repository's full history (ci-scripts checks out with fetch-depth: 0).
+# ruleset state, shellcheck of these scripts and validate_corpora.py. Round 40:
+# actionlint pinned and run (with seeded faults, when $ACTIONLINT names the
+# pinned binary; the ci-scripts job sets it), the per-binary Rust floors
+# files, the guard's Windows job, publish = false and the mutation shards.
+# Needs git and the repository's full history (ci-scripts checks out with
+# fetch-depth: 0).
 # Needs bash and python3; no network. Exit 0 only when every case behaved.
 set -uo pipefail
 
@@ -709,6 +713,172 @@ tools = {t["name"]: t for t in json.load(open(sys.argv[2]))["tools"]}
 t = tools.get("debian snapshot (runtime image apt layer)") or sys.exit("pinned-tools.json does not list the snapshot")
 if t["version"] != next(iter(stamps)):
     sys.exit(f"pinned-tools.json says {t['version']}, the Dockerfile {stamps}")
+PY
+
+echo "== actionlint, pinned and run (Round 40, R39-SUPPLY-CHAIN-6)"
+expect 0 "the ci-scripts job runs the pinned actionlint, checksum first, over every workflow, nothing ignored" python3 -I - "$root/.github/workflows/ci.yml" "$root/.github/pinned-tools.json" "$root" <<'PY'
+import json, os, sys, yaml
+steps = yaml.safe_load(open(sys.argv[1]))["jobs"]["ci-scripts"]["steps"]
+tool = next(t for t in json.load(open(sys.argv[2]))["tools"] if t["name"] == "actionlint")
+step = next((s for s in steps if "actionlint" in s.get("name", "")), None) or sys.exit("no actionlint step in ci-scripts")
+env, run = step.get("env", {}), step["run"]
+if str(env.get("ACTIONLINT_VERSION")) != tool["version"]:
+    sys.exit(f"ACTIONLINT_VERSION {env.get('ACTIONLINT_VERSION')!r}, pinned-tools.json {tool['version']!r}")
+want = next(p["text"].split(": ", 1)[1] for p in tool["pinned_in"] if p["text"].startswith("ACTIONLINT_SHA256: "))
+if env.get("ACTIONLINT_SHA256") != want:
+    sys.exit("ACTIONLINT_SHA256 is not the pinned checksum")
+check, use = run.find("sha256sum --check"), run.find('"$dir/actionlint" -shellcheck')
+if check < 0 or use < 0 or check > run.find("tar -xzf") or check > use:
+    sys.exit("the archive is not checked against the pinned sha256 before it is unpacked and run")
+if "_linux_amd64.tar.gz" not in run or "releases/download/v${ACTIONLINT_VERSION}/" not in run:
+    sys.exit("not the release binary of the pinned version")
+if "-ignore" in run or "-config-file" in run:
+    sys.exit("actionlint is told to ignore something")
+for name in ("actionlint.yaml", "actionlint.yml"):
+    if os.path.exists(os.path.join(sys.argv[3], ".github", name)):
+        sys.exit(f".github/{name} exists: a config can silence findings; review it here first")
+names = [s.get("name", "") for s in steps]
+if names.index(step["name"]) > names.index("The CI scripts' own tests"):
+    sys.exit("actionlint must run before the scripts' tests (they use the binary it verified)")
+PY
+al_pinned="$(python3 -I -c 'import json,sys; print(next(t["version"] for t in json.load(open(sys.argv[1]))["tools"] if t["name"] == "actionlint"))' "$root/.github/pinned-tools.json")"
+AL="${ACTIONLINT:-}"
+if [ -n "$AL" ] && [ -x "$AL" ]; then
+  al_version="$("$AL" -version 2>/dev/null | head -n 1)"
+  [ "$al_version" = "$al_pinned" ] && ok "actionlint at \$ACTIONLINT is the pinned $al_pinned" || bad "actionlint at \$ACTIONLINT is ${al_version:-unreadable}, pinned $al_pinned"
+  if command -v shellcheck >/dev/null; then SC="$(command -v shellcheck)"; else SC=""; fi
+  expect 0 "actionlint finds nothing in the committed workflows" "$AL" -shellcheck "$SC" -pyflakes "" "$root"/.github/workflows/*.yml
+  mkdir -p "$T/al/.github/workflows"
+  cp "$root/.github/workflows/ci.yml" "$T/al/.github/workflows/ci.yml"
+  sed -i 's/^    needs: \[rust-lint, /    needs: [no-such-job, rust-lint, /' "$T/al/.github/workflows/ci.yml"
+  expect 1 "a seeded fault (ci-gate needing a job that does not exist) is reported: the check is not a no-op" "$AL" -shellcheck "" -pyflakes "" "$T/al/.github/workflows/ci.yml"
+  printf 'name: seeded\non: push\njobs:\n  a:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo $UNQUOTED_VAR\n' >"$T/al/.github/workflows/seeded.yml"
+  if [ -n "$SC" ]; then
+    expect 1 "a seeded shellcheck finding inside a run: block is reported" "$AL" -shellcheck "$SC" -pyflakes "" "$T/al/.github/workflows/seeded.yml"
+    expect 0 "and the same workflow with the variable quoted is clean (control)" bash -c 'sed -i "s/echo \$UNQUOTED_VAR/echo \"\$UNQUOTED_VAR\"/" "$2" && "$1" -shellcheck "$3" -pyflakes "" "$2"' _ "$AL" "$T/al/.github/workflows/seeded.yml" "$SC"
+  else
+    bad "shellcheck is not installed: actionlint's run:-block check was not exercised (not a pass)"
+  fi
+elif [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+  bad "ACTIONLINT is not set: the ci-scripts job's actionlint step did not run first (not a pass)"
+else
+  echo "  SKIP (not counted, not a pass): no ACTIONLINT; set ACTIONLINT to actionlint $al_pinned to run these cases"
+fi
+
+echo "== per-binary Rust test floors (Round 40, D2-8)"
+expect 0 "every rust-test leg passes its committed floors file, and each file lists every security suite" python3 -I - "$root" <<'PY'
+import fnmatch, os, re, sys, yaml
+root = sys.argv[1]
+job = yaml.safe_load(open(os.path.join(root, ".github/workflows/ci.yml")))["jobs"]["rust-test"]
+run = next(s["run"] for s in job["steps"] if s.get("name", "").startswith("Tests"))
+if not re.search(r'test-count\.sh cargo "\$RUNNER_TEMP/cargo-test-\$LEG\.log" "\$FLOOR" \.\./\.github/test-allowlists/rust-ignored\.txt "\.\./\.github/test-floors/rust-\$LEG\.txt"', run):
+    sys.exit("the test step does not pass .github/test-floors/rust-$LEG.txt as test-count.sh's 5th argument")
+tests = sorted(f for f in os.listdir(os.path.join(root, "graphite-core/tests")) if f.endswith(".rs"))
+patterns = ["round3*.rs", "round4*.rs", "ai_layer_isolation.rs", "docs_*.rs", "*exploit*.rs", "*attack*.rs", "mainnet_conformance.rs", "regression_corpus.rs"]
+security = {f"tests/{f}" for f in tests if any(fnmatch.fnmatch(f, p) for p in patterns)}
+if len(security) < 35:
+    sys.exit(f"only {len(security)} security suites matched: the patterns no longer find them")
+for leg in [l["leg"] for l in job["strategy"]["matrix"]["include"]]:
+    path = os.path.join(root, f".github/test-floors/rust-{leg}.txt")
+    if not os.path.isfile(path):
+        sys.exit(f"{path} is missing")
+    listed, excused = {}, {}
+    for n, line in enumerate(open(path), 1):
+        m = re.match(r"#\s*not in this leg:\s*(\S+)\s+\((.+)\)\s*$", line)
+        if m:
+            excused[m.group(1)] = m.group(2)
+            continue
+        body = line.split("#", 1)[0].strip()
+        if not body:
+            continue
+        m = re.fullmatch(r"(\d+) (.+)", body)
+        if not m:
+            sys.exit(f"{path}:{n}: not '<floor> <binary>': {line!r}")
+        if int(m.group(1)) < 1:
+            sys.exit(f"{path}:{n}: a floor of 0 holds nothing")
+        listed[m.group(2)] = int(m.group(1))
+    if "unittests src/lib.rs" not in listed:
+        sys.exit(f"{path}: the library's unit tests are not floored")
+    for b in list(listed) + list(excused):
+        if b.startswith("tests/") and not os.path.isfile(os.path.join(root, "graphite-core", b)):
+            sys.exit(f"{path}: {b} does not exist")
+    if leg == "lib":
+        continue  # `--lib`: only the library's unit tests run in this leg
+    missing = sorted(security - set(listed) - set(excused))
+    if missing:
+        sys.exit(f"{path}: security suites with no floor and no reason: {missing}")
+    if leg == "default" and excused:
+        sys.exit(f"{path}: the default leg is every feature; nothing is excused there: {sorted(excused)}")
+PY
+
+echo "== agent guard on Windows (Round 40, R39-CLIENTS-6)"
+expect 0 "agent-guard-windows runs the guard's typecheck and tests on a pinned Windows image and allows only the POSIX-only skips" python3 -I - "$root/.github/workflows/ci.yml" <<'PY'
+import re, sys, yaml
+jobs = yaml.safe_load(open(sys.argv[1]))["jobs"]
+job = jobs.get("agent-guard-windows") or sys.exit("no agent-guard-windows job")
+if not str(job["runs-on"]).startswith("windows-") or job["runs-on"] == "windows-latest":
+    sys.exit(f"runs-on {job['runs-on']!r}: a pinned Windows image (A6-08)")
+if job["defaults"]["run"]["working-directory"] != "integrations/agent-guard":
+    sys.exit("not the guard's directory")
+for s in job["steps"]:
+    if "uses" in s and not re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", s["uses"]):
+        sys.exit(f"{s['uses']}: not pinned to a commit")
+run = "\n".join(s.get("run", "") for s in job["steps"])
+for needle in ("npm ci --ignore-scripts", "npm run typecheck", "npm test", "test-count.sh tap", "{ skip: posixOnly(", 'test-count.sh tap "$log" 345 "$posix_only"'):
+    if needle not in run:
+        sys.exit(f"the job lost {needle!r}")
+if "agent-guard-windows" not in jobs["ci-gate"]["needs"]:
+    sys.exit("ci-gate does not need it")
+PY
+
+echo "== graphite-core is not published to crates.io (Round 40, checklist 10c)"
+expect 0 "Cargo.toml says publish = false and no workflow runs cargo publish" python3 -I - "$root" <<'PY'
+import glob, os, sys, tomllib
+root = sys.argv[1]
+pkg = tomllib.load(open(os.path.join(root, "graphite-core/Cargo.toml"), "rb"))["package"]
+if pkg.get("publish") is not False:
+    sys.exit(f"package.publish is {pkg.get('publish')!r}, not false")
+for wf in glob.glob(os.path.join(root, ".github/workflows/*.yml")):
+    if "cargo publish" in open(wf).read():
+        sys.exit(f"{wf} runs cargo publish")
+PY
+
+echo "== the mutation job's shards fit its step (Round 40, F-015)"
+expect 0 "every mutated file's shards are 0..N-1 once each, planned before the build, sliced the same way, floors unchanged" python3 -I - "$root/.github/workflows/assurance.yml" <<'PY'
+import collections, re, sys, yaml
+job = yaml.safe_load(open(sys.argv[1]))["jobs"]["mutants"]
+shards = collections.defaultdict(list)
+for e in job["strategy"]["matrix"]["include"]:
+    k, n = map(int, e["shard"].split("/"))
+    shards[e["file"]].append((k, n))
+want = {"src/risk_engine.rs", "src/simulation_integrity.rs", "src/tx_artifact.rs", "src/state_diff.rs"}
+if set(shards) != want:
+    sys.exit(f"mutated files {sorted(shards)}")
+for f, ks in shards.items():
+    ns = {n for _, n in ks}
+    if len(ns) != 1 or sorted(k for k, _ in ks) != list(range(ns.pop())):
+        sys.exit(f"{f}: shards {sorted(ks)} are not 0..N-1 of one N, each once")
+if len(job["strategy"]["matrix"]["include"]) > 256:
+    sys.exit("more than GitHub's 256 jobs per matrix")
+steps = {s.get("name"): s for s in job["steps"]}
+plan, mutate = steps.get("Plan (the shard fits the step)"), steps.get("Mutate")
+if not plan or not mutate:
+    sys.exit("the Plan or Mutate step is gone")
+names = [s.get("name") for s in job["steps"]]
+if names.index(plan["name"]) > names.index("Mutate"):
+    sys.exit("the plan must come before the mutation")
+if "--sharding slice" not in plan["run"] or "--sharding slice" not in mutate["run"] or "--list" not in plan["run"]:
+    sys.exit("the Plan and Mutate steps must slice the file the same way")
+if int(plan["env"]["MAX_PER_SHARD"]) > 24 or 'exit 1' not in plan["run"]:
+    sys.exit("the per-shard cap is gone or above 24")
+if int(mutate.get("timeout-minutes", 0)) != 330 or "--in-place" not in mutate["run"] or "--timeout 300" not in mutate["run"]:
+    sys.exit("the Mutate step's limits changed")
+select = steps["Select the suites and floor for this file"]["run"]
+floors = dict(re.findall(r"(src/\w+\.rs)\)\s*\n\s*floor=([0-9.]+)", select))
+if floors != {"src/risk_engine.rs": "0.90", "src/simulation_integrity.rs": "0.60", "src/tx_artifact.rs": "0.60", "src/state_diff.rs": "0.60"}:
+    sys.exit(f"the floors moved: {floors}")
+if "scripts/mutation_floor.py mutants.out/outcomes.json" not in steps["Enforce the mutation-score floor"]["run"]:
+    sys.exit("the floor step no longer runs mutation_floor.py")
 PY
 
 echo

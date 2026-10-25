@@ -1,0 +1,11 @@
+# Per-binary floors for the `lib` leg of CI's rust-test job (Round 40, D2-8).
+# Read by .github/scripts/test-count.sh (5th argument): every binary listed must
+# run and pass at least its floor, so deleting tests from one security suite
+# fails CI even when another suite grew. Lines are `<floor> <binary>`, the binary
+# as cargo names it. The floors are the counts of a full run of this leg at
+# 1ae2066 with the Round 40 assurance changes
+# (`cargo test --locked --profile ci-test` with this leg's flags);
+# lower one only in a reviewed change that says why. The suites listed are the
+# security-critical ones (ci-scripts.test.sh names the patterns and fails when one
+# is neither floored here nor named below as not in this leg).
+530 unittests src/lib.rs
