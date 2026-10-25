@@ -7,7 +7,8 @@
 # Round 36's mutation_floor.py (F-015). Round 38: pinned-tools consistency
 # (D2-6), dependency-holds.py (D2-7), the rulesets and ruleset-drift.py
 # (D2-4, R37-8), the release workflows (R37-8, D2-3), test-count.sh per test
-# binary (D2-8) and the Dockerfile's apt snapshot (D-8). Needs git and the
+# binary (D2-8) and the Dockerfile's apt snapshot (D-8). Round 39: the live
+# ruleset state, shellcheck of these scripts and validate_corpora.py. Needs git and the
 # repository's full history (ci-scripts checks out with fetch-depth: 0).
 # Needs bash and python3; no network. Exit 0 only when every case behaved.
 set -uo pipefail
@@ -607,6 +608,68 @@ if command -v shellcheck >/dev/null; then
 else
   bad "shellcheck is not installed: the CI scripts were not checked (not a pass)"
 fi
+
+echo "== validate_corpora.py: the committed corpora (Round 39)"
+# The validator reads the repository's JSON with the right parser and checks
+# the manifests, the evidence, the IDLs, the corpus, the artifacts and the
+# medium-confidence rewrites. Its schema section needs `jsonschema`, which this
+# job does not install; the verification-result examples are held to the
+# schema by tests/verification_result_schema_contract.rs.
+VC=(python3 -I "$root/graphite-core/scripts/validate_corpora.py")
+expect 0 "the committed corpora validate (schemas skipped: no jsonschema here)" "${VC[@]}" --quiet --skip schemas
+VR="$T/vc"
+rm -rf "$VR" && mkdir -p "$VR/graphite-core/src" "$VR/docs"
+cp -r "$root/graphite-core/protocols" "$root/graphite-core/fixtures" "$root/graphite-core/scripts" "$VR/graphite-core/"
+cp "$root/graphite-core/src/manifest.rs" "$VR/graphite-core/src/"
+cp -r "$root/docs/audit-r36" "$VR/docs/"
+cp -r "$root/schemas" "$root/examples" "$VR/"
+vc() { "${VC[@]}" --quiet --skip schemas --root "$VR"; }
+expect 0 "a copy of those files validates (no git: every *.json is read)" vc
+# vc_case DESCRIPTION FILE PYTHON: edit FILE (relative to the copy) with
+# PYTHON (d = the loaded JSON; the edited value is written back), expect a
+# failure, restore the file.
+vc_case() {
+  local d="$1" f="$2" code="$3"
+  cp "$VR/$f" "$T/vc-saved"
+  python3 -I - "$VR/$f" "$code" <<'PY' || bad "the fixture edit failed: $code"
+import json, sys
+p, code = sys.argv[1], sys.argv[2]
+d = json.load(open(p))
+exec(code)
+json.dump(d, open(p, "w"), indent=1)
+PY
+  expect 1 "$d" vc
+  cp "$T/vc-saved" "$VR/$f"
+}
+P_="graphite-core/protocols"
+vc_case "two instructions whose discriminators prefix each other fail" "$P_/spl-token.json" \
+  'd["instructions"][1]["discriminator"] = d["instructions"][0]["discriminator"] + "00"'
+vc_case "an allowed CPI that is not a base58 32-byte key fails" "$P_/jupiter-v6.json" \
+  'd["instructions"][0]["allowed_cpis"].append("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5D0")'
+vc_case "a PDA seed reading an account the layout does not have fails" "$P_/jupiter-dca.json" \
+  'i = [x for x in d["instructions"] if x["name"] == "openDca"][0]; i["accounts"][0]["pda_seeds"][1] = "{account_99}"'
+vc_case "a second manifest for one program id fails" "$P_/memo-program.json" \
+  'd["protocol"]["program_id"] = "11111111111111111111111111111111"'
+vc_case "a declared BattleTested tier without a record that meets it fails" "$P_/legacy-memo-program.json" \
+  'd["trust_tier"] = "BattleTested"'
+vc_case "an evidence decode rate that is not its counts fails" "$P_/battle_tested_evidence.json" \
+  'r = [x for x in d["programs"] if x["manifest"] == "zeta-zetaxs.json"][0]; r["decode"]["decode_rate"] = 0.95'
+vc_case "a corpus row relabelled real in the meta manifest fails" "graphite-core/fixtures/corpus/meta/corpus_manifest.json" \
+  'x = [x for x in d if x["provenance"] == "synthetic-attack"][0]; x["provenance"] = "real-mainnet-tx"'
+vc_case "a medium-confidence rewrite promoted to high fails (the owner's sign-off)" "docs/audit-r36/declaration-rewrites.json" \
+  'x = [x for x in d["rewrites"] if x["instruction"] == "liquidUnstake"][0]; x["confidence"] = "high"'
+vc_case "a rewrite no longer in its manifest fails" "docs/audit-r36/declaration-rewrites.json" \
+  'd["rewrites"][0]["new_lines"].append("transfers everything to accounts.attacker")'
+vc_case "a mainnet sample row whose version label is not its bytes fails" "graphite-core/fixtures/mainnet/sample-2026-09-23-last-2-blocks.json" \
+  'r = [x for x in d["rows"] if x["version"] == "legacy"][0]; r["version"] = "0"'
+vc_case "an artifact relabelled (its provenance words gone) fails" "graphite-core/fixtures/artifacts/mainnet_v0_alt.json" \
+  'd["_"] = "Mainnet-like transactions."'
+vc_case "a corpus entry filed under another program fails" "graphite-core/fixtures/corpus/11111111111111111111111111111111.json" \
+  'd[0]["program_id"] = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"'
+printf '{"a": 1, "a": 2}\n' >"$VR/graphite-core/fixtures/artifacts/dup-key.json"
+expect 1 "a JSON file with a duplicate key fails" vc
+rm -f "$VR/graphite-core/fixtures/artifacts/dup-key.json"
+expect 0 "and the copy validates again once each edit is undone" vc
 
 echo "== Dockerfile: the apt layer is pinned (D-8)"
 expect 0 "the runtime image's apt sources are one dated snapshot, recorded in pinned-tools.json" python3 -I - "$root/Dockerfile" "$root/.github/pinned-tools.json" <<'PY'

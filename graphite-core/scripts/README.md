@@ -65,5 +65,21 @@ derived the IDL address with a wrong on-curve test and its output was empty.
 | `mutation_floor.py` | Reads the outcomes file a `cargo mutants` run writes and fails below a mutation-score floor (caught + timeout over tested; unviable excluded; an empty run fails). The weekly job in `.github/workflows/assurance.yml` runs it. |
 | `../fuzz/make_seeds.py` | Regenerates the committed fuzz seed corpora in `fuzz/seeds/` from the committed mainnet blocks, the shipped manifests and hand-built valid layouts. |
 
+## Corpus validation (Round 39)
+
+`validate_corpora.py` reads every JSON file the repository tracks with the right parser
+(`tsconfig*.json` as JSONC) and checks, offline, what the corpora's consumers rely on: one
+manifest per program and every one in `SEED_MANIFESTS` and `verified_program_ids.json`; base58
+keys, hex discriminators without prefix collisions, the PDA seed grammar, the closed risk-class
+and trust-tier vocabularies; evidence records equal to their own counts and a declared
+BattleTested tier only with a record that meets it; each IDL's discriminators and slot counts
+against its manifest; the regression corpus against its meta manifest (provenance included);
+the artifacts' provenance labels and transaction versions read from their bytes; and the
+medium-confidence declaration rewrites, listed and never promoted. It prints what the fixtures
+cover, which is not a gate, and pins the known gaps (the 13 records under the decode bar, the 75
+slot-count differences, the 9 medium rewrites) so that a change to one fails until it is looked
+at. `ci-scripts.test.sh` runs it and seeds a fault per check. The schema section needs the
+`jsonschema` package; without it the section is BLOCKED (exit 3), never passed.
+
 The release evaluation is not a script: `graphite benchmark --json` (`src/release_eval.rs`)
 scores every committed labelled input per split, and `tests/release_evaluation.rs` pins it.
