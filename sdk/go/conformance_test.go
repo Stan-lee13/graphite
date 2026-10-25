@@ -184,6 +184,51 @@ func TestRound39CorpusEveryVerdictVectorReadsInGoAsTheCorpusSays(t *testing.T) {
 	}
 }
 
+// Every enum the SDK decides on is the published schema's, in order.
+func TestRound39EveryEnumTheSDKDecidesOnIsTheSchemas(t *testing.T) {
+	raw, err := os.ReadFile("../../schemas/verification-result-v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema struct {
+		Properties struct {
+			Decision struct {
+				Enum []string `json:"enum"`
+			} `json:"decision"`
+			TrustTier struct {
+				Enum []string `json:"enum"`
+			} `json:"trust_tier"`
+			Scope struct {
+				OneOf []struct {
+					Properties struct {
+						UnobservedCodes struct {
+							Items struct {
+								Enum []string `json:"enum"`
+							} `json:"items"`
+						} `json:"unobserved_codes"`
+					} `json:"properties"`
+				} `json:"oneOf"`
+			} `json:"scope"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
+	same := func(what string, got, want []string) {
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Errorf("%s: schema %v, SDK %v", what, got, want)
+		}
+	}
+	same("decision", schema.Properties.Decision.Enum, ExecutionDecisions)
+	same("trust_tier", schema.Properties.TrustTier.Enum, trustTiers)
+	if len(schema.Properties.Scope.OneOf) != 2 {
+		t.Fatalf("%d scope variants", len(schema.Properties.Scope.OneOf))
+	}
+	for _, v := range schema.Properties.Scope.OneOf {
+		same("unobserved_codes", v.Properties.UnobservedCodes.Items.Enum, unobservedCodes)
+	}
+}
+
 func TestRound39CorpusContentHashes(t *testing.T) {
 	c := loadCorpus(t)
 	got := map[string]string{}

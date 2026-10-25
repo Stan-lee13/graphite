@@ -18,7 +18,7 @@ import { readFileSync } from "node:fs";
 import { parseJsonStrict, validateVerificationResult } from "./client.js";
 import { computeContentHash } from "./auditbind.js";
 import { transactionDigest } from "./transaction-digest.js";
-import { isExecutable, type VerificationResult } from "./types.js";
+import { ACCOUNT_IDENTITIES, EXECUTION_DECISIONS, isExecutable, UNOBSERVED_CODES, type VerificationResult } from "./types.js";
 
 type Outcome = "executable" | "not_executable" | "unreadable";
 type Edit = { op: "set" | "delete" | "push"; path: (string | number)[]; value?: unknown };
@@ -128,6 +128,25 @@ test("Round 39 corpus: the corpus covers every decision, every residual code and
     assert.match(names, new RegExp(`residual: ${code}, an honest analysis_only`));
   }
   assert.ok(corpus.content_hash.length >= 5 && corpus.transaction_digest.some((d) => d.hex.startsWith("81")));
+});
+
+test("Round 39: every enum the SDK decides on is the published schema's, in order", () => {
+  const schema = JSON.parse(readFileSync(new URL("../../../schemas/verification-result-v1.json", import.meta.url), "utf8"));
+  const p = schema.properties;
+  assert.deepEqual(p.decision.enum, [...EXECUTION_DECISIONS]);
+  for (const variant of p.scope.oneOf) {
+    assert.deepEqual(variant.properties.unobserved_codes.items.enum, [...UNOBSERVED_CODES], "every scope variant's codes");
+  }
+  assert.deepEqual(p.layers.items.properties.status.enum, ["passed", "failed", "inconclusive"]);
+  assert.deepEqual(p.risk_verdict.properties.status.enum, ["Clear", "Blocked"]);
+  assert.deepEqual(p.policy_verdict.enum, ["Approved", "Rejected"]);
+  assert.deepEqual(p.resolved_accounts.items.properties.identity.enum, [...ACCOUNT_IDENTITIES]);
+  const bound = p.scope.oneOf.find((v: { properties: { kind: { const?: string; enum?: string[] } } }) =>
+    (v.properties.kind.const ?? v.properties.kind.enum?.[0]) === "artifact_bound");
+  assert.deepEqual(bound.properties.message_version.enum, ["legacy", "v0", "v1"]);
+  assert.deepEqual(bound.properties.compute_budget.properties.source.enum, ["v1_header", "compute_budget_instructions"]);
+  // The two the guard was last to learn (Round 36, Round 38).
+  assert.ok(UNOBSERVED_CODES.includes("intent_parameters") && UNOBSERVED_CODES.includes("program_deployments"));
 });
 
 test("Round 39 corpus: the framed v2 content hash, as the corpus pins it", () => {
