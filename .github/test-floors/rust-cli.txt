@@ -8,7 +8,7 @@
 # lower one only in a reviewed change that says why. The suites listed are the
 # security-critical ones (ci-scripts.test.sh names the patterns and fails when one
 # is neither floored here nor named below as not in this leg).
-595 unittests src/lib.rs
+600 unittests src/lib.rs
 2 tests/ai_layer_isolation.rs
 20 tests/cert_revalidation_attacks.rs
 2 tests/docs_match_the_registry.rs
@@ -51,3 +51,9 @@
 5 tests/round40_import_census_cli.rs
 # Round 40 (manifests): the rewritten swap declarations
 3 tests/round40_swap_declarations.rs
+# Round 40 (boundary)
+2 tests/round40_signer_key_mode.rs
+2 tests/round40_terminal_escapes.rs
+2 tests/round40_first_manifest_cap.rs
+# not in this leg: tests/round40_trusted_proxies.rs (cfg(feature = "server"))
+# not in this leg: tests/round40_rpc_no_proxy.rs (cfg(feature = "rpc"))

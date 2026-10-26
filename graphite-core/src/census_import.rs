@@ -47,7 +47,7 @@
 
 use crate::confidence_engine::TrustTier;
 use crate::manifest::{battle_tested_bar, recomputed_decode_rate, BATTLE_TESTED_EVIDENCE};
-use crate::semantic_graph_store::{compute_trust_tier, Behavior, BehaviorEvidence};
+use crate::semantic_graph_store::{compute_trust_tier_for, Behavior, BehaviorEvidence};
 use crate::verification::GraphiteCore;
 use serde_json::Value;
 
@@ -437,7 +437,15 @@ fn plan_one(
             .map(|b| b.evidence.clone())
             .unwrap_or_default()
     };
-    let graph_tier = compute_trust_tier(&evidence);
+    // Round 40 (R39-CORE-IDENTITY-7): computed as `append` will compute it,
+    // with the record's first-manifest cap (carried over below), so the plan
+    // shows the tier the import will produce.
+    let graph_tier = compute_trust_tier_for(
+        &evidence,
+        current
+            .as_ref()
+            .is_some_and(|b| b.first_manifest_unvalidated),
+    );
     let behavior = match current.as_ref() {
         Some(b) => Behavior {
             evidence,
@@ -453,6 +461,7 @@ fn plan_one(
             evidence,
             quarantined: false,
             quarantine_reason: None,
+            first_manifest_unvalidated: false,
         },
     };
     let standing = |record: Option<&Behavior>| {

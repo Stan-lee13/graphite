@@ -289,6 +289,7 @@ fn seeded(core: &mut GraphiteCore, program: &str, evidence: BehaviorEvidence) {
         evidence,
         quarantined: false,
         quarantine_reason: None,
+        first_manifest_unvalidated: false,
     })
     .unwrap();
 }

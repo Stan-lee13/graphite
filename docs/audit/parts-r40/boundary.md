@@ -311,8 +311,16 @@ CARGO_PROFILE_TEST_DEBUG=0 -j 2`, in `graphite-core/`:
 - `shellcheck deploy/tests/run.sh`, `bash -n deploy/tests/run.sh`: clean. Compose audits from
   run.sh: 5/5 pass. `docker compose -f deploy/compose/docker-compose.prod.yml --profile ai config
   --quiet`: exit 0.
-- After the merge of `claude/admiring-archimedes-lfhr7n`: see the merge commit (final legs run
-  there).
+- After merging `claude/admiring-archimedes-lfhr7n` (`f0581de`; no textual conflicts): the census
+  import's `Behavior` literal (and its test's) gained the field, and its plan computes the graph
+  tier with `compute_trust_tier_for` so it shows the tier `append` will produce for a capped
+  record. Then: default leg 2,546 passed, 0 failed, 15 ignored; cli leg 2,009 passed, 0 failed, 6
+  ignored; lib leg (`--no-default-features --lib`) 533 passed; both clippy legs and fmt clean;
+  `bash .github/scripts/ci-scripts.test.sh` 137 passed, 0 failed (one case SKIPs without
+  ACTIONLINT, not counted). Per-binary floors added to `.github/test-floors/rust-{default,cli}.txt`
+  for the five new suites (the two server/rpc-gated ones named "not in this leg" in cli), the
+  library's floors raised to the merged counts (742 / 600 / 533) and
+  `round39_decision_campaigns` to 23.
 
 New tests: 8 lib unit tests, 9 integration tests (`round40_trusted_proxies` 1, `round40_rpc_no_proxy`
 1, `round40_signer_key_mode` 2, `round40_terminal_escapes` 2, `round40_first_manifest_cap` 2,
