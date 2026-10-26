@@ -21,7 +21,7 @@ and not broken; the guide accepts a GitHub link when there is none.]**
 Graphite is off-chain verification infrastructure. It deploys no program, token or fee-payer
 wallet.
 
-**Funding Amount:** $120,000
+**Funding Amount:** $18,000
 
 **Which funding category are you applying for?** Developer Tooling
 
@@ -89,13 +89,15 @@ wallet.
 
 **Is / will this project be open sourced?** Yes. It is MIT-licensed today, all of it.
 
-**Milestones.** As in the proposal's §4 summary table:
-- $35,000: independent audit with every finding fixed;
-- $15,000: public endpoint;
-- $15,000: coverage where agents transact;
-- $10,000: upstream agent integrations;
-- $24,000: six months of maintenance, at $4,000 a month;
-- $21,000: three adoption metrics, at $7,000 each.
+**Milestones.** As in the proposal's §4 summary table ($18,000):
+- $3,500: public verification endpoint;
+- $3,000: honest swaps on at least two more venues;
+- $2,500: upstream agent integrations;
+- $4,500: six months of maintenance, at $750 a month;
+- $4,500: three adoption metrics at $1,500 each (3 projects, 10,000 external verifications,
+  10 active teams), paid pro rata.
+
+An independent security audit is not in this budget; it is pursued separately.
 
 **Relevant metrics about usage.**
 
@@ -109,7 +111,7 @@ wallet.
 > - **Live approval rate:** **[LIVE: the approval and refusal rates on recent mainnet traffic from
 >   the measurement run.]**
 >
-> Adoption is what Milestones 2–4 and the adoption metrics pay for.
+> Adoption is what Milestones 1 and 3 and the adoption metrics pay for.
 
 **Competition.**
 

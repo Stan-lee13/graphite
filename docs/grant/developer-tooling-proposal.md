@@ -21,7 +21,7 @@ agents.
 **[OWNER: Victor Stanley — email — handle]**
 
 **Total Amount Requested (USD)**
-$120,000
+$18,000
 
 **Relevant Experience & Track Record**
 
@@ -170,58 +170,62 @@ agent / app ── intent + exact tx bytes ──▶ Graphite Core ──▶ ver
 
 ## 4. Budget Breakdown (Milestones)
 
-Graphite's beta exists today. The grant funds the production version, kept running and adopted.
-**[OWNER: the amounts and adoption targets below are a proposal — adjust them to what you can
-commit to.]**
+Graphite's beta exists today: the verification core, SDKs, agent guard, integrations, dashboard and
+deployment kit are built and tested. This grant funds the step from beta to a published production
+version that people can use without running it themselves, plus six months of maintenance and
+measured adoption. The scope is sized for one maintainer over about six months.
 
-### 4a. Completed versions (per component)
+**Not funded here, stated plainly:** an independent third-party security audit. A credible audit of
+a verifier this size costs more than this whole grant, so it is pursued separately (an audit
+subsidy or a dedicated audit grant). Until it happens, every public page says Graphite is not
+independently audited. **[OWNER: the amounts and targets below are a proposal — adjust to what
+you can commit to.]**
+
+### 4a. Completed production version (per component)
 
 | # | Component | Scope | How it is tested | Amount |
 |---|---|---|---|---|
-| 1 | Independently audited core | A third-party security audit of the Core, server and agent guard; every finding fixed at its root with a test; report published | each fix's test fails before the fix and is reverted once to prove it (the repo's existing practice); the auditor re-checks the fixes | $35,000 |
-| 2 | Public verification endpoint | Hosted `/verify` (TLS, API keys, rate limits, monitoring, status page), deployed from the signed release by digest, with branch protection and immutable release tags applied | the deployment kit's tests (`deploy/tests/run.sh`) on the shipped configuration; synthetic probes every minute; a published uptime record | $15,000 |
-| 3 | Coverage where agents transact | Swap and lending decoders for the venues agents use most, so honest swaps through them can be bound and become executable (today `decode_swap` reads 6 programs); manifests for the top unmanifested programs in measured agent traffic, each from its IDL with a mainnet measurement | the live-mainnet workflow's measured approval and refusal rates before and after, published; an attack test per new venue | $15,000 |
-| 4 | Agent-stack integrations upstreamed | The guarded signer offered upstream to SolanaAgentKit, the Vercel AI SDK and MCP, plus an ElizaOS plugin, each with docs and an example agent | each integration's test suite in CI plus an end-to-end run on devnet through the guard | $10,000 |
+| 1 | Public verification endpoint | Hosted `/verify` for anyone: TLS, API keys, rate limits, monitoring, a status page; deployed from the signed release by digest, with branch protection and immutable release tags applied on the repository | the deployment kit's tests (`deploy/tests/run.sh`) on the shipped configuration; a synthetic probe every minute; the uptime published monthly | $3,500 |
+| 2 | Honest swaps on more venues | Swap decoders for the most-used venues Graphite cannot bind yet (`decode_swap` reads 6 programs today; Pump AMM and Meteora DAMM v2 are the first two), so an honest swap through them can become `executable_approved` instead of analysis-only | an honest-swap and four attack tests per venue (the Round 40 harness); the live-mainnet workflow's approval rate before and after, published | $3,000 |
+| 3 | Agent-stack integrations upstreamed | The guarded signer offered upstream to SolanaAgentKit and the Vercel AI SDK, the MCP server published, and an ElizaOS plugin, each with docs and an example agent | each integration's test suite in CI, plus an end-to-end devnet run through the guard | $2,500 |
 
-Subtotal: $75,000.
+Subtotal: $9,000.
 
 ### 4b. Maintenance (6 months)
 
-- **Budget:** $24,000 in total, $4,000 a month for 6 months.
-- **What maintenance covers:**
-  - triaging and fixing reported issues and security reports;
-  - keeping manifests current when programs upgrade (upgrade detection already flags them);
-  - dependency updates through the repository's gated update process;
-  - keeping the hosted endpoint patched;
-  - monthly CI evidence (test floors, fuzzing, mutation scores).
-- **Reporting:** a monthly public report listing issues closed, manifests updated and the
-  endpoint's uptime.
+$4,500 in total: $750 a month for 6 months, each month one milestone. It covers:
+- triaging and fixing reported issues and security reports;
+- keeping manifests current when programs upgrade (upgrade detection already flags them);
+- dependency updates through the repository's gated process;
+- keeping the hosted endpoint patched, including its hosting cost;
+- monthly CI evidence (test floors, fuzzing, mutation scores).
+
+Each month ends with a short public report: issues closed, manifests updated, endpoint uptime.
 
 ### 4c. User adoption
 
-- **Budget:** $21,000 in total, split across three metrics.
-- **Paid pro rata:** each 25% of a target reached releases 25% of that metric's amount.
+$4,500 in total, split over three metrics. For every 25% of a target reached, 25% of that metric's
+amount is paid at the end of the period.
 
 | Metric | Target by the end of the grant | How it is tracked | Amount |
 |---|---|---|---|
-| A. Projects routing real transactions through Graphite | 5 projects (agent frameworks, wallets or agent products) | public integration PRs or written confirmation; each named in the monthly report | $7,000 |
-| B. Transactions verified on the public endpoint | 50,000 `/verify` requests from external API keys | the endpoint's Prometheus counters (`graphite_*_total`), published monthly | $7,000 |
-| C. Developers / teams with active API keys | 25 distinct teams with at least one verified transaction in the last 30 days | API-key registry on the hosted endpoint (counts only, no transaction content) | $7,000 |
+| A. Projects routing real transactions through Graphite | 3 projects (agent frameworks, wallets or agent products) | public integration PRs or written confirmation, each named in the monthly report | $1,500 |
+| B. Transactions verified on the public endpoint | 10,000 `/verify` requests from external API keys | the endpoint's Prometheus counters, published monthly | $1,500 |
+| C. Teams with active API keys | 10 distinct teams with at least one verified transaction in the last 30 days | the hosted endpoint's API-key registry (counts only, no transaction content) | $1,500 |
 
 ### Milestone Summary Table
 
 | # | Milestone / Deliverable | Success Criteria | Amount (USD) |
 |---|---|---|---|
-| 1 | Independent audit, all findings fixed | published audit report; every finding closed with a test, or explained | $35,000 |
-| 2 | Public verification endpoint | live endpoint deployed from a signed release; uptime published; repository protections applied | $15,000 |
-| 3 | Coverage where agents transact | new decoders and manifests merged; measured approval rate on honest mainnet traffic published before and after | $15,000 |
-| 4 | Upstream agent integrations | SolanaAgentKit, Vercel AI SDK, MCP and ElizaOS integrations released with docs and examples | $10,000 |
-| 5–10 | Maintenance, months 1–6 | monthly report: issues and security reports handled, manifests current, endpoint patched | $24,000 ($4,000 / month) |
-| 11 | Adoption A | 5 projects routing real transactions | $7,000 |
-| 12 | Adoption B | 50,000 external `/verify` requests | $7,000 |
-| 13 | Adoption C | 25 active teams | $7,000 |
+| 1 | Public verification endpoint | live endpoint deployed from a signed release; uptime published; repository protections applied | $3,500 |
+| 2 | Honest swaps on more venues | decoders for at least 2 more venues merged with honest and attack tests; live approval rate published before and after | $3,000 |
+| 3 | Upstream agent integrations | SolanaAgentKit and Vercel AI SDK integrations offered upstream, MCP server published, ElizaOS plugin released, each with docs and an example | $2,500 |
+| 4–9 | Maintenance, months 1–6 | monthly report: issues and security reports handled, manifests current, endpoint patched | $4,500 ($750 / month) |
+| 10 | Adoption A | 3 projects routing real transactions | $1,500 |
+| 11 | Adoption B | 10,000 external `/verify` requests | $1,500 |
+| 12 | Adoption C | 10 active teams | $1,500 |
 
-**Total: $120,000**
+**Total: $18,000**
 
 ---
 
@@ -239,9 +243,9 @@ Subtotal: $75,000.
 These come from `docs/CURRENT.md` and `docs/audit/RESIDUAL_RISK_AND_OWNER_GATES.md`.
 
 - **Not independently audited yet.** Every review so far is internal engineering work by the
-  maintainer with AI engineering agents, plus two external reviews answered item by item.
-  Milestone 1 pays for the independent audit.
-- **Not publicly deployed yet.** It runs locally, in Docker and in CI. Milestone 2 deploys it.
+  maintainer with AI engineering agents, plus two external reviews answered item by item. The
+  audit is pursued separately from this grant (§4).
+- **Not publicly deployed yet.** It runs locally, in Docker and in CI. Milestone 1 deploys it.
 - **Confidence is earned.** A fresh instance approves nothing until it has evidence.
   - One audited command imports the measured mainnet census. After it, a manifested program
     reaches the Gaming profile.
