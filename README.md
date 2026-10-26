@@ -754,10 +754,12 @@ graphite manifest-verify --manifest ./candidate.json
 # evidence (no signature asserted), and writes one operator_action row per
 # program naming the census's sha256 and measurement time. Re-running it imports
 # nothing new, and it never re-imports a program upgraded since the census.
-# A manifested program then reaches 0.59: Gaming only. Run it with the server
-# stopped and the server's GRAPHITE_AUDIT_KEY_FILE (docs/ops/install.md).
-graphite evidence import-census --dry-run
-graphite evidence import-census
+# A manifested program then reaches 0.59: Gaming only. The census is mainnet's:
+# the import requires --cluster mainnet-beta, the data dir records it, and a server
+# whose RPC is not mainnet-beta refuses to start on that data dir. Run it with the
+# server stopped and the server's GRAPHITE_AUDIT_KEY_FILE (docs/ops/install.md).
+graphite evidence import-census --cluster mainnet-beta --dry-run
+graphite evidence import-census --cluster mainnet-beta
 # Restore an exported graph, or vouch for evidence by hand (operator-asserted).
 # CLI-only: request-body evidence would let any caller mint an earned-looking
 # tier. Both take a base58 program id and write an operator_action row.
