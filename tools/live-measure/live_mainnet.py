@@ -977,7 +977,7 @@ def seed(graphite, data_dir, programs=None, *, run=subprocess.run):
     Read-only towards the chain: nothing here signs or sends."""
     programs = programs or SEED_BASELINES
     doc = {"ok": True, "evidence": "census-imported", "programs": {}}
-    imp = [graphite, "evidence", "import-census", "--data-dir", data_dir]
+    imp = [graphite, "evidence", "import-census", "--cluster", "mainnet-beta", "--data-dir", data_dir]
     for p in programs:
         imp += ["--program", p]
     r = run(imp, capture_output=True, text=True)

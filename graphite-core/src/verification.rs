@@ -5692,18 +5692,69 @@ impl GraphiteCore {
     /// measurement. Returns whether the change reached disk; it is in force
     /// in memory either way. Operator-only (the `graphite evidence
     /// import-census` command); nothing on the HTTP surface calls it.
+    ///
+    /// `cluster_genesis` is the genesis hash of the cluster the evidence was
+    /// measured on; the graph records it (`mark_evidence_genesis`) and a Core
+    /// that attaches an RPC must confirm it (`confirm_evidence_cluster`).
     pub fn import_measured_evidence(
         &mut self,
         behavior: Behavior,
         measured_from_slot: u64,
+        cluster_genesis: &str,
     ) -> Result<Result<(), String>, VerificationError> {
         {
             let mut graph = self.graph();
+            // Marked first: evidence of a second cluster is refused before
+            // anything is appended.
+            graph.mark_evidence_genesis(cluster_genesis)?;
             let program_id = behavior.program_id.clone();
             graph.append(behavior)?;
             graph.bind_evidence_to_slot(&program_id, measured_from_slot);
         }
         Ok(self.persist_state())
+    }
+
+    /// The genesis hash of the cluster the graph's imported evidence was
+    /// measured on (Round 40), if the graph holds any.
+    pub fn evidence_genesis(&self) -> Option<String> {
+        self.graph().evidence_genesis().map(str::to_string)
+    }
+
+    /// Round 40 (bootstrap): refuse a graph whose imported evidence was
+    /// measured on another cluster than the attached RPC serves.
+    ///
+    /// `Ok` when the graph holds no imported evidence, when no RPC is
+    /// attached (nothing is simulated, so no verdict is executable), or when
+    /// the RPC's `getGenesisHash` is the cluster the evidence was measured
+    /// on. `Err` — with the reason — when the RPC serves another cluster or
+    /// cannot say which it serves: a mainnet census describes mainnet code,
+    /// and the same program id on devnet, testnet or a local validator can be
+    /// anything. The server calls this at start and refuses to start on an
+    /// `Err` (an internal-integrity stop, not a refusal of one transaction).
+    #[cfg(feature = "rpc")]
+    pub async fn confirm_evidence_cluster(&self) -> Result<(), String> {
+        let Some(expected) = self.evidence_genesis() else {
+            return Ok(());
+        };
+        let Some(rpc) = self.rpc_client.as_ref() else {
+            return Ok(());
+        };
+        let served = rpc.get_genesis_hash().await.map_err(|e| {
+            format!(
+                "this data directory holds census evidence measured on the cluster whose genesis hash is {expected} \
+                 (mainnet-beta), and the attached RPC could not say which cluster it serves (getGenesisHash: {e}); \
+                 refusing to use that evidence unconfirmed"
+            )
+        })?;
+        if served != expected {
+            return Err(format!(
+                "this data directory holds census evidence measured on the cluster whose genesis hash is {expected} \
+                 (mainnet-beta), but the attached RPC serves the cluster whose genesis hash is {served}; that evidence \
+                 describes code on another cluster. Point GRAPHITE_RPC_URL at mainnet-beta, or use a data directory \
+                 without imported census evidence"
+            ));
+        }
+        Ok(())
     }
 
     /// The deployment Graphite last observed for a program (roadmap R-M1).

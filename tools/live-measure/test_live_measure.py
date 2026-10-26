@@ -584,6 +584,7 @@ def test_seeding_covers_system_and_spl_token():
     # command; no `evidence seed` with typed numbers is run.
     imported = [c for c in ran if c[2] == "import-census"]
     assert len(imported) == 1 and not any(c[2] == "seed" for c in ran)
+    assert imported[0][imported[0].index("--cluster") + 1] == "mainnet-beta"
     assert [imported[0][i + 1] for i, a in enumerate(imported[0]) if a == "--program"] == [
         lm.SYSTEM_PROGRAM, lm.SPL_TOKEN_PROGRAM]
     for p in (lm.SYSTEM_PROGRAM, lm.SPL_TOKEN_PROGRAM):
