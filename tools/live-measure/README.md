@@ -91,12 +91,12 @@ workflow always gives one). INCONCLUSIVE (exit 0): the
 transfer executed but L8 could not reach the chain for a transient reason
 (429, timeout, connection) or the confirmation was still pending.
 
-`seed_evidence` seeds evidence for the System program before the Core
-starts, as an operator would: `graphite evidence import-census --program
-11111111111111111111111111111111` (the measured mainnet census; the System
-program is a builtin, the same code on every cluster) and `graphite evidence
-baseline`. A fresh Core approves nothing until evidence is earned or seeded.
-The report says which was used.
+`seed_evidence` seeds operator evidence for the System program before the
+Core starts, as an operator would (`graphite evidence seed` / `baseline`): a
+fresh Core approves nothing until evidence is earned or seeded. The measured
+census (`import-census`) is not used here: it is mainnet-beta's, and a server
+whose data directory holds it refuses to start on a devnet or local-validator
+RPC (Round 40). The report says which was used.
 
 ## Running locally
 

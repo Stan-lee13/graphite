@@ -58,6 +58,22 @@ pub fn with_import(test: fn()) {
     );
 }
 
+/// Run `test` in the imported state, keeping the profiles the test chose
+/// (for the learning suites: a request's profile is the lever a verify-key
+/// holder pulls, so it stays what the test says). Only a Core must be
+/// imported for the twin to count.
+pub fn with_import_keeping_profiles(test: fn()) {
+    IMPORTED.with(|c| c.set(true));
+    PREPARED.with(|c| c.set((0, 0)));
+    test();
+    IMPORTED.with(|c| c.set(false));
+    let (cores, _) = PREPARED.with(|c| c.get());
+    assert!(
+        cores > 0,
+        "the twin ran without the imported state reaching it (no core imported)"
+    );
+}
+
 /// Import the embedded census into `core` when the twin is running.
 pub fn prepare(core: &mut GraphiteCore) {
     if imported() {
@@ -98,6 +114,22 @@ macro_rules! imported_twins {
                 #[test]
                 fn $t() {
                     super::round40_imported::with_import(super::$t)
+                }
+            )*
+        }
+    };
+}
+
+/// `round40_census_imported::<name>`: the same body with every Core it builds
+/// census-imported and its profiles unchanged (`with_import_keeping_profiles`).
+#[macro_export]
+macro_rules! imported_core_twins {
+    ($($t:ident),* $(,)?) => {
+        mod round40_census_imported {
+            $(
+                #[test]
+                fn $t() {
+                    super::round40_imported::with_import_keeping_profiles(super::$t)
                 }
             )*
         }

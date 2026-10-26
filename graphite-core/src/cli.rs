@@ -398,6 +398,9 @@ pub enum EvidenceAction {
         /// Print what would be imported, and the resulting tier and
         /// confidence per program, without writing anything.
         dry_run: bool,
+        /// The cluster this Core verifies (`--cluster`): required, and only
+        /// `mainnet-beta` is accepted — the census measures mainnet-beta.
+        cluster: Option<String>,
     },
     /// Show what the graph currently holds for a program.
     Show {
@@ -2706,8 +2709,23 @@ fn run_import_census(
     census_path: Option<PathBuf>,
     programs: Vec<String>,
     dry_run: bool,
+    cluster: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::census_import::{self as ci, Census};
+
+    // Round 40: the census is mainnet-beta's; the operator states the Core's
+    // cluster, and the server holds the RPC to it at every start.
+    match cluster.as_deref() {
+        Some(c) => ci::check_cluster_arg(c)?,
+        None => {
+            return Err(format!(
+                "--cluster is required: the census measures {} only (--cluster {}); the server then refuses to start on an RPC of another cluster",
+                ci::CENSUS_CLUSTER,
+                ci::CENSUS_CLUSTER
+            )
+            .into())
+        }
+    }
 
     let (census, source) = match &census_path {
         Some(path) => {
@@ -2860,7 +2878,7 @@ fn print_census_caveat() {
         "tier stays OfficialManifest. It describes mainnet-beta code at the time measured; an upgrade the Core"
     );
     println!(
-        "observes after that time withdraws it. Do not import it on a Core that verifies another cluster."
+        "observes after that time withdraws it. A server on this data directory refuses to start unless its RPC serves mainnet-beta."
     );
 }
 
@@ -2968,7 +2986,8 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
             census,
             programs,
             dry_run,
-        } => run_import_census(data_dir, census, programs, dry_run),
+            cluster,
+        } => run_import_census(data_dir, census, programs, dry_run, cluster),
 
         EvidenceAction::Baseline {
             data_dir,

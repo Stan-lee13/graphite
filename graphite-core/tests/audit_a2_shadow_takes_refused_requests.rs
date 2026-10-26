@@ -19,6 +19,9 @@
 #![cfg(feature = "rpc")]
 #![allow(dead_code)]
 
+// Round 40 (bootstrap): every test below runs again with each Core it builds
+// census-imported (`round40_census_imported::*`), its profiles unchanged.
+mod round40_imported;
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
 use graphite_core::semantic_graph_store::BehaviorEvidence;
@@ -249,7 +252,7 @@ fn cluster(knobs: Shared) -> String {
 }
 
 fn core_at(endpoint: &str) -> GraphiteCore {
-    let mut core = GraphiteCore::new();
+    let mut core = round40_imported::core();
     core.attach_rpc_client(SolanaRpcClient::new(RpcConfig {
         endpoint: endpoint.to_string(),
         timeout: std::time::Duration::from_secs(5),
@@ -407,3 +410,10 @@ async fn an_observation_trains_the_baseline_only_once_its_verdict_is_recorded() 
     core.commit_observation(&committed.audit_trail_id).await;
     assert_eq!(samples(&core), 1, "and only once");
 }
+
+// Round 40 (bootstrap): the same tests after `graphite evidence import-census`
+// (tests/round40_imported/mod.rs); a learning suite's profiles are its own.
+imported_core_twins!(
+    refused_requests_do_not_fill_the_promotable_shadow,
+    an_observation_trains_the_baseline_only_once_its_verdict_is_recorded,
+);

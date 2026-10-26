@@ -48,9 +48,15 @@ fn text(o: &Output) -> String {
 
 fn import(data: &Path, extra: &[&str], key: Option<&Path>) -> Output {
     let mut c = graphite();
-    c.args(["evidence", "import-census", "--data-dir"])
-        .arg(data)
-        .args(extra);
+    c.args([
+        "evidence",
+        "import-census",
+        "--cluster",
+        "mainnet-beta",
+        "--data-dir",
+    ])
+    .arg(data)
+    .args(extra);
     if let Some(k) = key {
         c.env("GRAPHITE_AUDIT_KEY_FILE", k);
     }

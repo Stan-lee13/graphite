@@ -1530,6 +1530,12 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
             });
             core.attach_rpc_client(client);
             core.set_rpc_budget(crate::verification::DEFAULT_RPC_BUDGET);
+            // Round 40 (bootstrap): a data directory holding imported census
+            // evidence (mainnet-beta's) is not served through an RPC of
+            // another cluster — or one that cannot say which it serves.
+            core.confirm_evidence_cluster()
+                .await
+                .map_err(|e| format!("refusing to start: {e}"))?;
             tracing_log(&format!(
                 "RPC client attached — live L3/L4 enabled (GRAPHITE_RPC_URL, {}{}); per-call timeout {}s, {} retry, total budget {}s inside a {}s request timeout; redirects not followed",
                 facts.scheme,

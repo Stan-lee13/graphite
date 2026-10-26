@@ -671,3 +671,148 @@ mod upgrades {
         assert!(core.program_behavior(WHIRLPOOL).is_none());
     }
 }
+
+// ─── Round 40 follow-up: the census is mainnet-beta's, enforced ────────────
+
+const DEVNET_GENESIS: &str = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
+
+#[test]
+fn only_mainnet_beta_is_a_cluster_the_census_can_be_imported_into() {
+    assert!(ci::check_cluster_arg("mainnet-beta").is_ok());
+    for other in [
+        "devnet",
+        "testnet",
+        "localnet",
+        "mainnet",
+        "Mainnet-Beta",
+        "",
+    ] {
+        let e = ci::check_cluster_arg(other).unwrap_err();
+        assert!(e.contains("mainnet-beta only"), "{other}: {e}");
+    }
+    // The census says where it was measured; another RPC is refused.
+    let mut d = doc();
+    d["rpc"] = "https://api.devnet.solana.com".into();
+    let e = Census::from_bytes(&serde_json::to_vec(&d).unwrap()).unwrap_err();
+    assert!(e.contains("cannot place it on mainnet-beta"), "{e}");
+}
+
+#[test]
+fn an_import_records_that_the_graphs_evidence_is_mainnet_betas() {
+    let dir = std::env::temp_dir().join(format!(
+        "graphite-r40-mark-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    {
+        let mut core = GraphiteCore::open_data_dir(dir.clone()).unwrap();
+        assert_eq!(
+            core.evidence_genesis(),
+            None,
+            "a fresh graph names no cluster"
+        );
+        let census = Census::embedded().unwrap();
+        let plan = ci::plan(&core, &census, &[SYSTEM.to_string()]).unwrap();
+        ci::apply(&mut core, &plan.imports[0]).unwrap().unwrap();
+    }
+    let reopened = GraphiteCore::open_data_dir_read_only(&dir).unwrap();
+    assert_eq!(
+        reopened.evidence_genesis().as_deref(),
+        Some(ci::MAINNET_BETA_GENESIS_HASH),
+        "the mark is in the snapshot"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+
+    // One graph, one cluster: evidence of another is refused before it is
+    // appended.
+    let mut store = graphite_core::semantic_graph_store::SemanticGraphStore::new();
+    store
+        .mark_evidence_genesis(ci::MAINNET_BETA_GENESIS_HASH)
+        .unwrap();
+    assert!(store
+        .mark_evidence_genesis(ci::MAINNET_BETA_GENESIS_HASH)
+        .is_ok());
+    assert!(store.mark_evidence_genesis(DEVNET_GENESIS).is_err());
+}
+
+#[cfg(feature = "rpc")]
+mod cluster {
+    use super::*;
+    use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    /// A loopback RPC that answers `getGenesisHash` with `genesis` (`None`:
+    /// an error) and counts the asks.
+    fn serve(genesis: Option<&'static str>, asked: Arc<AtomicUsize>) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            while let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = vec![0u8; 1 << 16];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]).to_string();
+                let answer = if req.contains("getGenesisHash") {
+                    asked.fetch_add(1, Ordering::SeqCst);
+                    match genesis {
+                        Some(g) => format!(r#"{{"jsonrpc":"2.0","id":1,"result":"{g}"}}"#),
+                        None => r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"Method not found"}}"#.to_string(),
+                    }
+                } else {
+                    r#"{"jsonrpc":"2.0","id":1,"result":null}"#.to_string()
+                };
+                let _ = stream.write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
+                        answer.len()
+                    )
+                    .as_bytes(),
+                );
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    fn core_on(genesis: Option<&'static str>, imported: bool) -> (GraphiteCore, Arc<AtomicUsize>) {
+        let asked = Arc::new(AtomicUsize::new(0));
+        let mut core = GraphiteCore::new();
+        if imported {
+            ci::import_embedded_into(&mut core).unwrap();
+        }
+        core.attach_rpc_client(SolanaRpcClient::new(RpcConfig {
+            endpoint: serve(genesis, Arc::clone(&asked)),
+            timeout: std::time::Duration::from_secs(5),
+            max_retries: 0,
+            ..Default::default()
+        }));
+        (core, asked)
+    }
+
+    #[tokio::test]
+    async fn imported_evidence_is_refused_on_another_cluster_and_accepted_on_mainnet_beta() {
+        let (devnet, _) = core_on(Some(DEVNET_GENESIS), true);
+        let e = devnet.confirm_evidence_cluster().await.unwrap_err();
+        assert!(
+            e.contains(ci::MAINNET_BETA_GENESIS_HASH) && e.contains(DEVNET_GENESIS),
+            "{e}"
+        );
+        let (unsaid, _) = core_on(None, true);
+        let e = unsaid.confirm_evidence_cluster().await.unwrap_err();
+        assert!(e.contains("could not say which cluster"), "{e}");
+        let (mainnet, asked) = core_on(Some(ci::MAINNET_BETA_GENESIS_HASH), true);
+        mainnet.confirm_evidence_cluster().await.unwrap();
+        assert_eq!(asked.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn a_graph_without_imported_evidence_asks_nothing() {
+        let (core, asked) = core_on(Some(DEVNET_GENESIS), false);
+        core.confirm_evidence_cluster().await.unwrap();
+        assert_eq!(asked.load(Ordering::SeqCst), 0);
+    }
+}

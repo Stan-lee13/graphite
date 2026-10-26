@@ -306,6 +306,11 @@ enum EvidenceAction {
         /// confidence per program, without writing anything
         #[arg(long)]
         dry_run: bool,
+        /// The cluster this Core verifies: required, and only mainnet-beta
+        /// (the census measures mainnet-beta; the server refuses to start
+        /// when its RPC serves another cluster)
+        #[arg(long)]
+        cluster: Option<String>,
     },
     /// Show what the graph currently holds for a program
     Show {
@@ -950,12 +955,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 census,
                 programs,
                 dry_run,
+                cluster,
             } => graphite_core::cli::run(graphite_core::cli::CliCommand::Evidence {
                 action: graphite_core::cli::EvidenceAction::ImportCensus {
                     data_dir,
                     census,
                     programs,
                     dry_run,
+                    cluster,
                 },
             }),
             EvidenceAction::Show { data_dir, program } => {

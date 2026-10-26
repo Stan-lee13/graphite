@@ -241,12 +241,17 @@ deleted afterwards.
 
 ## 9. What remains open, stated plainly
 
-1. **Cross-cluster** (G-12): nothing stops importing the mainnet census on a devnet/testnet Core;
-   only the output and docs say not to. A guard would need the Core to know its cluster (e.g. the
-   RPC's genesis hash) — a design decision for the lead.
-2. **Learning after import** (G-13): imported programs' honest simulated verdicts train baselines
-   (to 0.75). Intended by the existing `BuiltinFloor` rule, newly reachable; the poisoning
-   campaigns were not re-run in the imported state here.
+1. ~~**Cross-cluster** (G-12)~~ — **closed in the second pass (§12.2)**: enforced by
+   `--cluster mainnet-beta`, a mark in the graph and a server-start `getGenesisHash` check.
+   Residual: a library embedder that attaches an RPC itself must call
+   `GraphiteCore::confirm_evidence_cluster` (the server does; `graphite verify` attaches no RPC).
+2. ~~**Learning after import** (G-13)~~ — **re-run in the second pass (§12.1)**: training stops at
+   0.75 with the tier unchanged, and no attack becomes executable on a trained Core. Residual:
+   any verify-key holder can now shape an imported program's baseline with honest-looking
+   traffic (the first ten samples are learned unclamped). It buys nothing on the built-in
+   profiles; on an operator `Custom` profile with a floor between 0.59 and 0.75 it would open
+   that profile to the program, and a skewed first baseline can make L3 flag honest traffic
+   (availability, recoverable with `evidence promote-shadow`).
 3. **Existing attestations** (G-14): on a graph that already holds a signed manifest or ≥2
    community attestations for a program, the import completes `BattleTested`; with attestations
    and a baseline that admits Treasury/Enterprise. Not reachable on a fresh Core.
@@ -292,8 +297,8 @@ deleted afterwards.
    # time. Re-running it imports nothing new. A manifested program then reaches
    # 0.59: Gaming only. Run it with the server stopped and the server's
    # GRAPHITE_AUDIT_KEY_FILE (docs/ops/install.md, "First start").
-   graphite evidence import-census --dry-run
-   graphite evidence import-census
+   graphite evidence import-census --cluster mainnet-beta --dry-run
+   graphite evidence import-census --cluster mainnet-beta
    # Restore an exported graph, or vouch for evidence by hand (operator-asserted).
    # CLI-only: request-body evidence would let any caller mint an earned-looking
    # tier. Both take a base58 program id and write an operator_action row.
@@ -361,3 +366,143 @@ to re-pin.
 Deleted: `/home/user/brk-bootstrap-1` and `/home/user/brk-bootstrap-target` (break copies),
 `/tmp/graphite-bs-1`, `/tmp/graphite-r40-*`; `/home/user/bootstrap-target` and the scratch venv
 at the end (reported in the hand-off).
+
+## 12. Second pass (the lead's follow-ups, after merging `11f85c1` and then `22b8c5f`)
+
+### 12.1 Learning and poisoning in the imported state
+
+What the import changes for learning: under `ObservationPolicy::BuiltinFloor` (the default) a
+simulation counts only when its verdict clears 0.55 / HeuristicInferred on its own. On a fresh
+Core (0.44) nothing an imported program does trains; after the import (0.59) its honest,
+simulated, risk-clear verdicts train its baseline, whoever sends them.
+
+**Suites re-run in the imported state** (`imported_core_twins!`, tests/round40_imported/mod.rs:
+every Core the test builds through its constructor is census-imported; the test's own profiles
+are kept, since a request's profile is the lever a verify-key holder pulls):
+
+| Suite | Twins | Not twinned, and why |
+|---|---|---|
+| `round30_trust_learning` | 6 | 4: two whose premise is "a fresh program is below Gaming" (`a_verify_key_holder_cannot_raise_…`, `concurrent_self_approvals_teach_nothing`), two whose premise is evidence that cannot be dated against the first deployment (imported evidence is dated; `round40_census_import::upgrades::*` covers the upgrade) |
+| `audit_2026_10_20_simulation_gate` | 6 | 1: `policy_refusals_teach_nothing_…` (premise: fresh below Gaming) |
+| `round17_remediations` | 9 | 1: `the_same_request_is_not_approved_on_the_second_call` (same premise; its TradingBot half passed) |
+| `round19_what_one_observation_is` | 2 | 1: `a_fresh_blockhash_is_not_a_new_observation` (its sample assertion, five blockhashes = one observation, PASSED in the imported state; the approval-count premise did not) |
+| `audit_a2_shadow_takes_refused_requests` | 2 | — |
+| `evading_the_fixes` | 2 | 2 build no Core (RPC body parsing) |
+| `round10_attribution` | 6 | 1: a temp dir named by the process id alone, which a twin would share |
+| `round9_identity_requires_data` | 6 | — |
+| `rpc_trust_boundary` | 11 | 5 build no Core (RPC parsing) |
+| `simulation_integrity` unit tests (`alternating_outliers_cannot_widen_an_anchored_band`, `a_slow_drip_cannot_walk_an_anchored_baseline`), `audit_a2_baseline_variance_ratchet` | n/a | pure baseline functions on a `ComputeBaseline`; the import writes no baseline, so the imported state cannot change them. Run: pass |
+
+Every twin passed. The premise-dependent tests are restated for the imported state in
+`round30_trust_learning.rs`:
+
+- `round40_after_the_import_requests_below_the_floor_still_teach_nothing` — forty requests
+  refused by L4 (stated amount below what the simulation moves) under permissive, 0.40, Gaming
+  and Treasury profiles, then thirty-two concurrently under the permissive one: 0 samples, 0
+  shadow; the next honest verdict is still 0.59.
+- `round40_after_the_import_one_request_repeated_is_one_observation` — six identical honest
+  asks: one sample; confidence 0.59 then 0.6567 five times, never more by repetition.
+- `round40_after_the_import_training_stops_at_the_ceiling_and_an_outlier_is_flagged` — eleven
+  distinct honest transfers: 0.59 → 0.75 and no higher (OfficialManifest ceiling), tier
+  OfficialManifest, TradingBot refuses; a 10× compute outlier is FLAGGED by L3, not executable,
+  not a trusted sample.
+
+**End-to-end campaign** (`round39_decision_campaigns::round40_training_an_imported_program_opens_no_attack`,
+imported state, built-in Gaming, one Core across all requests):
+
+1. Twelve honest-looking, distinct Stake withdrawals (40 SOL + i lamports): all
+   `executable_approved`, twelve samples. Confidence by request:
+   0.59, 0.6567, 0.7233, then 0.75 for every later one — SimulationMatch full at three samples,
+   capped by the OfficialManifest ceiling.
+2. What the training bought: an honest withdrawal at 0.75, tier OfficialManifest; TradingBot,
+   Treasury and Enterprise refuse it (tier floors). That is what honest evidence justifies: the
+   ceiling no traffic-earned evidence passes.
+3. Thirteen attacks beside a granted Stake Withdraw on the trained Core — R39-1 A (closable
+   account), B (co-signer), C (`CreateAccount` for the attacker's program), stranger transfer,
+   owner / close-authority / freeze-authority change, close to attacker, approve, burn, hidden
+   CPI, a second Withdraw to the attacker, Stake Authorize — and a withdrawal whose simulation
+   used 10× the trained compute: **all refused**. Six sat at the trained 0.75 (A, B, C,
+   stranger, second Withdraw, and the outlier); the outlier was FLAGGED by L3.
+4. The refused requests taught nothing (samples unchanged at 13).
+
+**No attack became executable. No P0.**
+
+### 12.2 Wrong cluster: enforced
+
+The Core had no notion of its cluster (nothing called `getGenesisHash`). The smallest enforced
+design, implemented:
+
+- `graphite evidence import-census` requires `--cluster mainnet-beta`; no flag, or any other
+  name (`devnet`, `testnet`, `mainnet`, …), is refused before the data directory is touched.
+- The census must say it was measured on `https://api.mainnet-beta.solana.com` (its `rpc`
+  field); another is refused at the schema check.
+- The import records the cluster in the graph snapshot:
+  `SemanticGraphStore::evidence_genesis = 5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d`
+  (mainnet-beta's genesis hash). Set once, never cleared; evidence of a second cluster in the
+  same graph is refused (`SemanticGraphError::EvidenceCluster`) before anything is appended.
+- At start, a server with `GRAPHITE_RPC_URL` calls `GraphiteCore::confirm_evidence_cluster`:
+  when the graph holds the mark it asks the RPC `getGenesisHash`
+  (`SolanaRpcClient::get_genesis_hash`, new) and **refuses to start** unless the answer is
+  mainnet-beta's — or when the RPC cannot answer. A graph without the mark asks nothing and
+  starts on any cluster, as before. Without an RPC nothing is simulated, so no verdict is
+  executable, and the server starts.
+- The live-devnet runner went back to `evidence seed` (operator-asserted): the census cannot
+  be used on devnet or a local validator any more, by design. The live-mainnet runner passes
+  `--cluster mainnet-beta`.
+
+Tests: `round40_cluster_guard.rs` (the real binary against a loopback mock answering
+`getGenesisHash`: the import without `--cluster` / with `devnet`, `testnet`, `mainnet` refused
+and nothing written; a server over imported evidence refuses to start on a devnet genesis hash
+and on an RPC that does not answer it, naming both hashes; the same data directory starts on a
+mainnet-beta RPC; a data directory without imported evidence starts on a devnet RPC), and in
+`round40_census_import.rs` `only_mainnet_beta_is_a_cluster_the_census_can_be_imported_into`,
+`an_import_records_that_the_graphs_evidence_is_mainnet_betas` (the mark survives a reopen; a
+second cluster is refused), `cluster::imported_evidence_is_refused_on_another_cluster_and_accepted_on_mainnet_beta`,
+`cluster::a_graph_without_imported_evidence_asks_nothing`.
+
+Trade-off (P14): a server on an imported data directory now depends on its RPC answering one
+`getGenesisHash` at start; an RPC down at start means no start (fail closed, with the reason).
+
+### 12.3 Deliberate breaks (second pass)
+
+Same method (copy at `/home/user/brk-bootstrap-1`, own target dir, both deleted):
+
+| Break | What was removed | Tests that fail |
+|---|---|---|
+| C1 | the server-start check (`confirm_evidence_cluster` not called) | `a_server_refuses_to_start_on_another_clusters_rpc_with_imported_evidence` |
+| C2 | the genesis comparison | `cluster::imported_evidence_is_refused_on_another_cluster_and_accepted_on_mainnet_beta`, `a_server_refuses_to_start_…` |
+| C3 | the `--cluster` name check | `the_import_names_mainnet_beta_or_does_nothing` |
+| B9 again | R39-CORE-DECISION-1 reverted in part | `round40_training_an_imported_program_opens_no_attack`: R39-1 B and C are `executable_approved` on the trained Core at 0.75 under Gaming — the campaign catches it |
+
+### 12.4 After merging `22b8c5f` (manifests workstream)
+
+The merge was clean. The census file is unchanged (sha256 `973e4d58…07138b`); its decode
+rates are recomputed against the manifests as loaded, and with the 23 phantom instructions
+removed and 60 swap declarations rewritten the plan is still **114 imported, 23 skipped**, the
+same records with the same reasons: the removed instructions were never observed by the census,
+so no recomputed rate moved. No pin changed (`only_records_that_clear_every_threshold_are_planned`
+still equals `battle_tested_programs()`, and every CLI count holds). The merged
+`round39_decision_campaigns.rs` (the rewritten-venue attacks in all three configurations) and
+this pass's campaign run together: 23 tests, all pass.
+
+Floors (`.github/test-floors/`): default — `round40_census_import` 11 → 15,
+`round30_trust_learning` 13 → 22, `round39_decision_campaigns` 22 → 23, new
+`3 tests/round40_cluster_guard.rs`; cli — `round40_census_import` 8 → 10, and
+`round40_cluster_guard.rs` excused (`cfg(feature = "server")`). Only raised, each to the count of
+the run below.
+
+### 12.5 Commands (second pass)
+
+| Command | Result |
+|---|---|
+| `cargo test --locked --no-fail-fast` (default, after merging `22b8c5f`) | **2,590 passed, 0 failed, 15 ignored** |
+| `cargo test --locked --no-fail-fast --no-default-features --features cli` | **2,000 passed, 0 failed, 6 ignored** |
+| the nine learning suites with twins + `round39_decision_campaigns` + `audit_a2_baseline_variance_ratchet` | all pass (22, 14, 4, 9, 19, 7, 15, 12, 27, 23, 1) |
+| `cargo test --lib simulation_integrity` (the anchored-band unit tests) | pass (in the default leg) |
+| clippy `--all-targets --all-features` and `--all-targets --no-default-features --features cli`, `-D warnings` | clean |
+| `cargo fmt --all -- --check` | clean |
+| `bash .github/scripts/ci-scripts.test.sh` | 137 passed, 0 failed |
+| `pytest -q test_live_measure.py` | 60 passed |
+| breaks C1, C2, C3, B9 (§12.3) | each fails the tests named |
+
+Deleted: the break copy and its target dir, `/tmp/graphite-r40-*`.

@@ -14,6 +14,9 @@
 //!   first.
 #![cfg(feature = "rpc")]
 
+// Round 40 (bootstrap): every test below runs again with each Core it builds
+// census-imported (`round40_census_imported::*`), its profiles unchanged.
+mod round40_imported;
 use graphite_core::confidence_engine::TrustTier;
 use graphite_core::durable::{audit_path, AuditLog};
 use graphite_core::policy_engine::WalletProfile;
@@ -238,7 +241,7 @@ fn client(endpoint: &str) -> SolanaRpcClient {
 }
 
 fn core_at(endpoint: &str) -> GraphiteCore {
-    let mut core = GraphiteCore::new();
+    let mut core = round40_imported::core();
     core.attach_rpc_client(client(endpoint));
     core
 }
@@ -633,7 +636,7 @@ async fn a_cited_refusal_of_other_bytes_is_not_an_alarm() {
 #[test]
 fn the_witness_is_never_the_primary_whichever_is_attached_first() {
     // Witness first, then the same endpoint as the primary.
-    let mut core = GraphiteCore::new();
+    let mut core = round40_imported::core();
     core.attach_inclusion_witness(client("http://127.0.0.1:9/"))
         .expect("no primary yet");
     assert!(core.has_inclusion_witness());
@@ -649,16 +652,28 @@ fn the_witness_is_never_the_primary_whichever_is_attached_first() {
     );
 
     // A different endpoint is kept.
-    let mut core = GraphiteCore::new();
+    let mut core = round40_imported::core();
     core.attach_inclusion_witness(client("http://127.0.0.1:9/"))
         .unwrap();
     core.attach_rpc_client(client("http://127.0.0.1:10/"));
     assert!(core.has_inclusion_witness());
 
     // Primary first is refused, as before.
-    let mut core = GraphiteCore::new();
+    let mut core = round40_imported::core();
     core.attach_rpc_client(client("http://127.0.0.1:9/"));
     assert!(core
         .attach_inclusion_witness(client("http://127.0.0.1:9"))
         .is_err());
 }
+
+// Round 40 (bootstrap): the same tests after `graphite evidence import-census`
+// (tests/round40_imported/mod.rs); a learning suite's profiles are its own.
+imported_core_twins!(
+    a_clean_simulation_approves,
+    an_errored_simulation_is_refused,
+    an_unobtainable_simulation_is_refused_as_incomplete,
+    an_incomplete_simulation_response_is_refused,
+    a_simulation_without_a_diff_is_refused,
+    // not twinned: policy_refusals_teach_nothing_unless_the_operator_opts_in — its premise is a fresh program below Gaming (0.44); after the import the same honest request clears the built-in floor, so the property is restated for the imported state in round30_trust_learning.rs `round40_*`
+    a_cited_refusal_of_other_bytes_is_not_an_alarm,
+);

@@ -201,6 +201,8 @@ fn acct(lamports: u64, owner: &str, data: Vec<u8>) -> Account {
 #[derive(Default, Clone)]
 struct Cluster {
     keys: Vec<String>,
+    /// Round 40: the compute units the simulation reports (0: 40,000).
+    units: u64,
     pre: HashMap<String, Account>,
     post: HashMap<String, Option<Account>>,
 }
@@ -353,10 +355,11 @@ fn serve(state: Arc<Mutex<Cluster>>) -> String {
                             .join(",")
                     };
                     format!(
-                        r#"{{"context":{{"slot":1000}},"value":{{"err":null,"logs":[],"unitsConsumed":40000,"fee":{FEE},
+                        r#"{{"context":{{"slot":1000}},"value":{{"err":null,"logs":[],"unitsConsumed":{},"fee":{FEE},
                         "preBalances":[{}],"postBalances":[{}],
                         "innerInstructions":[],"loadedAddresses":{{"writable":[],"readonly":[]}},
                         "accounts":[{}],"returnData":null}}}}"#,
+                        if s.units == 0 { 40_000 } else { s.units },
                         balances(true),
                         balances(false),
                         post.join(",")
@@ -632,6 +635,29 @@ async fn verify_core(
     for p in plugins {
         assert!(core.register_plugin(p), "a test plugin registers");
     }
+    let input = input_of(
+        ixs,
+        primary,
+        intent,
+        extracted,
+        profile,
+        bytes,
+        discriminator,
+    );
+    core.verify_async(&input).await.expect("a verdict")
+}
+
+/// The request `verify_core` sends for `ixs[primary]` (Round 40: shared with
+/// the training campaign, which keeps one Core across requests).
+fn input_of(
+    ixs: &[Ix],
+    primary: usize,
+    intent: &str,
+    extracted: Option<ExtractedParameters>,
+    profile: WalletProfile,
+    bytes: Vec<u8>,
+    discriminator: Option<String>,
+) -> VerificationInput {
     let p = &ixs[primary];
     let def_disc = discriminator.unwrap_or_else(|| {
         load_seed_manifests()
@@ -647,7 +673,7 @@ async fn verify_core(
             })
             .expect("the primary is a manifest instruction")
     });
-    let input = VerificationInput {
+    VerificationInput {
         proposed_intent: ProposedIntent {
             intent_type: intent.to_string(),
             raw_natural_language: format!("{intent} please"),
@@ -677,8 +703,7 @@ async fn verify_core(
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         state_diff: None,
-    };
-    core.verify_async(&input).await.expect("a verdict")
+    }
 }
 
 fn risk(r: &VerificationResult) -> String {
@@ -1381,12 +1406,17 @@ enum WithBeside {
 }
 
 fn stake_withdrawal(beside: WithBeside) -> (Cluster, Vec<Ix>, String) {
+    stake_withdrawal_of(40 * SOL, beside)
+}
+
+/// `stake_withdrawal` of `amount` (Round 40: distinct amounts are distinct
+/// observations for the training campaign).
+fn stake_withdrawal_of(amount: u64, beside: WithBeside) -> (Cluster, Vec<Ix>, String) {
     let mut c = Cluster::default();
     base_programs(&mut c);
     for s in [CLOCK, STAKE_HISTORY] {
         c.set(s, acct(1, SYSVAR, vec![0u8; 8]));
     }
-    let amount = 40 * SOL;
     let stake = key(10);
     c.set(&stake, acct(amount + STAKE_RENT, STAKE, stake_data(OWNER)));
     c.after(&stake, acct(STAKE_RENT, STAKE, stake_data(OWNER)));
@@ -3317,4 +3347,185 @@ async fn round40_after_the_import_the_confidence_precondition_is_met() {
         record(tag, &r);
         assert!(r.confidence >= floor, "{tag}: {}", r.confidence);
     }
+}
+
+// ─── Round 40 (bootstrap, follow-up): training after the import ────────────
+
+/// One request on a Core kept across requests: the request's cluster is
+/// served afresh and attached, the graph (baselines included) is the Core's.
+async fn verify_kept(
+    core: &mut GraphiteCore,
+    mut cluster: Cluster,
+    payer: &str,
+    ixs: &[Ix],
+    intent: &str,
+    profile: WalletProfile,
+) -> VerificationResult {
+    let (keys, bytes) = frame(payer, ixs);
+    cluster.keys = keys;
+    core.attach_rpc_client(SolanaRpcClient::new(RpcConfig {
+        endpoint: serve(Arc::new(Mutex::new(cluster))),
+        timeout: std::time::Duration::from_secs(10),
+        max_retries: 0,
+        ..Default::default()
+    }));
+    core.verify_async(&input_of(ixs, 0, intent, None, profile, bytes, None))
+        .await
+        .expect("a verdict")
+}
+
+fn stake_samples(core: &GraphiteCore) -> u64 {
+    core.simulation_baseline(STAKE)
+        .map(|b| b.sample_count)
+        .unwrap_or(0)
+}
+
+/// The lead's follow-up campaign. After `import-census`, honest simulated
+/// verdicts of an imported program clear the built-in floor on their own and
+/// so train its baseline (`ObservationPolicy::BuiltinFloor`, the default).
+/// An attacker with the verify key uses that:
+///
+/// 1. sends twelve honest-looking, distinct Stake withdrawals (each a
+///    different amount, so each is a new observation) under the built-in
+///    Gaming profile — every one executable, every one a sample;
+/// 2. then sends the attacks: R39-CORE-DECISION-1 A/B/C and every other
+///    `WithBeside` variant beside a granted Stake Withdraw, and a withdrawal
+///    whose simulation used ten times the compute the attacker trained.
+///
+/// Every attack is refused. The training lifted the program's confidence
+/// from 0.59 to 0.75 — the OfficialManifest ceiling, which no evidence the
+/// graph can earn from traffic passes — and left its tier at
+/// OfficialManifest, so TradingBot, Treasury and Enterprise refuse even the
+/// honest withdrawal afterwards. The refused attacks taught nothing.
+#[tokio::test]
+async fn round40_training_an_imported_program_opens_no_attack() {
+    let mut core = GraphiteCore::new();
+    graphite_core::census_import::import_embedded_into(&mut core).unwrap();
+    let gaming = WalletProfile::Gaming;
+
+    // 1. Training.
+    let mut progression = Vec::new();
+    for i in 0..12u64 {
+        let (c, ixs, payer) = stake_withdrawal_of(40 * SOL + i, WithBeside::Nothing);
+        let r = verify_kept(&mut core, c, &payer, &ixs, "withdraw", gaming).await;
+        assert_executable(&format!("training withdrawal {i}"), &r);
+        progression.push(r.confidence);
+    }
+    eprintln!("[R40 training] confidence by request: {progression:?}");
+    assert_eq!(
+        stake_samples(&core),
+        12,
+        "each distinct withdrawal is a sample"
+    );
+    for (n, c) in progression.iter().enumerate() {
+        // SimulationMatch is the sample count over 3 (0.20 at 3); the
+        // OfficialManifest ceiling caps the sum at 0.75.
+        let expected = (0.59 + 0.20 * (n.min(3) as f64) / 3.0).min(0.75);
+        assert!(
+            (c - expected).abs() < 1e-9,
+            "request {n}: confidence {c}, expected {expected}"
+        );
+    }
+
+    // What the training bought: 0.75, the tier unchanged, the stricter
+    // built-in profiles still closed.
+    let (c, ixs, payer) = stake_withdrawal_of(41 * SOL, WithBeside::Nothing);
+    let honest = verify_kept(&mut core, c, &payer, &ixs, "withdraw", gaming).await;
+    assert_executable("honest withdrawal after training", &honest);
+    assert!(
+        (honest.confidence - 0.75).abs() < 1e-9,
+        "{}",
+        honest.confidence
+    );
+    assert_eq!(honest.trust_tier, "OfficialManifest");
+    for profile in [
+        WalletProfile::TradingBot,
+        WalletProfile::Treasury,
+        WalletProfile::Enterprise,
+    ] {
+        let (c, ixs, payer) = stake_withdrawal_of(41 * SOL, WithBeside::Nothing);
+        let r = verify_kept(&mut core, c, &payer, &ixs, "withdraw", profile).await;
+        record(
+            &format!("honest withdrawal after training, {profile:?}"),
+            &r,
+        );
+        assert_ne!(
+            r.decision,
+            ExecutionDecision::ExecutableApproved,
+            "{profile:?} admitted a trained OfficialManifest program"
+        );
+    }
+    let trained = stake_samples(&core);
+    assert_eq!(trained, 13);
+
+    // 2. The attacks, on the trained Core.
+    let attacks = [
+        (
+            "R39-1 A: SOL to an attacker-closable account",
+            WithBeside::Closable(30 * SOL),
+        ),
+        (
+            "R39-1 B: SOL to a co-signing attacker",
+            WithBeside::CoSigner(30 * SOL),
+        ),
+        (
+            "R39-1 C: CreateAccount for the attacker's program",
+            WithBeside::CreateFunding(30 * SOL),
+        ),
+        ("stranger transfer", WithBeside::Stranger(30 * SOL)),
+        ("owner change", WithBeside::OwnerChange),
+        ("close-authority change", WithBeside::CloseAuthorityChange),
+        ("freeze-authority change", WithBeside::FreezeAuthorityChange),
+        ("close to attacker", WithBeside::Close),
+        ("approve", WithBeside::Approve),
+        ("burn", WithBeside::Burn),
+        ("hidden CPI", WithBeside::HiddenCpi(30 * SOL)),
+        (
+            "a second Stake Withdraw to the attacker",
+            WithBeside::SecondWithdrawToAttacker(20 * SOL),
+        ),
+        (
+            "Stake Authorize to the attacker",
+            WithBeside::StakeAuthorize,
+        ),
+    ];
+    let mut out = Outcomes::default();
+    let mut at_ceiling = 0;
+    for (k, (tag, beside)) in attacks.into_iter().enumerate() {
+        let (c, ixs, payer) = stake_withdrawal_of(42 * SOL + k as u64, beside);
+        let r = verify_kept(&mut core, c, &payer, &ixs, "withdraw", gaming).await;
+        if (r.confidence - 0.75).abs() < 1e-9 {
+            at_ceiling += 1;
+        }
+        out.refused(&format!("trained, {tag}"), &r);
+    }
+    // A compute outlier: an honest-looking withdrawal whose simulation used
+    // ten times what the attacker trained the anchored baseline on.
+    let (mut c, ixs, payer) = stake_withdrawal_of(43 * SOL, WithBeside::Nothing);
+    c.units = 400_000;
+    let outlier = verify_kept(&mut core, c, &payer, &ixs, "withdraw", gaming).await;
+    out.refused("trained, compute outlier (10x)", &outlier);
+    let l3 = outlier
+        .layers
+        .iter()
+        .find(|l| l.layer.starts_with("L3"))
+        .expect("an L3 layer");
+    assert!(
+        l3.reason.contains("FLAGGED"),
+        "the trained baseline flags a 10x outlier: {}",
+        l3.reason
+    );
+    out.assert_none_executable();
+    eprintln!(
+        "[R40 training] {at_ceiling} of {} attacks were refused at the trained confidence 0.75",
+        attacks.len()
+    );
+    assert!(at_ceiling > 0, "the precondition is met by some attack");
+
+    // 3. The refused requests taught nothing.
+    assert_eq!(
+        stake_samples(&core),
+        trained,
+        "a refused attack trained the baseline"
+    );
 }

@@ -151,6 +151,9 @@ pub enum SemanticGraphError {
     MutationAttempted,
     #[error("invalid behavior record: {reason}")]
     InvalidRecord { reason: String },
+    /// Round 40: the graph's imported evidence describes another cluster.
+    #[error("evidence cluster: {reason}")]
+    EvidenceCluster { reason: String },
 }
 
 /// Behavior record for a protocol or program.
@@ -360,6 +363,14 @@ pub struct SemanticGraphStore {
     /// replaced, kept for audit (`RETIRED_EVIDENCE_KEPT` most recent).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     retired_evidence: Vec<RetiredEvidence>,
+    /// Round 40 (bootstrap): the genesis hash of the cluster the graph's
+    /// imported evidence was measured on (`graphite evidence import-census`:
+    /// mainnet-beta). Set by the import, never cleared: a Core that attaches
+    /// an RPC must confirm the RPC serves this cluster before it uses the
+    /// graph (`GraphiteCore::confirm_evidence_cluster`; the server refuses to
+    /// start otherwise). Omitted from the snapshot while unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    evidence_genesis: Option<String>,
     /// The baseline schema this store follows. Always written as
     /// `BASELINE_SCHEMA`; a snapshot without it was written before Round 30.
     #[serde(default, serialize_with = "write_baseline_schema")]
@@ -417,6 +428,8 @@ struct StoreSnapshot {
     #[serde(default)]
     retired_evidence: Vec<RetiredEvidence>,
     #[serde(default)]
+    evidence_genesis: Option<String>,
+    #[serde(default)]
     baseline_schema: u32,
 }
 
@@ -444,6 +457,7 @@ impl From<StoreSnapshot> for SemanticGraphStore {
             },
             evidence_since_slot: s.evidence_since_slot,
             retired_evidence: s.retired_evidence,
+            evidence_genesis: s.evidence_genesis,
             baseline_schema: BASELINE_SCHEMA,
         };
         // Round 30 (G-03): a mature baseline written before anchors existed
@@ -1013,6 +1027,30 @@ impl SemanticGraphStore {
             .entry(program_id.to_string())
             .or_insert(slot);
         *since = (*since).min(slot);
+    }
+
+    /// Record that the graph holds evidence measured on the cluster whose
+    /// genesis hash is `genesis` (Round 40). Set once: evidence of a second
+    /// cluster in the same graph is refused, since one Core verifies one
+    /// cluster.
+    pub fn mark_evidence_genesis(&mut self, genesis: &str) -> Result<(), SemanticGraphError> {
+        match &self.evidence_genesis {
+            Some(g) if g != genesis => Err(SemanticGraphError::EvidenceCluster {
+                reason: format!(
+                    "the graph already holds evidence of the cluster whose genesis hash is {g}, not {genesis}"
+                ),
+            }),
+            Some(_) => Ok(()),
+            None => {
+                self.evidence_genesis = Some(genesis.to_string());
+                Ok(())
+            }
+        }
+    }
+
+    /// The genesis hash of the cluster imported evidence describes, if any.
+    pub fn evidence_genesis(&self) -> Option<&str> {
+        self.evidence_genesis.as_deref()
     }
 
     /// Evidence retired because a program's code changed, oldest first.
