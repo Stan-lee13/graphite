@@ -5,6 +5,22 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 
 ## [0.3.0-beta] — unreleased (the contract since v0.2.0-beta)
 
+Round 40 (2026-10-26) — every open Round 39 decision taken by the technical lead and implemented ([decisions](../docs/audit/TECHNICAL_LEAD_DECISIONS.md), [workstream reports](../docs/audit/parts-r40/)):
+
+- **Contract:** unchanged (`schemas/verification-result-v1.json`).
+- **Bootstrap (additive, operator-only):** `graphite evidence import-census --cluster mainnet-beta [--dry-run] [--program ID]... [--census FILE]` imports each program's successful-transaction count from the committed, measured census (`protocols/battle_tested_evidence.json`, hash-pinned to the compiled-in copy) as HistoricalVolume evidence. Only records that clear every census threshold, for a program with a loaded manifest that exists and is executable, are imported (114 of 137); the rest are listed with the reason. It never lowers existing evidence, recomputes the tier (P7, no signature asserted), skips a quarantined program or one whose observed deployment is newer than the census, writes one `operator_action` row per program, and is idempotent. A manifested program's verdict goes from 0.44 to 0.59 (Gaming only). No floor, ceiling, profile or tier rule changed. Library: `census_import`, `GraphiteCore::{standalone_standing, import_measured_evidence, observed_deployment, confirm_evidence_cluster, evidence_genesis}`, `SemanticGraphStore::bind_evidence_to_slot`, `SolanaRpcClient::get_genesis_hash`, `SemanticGraphError::EvidenceCluster`.
+- **Behaviour (stricter):**
+  - Census evidence is mainnet-beta's only: the import refuses any other `--cluster` and a census not measured on mainnet-beta; the data dir records the cluster's genesis hash; a server with `GRAPHITE_RPC_URL` set on such a data dir calls `getGenesisHash` at start and refuses to start unless it is mainnet-beta's (or when the RPC cannot answer).
+  - Manifests (P13, behaviour change): 60 swap/route declarations rewritten from the committed IDLs to name the user-side account they debit (records in `docs/audit-r40/declaration-rewrites.json`); honest Raydium CPMM `swap_base_input` and Orca `swap`/`swapV2` are now `executable_approved` under the defaults. **P14 tradeoff:** on venues `decode_swap` does not read, a skim beside the swap is no longer refused by L4; it is still never executable, because the swap stays unbound (`intent_parameters`), pinned by `round40_a_rewritten_pool_swap_with_a_skim_is_never_executable`.
+  - 23 manifest instructions in no committed IDL of their program removed (Meteora DLMM `swap_2` and 7 more, 15 Jupiter `*RouteCheck`/`*AccountCompressionRoute`/token-ledger variants): such bytes are now undescribed and refused. Registry: 3,541 → 3,518 instructions; regression corpus 13,013 → 12,967.
+  - The marketplace `update_offer` configure grant removed (it could never pass; grants 27 → 26).
+  - F-005: 7 of the 9 medium-confidence rewrites promoted to high, each with a recorded evidence record (the committed Marinade IDL; `solana-program/stake-pool` and `raydium-io/raydium-amm` at pinned commits) that `validate_corpora.py` re-checks.
+  - Label fixes in the ATA, Kamino and Solend manifests.
+- **Validation:** `validate_corpora.py` treats an instruction in no committed IDL as an error, requires the debit/credit words in a rewritten swap declaration, and accepts a promotion only with a checked evidence record.
+- **Crate:** `publish = false`.
+- **CI:** per-binary Rust test floors (`.github/test-floors/`); a required `agent-guard-windows` job; actionlint 1.7.11 pinned and run; mutation shards of at most 20 mutants; `test-count.sh` reads cargo's coloured output.
+- **Tests:** `round40_census_import`, `round40_import_census_cli`, `round40_cluster_guard`, `round40_swap_declarations`, `round40_surface_conformance`; imported-state twins of the Round 38/39 attack suites and of nine learning/poisoning suites.
+
 Round 39 (2026-10-25) — the exhaustive production-readiness audit of `c087bfb` (internal; [findings](../docs/audit/PRODUCTION_READINESS_FINDINGS.md), [remediation log](../docs/audit/REMEDIATION_LOG.md)):
 
 - **Contract:** unchanged (`schemas/verification-result-v1.json` is the same; both SDKs now test their enums against it).
