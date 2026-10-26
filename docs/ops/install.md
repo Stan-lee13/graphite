@@ -136,9 +136,15 @@ seed --battle-tested`.
   deployment`). An upgrade the Core observes after the import withdraws the
   imported volume like any other evidence (Round 30), and a re-run does not
   bring it back.
-- It is mainnet-beta evidence. Do not import it on a Core that verifies
-  devnet, testnet or a local validator (the live-devnet runner imports only
-  the System program, a builtin that is the same code on every cluster).
+- It is mainnet-beta evidence, and that is enforced: the command requires
+  `--cluster mainnet-beta` (any other name is refused), the data directory
+  records that its imported evidence is mainnet-beta's, and a server started
+  on it with `GRAPHITE_RPC_URL` asks the RPC `getGenesisHash` and **refuses to
+  start** unless the answer is mainnet-beta's genesis hash
+  (`5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d`). An RPC that cannot answer
+  is refused the same way. A data directory without imported evidence starts
+  on any cluster, as before. A devnet, testnet or local-validator Core seeds
+  with `graphite evidence seed` instead (operator-asserted).
 - It does not make the census fresher than it is: re-measure with
   `scripts/battle_tested_census.py` (it reads a public RPC) and commit the
   result to move it forward.
@@ -149,11 +155,11 @@ trail is keyed ([keys.md](keys.md): an unkeyed import on a keyed trail is
 refused before anything changes):
 
 ```sh
-docker compose run --rm --no-deps graphite graphite evidence import-census --dry-run
-docker compose run --rm --no-deps graphite graphite evidence import-census
+docker compose run --rm --no-deps graphite graphite evidence import-census --cluster mainnet-beta --dry-run
+docker compose run --rm --no-deps graphite graphite evidence import-census --cluster mainnet-beta
 # Built from source:
-graphite evidence import-census --data-dir "$GRAPHITE_DATA_DIR" --dry-run
-graphite evidence import-census --data-dir "$GRAPHITE_DATA_DIR"
+graphite evidence import-census --cluster mainnet-beta --data-dir "$GRAPHITE_DATA_DIR" --dry-run
+graphite evidence import-census --cluster mainnet-beta --data-dir "$GRAPHITE_DATA_DIR"
 ```
 
 `--dry-run` prints, per program, the census count, the graph tier the

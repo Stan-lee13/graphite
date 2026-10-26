@@ -29,7 +29,7 @@
 14 tests/round30_grounded_intents.rs
 11 tests/round30_l8_assurance.rs
 1 tests/round30_server_wire.rs
-13 tests/round30_trust_learning.rs
+22 tests/round30_trust_learning.rs
 2 tests/round32_unreferenced_static_keys.rs
 3 tests/round34_audit_adopt_key.rs
 6 tests/round35_parsed_inner_instructions.rs
@@ -41,14 +41,15 @@
 14 tests/round38_unscoped_authority.rs
 3 tests/round39_conformance_corpus.rs
 4 tests/round39_core_boundary.rs
-22 tests/round39_decision_campaigns.rs
+23 tests/round39_decision_campaigns.rs
 12 tests/round39_lookup_table_campaign.rs
 2 tests/round39_manifest_expected_address.rs
 6 tests/round39_registry_gate_dilution.rs
 4 tests/round40_surface_conformance.rs
 # Round 40 (bootstrap): the census import and its CLI
-11 tests/round40_census_import.rs
+15 tests/round40_census_import.rs
 5 tests/round40_import_census_cli.rs
+3 tests/round40_cluster_guard.rs
 29 tests/staking_withdrawal_destination.rs
 # Round 40 (manifests): the rewritten swap declarations
 3 tests/round40_swap_declarations.rs

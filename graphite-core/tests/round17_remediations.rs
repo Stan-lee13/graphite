@@ -24,6 +24,9 @@
 //!   one, so leaving `cpi_targets` empty no longer switches Check 1 off.
 //! - F-16-11: L8 reports every verdict recorded for the chain digest.
 
+// Round 40 (bootstrap): every test below runs again with each Core it builds
+// census-imported (`round40_census_imported::*`), its profiles unchanged.
+mod round40_imported;
 use graphite_core::durable::{audit_path, AuditLog};
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
@@ -279,7 +282,7 @@ fn cluster(knobs: Shared) -> String {
 }
 
 fn core_at(endpoint: &str) -> GraphiteCore {
-    let mut core = GraphiteCore::new();
+    let mut core = round40_imported::core();
     core.attach_rpc_client(SolanaRpcClient::new(RpcConfig {
         endpoint: endpoint.to_string(),
         timeout: std::time::Duration::from_secs(5),
@@ -888,3 +891,18 @@ async fn l8_reports_every_verdict_recorded_for_the_chain_digest() {
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+// Round 40 (bootstrap): the same tests after `graphite evidence import-census`
+// (tests/round40_imported/mod.rs); a learning suite's profiles are its own.
+imported_core_twins!(
+    a_presigned_artifact_is_refused_at_verify,
+    a_cited_verdict_about_other_bytes_is_reported_not_alarmed,
+    an_l2_refused_request_does_not_grow_the_baseline,
+    an_errored_simulation_is_not_evidence_and_is_named,
+    // not twinned: the_same_request_is_not_approved_on_the_second_call — its premise is a fresh program below Gaming (0.44); after the import the same honest request clears the built-in floor, so the property is restated for the imported state in round30_trust_learning.rs `round40_*`
+    identical_approved_bytes_are_one_observation,
+    ten_identical_samples_do_not_refuse_the_eleventh_at_plus_one_cu,
+    an_observed_cpi_target_the_caller_omitted_is_judged_like_a_declared_one,
+    a_siblings_executed_cpis_are_judged_by_its_own_manifest,
+    l8_reports_every_verdict_recorded_for_the_chain_digest,
+);

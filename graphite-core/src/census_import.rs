@@ -54,6 +54,31 @@ use serde_json::Value;
 /// The census file's name, as audit rows and reports cite it.
 pub const CENSUS_FILE: &str = "battle_tested_evidence.json";
 
+/// The cluster the census measures, as `--cluster` names it (Round 40).
+pub const CENSUS_CLUSTER: &str = "mainnet-beta";
+
+/// mainnet-beta's genesis hash: what an RPC's `getGenesisHash` answers on
+/// the cluster the census was measured on.
+pub const MAINNET_BETA_GENESIS_HASH: &str = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
+
+/// The RPC the census records it was measured on. Anything else cannot be
+/// placed on mainnet-beta by this build, and is refused.
+pub const CENSUS_RPC: &str = "https://api.mainnet-beta.solana.com";
+
+/// The cluster an operator names for the import (`--cluster`). The census is
+/// mainnet-beta only, so that is the only accepted name; naming it is the
+/// operator's statement that the Core verifies mainnet-beta, which the
+/// server then checks against its RPC's genesis hash at every start.
+pub fn check_cluster_arg(cluster: &str) -> Result<(), String> {
+    if cluster == CENSUS_CLUSTER {
+        Ok(())
+    } else {
+        Err(format!(
+            "--cluster {cluster:?}: the census measures {CENSUS_CLUSTER} only; import it only into a Core that verifies {CENSUS_CLUSTER} (--cluster {CENSUS_CLUSTER})"
+        ))
+    }
+}
+
 /// A census document that passed [`Census::from_bytes`].
 #[derive(Debug, Clone)]
 pub struct Census {
@@ -144,6 +169,12 @@ pub fn verify_census_document(doc: &Value) -> Vec<String> {
         if !["note", "rpc", "thresholds", "programs"].contains(&k.as_str()) {
             problems.push(format!("unknown top-level field {k:?}"));
         }
+    }
+    if doc["rpc"].as_str() != Some(CENSUS_RPC) {
+        problems.push(format!(
+            "the census says it was measured on {}, not {CENSUS_RPC}: this build cannot place it on {CENSUS_CLUSTER}",
+            doc["rpc"]
+        ));
     }
     let t = &doc["thresholds"];
     if t["min_successful_transactions"].as_u64()
@@ -523,10 +554,11 @@ pub fn audit_detail(census_sha256: &str, i: &PlannedImport) -> String {
 }
 
 /// Apply one planned import: append the record (tier recomputed, P7) and
-/// bind the evidence to the census window's oldest slot. `Ok(Err(_))`: in
-/// force in this process but not on disk.
+/// bind the evidence to the census window's oldest slot; the graph records
+/// that its imported evidence is mainnet-beta's (`MAINNET_BETA_GENESIS_HASH`).
+/// `Ok(Err(_))`: in force in this process but not on disk.
 pub fn apply(core: &mut GraphiteCore, i: &PlannedImport) -> Result<Result<(), String>, String> {
-    core.import_measured_evidence(i.behavior.clone(), i.oldest_slot)
+    core.import_measured_evidence(i.behavior.clone(), i.oldest_slot, MAINNET_BETA_GENESIS_HASH)
         .map_err(|e| format!("{}: {e}", i.program_id))
 }
 
