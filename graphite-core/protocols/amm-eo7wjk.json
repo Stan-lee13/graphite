@@ -738,7 +738,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool, userSourceToken, userDestinationToken, aVault, bVault, aTokenVault, bTokenVault, aVaultLpMint, bVaultLpMint, aVaultLp, bVaultLp, protocolTokenFee",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.userSourceToken to the pool's vault",
+    "transfers tokens into or out of accounts.aTokenVault",
+    "transfers tokens into or out of accounts.bTokenVault",
+    "transfers the output tokens from the pool's vault to accounts.userDestinationToken",
+    "credits accounts.protocolTokenFee with the protocol's share of the input",
+    "mints vault LP of accounts.aVaultLpMint or accounts.bVaultLpMint for the side the input enters",
+    "burns vault LP of accounts.aVaultLpMint or accounts.bVaultLpMint for the side the output leaves",
+    "debits accounts.userSourceToken by the input tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

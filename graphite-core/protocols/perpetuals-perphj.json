@@ -1362,7 +1362,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: fundingAccount, receivingAccount, pool, receivingCustody, receivingCustodyTokenAccount, dispensingCustody, dispensingCustodyTokenAccount",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.fundingAccount to accounts.receivingCustodyTokenAccount",
+    "transfers the output tokens from accounts.dispensingCustodyTokenAccount to accounts.receivingAccount",
+    "debits accounts.fundingAccount by the input tokens",
+    "credits accounts.receivingAccount with the output tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -1497,7 +1500,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: fundingAccount, receivingAccount, pool, receivingCustody, receivingCustodyTokenAccount, dispensingCustody, dispensingCustodyTokenAccount",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.fundingAccount to accounts.receivingCustodyTokenAccount",
+    "transfers the output tokens from accounts.dispensingCustodyTokenAccount to accounts.receivingAccount",
+    "debits accounts.fundingAccount by the input tokens",
+    "credits accounts.receivingAccount with the output tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

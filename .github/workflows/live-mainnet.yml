@@ -15,8 +15,10 @@ name: Live mainnet measurement
 # simulator's error or the reason no verdict was reached, per program; a
 # "fresh" pass re-verifies the first `fresh_transactions` with the unsigned
 # frame's blockhash rewritten to a current one (bytes for the local Core only:
-# never signed, never sent); `seed_evidence` seeds the System and SPL Token
-# programs first, so `executable_approved` and the L3 anchor can occur
+# never signed, never sent); `seed_evidence` imports the measured census for
+# the System and SPL Token programs (`graphite evidence import-census`, Round
+# 40: the committed census's counts, not typed numbers) and seeds their L3
+# anchor first, so `executable_approved` and the L3 anchor can occur
 # (Round 32, P3b).
 #
 # An operator RPC (a provider URL that may carry a key) goes in the
@@ -54,7 +56,7 @@ on:
         default: "40"
         type: string
       seed_evidence:
-        description: "Seed operator evidence for the System and SPL Token programs first (a fresh Core approves nothing without it)"
+        description: "Import the measured census for the System and SPL Token programs, and their L3 anchor, first (a fresh Core approves nothing without evidence)"
         default: false
         type: boolean
 
@@ -161,8 +163,10 @@ jobs:
 
       # Before the Core starts: the evidence store is the Core's data dir. A
       # labelled PR seeds, so the run shows what a seeded program's verdicts
-      # do; every other program still measures a fresh Core.
-      - name: Seed operator evidence (System, SPL Token)
+      # do; every other program still measures a fresh Core. Round 40: the
+      # evidence is `graphite evidence import-census` (measured), the L3
+      # anchor `graphite evidence baseline`; nothing here signs or sends.
+      - name: Import the measured census and the L3 anchor (System, SPL Token)
         id: seed
         if: steps.fetch.outputs.skip == 'false' && (inputs.seed_evidence || github.event_name == 'pull_request')
         run: |

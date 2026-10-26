@@ -151,7 +151,6 @@ const RAYDIUM_CPMM: &str = "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C";
 const METEORA_DLMM: &str = "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo";
 const PUMP_AMM: &str = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
 const PUMP_FUN: &str = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
-const MARKETPLACE_CCMR: &str = "CcmRKTuZCGJBWQwMHvDYApBRvSZNHqGJXkznqpDTSQUr";
 const STAKE_PROGRAM: &str = "Stake11111111111111111111111111111111111111";
 const SPL_STAKE_POOL: &str = "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy";
 const MARINADE: &str = "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD";
@@ -576,38 +575,19 @@ pub const GRANTS: &[IntentGrant] = &[
         minimum_outputs: &[],
         source: "graphite-core/protocols/marinade.json (Marinade IDL) liquidUnstake: [state, msolMint, liqPoolSolLegPda, liqPoolMsolLeg, treasuryMsolAccount, getMsolFrom (w), getMsolFromAuthority (s), transferSolTo (w), systemProgram, tokenProgram]; args msol_amount",
     },
-    // R-M13: an owner changing its own offer. The offer and the escrow are
-    // PDAs seeded by the buyer (L4 derives them), and the USDC moves between
-    // the buyer's own associated account and the buyer's escrow's.
-    IntentGrant {
-        program_id: MARKETPLACE_CCMR,
-        instruction: "update_offer",
-        intent: "configure",
-        class: OWNER_CONFIGURE,
-        owner: "buyer",
-        grounding: &[
-            Grounding::SeededBy {
-                account: "offer",
-                owner: "buyer",
-            },
-            Grounding::SeededBy {
-                account: "buyer_user_escrow_account",
-                owner: "buyer",
-            },
-            Grounding::AssociatedTokenAccount {
-                account: "buyer_usdc_account",
-                owner: "buyer",
-                mint: "usdc_mint",
-            },
-            Grounding::AssociatedTokenAccount {
-                account: "buyer_user_escrow_token_account",
-                owner: "buyer_user_escrow_account",
-                mint: "usdc_mint",
-            },
-        ],
-        minimum_outputs: &[],
-        source: "protocols/marketplace-ccmrkt manifest (IDL): offer seeds [offer, asset_id, buyer], buyer_user_escrow_account seeds [user_escrow, buyer]",
-    },
+    // Round 40 (R39-CORE-DECISION-5): the marketplace (CcmRKTuZ…)
+    // `update_offer` grant (R-M13, Round 30) is removed. Its manifest declares
+    // no debit, so an honest update that moves the buyer's USDC was refused by
+    // L4 (`UndeclaredTokenDebit`) and the grant could never pass. The
+    // committed IDL (`scripts/out/onchain_idls/CcmRKTuZ….json`
+    // `update_offer`: accounts buyer, market, asset_id, offer, usdc_mint,
+    // buyer_user_escrow_account, buyer_user_escrow_token_account,
+    // buyer_usdc_account, token_program, associated_token_program; one
+    // argument, `new_price`; no docs) names the buyer's USDC account but does
+    // not say that USDC moves, in which direction, or by how much, so no debit
+    // line can be written from it. The `configure` intent and the
+    // `owner_configure` class remain in the vocabulary with no grant: a
+    // configure intent declares nothing, which fails closed.
 ];
 
 /// What the grants make of one instruction under one intent.

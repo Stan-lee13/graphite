@@ -861,8 +861,22 @@ const COMMITTED_BLOCKS: &str =
 //     the `withdraw` class, so the risk column is PermissionEscalation
 //     (Check 9b) where it was Clear. Not approved before or after (offline,
 //     no earned evidence).
+//
+// Re-pinned in Round 40 (manifests workstream), from `de8c8a6f…` at
+// `1ae2066`. Diffed row by row (`GRAPHITE_MAINNET_VERDICTS_OUT` on a copy of
+// `1ae2066` and on this tree): 1 of 2,277 rows changed, none from refused to
+// approved, approvals 0 before and after —
+//   row 1321, OKX DEX Router `swap_tob_with_token_ledger` (`245c93db…`, slot
+//     449808325): its declaration was rewritten from the committed IDL
+//     (R39-CORE-DECISION-4, docs/audit-r40/declaration-rewrites.json) from 2
+//     lines to 6 that name its accounts, so the drainer heuristic (accounts
+//     >= 6 x declared lines) no longer fires and the first risk finding is
+//     HiddenTransfer where it was Drainer. L2 refuses it ("durable nonce
+//     refused") before and after. The 23 instructions removed
+//     (R39-SUPPLY-CHAIN-11) are called by no row; the
+//     ATA, Kamino and Solend label fixes (R39-SUPPLY-CHAIN-12) moved no row.
 const COMMITTED_VERDICTS_SHA256: &str =
-    "de8c8a6fef34cefb2ecc11a8c5150951ad25aa169ad6e187edb75c8f52859f58";
+    "96820ddcac1fe91f7f17418512c5923c0ab1f1cf7000467827b1c81eb9e8f7f5";
 
 #[test]
 fn the_committed_mainnet_blocks_give_the_recorded_verdicts_every_run() {

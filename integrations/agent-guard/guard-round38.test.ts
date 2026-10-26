@@ -312,7 +312,11 @@ test("R37-17 (repro): a guard started from an SSH session and one from cron, for
 });
 
 test("R37-17: the default lock directory is derived from this user's account (its passwd home), never from the session's variables", async () => {
-  const expected = join(userInfo().homedir, ".local", "state", "graphite-guard");
+  // Round 40: the host's own platform (the Windows CI job runs this too).
+  const expected =
+    process.platform === "win32"
+      ? win32.join(userInfo().homedir, "AppData", "Local", "graphite-guard")
+      : join(userInfo().homedir, ".local", "state", "graphite-guard");
   const sessions: Record<string, string | undefined>[] = [
     {}, // cron
     { XDG_RUNTIME_DIR: "/run/user/1000", XDG_STATE_HOME: "/home/a/.st" }, // an SSH login

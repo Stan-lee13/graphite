@@ -114,7 +114,7 @@
      "pda_seeds": []
     },
     {
-     "name": "Destination collateral token account - uninitial",
+     "name": "Destination collateral token account - uninitialized",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -135,7 +135,7 @@
      "pda_seeds": []
     },
     {
-     "name": "Reserve liquidity supply SPL Token account - uni",
+     "name": "Reserve liquidity supply SPL Token account - uninitialized",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -149,7 +149,7 @@
      "pda_seeds": []
     },
     {
-     "name": "Reserve collateral SPL Token mint - uninitialize",
+     "name": "Reserve collateral SPL Token mint - uninitialized",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -239,7 +239,7 @@
    ],
    "expected_state_changes": [
     "moves user funds between token accounts",
-    "modifies writable accounts: Source liquidity token account, Destination collateral token account - uninitial, Reserve account - uninitialized, Reserve liquidity supply SPL Token account - uni, Reserve liquidity fee receiver - uninitialized, Reserve collateral SPL Token mint - uninitialize, Reserve collateral token supply - uninitialized"
+    "modifies writable accounts: Source liquidity token account, Destination collateral token account - uninitialized, Reserve account - uninitialized, Reserve liquidity supply SPL Token account - uninitialized, Reserve liquidity fee receiver - uninitialized, Reserve collateral SPL Token mint - uninitialized, Reserve collateral token supply - uninitialized"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -588,7 +588,7 @@
      "pda_seeds": []
     },
     {
-     "name": "Destination deposit reserve collateral supply SP",
+     "name": "Destination deposit reserve collateral supply SPL Token account",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -650,7 +650,7 @@
    ],
    "expected_state_changes": [
     "moves user funds between token accounts",
-    "modifies writable accounts: Source collateral token account, Destination deposit reserve collateral supply SP, Deposit reserve account, Obligation account"
+    "modifies writable accounts: Source collateral token account, Destination deposit reserve collateral supply SPL Token account, Deposit reserve account, Obligation account"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -666,7 +666,7 @@
    "discriminator": "09",
    "accounts": [
     {
-     "name": "Source withdraw reserve collateral supply SPL To",
+     "name": "Source withdraw reserve collateral supply SPL Token account",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -735,7 +735,7 @@
    ],
    "expected_state_changes": [
     "moves user funds between token accounts",
-    "modifies writable accounts: Source withdraw reserve collateral supply SPL To, Destination collateral token account, Obligation account - refreshed"
+    "modifies writable accounts: Source withdraw reserve collateral supply SPL Token account, Destination collateral token account, Obligation account - refreshed"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -860,7 +860,7 @@
      "pda_seeds": []
     },
     {
-     "name": "Destination repay reserve liquidity supply SPL T",
+     "name": "Destination repay reserve liquidity supply SPL Token account",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -915,7 +915,7 @@
    ],
    "expected_state_changes": [
     "moves user funds between token accounts",
-    "modifies writable accounts: Source liquidity token account, Destination repay reserve liquidity supply SPL T, Repay reserve account - refreshed, Obligation account - refreshed"
+    "modifies writable accounts: Source liquidity token account, Destination repay reserve liquidity supply SPL Token account, Repay reserve account - refreshed, Obligation account - refreshed"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -966,7 +966,7 @@
      "pda_seeds": []
     },
     {
-     "name": "Withdraw reserve collateral supply SPL Token acc",
+     "name": "Withdraw reserve collateral supply SPL Token account",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -1021,7 +1021,7 @@
    ],
    "expected_state_changes": [
     "moves user funds between token accounts",
-    "modifies writable accounts: Source liquidity token account, Destination collateral token account, Repay reserve account - refreshed, Repay reserve liquidity supply SPL Token account, Withdraw reserve collateral supply SPL Token acc, Obligation account - refreshed"
+    "modifies writable accounts: Source liquidity token account, Destination collateral token account, Repay reserve account - refreshed, Repay reserve liquidity supply SPL Token account, Withdraw reserve collateral supply SPL Token account, Obligation account - refreshed"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -1104,14 +1104,14 @@
      "pda_seeds": []
     },
     {
-     "name": "Source liquidity (matching the destination from ",
+     "name": "Source liquidity (matching the destination from above)",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "Destination liquidity (matching the source from ",
+     "name": "Destination liquidity (matching the source from above)",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -1131,7 +1131,7 @@
    ],
    "expected_state_changes": [
     "moves user funds between token accounts",
-    "modifies writable accounts: Source liquidity token account, Destination liquidity token account, Reserve account, Flash loan fee receiver account, Host fee receiver, Source liquidity (matching the destination from , Destination liquidity (matching the source from "
+    "modifies writable accounts: Source liquidity token account, Destination liquidity token account, Reserve account, Flash loan fee receiver account, Host fee receiver, Source liquidity (matching the destination from above), Destination liquidity (matching the source from above)"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -1263,7 +1263,7 @@
    "discriminator": "0f",
    "accounts": [
     {
-     "name": "Source withdraw reserve collateral supply SPL To",
+     "name": "Source withdraw reserve collateral supply SPL Token account",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -1360,7 +1360,7 @@
    ],
    "expected_state_changes": [
     "moves user funds between token accounts",
-    "modifies writable accounts: Source withdraw reserve collateral supply SPL To, Destination collateral token account, Withdraw reserve account - refreshed, Obligation account - refreshed, User liquidity token account, Reserve collateral SPL Token mint, Reserve liquidity supply SPL Token account"
+    "modifies writable accounts: Source withdraw reserve collateral supply SPL Token account, Destination collateral token account, Withdraw reserve account - refreshed, Obligation account - refreshed, User liquidity token account, Reserve collateral SPL Token mint, Reserve liquidity supply SPL Token account"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

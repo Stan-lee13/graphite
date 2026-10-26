@@ -13,9 +13,13 @@ One run, each step reported:
                  SKIPPED, honestly: nothing after it is claimed.
                  `--cluster local-validator` skips the faucet altogether.
   3. evidence  — optional operator seeding for the System program
-                 (`graphite evidence seed` / `baseline`), exactly what an
-                 operator does before a fresh Core approves anything: without
-                 earned or seeded evidence every built-in profile refuses.
+                 (`graphite evidence import-census` — the measured census
+                 volume, Round 40 — and `baseline`), exactly what an operator
+                 does before a fresh Core approves anything: without earned or
+                 seeded evidence every built-in profile refuses. The System
+                 program is a builtin, the same on every cluster, so its
+                 mainnet census describes the code a devnet or local
+                 validator runs; no other program is imported here.
   4. core      — the Core, with the devnet RPC attached (executable mode).
   5. ai layer  — python-ai-layer/intent_parser.py --serve.
   6. guard     — integrations/agent-guard/devnet-test.ts: grounded request →
@@ -300,7 +304,7 @@ def run(args):
             # server runs: same data directory, same key.
             seed_env = dict(os.environ, GRAPHITE_AUDIT_KEY_FILE=audit_key)
             cmds = [
-                [args.graphite, "evidence", "seed", "--data-dir", data_dir, "--program", SYSTEM_PROGRAM, "--simulation-matches", "3"],
+                [args.graphite, "evidence", "import-census", "--data-dir", data_dir, "--program", SYSTEM_PROGRAM],
                 [args.graphite, "evidence", "baseline", "--data-dir", data_dir, "--program", SYSTEM_PROGRAM,
                  "--mean-compute-units", "150", "--std-compute-units", "30", "--samples", "10"],
             ]

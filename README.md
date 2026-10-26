@@ -63,12 +63,18 @@ nothing is ever signed before the verdict.
 | Its fixes are real | every security fix has a test that fails without it; through Round 28 each fix was also reverted once to prove its test catches it ([`AUDIT/01-findings.md`](AUDIT/01-findings.md), break log). Round 29's fixes were not all reverted that way, and [its report](docs/round29-the-audit-remediated-2026-10-21.md) says which were |
 | It parses what the network runs | a runtime oracle compares Graphite's parser with the Anza SDK's decoder and `sanitize` on ~628,500 frames per CI seed: never looser |
 | Agents can use it today | SolanaAgentKit, the Vercel AI SDK and an MCP server, all signing through [`integrations/agent-guard`](integrations/agent-guard/README.md) |
-| It covers real protocols | 137 manifests, 3,541 instructions, 113 with a measured `BattleTested` tier ([coverage](docs/protocol-coverage.md)) |
+| It covers real protocols | 137 manifests, 3,518 instructions, 113 with a measured `BattleTested` tier ([coverage](docs/protocol-coverage.md)) |
 
 **What it is not, yet:** independently audited (every review here is internal engineering work
 plus two external reviews and one full-repository audit, answered item by item), or publicly
-deployed. A fresh instance approves nothing on the built-in profiles until it has evidence —
-seeded by the operator, or earned from approved, simulated traffic; that is deliberate. Open
+deployed. A fresh instance approves nothing on the built-in profiles until it has evidence;
+that is deliberate. One explicit, audited operator command, `graphite evidence import-census`
+(Round 40), imports the measured mainnet census the repository commits
+(`graphite-core/protocols/battle_tested_evidence.json`, reproducible with
+`graphite-core/scripts/battle_tested_census.py`) as each program's transaction-volume evidence: a
+manifested program's verdict then reaches 0.59 against the Gaming profile's 0.55, and the
+stricter profiles still refuse. Every attack of Rounds 38–39 was re-run in that state and is still
+refused. Otherwise evidence is seeded by the operator or earned from approved, simulated traffic. Open
 items are listed, with their measured cost, in [`AUDIT/FINAL.md`](AUDIT/FINAL.md).
 
 ---
@@ -177,7 +183,7 @@ All 13 patterns are real detection logic — not stubs, not placeholders. Ten ar
 
 ---
 
-## Supported Protocols (137 Manifests / 3,541 Instructions)
+## Supported Protocols (137 Manifests / 3,518 Instructions)
 
 The full table — every program, its instruction count, the tier the loader
 actually applied, and the mainnet measurement behind it — is
@@ -204,8 +210,9 @@ nothing: every manifest's tier is capped at `OfficialManifest` when a verdict is
 computed (Constitution P7), so the measured `BattleTested` tier is registry and
 display information — the protocol table, `graphite protocol status`, the
 dashboard. A verdict reaches `BattleTested` only through the Semantic Graph,
-whose transaction volume comes from the operator (`graphite evidence seed`):
-asserted, not earned at runtime. The bar itself is thin, and the numbers say so:
+whose transaction volume comes from an operator command — `graphite evidence
+import-census` (the census's measured counts) or `graphite evidence seed`
+(asserted) — not from runtime observation. The bar itself is thin, and the numbers say so:
 across the 113 records that carry the tier, the observed-instruction sample is
 21 at the least and 54 at the median (82 records observed fewer than 100);
 70 records name three or fewer distinct instructions; 30 sit at exactly 1,000
@@ -258,7 +265,7 @@ graphite/
 │   │   ├── benchmark.rs           ← Benchmark (24 cases, 22 scored; REAL-RECONSTRUCTED and SYNTHETIC cases labeled; approve-all comparison row)
 │   │   ├── bin/graphite.rs        ← Binary entry point (server + CLI)
 │   │   └── cli.rs                 ← CLI command handlers (the clap tree is in bin/graphite.rs; `graphite --help` lists every command)
-│   ├── protocols/                 ← 137 JSON protocol manifests (3,541 instructions)
+│   ├── protocols/                 ← 137 JSON protocol manifests (3,518 instructions)
 │   │                                 + battle_tested_evidence.json: the mainnet measurement behind each tier
 │   └── tests/                     ← integration suites (adversarial + exploit + RPC trust boundary + live RPC + real mainnet); counts in docs/CURRENT.md
 │
@@ -621,7 +628,7 @@ curl -X POST http://localhost:7331/verify \
   -H "Authorization: Bearer $GRAPHITE_API_KEY" \
   -d @../examples/verify-input.json | jq .
 ```
-> ⚠️ The example input uses the `TradingBot` profile (0.80 threshold) and sends no transaction bytes, so its verdict is `descriptive`. On a fresh Core (no earned evidence) the achievable confidence for a known protocol is ~0.44, so this example returns **BLOCKED** — that is the engine being honest, not a bug. The confidence signals are *earned*, not asserted: `SimulationMatch`, `HistoricalVolume`, and `CommunityVerification` read from the Semantic Graph's internal accumulator (simulation baselines from approved traffic or the operator, and Behavior evidence the operator seeds), so the presets become satisfiable as the graph accumulates history. A `Custom` profile below Gaming (0.55) is raised to Gaming unless the server was started with `GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1` — a development setting that disables the confidence gate. With it, this shows the pipeline approving the descriptive example (which is still not executable: nothing is bound):
+> ⚠️ The example input uses the `TradingBot` profile (0.80 threshold) and sends no transaction bytes, so its verdict is `descriptive`. On a fresh Core (no evidence) the achievable confidence for a known protocol is ~0.44 — 0.59 after `graphite evidence import-census`, still short of TradingBot's 0.80 and its SimulationValidated tier floor — so this example returns **BLOCKED** — that is the engine being honest, not a bug. The confidence signals are *earned*, not asserted: `SimulationMatch`, `HistoricalVolume`, and `CommunityVerification` read from the Semantic Graph's internal accumulator (simulation baselines from approved traffic or the operator, and Behavior evidence the operator seeds or imports from the measured census), so the presets become satisfiable as the graph accumulates history. A `Custom` profile below Gaming (0.55) is raised to Gaming unless the server was started with `GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1` — a development setting that disables the confidence gate. With it, this shows the pipeline approving the descriptive example (which is still not executable: nothing is bound):
 > 
 > ```bash
 > jq '.wallet_profile = {"Custom": {"min_confidence": 0.40, "min_trust_tier": "OfficialManifest"}}' ../examples/verify-input.json | curl -X POST http://localhost:7331/verify -H "Content-Type: application/json" -H "Authorization: Bearer $GRAPHITE_API_KEY" -d @- | jq .approved
@@ -738,13 +745,22 @@ graphite manifest-verify --manifest ./candidate.json
 ```
 
 ```bash
-# Bootstrap: a fresh graph has no earned evidence, and the evidence-derived
-# confidence signals are half the total weight -- so an instance with an empty
-# graph and no GRAPHITE_RPC_URL blocks 100% of traffic (max reachable
-# confidence 0.44 against a 0.55 floor). These restore an exported graph or
-# stand an instance up before that history exists. CLI-only: request-body
-# evidence would let any caller mint an earned-looking tier.
-# Both take a base58 program id and write an operator_action row to the audit trail.
+# Bootstrap: a fresh graph has no evidence, and the evidence-derived confidence
+# signals are half the total weight -- so a fresh instance refuses everything on
+# the built-in profiles (0.44 against Gaming's 0.55). Start from the measured
+# census: it imports each program's successful-transaction count from the
+# committed, reproducible protocols/battle_tested_evidence.json (records below
+# its bar are listed with the reason and skipped), recomputes the tier from that
+# evidence (no signature asserted), and writes one operator_action row per
+# program naming the census's sha256 and measurement time. Re-running it imports
+# nothing new, and it never re-imports a program upgraded since the census.
+# A manifested program then reaches 0.59: Gaming only. Run it with the server
+# stopped and the server's GRAPHITE_AUDIT_KEY_FILE (docs/ops/install.md).
+graphite evidence import-census --dry-run
+graphite evidence import-census
+# Restore an exported graph, or vouch for evidence by hand (operator-asserted).
+# CLI-only: request-body evidence would let any caller mint an earned-looking
+# tier. Both take a base58 program id and write an operator_action row.
 graphite evidence seed --program <id> --signed-manifest --community-verified 2   --battle-tested 1500 --simulation-matches 100
 graphite evidence baseline --program <id> --mean-compute-units 150   --std-compute-units 12 --samples 50
 graphite evidence show --program <id>
@@ -862,11 +878,11 @@ What we **do** claim:
 - **Confidence is calibrated honestly and never read from the request (G4).** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) read from the Semantic Graph's **internal accumulator** — the program's RPC-verified simulation baseline (`sample_count`, counting DISTINCT sound transactions: the same bytes re-verified are one observation; a request refused at L2 or by the Risk Engine is none; and since Round 29 a request refused only by the policy threshold is none either; the Round 29 opt-in `GRAPHITE_LEARN_FROM_POLICY_REFUSALS` was retired in Round 30, since it let a verify-key holder train evidence, and now refuses to start) and the Behavior evidence the operator seeds — never from request-body JSON, which an attacker could fabricate to mint confidence. Manifest trust tiers are capped at `OfficialManifest` (P7), and the verdict's tier is the lowest over every top-level program the transaction invokes: an unmanifested sibling makes it `Unknown`, refused on every built-in profile. A fresh Core therefore scores a known, clean, intent-aligned `OfficialManifest` protocol at **~0.44** (0.20 + 0.14 + 0.10) and the built-in presets (TradingBot 0.80, Treasury 0.95, Gaming 0.55, Enterprise 0.99) block everything until evidence exists — e.g. Gaming (0.55) is exactly satisfiable by a HeuristicInferred manifest-backed program (the P6 ceiling), or by an `OfficialManifest` program with three simulation observations (0.64), which now accrue only from approved verdicts at the built-in floor or from the operator (Round 30). The benchmark and the agent guard default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile (which the Core clamps to Gaming unless the operator allows permissive profiles); `graphite verify --profile <preset>` or `graphite profiles` drives the presets from the CLI. Raise or lower the profile to change policy; the engine's score itself is the honest number.
 - The Rust, TypeScript, Go and Python suites pass with 0 failures and 0 clippy warnings; their counts are in [docs/CURRENT.md](docs/CURRENT.md#numbers-as-of-this-pages-commit). Every security fix from 2026-09-08 to Round 28 had its fix reverted once to show its test fails without it (the "deliberate break" logs in the round reports); Round 29's report says which of its fixes were and were not.
 - 13 detection patterns (14 `RiskPattern` variants counting the `PluginBlock` plugin veto) and the Risk Engine's 16 checks, plus the priority-fee bound, are real detection logic, not stubs. Multi-instruction drain, CPI trace analysis (C29), and manifest-declared high-risk class gating (C38) shipped.
-- 137 protocol manifests / 3,541 instructions (Round 18; Token-2022's transfer-fee instructions added in Round 20; Stake and the BPF Upgradeable Loader rebuilt from their interfaces in Round 22; eight programs added and the instructions that move nothing classed `inert` in Round 24), program IDs verified against on-chain sources and pinned both ways by test; 104 generated from each program's own on-chain Anchor IDL; every `BattleTested` tier backed by a mainnet measurement in `protocols/battle_tested_evidence.json` or lowered at load.
+- 137 protocol manifests / 3,518 instructions (Round 18; Token-2022's transfer-fee instructions added in Round 20; Stake and the BPF Upgradeable Loader rebuilt from their interfaces in Round 22; eight programs added and the instructions that move nothing classed `inert` in Round 24), program IDs verified against on-chain sources and pinned both ways by test; 104 generated from each program's own on-chain Anchor IDL; every `BattleTested` tier backed by a mainnet measurement in `protocols/battle_tested_evidence.json` or lowered at load.
 - Confidence engine uses real weighted computation with tier ceilings and NaN rejection.
 - Simulation integrity uses 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm and median/MAD baseline (C28).
 - The SAK integration imports real `solana-agent-kit` v2 and calls real SAK methods — **verified on Solana devnet** (wallet `CWb8MciizembLV66kisYcXo3Cb91hdszxw74QHpEJKZR`, 5 finalized transactions: 2 faucet airdrops + 3 SAK test transfers; latest signature `xHa4dyuFS6JmSaTsmhcMpEtwbWnPjBoUGwk3wNixD2uw2Wmeui6GhnSmmdzNVkv85zXSd6g7QYhHymAjciwP3jJ` confirmed and finalized).
-- A 13,013-fixture committed regression corpus (`graphite-core/fixtures/corpus`): 12,943 dev fixtures synthesised from the manifests, 32 synthetic regression attack shapes, and a 38-fixture holdout — 37 real mainnet exploit signatures (35 SolPhishHunter + 2 live-fetched from mainnet RPC) and 1 real, successful mainnet Jupiter swap. Only the holdout carries labels independent of Graphite: all 37 exploits are refused (0 false negatives, recall 1.0), and the Jupiter swap is refused too (1 false positive, precision 0.974 on n=38), because offline its address lookup tables cannot be resolved and the gate fails closed. Two more real transactions the holdout used to score as benign had in fact failed on chain, and are no longer scored. The exploits run descriptively, on hand-supplied evidence the engine ignores. The synthetic fixtures are labeled by Graphite's own documented rules (`tests/regression_corpus.rs`), so they measure consistency, not accuracy.
+- A 12,967-fixture committed regression corpus (`graphite-core/fixtures/corpus`): 12,897 dev fixtures synthesised from the manifests, 32 synthetic regression attack shapes, and a 38-fixture holdout — 37 real mainnet exploit signatures (35 SolPhishHunter + 2 live-fetched from mainnet RPC) and 1 real, successful mainnet Jupiter swap. Only the holdout carries labels independent of Graphite: all 37 exploits are refused (0 false negatives, recall 1.0), and the Jupiter swap is refused too (1 false positive, precision 0.974 on n=38), because offline its address lookup tables cannot be resolved and the gate fails closed. Two more real transactions the holdout used to score as benign had in fact failed on chain, and are no longer scored. The exploits run descriptively, on hand-supplied evidence the engine ignores. The synthetic fixtures are labeled by Graphite's own documented rules (`tests/regression_corpus.rs`), so they measure consistency, not accuracy.
 
 ---
 

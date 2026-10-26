@@ -36,6 +36,7 @@ import { GraphiteGuard, GuardStateError, swapPolicyFromEnv } from "./guard.js";
 import * as guardState from "./guard-state.js";
 import { GuardState, WalletLock, walletLockPlan } from "./guard-state.js";
 import { mockApprovingCore, mockRpc, mockService, type MockRpc, type MockService } from "./loopback-mocks.js";
+import { posixOnly } from "./posix-only.js";
 
 const DEST = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
 const REQUEST = `Transfer 1.5 SOL to ${DEST}`;
@@ -296,7 +297,7 @@ test(`takeover: two guards that find the same stale lock never both take it (${R
 // ---------------------------------------------------------------------------
 // G-3: the lock directory and the lock's temporary file.
 
-test("lock dir: an existing directory that is not private, or not a directory, refuses to start", { skip: process.platform === "win32" }, () => {
+test("lock dir: an existing directory that is not private, or not a directory, refuses to start", { skip: posixOnly("mode 0755 and a foreign uid; Windows has no mode bits or uid, and its kind checks are in guard-round40.test.ts") }, () => {
   const wallet = Keypair.generate().publicKey.toBase58();
   const open = lockDir();
   chmodSync(open, 0o755);

@@ -10,6 +10,9 @@
 //! `data.lamports`. End to end: a signed artifact, simulated by a loopback
 //! mock RPC, through `verify_async`. Everything is a loopback socket.
 
+// Round 40 (bootstrap): every test below runs again in the census-imported
+// state under the built-in Gaming profile (`round40_census_imported::*`).
+mod round40_imported;
 use graphite_core::confidence_engine::TrustTier;
 use graphite_core::manifest::load_seed_manifests;
 use graphite_core::policy_engine::WalletProfile;
@@ -18,8 +21,8 @@ use graphite_core::semantic_graph_store::BehaviorEvidence;
 use graphite_core::solana_types::Pubkey;
 use graphite_core::tx_pattern_analysis::TransactionInstruction;
 use graphite_core::verification::{
-    ExecutionDecision, ExtractedParameters, GraphiteCore, LayerStatus, ProposedIntent,
-    VerificationInput, VerificationResult,
+    ExecutionDecision, ExtractedParameters, LayerStatus, ProposedIntent, VerificationInput,
+    VerificationResult,
 };
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -340,7 +343,7 @@ async fn verify(
     let (keys, bytes) = frame(payer, ixs);
     cluster.keys = keys;
     let endpoint = serve(Arc::new(Mutex::new(cluster)));
-    let mut core = GraphiteCore::new();
+    let mut core = round40_imported::core();
     core.attach_rpc_client(SolanaRpcClient::new(RpcConfig {
         endpoint,
         timeout: std::time::Duration::from_secs(10),
@@ -375,10 +378,10 @@ async fn verify(
         cpi_targets: vec![],
         // Confidence is not what these tests are about (see
         // round38_sibling_skims.rs).
-        wallet_profile: WalletProfile::Custom {
+        wallet_profile: round40_imported::profile(WalletProfile::Custom {
             min_confidence: 0.40,
             min_trust_tier: TrustTier::OfficialManifest,
-        },
+        }),
         behavior_evidence: BehaviorEvidence {
             has_signed_manifest: true,
             community_verified_count: 5,
@@ -476,8 +479,14 @@ fn create(lamports: u64, space: u64, program: &str) -> (Cluster, Vec<Ix>) {
 
 fn record(tag: &str, r: &VerificationResult) {
     eprintln!(
-        "[R37-7 {tag}] decision={:?} | {} | risk: {}",
+        "[R37-7 {tag}{}] decision={:?} confidence={:.4} | {} | risk: {}",
+        if round40_imported::imported() {
+            " [census imported, Gaming]"
+        } else {
+            ""
+        },
         r.decision,
+        r.confidence,
         statuses(r),
         risk(r)
     );
@@ -570,3 +579,12 @@ async fn a_transfer_to_someone_else_beside_a_creation_is_not_executable() {
         risk(&r)
     );
 }
+
+// Round 40 (bootstrap): the same tests after `graphite evidence import-census`,
+// under the built-in Gaming profile (tests/round40_imported/mod.rs).
+imported_twins!(
+    an_account_funded_with_its_rent_is_executable,
+    an_account_funded_far_beyond_its_rent_is_not_executable,
+    an_account_funded_with_the_amount_the_request_states_is_executable,
+    a_transfer_to_someone_else_beside_a_creation_is_not_executable,
+);

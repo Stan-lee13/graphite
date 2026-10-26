@@ -26,13 +26,16 @@
 //! that serves the simulation, under a profile an honest transaction can clear
 //! (`Custom{0.40, OfficialManifest}`, the auditor's reproduction).
 
+// Round 40 (bootstrap): every test below runs again in the census-imported
+// state under the built-in Gaming profile (`round40_census_imported::*`).
+mod round40_imported;
 use base64::Engine as _;
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
 use graphite_core::semantic_graph_store::{BehaviorEvidence, TrustTier};
 use graphite_core::tx_pattern_analysis::TransactionInstruction;
 use graphite_core::verification::{
-    ExecutionDecision, GraphiteCore, ProposedIntent, VerificationInput, VerificationResult,
+    ExecutionDecision, ProposedIntent, VerificationInput, VerificationResult,
 };
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -412,10 +415,10 @@ impl Fixture {
                 .collect(),
             instruction_data: Some(self.data.clone()),
             cpi_targets: vec![],
-            wallet_profile: WalletProfile::Custom {
+            wallet_profile: round40_imported::profile(WalletProfile::Custom {
                 min_confidence: 0.40,
                 min_trust_tier: TrustTier::OfficialManifest,
-            },
+            }),
             behavior_evidence: BehaviorEvidence::default(),
             compute_units: 0,
             account_writes: 0,
@@ -538,7 +541,7 @@ impl Fixture {
 
     /// With the operator's `GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS` as given.
     async fn verify_with(&self, allow_unbounded_withdrawals: bool) -> VerificationResult {
-        let mut core = GraphiteCore::new();
+        let mut core = round40_imported::core();
         core.set_allow_unbounded_withdrawals(allow_unbounded_withdrawals);
         core.attach_rpc_client(SolanaRpcClient::new(RpcConfig {
             endpoint: self.serve(),
@@ -546,9 +549,17 @@ impl Fixture {
             max_retries: 0,
             ..Default::default()
         }));
-        core.verify_async(&self.input())
+        let r = core
+            .verify_async(&self.input())
             .await
-            .expect("verification must reach a verdict")
+            .expect("verification must reach a verdict");
+        if round40_imported::imported() {
+            eprintln!(
+                "[staking {} census imported, Gaming] decision={:?} confidence={:.4}",
+                self.program, r.decision, r.confidence
+            );
+        }
+        r
     }
 }
 
@@ -1166,3 +1177,22 @@ async fn a_stake_pool_stake_withdrawal_to_the_signer_is_grounded_as_a_withdrawal
         .await;
     assert_grounded(&r, "a Stake Pool WithdrawStake to the signer's authority");
 }
+
+// Round 40 (bootstrap): the same tests after `graphite evidence import-census`,
+// under the built-in Gaming profile (tests/round40_imported/mod.rs).
+imported_twins!(
+    a_stake_intent_cannot_withdraw_the_users_stake_to_another_account,
+    a_withdraw_intent_cannot_withdraw_the_users_stake_to_another_account,
+    a_stake_withdrawal_back_to_the_withdrawer_is_approved_as_a_withdrawal,
+    a_withdrawal_beside_a_transfer_to_a_stranger_is_not_executable,
+    a_stake_intent_does_not_declare_even_the_owners_own_withdrawal,
+    intent_case_is_judged_identically_in_every_layer,
+    a_stake_intent_cannot_liquid_unstake_marinade_to_another_account,
+    a_withdraw_intent_cannot_liquid_unstake_marinade_to_another_account,
+    a_marinade_liquid_unstake_to_the_signer_is_executable_now_its_declaration_names_its_accounts,
+    a_stake_intent_cannot_withdraw_stake_pool_sol_to_another_account,
+    a_stake_pool_sol_withdrawal_to_the_signer_is_grounded_as_a_withdrawal,
+    a_stake_intent_cannot_withdraw_a_stake_pool_stake_account_to_another_authority,
+    a_withdraw_intent_cannot_withdraw_a_stake_pool_stake_account_to_another_authority,
+    a_stake_pool_stake_withdrawal_to_the_signer_is_grounded_as_a_withdrawal,
+);

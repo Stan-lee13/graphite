@@ -210,7 +210,10 @@ pub struct BehaviorEvidence {
     /// the `graphite evidence` CLI) or a snapshot restored. It is evidence an
     /// operator vouches for, not volume Graphite has observed, and the
     /// `BattleTested` tier it unlocks is an operator's assertion to the same
-    /// degree.
+    /// degree. Since Round 40 an operator can set it from a measurement
+    /// instead of a typed number: `graphite evidence import-census` raises it
+    /// to the committed census's successful-transaction count
+    /// (`census_import`), still an operator action, recorded on the trail.
     pub battle_tested_tx_count: u64,
     /// Simulation match count
     pub simulation_match_count: u64,
@@ -994,6 +997,22 @@ impl SemanticGraphStore {
     /// observed at (Round 30, G-04).
     pub fn evidence_since_slot(&self, program_id: &str) -> Option<u64> {
         self.evidence_since_slot.get(program_id).copied()
+    }
+
+    /// Bind a program's evidence to `slot`: the earliest slot it describes
+    /// (Round 40, bootstrap). Only ever moves the binding EARLIER — an
+    /// earlier binding means more deployments count as newer than the
+    /// evidence, so the upgrade watch withdraws it in more cases, never
+    /// fewer. Used by the census import, whose measurement began at the
+    /// census window's oldest slot: with no binding, a first sighting of a
+    /// deployment newer than the census would keep the imported volume
+    /// ("cannot be dated against this deployment").
+    pub fn bind_evidence_to_slot(&mut self, program_id: &str, slot: u64) {
+        let since = self
+            .evidence_since_slot
+            .entry(program_id.to_string())
+            .or_insert(slot);
+        *since = (*since).min(slot);
     }
 
     /// Evidence retired because a program's code changed, oldest first.

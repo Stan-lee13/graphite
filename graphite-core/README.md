@@ -58,7 +58,7 @@ cargo run --release --bin graphite -- benchmark
 
 ## Protocol Manifests
 
-137 JSON manifests in `protocols/`, 3,541 instructions. Each carries the program
+137 JSON manifests in `protocols/`, 3,518 instructions. Each carries the program
 ID, trust tier, instructions with discriminators, expected accounts and allowed
 CPI targets. Ninety-six of them were generated in Round 18 from each program's
 **own on-chain Anchor IDL** — the account the program itself owns — after the

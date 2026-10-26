@@ -168,7 +168,7 @@ left after a prune, is not a verdict to L8. A reader without a key reads legacy
 records before the first chained record, as before.
 
 **Run the writing CLI commands with the server's key.** `graphite evidence
-seed` / `baseline`, `graphite quarantine` and the other commands that write the
+seed` / `baseline` / `import-census` (Round 40), `graphite quarantine` and the other commands that write the
 trail MAC their records under `GRAPHITE_AUDIT_KEY_FILE` when it is set, and
 write unkeyed records when it is not. Seeding a fresh data directory without
 the key leaves an unkeyed newest record, and the keyed server then refuses to

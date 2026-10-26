@@ -156,9 +156,10 @@ Exactly what to apply, in order:
 - [ ] **10b. Rehearse.** Actions → Release → Run workflow (on `main`). Every build, the two-build
   reproducibility comparison, both SBOMs, the image smoke test and SHA256SUMS run; nothing is pushed,
   attested or released. Read the `reproducible` job: it fails if the two builds differ.
-- [ ] **10c. Decide whether the crate goes to crates.io.** `graphite-core/Cargo.toml` has no `publish`
-  key today, so `cargo publish` would be allowed; add `publish = false` if it should not be. The
-  release workflow never publishes to crates.io either way.
+- [x] **10c. The crate does not go to crates.io — decided (Round 40).** `graphite-core/Cargo.toml`
+  sets `publish = false`, so `cargo publish` refuses. A release is the signed tag's image, binaries
+  and SBOMs from `.github/workflows/release.yml`, which never runs `cargo publish`. Publishing to
+  crates.io later is a new decision: remove the key in a reviewed change that says why.
 - [ ] **10d. Tag.** The tag must be `v` + the crate's version, SSH-signed by a key in
   `.github/allowed_signers` (R3), on a commit of `main` whose `CI gate` passed in its push run:
   ```sh

@@ -23,16 +23,26 @@ single Rust test holds across all of them:
   idls       every committed IDL: its file name is its program, and each
              manifest instruction an IDL names has the IDL's discriminator
              (explicit, or Anchor's sha256("global:<snake>")[:8]) and slot
-             count; the slot-count differences are the pinned 75 (K-7).
-  corpus     fixtures/corpus: entries in the file of their program, unique
+             count; the slot-count differences are the pinned 75 (K-7); an
+             8-byte discriminator in no committed IDL of its program is an
+             error (Round 40), one only in an IDL file the pinned 5.
+  corpus    fixtures/corpus: entries in the file of their program, unique
              content hashes, meta/corpus_manifest.json one-to-one with them and
              agreeing on provenance; real rows name a real signature.
   artifacts  fixtures/artifacts and fixtures/mainnet: provenance written in the
              file, transaction versions read from the bytes and compared with
              the labels, digests recomputed.
   rewrites   docs/audit-r36/declaration-rewrites.json: each rewrite still in
-             its manifest, and the medium-confidence rows listed exactly (they
-             need the owner's sign-off and are never promoted here).
+             its manifest, and the medium-confidence rows listed exactly; a
+             Round 36 row promoted to high carries an evidence record that is
+             re-checked here (Round 40, F-005). docs/audit-r40/
+             declaration-rewrites.json: each swap rewrite still in its
+             manifest, made of the old lines that declare nothing plus lines
+             that each name an account, every named account in every layout
+             and a writable, non-signing account of the cited IDL instruction,
+             the layout in the IDL's order, its medium rows pinned; the
+             instructions left unchanged still unchanged; the removed
+             instructions absent and in no committed IDL of their program.
   schemas    schemas/*.json against their metaschema and the examples against
              the schemas (needs the `jsonschema` package; without it the
              section is BLOCKED, never passed; `--skip schemas` says so).
@@ -62,6 +72,10 @@ DEFAULT_ROOT = os.path.dirname(os.path.dirname(HERE))
 # tests/r30_low_decode_manifests.rs). A change fails here so that it is looked at.
 PINNED_LOW_DECODE = 13
 PINNED_SLOT_COUNT_DIFFERENCES = 75
+# Round 40: Squads v4's transactionBuffer{Create,Close,Extend},
+# vaultTransactionCreateFromBuffer and proposalCancelV2 are in
+# scripts/squads_v4_idl.json (v2.1.0), not in the on-chain IDL account.
+PINNED_NEWER_THAN_ONCHAIN_IDL = 5
 PINNED_MEDIUM_REWRITES = [
     ("spl-stake-pool.json", "WithdrawSol"),
     ("spl-stake-pool.json", "WithdrawSolWithSlippage"),
@@ -72,6 +86,46 @@ PINNED_MEDIUM_REWRITES = [
     ("raydium-amm-v4.json", "SwapBaseOut"),
     ("raydium-amm-v4.json", "SwapBaseInV2"),
     ("raydium-amm-v4.json", "SwapBaseOutV2"),
+]
+# Round 40 (F-005): of the nine, these stay medium. Each of the other seven
+# carries a promotion record with its evidence (Marinade: the committed IDL;
+# Stake Pool WithdrawStake*: spl stake-pool instruction.rs; Raydium AMM v4:
+# raydium-amm instruction.rs, each pinned to a commit and a line range), which
+# `check_promotion` re-checks. The two WithdrawSol rows are not promoted: the
+# source marks slot 12 (the optional SOL withdraw authority) a signer and the
+# manifest's layout does not.
+PINNED_STILL_MEDIUM_R36 = [
+    ("spl-stake-pool.json", "WithdrawSol"),
+    ("spl-stake-pool.json", "WithdrawSolWithSlippage"),
+]
+# Round 40 (R39-CORE-DECISION-4): the swap rewrites whose IDL does not name
+# the accounts unambiguously (no docs and a direction set by an argument, or
+# names that do not say whose account it is). docs/audit-r40/declaration-rewrites.json.
+PINNED_MEDIUM_REWRITES_R40 = [
+    ("bonkswap-bswp6b.json", "swap"),
+    ("guacswap-gswppe.json", "swap"),
+    ("phoenix.json", "Swap"),
+    ("dex-jupz4m.json", "swap_in"),
+    ("dex-jupz4m.json", "swap_out"),
+    ("okx-dex-router-provf4.json", "swap"),
+    ("okx-dex-router-provf4.json", "proxy_swap"),
+    ("okx-dex-router-provf4.json", "swap_tob"),
+    ("okx-dex-router-provf4.json", "swap_tob_enhanced"),
+    ("okx-dex-router-provf4.json", "swap_toc"),
+    ("okx-dex-router-provf4.json", "swap_tob_with_token_ledger"),
+    ("okx-dex-router-provf4.json", "swap_tob_v2"),
+    ("okx-dex-router-provf4.json", "swap_toc_v2"),
+    ("okx-dex-router-provf4.json", "swap_tob_v3"),
+    ("okx-dex-router-provf4.json", "swap_toc_v3"),
+    ("okx-dex-router-provf4.json", "swap_tob_with_token_ledger_v3"),
+    ("okx-dex-router-provf4.json", "swap_tob_with_receiver"),
+    ("okx-dex-router-provf4.json", "swap_tob_with_receiver_token_ledger"),
+    ("okx-dex-router-provf4.json", "swap_tob_with_receiver_v3"),
+    ("okx-dex-router-provf4.json", "swap_tob_with_receiver_token_ledger_v3"),
+    ("debot-router-g7mvcm.json", "swap"),
+    ("debot-router-g7mvcm.json", "swap_compact"),
+    ("perpetuals-perphj.json", "swap2"),
+    ("perpetuals-perphj.json", "swapWithTokenLedger"),
 ]
 TRUST_TIERS = ("Unknown", "HeuristicInferred", "OfficialManifest", "SimulationValidated",
                "CommunityVerified", "BattleTested")
@@ -534,6 +588,22 @@ def check_idls(docs, manifests, rep):
     compared = disc_ok = 0
     phantom = []
     disc_bad, slot_diff = [], []
+    # Round 40 (R39-SUPPLY-CHAIN-11): an 8-byte discriminator is evidenced by
+    # ANY committed IDL of its program whose discriminators are the deployed
+    # ones — the on-chain IDL account or an IDL file naming the program. Squads
+    # v4's five buffer/cancel instructions are in scripts/squads_v4_idl.json
+    # (v2.1.0) and not in the older on-chain IDL account: kept, reported.
+    every_disc = collections.defaultdict(set)
+    onchain_disc = collections.defaultdict(set)
+    for f, pid, d, onchain in sources:
+        if f in not_deployed:
+            continue
+        for i in d.get("instructions") or []:
+            x = bytes(i["discriminator"]).hex() if "discriminator" in i else anchor_disc(i["name"])
+            every_disc[pid].add(x)
+            if onchain:
+                onchain_disc[pid].add(x)
+    newer_than_onchain = []
     for f, pid, d, onchain in sorted(sources):
         if pid not in by_pid:
             continue
@@ -554,7 +624,10 @@ def check_idls(docs, manifests, rep):
                 if not any(len(l) == slots for l in layouts(ix)):
                     slot_diff.append((mf, ix["name"], [len(l) for l in layouts(ix)], slots))
             if onchain and on is None and len(ix["discriminator"]) == 16 and ix["discriminator"] not in idl_discs:
-                phantom.append(f"{mf}::{ix['name']} ({ix['discriminator']}) is not among the discriminators of the program's committed on-chain IDL (a newer instruction, or one the program never had)")
+                if ix["discriminator"] in every_disc[pid]:
+                    newer_than_onchain.append(f"{mf}::{ix['name']} ({ix['discriminator']}) is in a committed IDL file of the program but not in its on-chain IDL account (the account's IDL is older)")
+                else:
+                    phantom.append(f"{mf}::{ix['name']} ({ix['discriminator']}) is in no committed IDL of its program (on-chain account or file): a newer instruction, or one the program never had")
             if on is None or f in not_deployed:
                 continue
             compared += 1
@@ -571,8 +644,15 @@ def check_idls(docs, manifests, rep):
                     disc_bad.append(f"{mf}::{ix['name']} discriminator {ix['discriminator']}, {f} gives {want}")
     for x in disc_bad:
         rep.error(S, x)
+    # Round 40: the 23 instructions no committed IDL had are removed
+    # (docs/audit-r40/declaration-rewrites.json `removed_instructions`); a new
+    # one is an error, not a pin.
     for x in phantom:
+        rep.error(S, x)
+    for x in newer_than_onchain:
         rep.pin(S, x)
+    if len(newer_than_onchain) != PINNED_NEWER_THAN_ONCHAIN_IDL:
+        rep.error(S, f"{len(newer_than_onchain)} instructions are in an IDL file but not in their on-chain IDL; pinned {PINNED_NEWER_THAN_ONCHAIN_IDL} (Squads v4's five)")
     per = collections.Counter(x[0] for x in slot_diff)
     for mf, c in sorted(per.items()):
         rep.pin(S, f"slot count differs from the on-chain IDL: {mf}: {c} instruction(s) (K-7)")
@@ -580,7 +660,8 @@ def check_idls(docs, manifests, rep):
         rep.error(S, f"{len(slot_diff)} instructions differ from their on-chain IDL's slot count; pinned {PINNED_SLOT_COUNT_DIFFERENCES} (tests/r30_declared_effects_census.rs)")
     rep.data["idls"] = {"idl_files_with_a_program": len(sources), "instructions_compared": compared,
                         "discriminators_equal": disc_ok, "discriminators_differing": len(disc_bad),
-                        "manifest_instructions_in_no_onchain_idl_instruction": len(phantom),
+                        "manifest_instructions_in_no_committed_idl": len(phantom),
+                        "manifest_instructions_only_in_an_idl_file": len(newer_than_onchain),
                         "slot_count_differences": len(slot_diff), "slot_count_differences_by_manifest": dict(sorted(per.items()))}
 
 
@@ -762,31 +843,263 @@ def check_artifacts(docs, rep):
 
 # ---------------------------------------------------------------- rewrites
 
+def idl_leaves(accs):
+    """An IDL instruction's accounts, nested groups flattened: (name, writable, signer, optional)."""
+    out = []
+    for a in accs or []:
+        if isinstance(a, dict) and "accounts" in a:
+            out += idl_leaves(a["accounts"])
+        elif isinstance(a, dict):
+            out.append((a.get("name"), bool(a.get("writable", a.get("isMut", False))),
+                        bool(a.get("signer", a.get("isSigner", False))),
+                        bool(a.get("optional", a.get("isOptional", False)))))
+    return out
+
+
+def declares_nothing(line):
+    """The lines DeclaredEffects::parse reads as declaring nothing: the
+    generated name list, a bare identifier, an explicit 'no state change'."""
+    low = line.lower()
+    return low.lstrip().startswith("modifies writable accounts") or not re.search(r"\s", low.strip()) or "no state change" in low
+
+
+ACCOUNT_REF = re.compile(r"accounts\.([A-Za-z0-9_]+)")
+UPSTREAM_ROLES = {"": (False, False), "w": (True, False), "s": (False, True), "ws": (True, True)}
+
+
+def committed_discriminators(docs):
+    """Every 8-byte discriminator a committed IDL gives each program (the
+    on-chain IDL accounts and the IDL files naming a program), the Surfpool
+    file excepted (its discriminators are not the deployed ones)."""
+    out = collections.defaultdict(set)
+    for f, d in docs.items():
+        pid = None
+        if not isinstance(d, dict):
+            continue
+        if f.startswith("graphite-core/scripts/out/onchain_idls/"):
+            pid = os.path.basename(f)[:-5]
+        elif re.match(r"graphite-core/scripts/(idls/[^/]+|[^/]+_idl)\.json$", f) and f != "graphite-core/scripts/idls/jupiter_v6_surfpool.json":
+            pid = d.get("address") or (d.get("metadata") or {}).get("address")
+        if not pid:
+            continue
+        for i in d.get("instructions") or []:
+            out[pid].add(bytes(i["discriminator"]).hex() if "discriminator" in i else anchor_disc(i["name"]))
+    return out
+
+
+def find_ix(manifests, mf, name):
+    m = manifests.get(mf)
+    return m, next((i for i in (m or {}).get("instructions", []) if i["name"] == name), None)
+
+
+def check_promotion(S, w, x, ix, docs, rep):
+    """Round 40 (F-005): a medium rewrite becomes high only with a recorded
+    evidence record the validator re-checks here. The technical lead signs off
+    a promotion that carries one (the Round 40 decision); nothing less is
+    accepted: an upstream source pinned to a full commit SHA, a URL and a line
+    range, whose recorded account list matches every layout of the
+    instruction slot for slot (names and roles exactly), or a committed IDL
+    the validator compares with the layout itself."""
+    p = x.get("promotion")
+    if not isinstance(p, dict):
+        rep.error(S, f"{w}: was medium (pinned) and is {x.get('confidence')!r} with no promotion record")
+        return False
+    ok = True
+
+    def bad(msg):
+        nonlocal ok
+        ok = False
+        rep.error(S, f"{w}: promotion: {msg}")
+
+    if (p.get("from"), p.get("to"), p.get("round")) != ("medium", "high", 40):
+        bad("from/to/round must be medium/high/40")
+    if not str(p.get("signed_off") or "").strip():
+        bad("no sign-off recorded")
+    ev = p.get("evidence") or {}
+    lays = layouts(ix)
+    if ev.get("kind") == "committed_idl":
+        idl = docs.get(ev.get("file") or "")
+        iix = next((i for i in (idl or {}).get("instructions") or [] if i.get("name") == ev.get("instruction")), None)
+        if iix is None:
+            bad(f"{ev.get('file')} has no instruction {ev.get('instruction')!r}")
+            return ok
+        leaves = idl_leaves(iix.get("accounts"))
+        for li, lay in enumerate(lays):
+            if len(lay) != len(leaves):
+                bad(f"layout {li} has {len(lay)} slots, the IDL {len(leaves)}")
+                continue
+            for k, (a, (n, wr, sg, _opt)) in enumerate(zip(lay, leaves)):
+                if a.get("name") != n or bool(a.get("is_writable")) != wr or bool(a.get("is_signer")) != sg:
+                    bad(f"layout {li} slot {k}: {a.get('name')} w={a.get('is_writable')} s={a.get('is_signer')} vs IDL {n} w={wr} s={sg}")
+        flags = {n: (wr, sg) for n, wr, sg, _ in leaves}
+        for line in x.get("new_lines") or []:
+            for ref in ACCOUNT_REF.findall(line):
+                if flags.get(ref) != (True, False):
+                    bad(f"accounts.{ref} is not a writable, non-signing account of the IDL instruction")
+    elif ev.get("kind") == "upstream_source":
+        repo, commit, path, lines = ev.get("repository") or "", ev.get("commit") or "", ev.get("path") or "", ev.get("lines") or []
+        if not re.fullmatch(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
+            bad(f"repository {repo!r} is not a public GitHub repository URL")
+        if not re.fullmatch(r"[0-9a-f]{40}", commit):
+            bad(f"commit {commit!r} is not a full 40-hex SHA")
+        if not (isinstance(lines, list) and len(lines) == 2 and all(isinstance(v, int) for v in lines) and 0 < lines[0] <= lines[1]):
+            bad(f"lines {lines!r} is not [first, last]")
+        elif ev.get("url") != f"{repo}/blob/{commit}/{path}#L{lines[0]}-L{lines[1]}":
+            bad(f"url {ev.get('url')!r} is not {repo}/blob/{commit}/{path}#L{lines[0]}-L{lines[1]}")
+        if not re.fullmatch(r"[0-9a-f]{64}", ev.get("file_sha256") or ""):
+            bad("no file_sha256 of the fetched file")
+        tag = ev.get("tag")
+        if not isinstance(tag, int) or ix.get("discriminator") != format(tag, "02x"):
+            bad(f"tag {tag!r} is not the manifest's discriminator {ix.get('discriminator')}")
+        accs = ev.get("accounts") or []
+        if not accs or any(not (isinstance(a, list) and len(a) == 4 and a[1] in UPSTREAM_ROLES and isinstance(a[2], bool)) for a in accs):
+            bad("accounts must be [manifest name, role ''|w|s|ws, optional, the source's text] per slot")
+            return ok
+        for li, lay in enumerate(lays):
+            # A layout is the source's list, or the source's list with its
+            # optional slots left out.
+            want = accs if len(lay) == len(accs) else [a for a in accs if not a[2]]
+            if len(want) != len(lay):
+                bad(f"layout {li} has {len(lay)} slots; the source has {len(accs)} ({sum(a[2] for a in accs)} optional)")
+                continue
+            for k, (a, (n, role, _opt, _doc)) in enumerate(zip(lay, want)):
+                wr, sg = UPSTREAM_ROLES[role]
+                if a.get("name") != n or bool(a.get("is_writable")) != wr or bool(a.get("is_signer")) != sg:
+                    bad(f"layout {li} slot {k}: {a.get('name')} w={a.get('is_writable')} s={a.get('is_signer')} vs source {n} [{role}]")
+    else:
+        bad(f"evidence kind {ev.get('kind')!r} is neither committed_idl nor upstream_source")
+    return ok
+
+
 def check_rewrites(docs, manifests, rep):
     S = "rewrites"
     r = docs.get("docs/audit-r36/declaration-rewrites.json") or {}
     rows = r.get("rewrites") or []
     conf = collections.Counter(x.get("confidence") for x in rows)
-    medium = []
+    medium, promoted = [], []
     for x in rows:
         mf = os.path.basename(x.get("manifest", ""))
-        m = manifests.get(mf)
-        ix = next((i for i in (m or {}).get("instructions", []) if i["name"] == x.get("instruction")), None)
+        m, ix = find_ix(manifests, mf, x.get("instruction"))
+        w = f"{mf}::{x.get('instruction')}"
         if ix is None:
-            rep.error(S, f"{mf}::{x.get('instruction')}: rewritten instruction not in the manifest")
+            rep.error(S, f"{w}: rewritten instruction not in the manifest")
             continue
         if m["protocol"]["program_id"] != x.get("program_id"):
-            rep.error(S, f"{mf}::{x.get('instruction')}: program_id is not the manifest's")
+            rep.error(S, f"{w}: program_id is not the manifest's")
         if list(ix.get("expected_state_changes") or []) != list(x.get("new_lines") or []):
-            rep.error(S, f"{mf}::{x.get('instruction')}: the manifest no longer carries the rewrite's new_lines")
+            rep.error(S, f"{w}: the manifest no longer carries the rewrite's new_lines")
         if x.get("confidence") not in ("high", "medium"):
-            rep.error(S, f"{mf}::{x.get('instruction')}: confidence {x.get('confidence')!r}")
+            rep.error(S, f"{w}: confidence {x.get('confidence')!r}")
+        was_medium = (mf, x.get("instruction")) in PINNED_MEDIUM_REWRITES
         if x.get("confidence") == "medium":
             medium.append((mf, x.get("instruction")))
-            rep.pin(S, f"medium confidence, owner sign-off pending: {mf} {x.get('instruction')} (IDL: {str(x.get('idl_source'))[:70]})")
-    if sorted(medium) != sorted(PINNED_MEDIUM_REWRITES):
-        rep.error(S, f"the medium-confidence rewrites changed: {sorted(medium)}; pinned {sorted(PINNED_MEDIUM_REWRITES)} (a promotion is the owner's, by a reviewed pull request)")
-    rep.data["rewrites"] = {"rows": len(rows), "by_confidence": dict(conf), "medium": [f"{a} {b}" for a, b in medium]}
+            if "promotion" in x:
+                rep.error(S, f"{w}: a promotion record on a row that is still medium")
+            why = (x.get("promotion_review") or {}).get("reason") or f"IDL: {x.get('idl_source')}"
+            rep.pin(S, f"medium confidence (Round 36), not promoted: {mf} {x.get('instruction')} ({str(why)[:110]})")
+        elif was_medium:
+            if check_promotion(S, w, x, ix, docs, rep):
+                promoted.append((mf, x.get("instruction")))
+        elif "promotion" in x:
+            rep.error(S, f"{w}: a promotion record on a row that was never medium")
+    if sorted(medium + promoted) != sorted(PINNED_MEDIUM_REWRITES):
+        rep.error(S, f"the Round 36 medium-confidence rows changed: medium {sorted(medium)} + promoted {sorted(promoted)}; pinned {sorted(PINNED_MEDIUM_REWRITES)}")
+    if sorted(medium) != sorted(PINNED_STILL_MEDIUM_R36):
+        rep.error(S, f"the Round 36 rows still medium are {sorted(medium)}; pinned {sorted(PINNED_STILL_MEDIUM_R36)} (a promotion needs a checked evidence record)")
+    data = {"rows": len(rows), "by_confidence": dict(conf), "medium": [f"{a} {b}" for a, b in medium],
+            "promoted_round_40": [f"{a} {b}" for a, b in promoted]}
+
+    # Round 40 (R39-CORE-DECISION-4): the swap rewrites, held to the Round 36
+    # checks and, further, to the IDL each row cites.
+    r40 = docs.get("docs/audit-r40/declaration-rewrites.json")
+    if r40 is None:
+        rep.error(S, "docs/audit-r40/declaration-rewrites.json is missing")
+        rep.data["rewrites"] = data
+        return
+    rows40 = r40.get("rewrites") or []
+    medium40, seen = [], set()
+    for x in rows40:
+        mf = os.path.basename(x.get("manifest", ""))
+        m, ix = find_ix(manifests, mf, x.get("instruction"))
+        w = f"{mf}::{x.get('instruction')} (R40)"
+        if (mf, x.get("instruction")) in seen:
+            rep.error(S, f"{w}: two rows")
+        seen.add((mf, x.get("instruction")))
+        if ix is None:
+            rep.error(S, f"{w}: rewritten instruction not in the manifest")
+            continue
+        if m["protocol"]["program_id"] != x.get("program_id"):
+            rep.error(S, f"{w}: program_id is not the manifest's")
+        new, old, added = list(x.get("new_lines") or []), list(x.get("old_lines") or []), list(x.get("added") or [])
+        if list(ix.get("expected_state_changes") or []) != new:
+            rep.error(S, f"{w}: the manifest no longer carries the rewrite's new_lines")
+        kept = [l for l in old if declares_nothing(l)]
+        if new != kept + added or list(x.get("removed") or []) != [l for l in old if not declares_nothing(l)]:
+            rep.error(S, f"{w}: new_lines are not the old lines that declare nothing plus `added`, or `removed` is not the rest")
+        if len(new) < len(old):
+            rep.error(S, f"{w}: the declaration got shorter ({len(old)} -> {len(new)} lines; the drainer heuristic counts lines)")
+        if (x.get("kind"), x.get("intent")) != ("swap", "swap"):
+            rep.error(S, f"{w}: kind/intent {x.get('kind')}/{x.get('intent')}")
+        if not any("credit" in l.lower() or "output" in l.lower() for l in new):
+            rep.error(S, f"{w}: no line mentions a credit or an output (L7 Check 8, FakeSwap)")
+        # L4's no-diff structural check (verification.rs verify_state) runs on
+        # the words 'debit'/'credit'; a rewrite must not switch it off.
+        value_words = lambda ls: any("debit" in l.lower() or "credit" in l.lower() for l in ls)
+        if value_words(old) and not value_words(new):
+            rep.error(S, f"{w}: the old declaration said debit/credit and the new one does not (L4's structural check would stop running)")
+        if x.get("confidence") not in ("high", "medium"):
+            rep.error(S, f"{w}: confidence {x.get('confidence')!r}")
+        if x.get("confidence") == "medium":
+            medium40.append((mf, x.get("instruction")))
+        if not x.get("justification") or not x.get("not_excused"):
+            rep.error(S, f"{w}: no justification or not_excused")
+        idl_file = str(x.get("idl_source") or "").split(" ")[0]
+        idl = docs.get(idl_file)
+        iix = next((i for i in (idl or {}).get("instructions") or [] if i.get("name") == x.get("idl_instruction")), None)
+        if iix is None:
+            rep.error(S, f"{w}: the cited IDL {idl_file!r} has no instruction {x.get('idl_instruction')!r}")
+            continue
+        leaves = idl_leaves(iix.get("accounts"))
+        lnorm = {norm(n or ""): (wr, sg) for n, wr, sg, _ in leaves}
+        for li, lay in enumerate(layouts(ix)):
+            for k, a in enumerate(lay):
+                if k >= len(leaves) or norm(a.get("name") or "") != norm(leaves[k][0] or ""):
+                    rep.error(S, f"{w}: layout {li} slot {k} {a.get('name')!r} is not the IDL's {(leaves[k][0] if k < len(leaves) else None)!r}")
+                    break
+        for line in added:
+            refs = ACCOUNT_REF.findall(line)
+            if not refs:
+                rep.error(S, f"{w}: an added line names no account: {line!r}")
+            for ref in refs:
+                for li, lay in enumerate(layouts(ix)):
+                    if ref not in [a.get("name") for a in lay]:
+                        rep.error(S, f"{w}: accounts.{ref} is not in layout {li}")
+                if lnorm.get(norm(ref)) != (True, False):
+                    rep.error(S, f"{w}: accounts.{ref} is not a writable, non-signing account of {idl_file}::{x.get('idl_instruction')}")
+    if sorted(medium40) != sorted(PINNED_MEDIUM_REWRITES_R40):
+        rep.error(S, f"the Round 40 medium-confidence rewrites changed: {sorted(medium40)}; pinned {sorted(PINNED_MEDIUM_REWRITES_R40)}")
+    for mf, ixn in medium40:
+        rep.pin(S, f"medium confidence (Round 40): {mf} {ixn}")
+    for key, why in (r40.get("left_unchanged") or {}).items():
+        mf, _, ixn = key.partition("::")
+        m, ix = find_ix(manifests, mf, ixn)
+        if ix is None:
+            rep.error(S, f"{key}: listed as left unchanged and not in the manifest")
+        elif list(ix.get("expected_state_changes") or []) != list((why or {}).get("lines") or []):
+            rep.error(S, f"{key}: listed as left unchanged, but its declaration changed")
+    discs = committed_discriminators(docs)
+    for x in r40.get("removed_instructions") or []:
+        mf = os.path.basename(x.get("manifest", ""))
+        m = manifests.get(mf) or {}
+        if any(i["name"] == x.get("instruction") or i["discriminator"] == x.get("discriminator") for i in m.get("instructions", [])):
+            rep.error(S, f"{mf}::{x.get('instruction')}: listed as removed and still in the manifest")
+        pid = (m.get("protocol") or {}).get("program_id")
+        if x.get("discriminator") in discs.get(pid, set()):
+            rep.error(S, f"{mf}::{x.get('instruction')}: removed, but a committed IDL of the program has its discriminator {x.get('discriminator')}")
+    data["round_40"] = {"rows": len(rows40), "by_confidence": dict(collections.Counter(x.get("confidence") for x in rows40)),
+                        "left_unchanged": len(r40.get("left_unchanged") or {}),
+                        "removed_instructions": len(r40.get("removed_instructions") or [])}
+    rep.data["rewrites"] = data
 
 
 # ---------------------------------------------------------------- schemas
