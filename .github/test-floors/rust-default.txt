@@ -41,7 +41,7 @@
 14 tests/round38_unscoped_authority.rs
 3 tests/round39_conformance_corpus.rs
 4 tests/round39_core_boundary.rs
-21 tests/round39_decision_campaigns.rs
+22 tests/round39_decision_campaigns.rs
 12 tests/round39_lookup_table_campaign.rs
 2 tests/round39_manifest_expected_address.rs
 6 tests/round39_registry_gate_dilution.rs
@@ -50,3 +50,5 @@
 11 tests/round40_census_import.rs
 5 tests/round40_import_census_cli.rs
 29 tests/staking_withdrawal_destination.rs
+# Round 40 (manifests): the rewritten swap declarations
+3 tests/round40_swap_declarations.rs

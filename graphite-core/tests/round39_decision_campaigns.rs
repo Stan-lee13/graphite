@@ -2924,7 +2924,7 @@ async fn round40_a_rewritten_pool_swap_with_a_skim_is_never_executable() {
             PoolAttack::BothOwnerSidesDebited(40_000_000),
             PoolAttack::OutputToStranger,
         ] {
-            for w in BOTH {
+            for w in CONFIGS {
                 let (c, ixs) = pool_swap_attacked(s, attack);
                 let r = verify(
                     c,
