@@ -619,7 +619,107 @@
       },
       "confidence": "medium",
       "notes": "No IDL file: account names and roles come from the manifest layout and the grant's documented source. The fee split (pool tokens to fee_account) is credit-only, so it excuses nothing if absent.",
-      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository"
+      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository",
+      "promotion_review": {
+        "round": 40,
+        "result": "not promoted",
+        "reason": "the source marks slot 12, the optional SOL withdraw authority, a signer ([s]); the manifest's 13-slot layout flags it not a signer, so the layout is not an exact match (the rewrite's lines themselves match the source's docs for slots 3-7)",
+        "evidence": {
+          "kind": "upstream_source",
+          "repository": "https://github.com/solana-program/stake-pool",
+          "commit": "63705a2dd9e8647fcfba9bfe1c411b049c209e9c",
+          "path": "program/src/instruction.rs",
+          "file_sha256": "67b84e7783fc9ed16ad2cfb3437b8cddfa26e5685d77f454e3cd9971da9a8911",
+          "lines": [
+            389,
+            406
+          ],
+          "url": "https://github.com/solana-program/stake-pool/blob/63705a2dd9e8647fcfba9bfe1c411b049c209e9c/program/src/instruction.rs#L389-L406",
+          "tag": 16,
+          "accounts": [
+            [
+              "stake_pool",
+              "w",
+              false,
+              "Stake pool"
+            ],
+            [
+              "withdraw_authority",
+              "",
+              false,
+              "Stake pool withdraw authority"
+            ],
+            [
+              "user_transfer_authority",
+              "s",
+              false,
+              "User transfer authority, for pool token account"
+            ],
+            [
+              "user_pool_token_account",
+              "w",
+              false,
+              "User account to burn pool tokens"
+            ],
+            [
+              "reserve_stake",
+              "w",
+              false,
+              "Reserve stake account, to withdraw SOL"
+            ],
+            [
+              "destination",
+              "w",
+              false,
+              "Account receiving the lamports from the reserve, must be a system account"
+            ],
+            [
+              "fee_account",
+              "w",
+              false,
+              "Account to receive pool fee tokens"
+            ],
+            [
+              "pool_mint",
+              "w",
+              false,
+              "Pool token mint account"
+            ],
+            [
+              "clock_sysvar",
+              "",
+              false,
+              "Clock sysvar"
+            ],
+            [
+              "stake_history_sysvar",
+              "",
+              false,
+              "Stake history sysvar"
+            ],
+            [
+              "stake_program",
+              "",
+              false,
+              "Stake program account"
+            ],
+            [
+              "token_program",
+              "",
+              false,
+              "Token program id"
+            ],
+            [
+              "sol_withdraw_authority",
+              "s",
+              true,
+              "(Optional) Stake pool sol withdraw authority"
+            ]
+          ],
+          "checked": {},
+          "fetched": "2026-10-25, read-only, raw.githubusercontent.com at the pinned commit (git ls-remote HEAD)"
+        }
+      }
     },
     {
       "program_id": "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy",
@@ -661,7 +761,107 @@
       },
       "confidence": "medium",
       "notes": "No IDL file: account names and roles come from the manifest layout and the grant's documented source. The fee split (pool tokens to fee_account) is credit-only, so it excuses nothing if absent.",
-      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository"
+      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository",
+      "promotion_review": {
+        "round": 40,
+        "result": "not promoted",
+        "reason": "the source marks slot 12, the optional SOL withdraw authority, a signer ([s]); the manifest's 13-slot layout flags it not a signer, so the layout is not an exact match (the rewrite's lines themselves match the source's docs for slots 3-7)",
+        "evidence": {
+          "kind": "upstream_source",
+          "repository": "https://github.com/solana-program/stake-pool",
+          "commit": "63705a2dd9e8647fcfba9bfe1c411b049c209e9c",
+          "path": "program/src/instruction.rs",
+          "file_sha256": "67b84e7783fc9ed16ad2cfb3437b8cddfa26e5685d77f454e3cd9971da9a8911",
+          "lines": [
+            717,
+            740
+          ],
+          "url": "https://github.com/solana-program/stake-pool/blob/63705a2dd9e8647fcfba9bfe1c411b049c209e9c/program/src/instruction.rs#L717-L740",
+          "tag": 26,
+          "accounts": [
+            [
+              "stake_pool",
+              "w",
+              false,
+              "Stake pool"
+            ],
+            [
+              "withdraw_authority",
+              "",
+              false,
+              "Stake pool withdraw authority"
+            ],
+            [
+              "user_transfer_authority",
+              "s",
+              false,
+              "User transfer authority, for pool token account"
+            ],
+            [
+              "user_pool_token_account",
+              "w",
+              false,
+              "User account to burn pool tokens"
+            ],
+            [
+              "reserve_stake",
+              "w",
+              false,
+              "Reserve stake account, to withdraw SOL"
+            ],
+            [
+              "destination",
+              "w",
+              false,
+              "Account receiving the lamports from the reserve, must be a system account"
+            ],
+            [
+              "fee_account",
+              "w",
+              false,
+              "Account to receive pool fee tokens"
+            ],
+            [
+              "pool_mint",
+              "w",
+              false,
+              "Pool token mint account"
+            ],
+            [
+              "clock_sysvar",
+              "",
+              false,
+              "Clock sysvar"
+            ],
+            [
+              "stake_history_sysvar",
+              "",
+              false,
+              "Stake history sysvar"
+            ],
+            [
+              "stake_program",
+              "",
+              false,
+              "Stake program account"
+            ],
+            [
+              "token_program",
+              "",
+              false,
+              "Token program id"
+            ],
+            [
+              "sol_withdraw_authority",
+              "s",
+              true,
+              "(Optional) Stake pool sol withdraw authority"
+            ]
+          ],
+          "checked": {},
+          "fetched": "2026-10-25, read-only, raw.githubusercontent.com at the pinned commit (git ls-remote HEAD)"
+        }
+      }
     },
     {
       "program_id": "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy",
@@ -704,9 +904,117 @@
         "user_withdraw_authority": "named after 'to': takes no effect at all (not even credit is meaningful); R33-14 CreatedAccountAuthorityNotSigner still refuses a non-signing authority whatever the declaration says",
         "new_stake_account": "credited and its authorities declared; no debit is excused"
       },
-      "confidence": "medium",
+      "confidence": "high",
       "notes": "Adds an authority declaration scoped to new_stake_account only, because the new stake account's authorities appearing is what WithdrawStake does (otherwise UndeclaredNativeAuthorityChange); R33-14 is not excused by any declaration.",
-      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository"
+      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository",
+      "promotion": {
+        "round": 40,
+        "from": "medium",
+        "to": "high",
+        "signed_off": "technical lead, Round 40 decision on F-005: a promotion backed by a recorded evidence record (pinned upstream source, or the committed IDL) is signed off; the evidence is re-checked by graphite-core/scripts/validate_corpora.py check_promotion",
+        "evidence": {
+          "kind": "upstream_source",
+          "repository": "https://github.com/solana-program/stake-pool",
+          "commit": "63705a2dd9e8647fcfba9bfe1c411b049c209e9c",
+          "path": "program/src/instruction.rs",
+          "file_sha256": "67b84e7783fc9ed16ad2cfb3437b8cddfa26e5685d77f454e3cd9971da9a8911",
+          "lines": [
+            302,
+            338
+          ],
+          "url": "https://github.com/solana-program/stake-pool/blob/63705a2dd9e8647fcfba9bfe1c411b049c209e9c/program/src/instruction.rs#L302-L338",
+          "tag": 10,
+          "accounts": [
+            [
+              "stake_pool",
+              "w",
+              false,
+              "Stake pool"
+            ],
+            [
+              "validator_list",
+              "w",
+              false,
+              "Validator stake list storage account"
+            ],
+            [
+              "withdraw_authority",
+              "",
+              false,
+              "Stake pool withdraw authority"
+            ],
+            [
+              "validator_or_reserve_stake",
+              "w",
+              false,
+              "Validator or reserve stake account to split"
+            ],
+            [
+              "new_stake_account",
+              "w",
+              false,
+              "Uninitialized stake account to receive withdrawal"
+            ],
+            [
+              "user_withdraw_authority",
+              "",
+              false,
+              "User account to set as a new withdraw authority"
+            ],
+            [
+              "user_transfer_authority",
+              "s",
+              false,
+              "User transfer authority, for pool token account"
+            ],
+            [
+              "user_pool_token_account",
+              "w",
+              false,
+              "User account with pool tokens to burn from"
+            ],
+            [
+              "fee_account",
+              "w",
+              false,
+              "Account to receive pool fee tokens"
+            ],
+            [
+              "pool_mint",
+              "w",
+              false,
+              "Pool token mint account"
+            ],
+            [
+              "clock_sysvar",
+              "",
+              false,
+              "Sysvar clock account (required)"
+            ],
+            [
+              "token_program",
+              "",
+              false,
+              "Pool token program id"
+            ],
+            [
+              "stake_program",
+              "",
+              false,
+              "Stake program id,"
+            ]
+          ],
+          "checked": {
+            "accounts.user_pool_token_account (debited, burned from)": "slot 7 'User account with pool tokens to burn from'",
+            "accounts.pool_mint (burn)": "slot 9 'Pool token mint account'",
+            "accounts.fee_account (credited)": "slot 8 'Account to receive pool fee tokens'",
+            "accounts.validator_or_reserve_stake -> accounts.new_stake_account": "slot 3 'Validator or reserve stake account to split', slot 4 'Uninitialized stake account to receive withdrawal'",
+            "authorities of accounts.new_stake_account": "slot 5 'User account to set as a new withdraw authority'",
+            "order and roles": "13 slots, names and [w]/[s]/[] roles equal to the manifest layout slot for slot"
+          },
+          "fetched": "2026-10-25, read-only, raw.githubusercontent.com at the pinned commit (git ls-remote HEAD)"
+        }
+      }
     },
     {
       "program_id": "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy",
@@ -749,9 +1057,117 @@
         "user_withdraw_authority": "named after 'to': takes no effect at all (not even credit is meaningful); R33-14 CreatedAccountAuthorityNotSigner still refuses a non-signing authority whatever the declaration says",
         "new_stake_account": "credited and its authorities declared; no debit is excused"
       },
-      "confidence": "medium",
+      "confidence": "high",
       "notes": "Adds an authority declaration scoped to new_stake_account only, because the new stake account's authorities appearing is what WithdrawStake does (otherwise UndeclaredNativeAuthorityChange); R33-14 is not excused by any declaration.",
-      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository"
+      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository",
+      "promotion": {
+        "round": 40,
+        "from": "medium",
+        "to": "high",
+        "signed_off": "technical lead, Round 40 decision on F-005: a promotion backed by a recorded evidence record (pinned upstream source, or the committed IDL) is signed off; the evidence is re-checked by graphite-core/scripts/validate_corpora.py check_promotion",
+        "evidence": {
+          "kind": "upstream_source",
+          "repository": "https://github.com/solana-program/stake-pool",
+          "commit": "63705a2dd9e8647fcfba9bfe1c411b049c209e9c",
+          "path": "program/src/instruction.rs",
+          "file_sha256": "67b84e7783fc9ed16ad2cfb3437b8cddfa26e5685d77f454e3cd9971da9a8911",
+          "lines": [
+            662,
+            692
+          ],
+          "url": "https://github.com/solana-program/stake-pool/blob/63705a2dd9e8647fcfba9bfe1c411b049c209e9c/program/src/instruction.rs#L662-L692",
+          "tag": 24,
+          "accounts": [
+            [
+              "stake_pool",
+              "w",
+              false,
+              "Stake pool"
+            ],
+            [
+              "validator_list",
+              "w",
+              false,
+              "Validator stake list storage account"
+            ],
+            [
+              "withdraw_authority",
+              "",
+              false,
+              "Stake pool withdraw authority"
+            ],
+            [
+              "validator_or_reserve_stake",
+              "w",
+              false,
+              "Validator or reserve stake account to split"
+            ],
+            [
+              "new_stake_account",
+              "w",
+              false,
+              "Uninitialized stake account to receive withdrawal"
+            ],
+            [
+              "user_withdraw_authority",
+              "",
+              false,
+              "User account to set as a new withdraw authority"
+            ],
+            [
+              "user_transfer_authority",
+              "s",
+              false,
+              "User transfer authority, for pool token account"
+            ],
+            [
+              "user_pool_token_account",
+              "w",
+              false,
+              "User account with pool tokens to burn from"
+            ],
+            [
+              "fee_account",
+              "w",
+              false,
+              "Account to receive pool fee tokens"
+            ],
+            [
+              "pool_mint",
+              "w",
+              false,
+              "Pool token mint account"
+            ],
+            [
+              "clock_sysvar",
+              "",
+              false,
+              "Sysvar clock account (required)"
+            ],
+            [
+              "token_program",
+              "",
+              false,
+              "Pool token program id"
+            ],
+            [
+              "stake_program",
+              "",
+              false,
+              "Stake program id,"
+            ]
+          ],
+          "checked": {
+            "accounts.user_pool_token_account (debited, burned from)": "slot 7 'User account with pool tokens to burn from'",
+            "accounts.pool_mint (burn)": "slot 9 'Pool token mint account'",
+            "accounts.fee_account (credited)": "slot 8 'Account to receive pool fee tokens'",
+            "accounts.validator_or_reserve_stake -> accounts.new_stake_account": "slot 3 'Validator or reserve stake account to split', slot 4 'Uninitialized stake account to receive withdrawal'",
+            "authorities of accounts.new_stake_account": "slot 5 'User account to set as a new withdraw authority'",
+            "order and roles": "13 slots, names and [w]/[s]/[] roles equal to the manifest layout slot for slot"
+          },
+          "fetched": "2026-10-25, read-only, raw.githubusercontent.com at the pinned commit (git ls-remote HEAD)"
+        }
+      }
     },
     {
       "program_id": "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD",
@@ -789,9 +1205,25 @@
         "transferSolTo": "credited only",
         "msolMint": "no burn declared: the IDL does not say liquidUnstake changes the mSOL supply (and the repo's own fixture in tests/staking_withdrawal_destination.rs keeps it unchanged); a supply change stays UndeclaredBurn/UndeclaredMint"
       },
-      "confidence": "medium",
+      "confidence": "high",
       "notes": "The IDL carries no docs; roles rest on the IDL's account names and the msolAmount argument. 'withdrawn' keeps the withdraw intent's vocabulary in the prose (the name liquidUnstake carries none).",
-      "meets_census_REWRITTEN_constraints": true
+      "meets_census_REWRITTEN_constraints": true,
+      "promotion": {
+        "round": 40,
+        "from": "medium",
+        "to": "high",
+        "signed_off": "technical lead, Round 40 decision on F-005: a promotion backed by a recorded evidence record (pinned upstream source, or the committed IDL) is signed off; the evidence is re-checked by graphite-core/scripts/validate_corpora.py check_promotion",
+        "evidence": {
+          "kind": "committed_idl",
+          "file": "graphite-core/scripts/idls/marinade.json",
+          "instruction": "liquidUnstake",
+          "checked": {
+            "order and roles": "10 accounts; names, writable and signer flags equal to the manifest layout slot for slot (state w, msolMint w, liqPoolSolLegPda w, liqPoolMsolLeg w, treasuryMsolAccount w, getMsolFrom w, getMsolFromAuthority s, transferSolTo w, systemProgram, tokenProgram)",
+            "named accounts": "getMsolFrom, liqPoolMsolLeg, treasuryMsolAccount, liqPoolSolLegPda and transferSolTo are each writable and not a signer in the IDL; the argument is msolAmount",
+            "what the IDL cannot say": "it carries no docs: the direction rests on the IDL's own names (getMsolFrom, transferSolTo) and argument, the same evidence Round 36 accepted as high for Jupiter's route (no account docs either)"
+          }
+        }
+      }
     },
     {
       "program_id": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
@@ -1126,9 +1558,145 @@
         "user_dest_token_account": "credited only",
         "market_coin_vault / market_pc_vault (layout 0)": "not named: OpenBook market vaults are not the user's and need no name"
       },
-      "confidence": "medium",
+      "confidence": "high",
       "notes": "No IDL file in the repository; the layout's names are self-describing and the existing manifest already lists exactly these four token accounts as bare names.",
-      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository"
+      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository",
+      "promotion": {
+        "round": 40,
+        "from": "medium",
+        "to": "high",
+        "signed_off": "technical lead, Round 40 decision on F-005: a promotion backed by a recorded evidence record (pinned upstream source, or the committed IDL) is signed off; the evidence is re-checked by graphite-core/scripts/validate_corpora.py check_promotion",
+        "evidence": {
+          "kind": "upstream_source",
+          "repository": "https://github.com/raydium-io/raydium-amm",
+          "commit": "91739d8d9f5cf347e0ce14ebe4d2bb7069fb31b6",
+          "path": "program/src/instruction.rs",
+          "file_sha256": "499a331b01a1142975dece9ca7258a937ae0598422c33ec516c2f3e4883e0818",
+          "lines": [
+            242,
+            262
+          ],
+          "url": "https://github.com/raydium-io/raydium-amm/blob/91739d8d9f5cf347e0ce14ebe4d2bb7069fb31b6/program/src/instruction.rs#L242-L262",
+          "tag": 9,
+          "accounts": [
+            [
+              "token_program",
+              "",
+              false,
+              "Spl Token program id"
+            ],
+            [
+              "amm",
+              "w",
+              false,
+              "AMM Account"
+            ],
+            [
+              "amm_authority",
+              "",
+              false,
+              "$authority derived from `create_program_address(&[AUTHORITY_AMM, &[nonce]])`."
+            ],
+            [
+              "amm_open_orders",
+              "w",
+              false,
+              "AMM open orders Account"
+            ],
+            [
+              "amm_target_orders",
+              "w",
+              true,
+              "(optional)AMM target orders Account, no longer used in the contract, recommended no need to add this Account."
+            ],
+            [
+              "pool_coin_token_account",
+              "w",
+              false,
+              "AMM coin vault Account to swap FROM or To."
+            ],
+            [
+              "pool_pc_token_account",
+              "w",
+              false,
+              "AMM pc vault Account to swap FROM or To."
+            ],
+            [
+              "market_program",
+              "",
+              false,
+              "Market program id"
+            ],
+            [
+              "market",
+              "w",
+              false,
+              "Market Account. Market program is the owner."
+            ],
+            [
+              "market_bids",
+              "w",
+              false,
+              "Market bids Account"
+            ],
+            [
+              "market_asks",
+              "w",
+              false,
+              "Market asks Account"
+            ],
+            [
+              "market_event_queue",
+              "w",
+              false,
+              "Market event queue Account"
+            ],
+            [
+              "market_coin_vault",
+              "w",
+              false,
+              "Market coin vault Account"
+            ],
+            [
+              "market_pc_vault",
+              "w",
+              false,
+              "Market pc vault Account"
+            ],
+            [
+              "market_vault_signer",
+              "",
+              false,
+              "Market vault signer Account"
+            ],
+            [
+              "user_source_token_account",
+              "w",
+              false,
+              "User source token Account."
+            ],
+            [
+              "user_dest_token_account",
+              "w",
+              false,
+              "User destination token Account."
+            ],
+            [
+              "user_owner",
+              "s",
+              false,
+              "User wallet Account"
+            ]
+          ],
+          "checked": {
+            "accounts.user_source_token_account (debited)": "'User source token Account.'",
+            "accounts.pool_coin_token_account / pool_pc_token_account (debited and credited)": "'AMM coin/pc vault Account to swap FROM or To.'",
+            "accounts.user_dest_token_account (credited)": "'User destination token Account.'",
+            "order and roles": "names and [writable]/[signer]/[] roles equal to every manifest layout slot for slot; the 17-slot layout is the source's list without the optional amm_target_orders, as the source's own swap_base_in/swap_base_out builders send it (lines 898, 1000: the target-orders AccountMeta commented out)"
+          },
+          "fetched": "2026-10-25, read-only, raw.githubusercontent.com at the pinned commit (git ls-remote HEAD)"
+        }
+      }
     },
     {
       "program_id": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
@@ -1173,9 +1741,145 @@
         "user_dest_token_account": "credited only",
         "market_coin_vault / market_pc_vault (layout 0)": "not named: OpenBook market vaults are not the user's and need no name"
       },
-      "confidence": "medium",
+      "confidence": "high",
       "notes": "No IDL file in the repository; the layout's names are self-describing and the existing manifest already lists exactly these four token accounts as bare names.",
-      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository"
+      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository",
+      "promotion": {
+        "round": 40,
+        "from": "medium",
+        "to": "high",
+        "signed_off": "technical lead, Round 40 decision on F-005: a promotion backed by a recorded evidence record (pinned upstream source, or the committed IDL) is signed off; the evidence is re-checked by graphite-core/scripts/validate_corpora.py check_promotion",
+        "evidence": {
+          "kind": "upstream_source",
+          "repository": "https://github.com/raydium-io/raydium-amm",
+          "commit": "91739d8d9f5cf347e0ce14ebe4d2bb7069fb31b6",
+          "path": "program/src/instruction.rs",
+          "file_sha256": "499a331b01a1142975dece9ca7258a937ae0598422c33ec516c2f3e4883e0818",
+          "lines": [
+            269,
+            289
+          ],
+          "url": "https://github.com/raydium-io/raydium-amm/blob/91739d8d9f5cf347e0ce14ebe4d2bb7069fb31b6/program/src/instruction.rs#L269-L289",
+          "tag": 11,
+          "accounts": [
+            [
+              "token_program",
+              "",
+              false,
+              "Spl Token program id"
+            ],
+            [
+              "amm",
+              "w",
+              false,
+              "AMM Account"
+            ],
+            [
+              "amm_authority",
+              "",
+              false,
+              "$authority derived from `create_program_address(&[AUTHORITY_AMM, &[nonce]])`."
+            ],
+            [
+              "amm_open_orders",
+              "w",
+              false,
+              "AMM open orders Account"
+            ],
+            [
+              "amm_target_orders",
+              "w",
+              true,
+              "(optional)AMM target orders Account, no longer used in the contract, recommended no need to add this Account."
+            ],
+            [
+              "pool_coin_token_account",
+              "w",
+              false,
+              "AMM coin vault Account to swap FROM or To."
+            ],
+            [
+              "pool_pc_token_account",
+              "w",
+              false,
+              "AMM pc vault Account to swap FROM or To."
+            ],
+            [
+              "market_program",
+              "",
+              false,
+              "Market program id"
+            ],
+            [
+              "market",
+              "w",
+              false,
+              "Market Account. Market program is the owner."
+            ],
+            [
+              "market_bids",
+              "w",
+              false,
+              "Market bids Account"
+            ],
+            [
+              "market_asks",
+              "w",
+              false,
+              "Market asks Account"
+            ],
+            [
+              "market_event_queue",
+              "w",
+              false,
+              "Market event queue Account"
+            ],
+            [
+              "market_coin_vault",
+              "w",
+              false,
+              "Market coin vault Account"
+            ],
+            [
+              "market_pc_vault",
+              "w",
+              false,
+              "Market pc vault Account"
+            ],
+            [
+              "market_vault_signer",
+              "",
+              false,
+              "Market vault signer Account"
+            ],
+            [
+              "user_source_token_account",
+              "w",
+              false,
+              "User source token Account."
+            ],
+            [
+              "user_dest_token_account",
+              "w",
+              false,
+              "User destination token Account."
+            ],
+            [
+              "user_owner",
+              "s",
+              false,
+              "User wallet Account"
+            ]
+          ],
+          "checked": {
+            "accounts.user_source_token_account (debited)": "'User source token Account.'",
+            "accounts.pool_coin_token_account / pool_pc_token_account (debited and credited)": "'AMM coin/pc vault Account to swap FROM or To.'",
+            "accounts.user_dest_token_account (credited)": "'User destination token Account.'",
+            "order and roles": "names and [writable]/[signer]/[] roles equal to every manifest layout slot for slot; the 17-slot layout is the source's list without the optional amm_target_orders, as the source's own swap_base_in/swap_base_out builders send it (lines 898, 1000: the target-orders AccountMeta commented out)"
+          },
+          "fetched": "2026-10-25, read-only, raw.githubusercontent.com at the pinned commit (git ls-remote HEAD)"
+        }
+      }
     },
     {
       "program_id": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
@@ -1220,9 +1924,85 @@
         "user_dest_token_account": "credited only",
         "market_coin_vault / market_pc_vault (layout 0)": "not named: OpenBook market vaults are not the user's and need no name"
       },
-      "confidence": "medium",
+      "confidence": "high",
       "notes": "No IDL file in the repository; the layout's names are self-describing and the existing manifest already lists exactly these four token accounts as bare names.",
-      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository"
+      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository",
+      "promotion": {
+        "round": 40,
+        "from": "medium",
+        "to": "high",
+        "signed_off": "technical lead, Round 40 decision on F-005: a promotion backed by a recorded evidence record (pinned upstream source, or the committed IDL) is signed off; the evidence is re-checked by graphite-core/scripts/validate_corpora.py check_promotion",
+        "evidence": {
+          "kind": "upstream_source",
+          "repository": "https://github.com/raydium-io/raydium-amm",
+          "commit": "91739d8d9f5cf347e0ce14ebe4d2bb7069fb31b6",
+          "path": "program/src/instruction.rs",
+          "file_sha256": "499a331b01a1142975dece9ca7258a937ae0598422c33ec516c2f3e4883e0818",
+          "lines": [
+            303,
+            313
+          ],
+          "url": "https://github.com/raydium-io/raydium-amm/blob/91739d8d9f5cf347e0ce14ebe4d2bb7069fb31b6/program/src/instruction.rs#L303-L313",
+          "tag": 16,
+          "accounts": [
+            [
+              "token_program",
+              "",
+              false,
+              "Spl Token program id"
+            ],
+            [
+              "amm",
+              "w",
+              false,
+              "AMM Account"
+            ],
+            [
+              "amm_authority",
+              "",
+              false,
+              "$authority derived from `create_program_address(&[AUTHORITY_AMM, &[nonce]])`."
+            ],
+            [
+              "pool_coin_token_account",
+              "w",
+              false,
+              "AMM coin vault Account to swap FROM or To."
+            ],
+            [
+              "pool_pc_token_account",
+              "w",
+              false,
+              "AMM pc vault Account to swap FROM or To."
+            ],
+            [
+              "user_source_token_account",
+              "w",
+              false,
+              "User source token Account."
+            ],
+            [
+              "user_dest_token_account",
+              "w",
+              false,
+              "User destination token Account."
+            ],
+            [
+              "user_owner",
+              "s",
+              false,
+              "User wallet Account"
+            ]
+          ],
+          "checked": {
+            "accounts.user_source_token_account (debited)": "'User source token Account.'",
+            "accounts.pool_coin_token_account / pool_pc_token_account (debited and credited)": "'AMM coin/pc vault Account to swap FROM or To.'",
+            "accounts.user_dest_token_account (credited)": "'User destination token Account.'",
+            "order and roles": "names and [writable]/[signer]/[] roles equal to every manifest layout slot for slot; the 17-slot layout is the source's list without the optional amm_target_orders, as the source's own swap_base_in/swap_base_out builders send it (lines 898, 1000: the target-orders AccountMeta commented out)"
+          },
+          "fetched": "2026-10-25, read-only, raw.githubusercontent.com at the pinned commit (git ls-remote HEAD)"
+        }
+      }
     },
     {
       "program_id": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
@@ -1267,9 +2047,85 @@
         "user_dest_token_account": "credited only",
         "market_coin_vault / market_pc_vault (layout 0)": "not named: OpenBook market vaults are not the user's and need no name"
       },
-      "confidence": "medium",
+      "confidence": "high",
       "notes": "No IDL file in the repository; the layout's names are self-describing and the existing manifest already lists exactly these four token accounts as bare names.",
-      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository"
+      "meets_census_REWRITTEN_constraints": "n/a: no IDL file in the repository",
+      "promotion": {
+        "round": 40,
+        "from": "medium",
+        "to": "high",
+        "signed_off": "technical lead, Round 40 decision on F-005: a promotion backed by a recorded evidence record (pinned upstream source, or the committed IDL) is signed off; the evidence is re-checked by graphite-core/scripts/validate_corpora.py check_promotion",
+        "evidence": {
+          "kind": "upstream_source",
+          "repository": "https://github.com/raydium-io/raydium-amm",
+          "commit": "91739d8d9f5cf347e0ce14ebe4d2bb7069fb31b6",
+          "path": "program/src/instruction.rs",
+          "file_sha256": "499a331b01a1142975dece9ca7258a937ae0598422c33ec516c2f3e4883e0818",
+          "lines": [
+            315,
+            325
+          ],
+          "url": "https://github.com/raydium-io/raydium-amm/blob/91739d8d9f5cf347e0ce14ebe4d2bb7069fb31b6/program/src/instruction.rs#L315-L325",
+          "tag": 17,
+          "accounts": [
+            [
+              "token_program",
+              "",
+              false,
+              "Spl Token program id"
+            ],
+            [
+              "amm",
+              "w",
+              false,
+              "AMM Account"
+            ],
+            [
+              "amm_authority",
+              "",
+              false,
+              "$authority derived from `create_program_address(&[AUTHORITY_AMM, &[nonce]])`."
+            ],
+            [
+              "pool_coin_token_account",
+              "w",
+              false,
+              "AMM coin vault Account to swap FROM or To."
+            ],
+            [
+              "pool_pc_token_account",
+              "w",
+              false,
+              "AMM pc vault Account to swap FROM or To."
+            ],
+            [
+              "user_source_token_account",
+              "w",
+              false,
+              "User source token Account."
+            ],
+            [
+              "user_dest_token_account",
+              "w",
+              false,
+              "User destination token Account."
+            ],
+            [
+              "user_owner",
+              "s",
+              false,
+              "User wallet Account"
+            ]
+          ],
+          "checked": {
+            "accounts.user_source_token_account (debited)": "'User source token Account.'",
+            "accounts.pool_coin_token_account / pool_pc_token_account (debited and credited)": "'AMM coin/pc vault Account to swap FROM or To.'",
+            "accounts.user_dest_token_account (credited)": "'User destination token Account.'",
+            "order and roles": "names and [writable]/[signer]/[] roles equal to every manifest layout slot for slot; the 17-slot layout is the source's list without the optional amm_target_orders, as the source's own swap_base_in/swap_base_out builders send it (lines 898, 1000: the target-orders AccountMeta commented out)"
+          },
+          "fetched": "2026-10-25, read-only, raw.githubusercontent.com at the pinned commit (git ls-remote HEAD)"
+        }
+      }
     },
     {
       "program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",

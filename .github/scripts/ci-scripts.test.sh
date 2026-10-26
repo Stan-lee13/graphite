@@ -648,7 +648,7 @@ VR="$T/vc"
 rm -rf "$VR" && mkdir -p "$VR/graphite-core/src" "$VR/docs"
 cp -r "$root/graphite-core/protocols" "$root/graphite-core/fixtures" "$root/graphite-core/scripts" "$VR/graphite-core/"
 cp "$root/graphite-core/src/manifest.rs" "$VR/graphite-core/src/"
-cp -r "$root/docs/audit-r36" "$VR/docs/"
+cp -r "$root/docs/audit-r36" "$root/docs/audit-r40" "$VR/docs/"
 cp -r "$root/schemas" "$root/examples" "$VR/"
 vc() { "${VC[@]}" --quiet --skip schemas --root "$VR"; }
 expect 0 "a copy of those files validates (no git: every *.json is read)" vc
@@ -683,8 +683,30 @@ vc_case "an evidence decode rate that is not its counts fails" "$P_/battle_teste
   'r = [x for x in d["programs"] if x["manifest"] == "zeta-zetaxs.json"][0]; r["decode"]["decode_rate"] = 0.95'
 vc_case "a corpus row relabelled real in the meta manifest fails" "graphite-core/fixtures/corpus/meta/corpus_manifest.json" \
   'x = [x for x in d if x["provenance"] == "synthetic-attack"][0]; x["provenance"] = "real-mainnet-tx"'
-vc_case "a medium-confidence rewrite promoted to high fails (the owner's sign-off)" "docs/audit-r36/declaration-rewrites.json" \
-  'x = [x for x in d["rewrites"] if x["instruction"] == "liquidUnstake"][0]; x["confidence"] = "high"'
+vc_case "a medium-confidence rewrite promoted to high with no evidence record fails" "docs/audit-r36/declaration-rewrites.json" \
+  'x = [x for x in d["rewrites"] if x["instruction"] == "WithdrawSol"][0]; x["confidence"] = "high"'
+# Round 40 (F-005): a promotion is accepted only with an evidence record the
+# validator re-checks.
+vc_case "a promotion whose evidence record is removed fails" "docs/audit-r36/declaration-rewrites.json" \
+  'x = [x for x in d["rewrites"] if x["instruction"] == "liquidUnstake"][0]; del x["promotion"]'
+vc_case "a promotion whose upstream account roles differ from the layout fails" "docs/audit-r36/declaration-rewrites.json" \
+  'x = [x for x in d["rewrites"] if x["instruction"] == "SwapBaseIn"][0]; x["promotion"]["evidence"]["accounts"][15][1] = ""'
+vc_case "a promotion not pinned to a full commit SHA fails" "docs/audit-r36/declaration-rewrites.json" \
+  'x = [x for x in d["rewrites"] if x["instruction"] == "WithdrawStake"][0]; x["promotion"]["evidence"]["commit"] = "main"'
+vc_case "a promotion with no sign-off fails" "docs/audit-r36/declaration-rewrites.json" \
+  'x = [x for x in d["rewrites"] if x["instruction"] == "SwapBaseOut"][0]; x["promotion"]["signed_off"] = ""'
+# Round 40 (R39-CORE-DECISION-4, R39-SUPPLY-CHAIN-11): the swap rewrites,
+# the rows left unchanged and the removed instructions.
+vc_case "a Round 40 rewrite citing an IDL instruction that is not there fails" "docs/audit-r40/declaration-rewrites.json" \
+  'x = [x for x in d["rewrites"] if x["instruction"] == "swap_base_input"][0]; x["idl_instruction"] = "swap_base_input_v9"'
+vc_case "a Round 40 rewrite no longer in its manifest fails" "docs/audit-r40/declaration-rewrites.json" \
+  'x = d["rewrites"][0]; x["new_lines"][-1] = "transfers everything from accounts.input_token_account"'
+vc_case "a Round 40 medium row relabelled high fails" "docs/audit-r40/declaration-rewrites.json" \
+  'x = [x for x in d["rewrites"] if x["confidence"] == "medium"][0]; x["confidence"] = "high"'
+vc_case "a declaration listed as left unchanged that changed fails" "docs/audit-r40/declaration-rewrites.json" \
+  'k = sorted(d["left_unchanged"])[0]; d["left_unchanged"][k]["lines"] = ["transfers tokens"]'
+vc_case "an instruction no committed IDL has, re-added, fails" "$P_/meteora-dlmm.json" \
+  'x = dict(d["instructions"][0]); x["name"] = "swap_2"; x["discriminator"] = "df7e2d55564d1fc2"; d["instructions"].append(x)'
 vc_case "a rewrite no longer in its manifest fails" "docs/audit-r36/declaration-rewrites.json" \
   'd["rewrites"][0]["new_lines"].append("transfers everything to accounts.attacker")'
 vc_case "a mainnet sample row whose version label is not its bytes fails" "graphite-core/fixtures/mainnet/sample-2026-09-23-last-2-blocks.json" \

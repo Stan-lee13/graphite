@@ -2121,7 +2121,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: fusion_pool, token_owner_account_a, token_owner_account_b, token_vault_a, token_vault_b, tick_array_0, tick_array_1, tick_array_2",
-    "credits the output token account with the received amount for the swap"
+    "when data.a_to_b is true, transfers the input tokens from accounts.token_owner_account_a to accounts.token_vault_a",
+    "when data.a_to_b is true, transfers the output tokens from accounts.token_vault_b to accounts.token_owner_account_b",
+    "when data.a_to_b is false, transfers the input tokens from accounts.token_owner_account_b to accounts.token_vault_b",
+    "when data.a_to_b is false, transfers the output tokens from accounts.token_vault_a to accounts.token_owner_account_a",
+    "when data.a_to_b is true, debits accounts.token_owner_account_a by the input tokens",
+    "when data.a_to_b is false, debits accounts.token_owner_account_b by the input tokens",
+    "when data.a_to_b is true, credits accounts.token_owner_account_b with the output tokens",
+    "when data.a_to_b is false, credits accounts.token_owner_account_a with the output tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -2291,7 +2298,12 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: fusion_pool_one, fusion_pool_two, token_owner_account_input, token_vault_one_input, token_vault_one_intermediate, token_vault_two_intermediate, token_vault_two_output, token_owner_account_output, tick_array_one_0, tick_array_one_1, tick_array_one_2, tick_array_two_0, tick_array_two_1, tick_array_two_2",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.token_owner_account_input to accounts.token_vault_one_input",
+    "transfers tokens into or out of accounts.token_vault_one_intermediate",
+    "transfers tokens into or out of accounts.token_vault_two_intermediate",
+    "transfers the output tokens from accounts.token_vault_two_output to accounts.token_owner_account_output",
+    "debits accounts.token_owner_account_input by the input tokens",
+    "credits accounts.token_owner_account_output with the output tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

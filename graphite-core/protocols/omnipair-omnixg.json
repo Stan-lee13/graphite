@@ -1793,7 +1793,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pair, rate_model, token_in_vault, token_out_vault, user_token_in_account, user_token_out_account",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.user_token_in_account to accounts.token_in_vault",
+    "transfers the output tokens from accounts.token_out_vault to accounts.user_token_out_account",
+    "debits accounts.user_token_in_account by the input tokens",
+    "credits accounts.user_token_out_account with the output tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

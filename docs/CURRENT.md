@@ -99,7 +99,7 @@ Measured on real mainnet:        19,458 transactions fetched 2026-09-23 (12,134 
                                  Round 30 re-pinned them once more: the harness no longer takes a durable-nonce
                                  advance as a transaction's primary (rows 442, 1272, 1366 now read their System
                                  transfer and are still refused at L2); 0 approvals before and after
-Manifest coverage of the chain:  137 manifests / 3,541 instructions (129 / 3,195 when the sample below was measured). On a 10,617-transaction mainnet sample
+Manifest coverage of the chain:  137 manifests / 3,518 instructions (129 / 3,195 when the sample below was measured). On a 10,617-transaction mainnet sample
                                  fetched on 2026-09-22 (not in the repo; 1,829 of it, 17.2%, version 1),
                                  44.0% of non-vote transactions have a manifested primary program, up from 20.8%
                                  for the same sample before Round 18. The rest still meet the drainer heuristic
@@ -137,7 +137,7 @@ L4 under an unreadable manifest: a signer's token debit or lamport loss under a 
                                  own token accounts (Round 32; GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT=1
                                  restores the warning). Since Round 34: a debit line that names no account is
                                  unreadable for the signer's judgement (SignerLamportsUnderUnscopedDebit,
-                                 SignerTokenDebitUnderUnscopedDebit, R33-5; 1,767 instructions carry one since Round 36); losses are
+                                 SignerTokenDebitUnderUnscopedDebit, R33-5; 1,700 instructions carry one since Round 40, 1,767 at Round 36); losses are
                                  netted per signer, value kept counts only toward the signer that holds it, rent only
                                  for a declared created account owned by the located program or a token program,
                                  and a vault's payout offsets nothing (R33-6/7/10); a created stake, vote or nonce
@@ -782,7 +782,7 @@ transaction under the stated threat model, and no external party has yet tried.
   accepts the trade.
 - **Round 34's L4 defaults refuse more, and their live cost is not yet measured.**
   A signer's loss under a debit line that names no account is refused (R33-5):
-  1,767 of 3,541 instructions carry such a line (1,802 before Round 36). None of
+  1,700 of 3,518 instructions carry such a line (1,767 at Round 36, 1,802 before it). None of
   the 27 withdrawal grants does since Round 36 (F-005: 35 declarations rewritten
   from their IDLs, the 18 withdrawal grants among them); the 9 medium-confidence
   rewrites (Stake Pool, Raydium AMM v4: no IDL file in the repository) await the
@@ -984,7 +984,7 @@ Round 39 head: see PR #55 (green at `9e166de`: CI 40205747414, Assurance 4020574
 
 The holdout (`tests/regression_corpus.rs`): n = 38, 37 true positives, 1 false
 positive, 0 false negatives — precision 0.974, recall 1.000. The committed
-corpus: 13,013 fixtures (12,943 dev, 32 regression, 38 holdout).
+corpus: 12,967 fixtures (12,897 dev, 32 regression, 38 holdout).
 
 Reproduced from `cargo test` / `npm test` / `go test` / `pytest` output on
 2026-10-21/23, not estimated. CI for the commit is the GitHub Actions run for that

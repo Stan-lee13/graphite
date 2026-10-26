@@ -55,7 +55,25 @@ fn every_shipped_declaration_is_classified_as_measured() {
         (total, silent, unreadable, mixed, strict, relaxable),
         // Round 36 (F-005): 38 -> 37 mixed. Meteora DLMM `swap`'s unreadable
         // "updates reserve_x and reserve_y" line was rewritten from the IDL.
-        (3541, 0, 366, 37, 227, 139),
+        //
+        // Round 40 -> (3518, 0, 350, 23, 225, 125)
+        // (docs/audit-r40/declaration-rewrites.json):
+        // - 23 instructions removed (R39-SUPPLY-CHAIN-11: in no committed
+        //   IDL of their program). 16 were unreadable: Jupiter's 8
+        //   `*RouteCheck` (class "", relaxable) and `closeTokenLedger`
+        //   (close, relaxable); Meteora DLMM's `initialize_pool`,
+        //   `initialize_pool_with_custom_curve` (create), `add_pool_fee`,
+        //   `remove_pool_fee` (authority: the 2 strict),
+        //   `remove_liquidity_by_strategy`, `claim_all_reward` (withdraw)
+        //   and `add_liquidity_single_side` (transfer): 16 unreadable, 2
+        //   strict, 14 relaxable. 5 of the removed were mixed (the four
+        //   `*AccountCompressionRoute`, DLMM `swap_2`).
+        // - 9 mixed declarations lost their unreadable line to an IDL
+        //   rewrite (R39-CORE-DECISION-4): DLMM `swap_exact_out`, Jupiter
+        //   `exactOutRoute`, `exact_out_route_v2`,
+        //   `sharedAccountsExactOutRoute`, `shared_accounts_exact_out_route_v2`,
+        //   Orca `swap`, `swapV2`, `twoHopSwapV2`, Phoenix `Swap`.
+        (3518, 0, 350, 23, 225, 125),
         "(instructions, silent, unreadable, mixed, unreadable-and-strict-even-when-relaxed, unreadable-and-relaxable)"
     );
 }
@@ -532,7 +550,15 @@ fn debit_lines_that_name_no_account_are_counted() {
         // Round 36 (F-005): all 18 rewritten from their IDLs, with 17 swaps
         // (docs/audit-r36/declaration-rewrites.json): (1820, 1802, 1802, 18)
         // -> (1780, 1767, 1767, 0). No grant's declaration names no account now.
-        (3541, 1780, 1767, 1767, 0, 27),
+        //
+        // Round 40 -> (3518, 1707, 1700, 1700, 0, 26)
+        // (docs/audit-r40/declaration-rewrites.json): 60 swap declarations
+        // rewritten from their IDLs to name their accounts (63 unscoped debit
+        // lines gone) and 23 instructions removed that no committed IDL has
+        // (7 of them carried 10 such lines): 1780 - 73 lines, 1767 - 67
+        // instructions. The marketplace `update_offer` grant is removed
+        // (R39-CORE-DECISION-5): 26 grants.
+        (3518, 1707, 1700, 1700, 0, 26),
         "(instructions, unscoped debit lines, instructions with one, of them with no named debit, grants with one, grants)"
     );
 }

@@ -36,13 +36,19 @@
 6 tests/round36_env_names.rs
 22 tests/round36_intent_binding.rs
 4 tests/round38_audit_cli.rs
-4 tests/round38_create_funding.rs
-12 tests/round38_sibling_skims.rs
-7 tests/round38_unscoped_authority.rs
+8 tests/round38_create_funding.rs
+24 tests/round38_sibling_skims.rs
+14 tests/round38_unscoped_authority.rs
 3 tests/round39_conformance_corpus.rs
 4 tests/round39_core_boundary.rs
-18 tests/round39_decision_campaigns.rs
+22 tests/round39_decision_campaigns.rs
 12 tests/round39_lookup_table_campaign.rs
 2 tests/round39_manifest_expected_address.rs
 6 tests/round39_registry_gate_dilution.rs
 4 tests/round40_surface_conformance.rs
+# Round 40 (bootstrap): the census import and its CLI
+11 tests/round40_census_import.rs
+5 tests/round40_import_census_cli.rs
+29 tests/staking_withdrawal_destination.rs
+# Round 40 (manifests): the rewritten swap declarations
+3 tests/round40_swap_declarations.rs

@@ -604,7 +604,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, source_token_account, destination_token_account, source_token_sa, destination_token_sa",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.source_token_account into the routed venues (remaining accounts), or to accounts.source_token_sa when it is passed",
+    "transfers the output tokens to accounts.destination_token_account from the routed venues, or from accounts.destination_token_sa when it is passed",
+    "debits accounts.source_token_account by the input tokens",
+    "credits accounts.destination_token_account with the output tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -698,7 +701,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: source_token_account, destination_token_account",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.source_token_account into the routed venues (remaining accounts)",
+    "transfers the output tokens to accounts.destination_token_account from the routed venues",
+    "debits accounts.source_token_account by the input tokens",
+    "credits accounts.destination_token_account with the output tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -837,7 +843,11 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, source_token_account, destination_token_account, commission_account, platform_fee_account, sa_authority, source_token_sa, destination_token_sa",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.source_token_account into the routed venues (remaining accounts), or to accounts.source_token_sa when it is passed",
+    "transfers the output tokens to accounts.destination_token_account from the routed venues, or from accounts.destination_token_sa when it is passed",
+    "credits accounts.commission_account with the commission share when it is passed",
+    "credits accounts.platform_fee_account with the platform's share when it is passed",
+    "debits accounts.source_token_account by the input tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -977,7 +987,11 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, source_token_account, destination_token_account, commission_account, platform_fee_account, sa_authority, source_token_sa, destination_token_sa",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.source_token_account into the routed venues (remaining accounts), or to accounts.source_token_sa when it is passed",
+    "transfers the output tokens to accounts.destination_token_account from the routed venues, or from accounts.destination_token_sa when it is passed",
+    "credits accounts.commission_account with the commission share when it is passed",
+    "credits accounts.platform_fee_account with the platform's share when it is passed",
+    "debits accounts.source_token_account by the input tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -1123,7 +1137,12 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, source_token_account, destination_token_account, parent_commission_account, child_commission_account, platform_fee_account, sa_authority, source_token_sa, destination_token_sa",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.source_token_account into the routed venues (remaining accounts), or to accounts.source_token_sa when it is passed",
+    "transfers the output tokens to accounts.destination_token_account from the routed venues, or from accounts.destination_token_sa when it is passed",
+    "credits accounts.parent_commission_account with the commission share when it is passed",
+    "credits accounts.child_commission_account with the commission share when it is passed",
+    "credits accounts.platform_fee_account with the platform's share when it is passed",
+    "debits accounts.source_token_account by the input tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -1246,7 +1265,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, source_token_account, destination_token_account, source_token_sa, destination_token_sa",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.source_token_account into the routed venues (remaining accounts), or to accounts.source_token_sa when it is passed",
+    "transfers the output tokens to accounts.destination_token_account from the routed venues, or from accounts.destination_token_sa when it is passed",
+    "debits accounts.source_token_account by the input tokens",
+    "credits accounts.destination_token_account with the output tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -1394,7 +1416,12 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, source_token_account, destination_token_account, commission_account, platform_fee_account, sa_authority, source_token_sa, destination_token_sa, sol_receiver",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.source_token_account into the routed venues (remaining accounts), or to accounts.source_token_sa when it is passed",
+    "transfers the output tokens to accounts.destination_token_account from the routed venues, or from accounts.destination_token_sa when it is passed",
+    "credits accounts.commission_account with the commission share when it is passed",
+    "credits accounts.platform_fee_account with the platform's share when it is passed",
+    "credits accounts.sol_receiver with the unwrapped SOL output when it is passed",
+    "debits accounts.source_token_account by the input tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -1548,7 +1575,12 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, source_token_account, destination_token_account, commission_account, platform_fee_account, sa_authority, source_token_sa, destination_token_sa, sol_receiver",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.source_token_account into the routed venues (remaining accounts), or to accounts.source_token_sa when it is passed",
+    "transfers the output tokens to accounts.destination_token_account from the routed venues, or from accounts.destination_token_sa when it is passed",
+    "credits accounts.commission_account with the commission share when it is passed",
+    "credits accounts.platform_fee_account with the platform's share when it is passed",
+    "credits accounts.sol_receiver with the unwrapped SOL output when it is passed",
+    "debits accounts.source_token_account by the input tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -1685,7 +1717,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, source_token_account, destination_token_account, source_token_sa, destination_token_sa, token_ledger, sol_receiver",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.source_token_account into the routed venues (remaining accounts), or to accounts.source_token_sa when it is passed",
+    "transfers the output tokens to accounts.destination_token_account from the routed venues, or from accounts.destination_token_sa when it is passed",
+    "credits accounts.sol_receiver with the unwrapped SOL output when it is passed",
+    "debits accounts.source_token_account by the input tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -1815,7 +1850,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, source_token_account, destination_token_account, source_token_sa, destination_token_sa, sol_receiver",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.source_token_account into the routed venues (remaining accounts), or to accounts.source_token_sa when it is passed",
+    "transfers the output tokens to accounts.destination_token_account from the routed venues, or from accounts.destination_token_sa when it is passed",
+    "credits accounts.sol_receiver with the unwrapped SOL output when it is passed",
+    "debits accounts.source_token_account by the input tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -1961,7 +1999,11 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, source_token_account, destination_token_account, commission_account, platform_fee_account, sa_authority, source_token_sa, destination_token_sa",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.source_token_account into the routed venues (remaining accounts), or to accounts.source_token_sa when it is passed",
+    "transfers the output tokens to accounts.destination_token_account from the routed venues, or from accounts.destination_token_sa when it is passed",
+    "credits accounts.commission_account with the commission share when it is passed",
+    "credits accounts.platform_fee_account with the platform's share when it is passed",
+    "debits accounts.source_token_account by the input tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -2091,7 +2133,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, source_token_account, destination_token_account, source_token_sa, destination_token_sa, token_ledger",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.source_token_account into the routed venues (remaining accounts), or to accounts.source_token_sa when it is passed",
+    "transfers the output tokens to accounts.destination_token_account from the routed venues, or from accounts.destination_token_sa when it is passed",
+    "debits accounts.source_token_account by the input tokens",
+    "credits accounts.destination_token_account with the output tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -2230,7 +2275,11 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, source_token_account, destination_token_account, commission_account, platform_fee_account, sa_authority, source_token_sa, destination_token_sa",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.source_token_account into the routed venues (remaining accounts), or to accounts.source_token_sa when it is passed",
+    "transfers the output tokens to accounts.destination_token_account from the routed venues, or from accounts.destination_token_sa when it is passed",
+    "credits accounts.commission_account with the commission share when it is passed",
+    "credits accounts.platform_fee_account with the platform's share when it is passed",
+    "debits accounts.source_token_account by the input tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -2375,7 +2424,12 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, source_token_account, destination_token_account, parent_commission_account, child_commission_account, platform_fee_account, sa_authority, source_token_sa, destination_token_sa",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.source_token_account into the routed venues (remaining accounts), or to accounts.source_token_sa when it is passed",
+    "transfers the output tokens to accounts.destination_token_account from the routed venues, or from accounts.destination_token_sa when it is passed",
+    "credits accounts.parent_commission_account with the commission share when it is passed",
+    "credits accounts.child_commission_account with the commission share when it is passed",
+    "credits accounts.platform_fee_account with the platform's share when it is passed",
+    "debits accounts.source_token_account by the input tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -2498,7 +2552,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, source_token_account, destination_token_account, source_token_sa, destination_token_sa",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.source_token_account into the routed venues (remaining accounts), or to accounts.source_token_sa when it is passed",
+    "transfers the output tokens to accounts.destination_token_account from the routed venues, or from accounts.destination_token_sa when it is passed",
+    "debits accounts.source_token_account by the input tokens",
+    "credits accounts.destination_token_account with the output tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

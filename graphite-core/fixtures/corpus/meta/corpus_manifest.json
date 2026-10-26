@@ -31500,392 +31500,182 @@
     "note": "Jupiter V6 Aggregator::sharedAccountsExactOutRoute empty intent — Check 10 gate"
   },
   {
-    "hash": "f7a6f3dc99e187ce3c44013eeb97e676d025d63eb2e9c5bf1a5bccb139e31709",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::accountCompressionRoute intent=swap"
-  },
-  {
-    "hash": "10b96b7cdcddb9be6b0dfa59f64034f46b73cb5536b19d450f3caa31c35f6db7",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::accountCompressionRoute empty intent — Check 10 gate"
-  },
-  {
-    "hash": "f41f2ef6d561bb0c6f5521d41617f1f92fb243087f35d2c3141b72cc6e8793dc",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::sharedAccountsAccountCompressionRoute intent=swap"
-  },
-  {
-    "hash": "208a0cf6c44cb3015ec7b31be3de6f606e12a71b6802de475d01197bcfc3e7ec",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::sharedAccountsAccountCompressionRoute empty intent — Check 10 gate"
-  },
-  {
-    "hash": "8149ca68c336f621a53dcaed58e23ed964df31f56944dd78c73e972fc0185b1f",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::exactOutAccountCompressionRoute intent=swap"
-  },
-  {
-    "hash": "e9c0fc810b58630e72fc1af88ca8bfc4ed19af960cf5d31440b453dcb67e9f2f",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::exactOutAccountCompressionRoute empty intent — Check 10 gate"
-  },
-  {
-    "hash": "6ba5dcc6d4dbfadade195a34de9cea4b2b7eb8eccb7af2d6a2af3e130cac2337",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::sharedAccountsExactOutAccountCompressionRoute intent=swap"
-  },
-  {
-    "hash": "036ff29c0a7c96db3eb2d752cbded8a83d99e4827e05f2705f8bd7dc25113d0a",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::sharedAccountsExactOutAccountCompressionRoute empty intent — Check 10 gate"
-  },
-  {
-    "hash": "a708ae91f657fec8c520f36b7865a1e359cf1ea0ff9e3344cd7b13509b4315d0",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::routeCheck intent=swap"
-  },
-  {
-    "hash": "0b01f4109f0de2410e9bb6f1522f631061ff267b7396bebb11a7af8d1dcc9beb",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::routeCheck empty intent — Check 10 gate"
-  },
-  {
-    "hash": "37770c72c0856f591ac5ac8dbaca23e817f7a4f5d5b9c8aad98dc1ca6f070d74",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::sharedAccountsRouteCheck intent=swap"
-  },
-  {
-    "hash": "99535703fc3f064f20ac90ba71dfb4e139fdeccc1f3e851771e3b232384e7797",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::sharedAccountsRouteCheck empty intent — Check 10 gate"
-  },
-  {
-    "hash": "49f99c2eaafd35c079543e332654ee0ceac3a71f30f0d23ef215a57ce1fac844",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::exactOutRouteCheck intent=swap"
-  },
-  {
-    "hash": "97785016e4f560792a840772a9f88d60beffb08eecbfb3843599857628b14417",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::exactOutRouteCheck empty intent — Check 10 gate"
-  },
-  {
-    "hash": "f0812282e6f7e075f078d00456994940a0a72c512ec95e2124b1d50c660ffbe5",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::sharedAccountsExactOutRouteCheck intent=swap"
-  },
-  {
-    "hash": "e0da19bab00afa127fcd62f5d1e329781f93495ce4bb4acb2464aa093747431c",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::sharedAccountsExactOutRouteCheck empty intent — Check 10 gate"
-  },
-  {
-    "hash": "e71d396762792a9d06df0bdfcc41afce66f348dd75e089619c95acf29cc4b5b9",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::accountCompressionRouteCheck intent=swap"
-  },
-  {
-    "hash": "a0feef95b50af893f3627ed13a81aef6e6edc2785588c45563e256da12598b03",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::accountCompressionRouteCheck empty intent — Check 10 gate"
-  },
-  {
-    "hash": "c0b205ed5a743bcb7f482c1fb71b426177c745b3a2ea9f7932c50a58f0840b9a",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::sharedAccountsAccountCompressionRouteCheck intent=swap"
-  },
-  {
-    "hash": "945f58cc88c5e6c7603b5579dc4da1a9d5e6367df9862ca93679340707d7789e",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::sharedAccountsAccountCompressionRouteCheck empty intent — Check 10 gate"
-  },
-  {
-    "hash": "3dddcf18fe41813dba1d1a0afc798c63bd70a2f21da32aa59ad62208b53e4b79",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::exactOutAccountCompressionRouteCheck intent=swap"
-  },
-  {
-    "hash": "289a1586185d657f0c6770af4de20e849d726d4d509598a30ce4b01514d766f4",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::exactOutAccountCompressionRouteCheck empty intent — Check 10 gate"
-  },
-  {
-    "hash": "560a753a2caf81d8da0bc4a1d49c9a07b499fcc7d385ecf30c67abd18bc10c3c",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::sharedAccountsExactOutAccountCompressionRouteCheck intent=swap"
-  },
-  {
-    "hash": "0908eb640f1b8305178689f56aacd633d84082e7012ef129e409aa4a17e03aba",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::sharedAccountsExactOutAccountCompressionRouteCheck empty intent — Check 10 gate"
-  },
-  {
-    "hash": "23f2b82c70da25fb0a9e6e35e8d3859aba8839c328ae9c3ff745020821127499",
+    "hash": "6a03772c2241934dc40e05d4fa1a591dfd649d468b384526595aba3b709a1cbc",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::setTokenLedger intent=transfer"
   },
   {
-    "hash": "0d839de8f50790d30707c409ea1de13670e5c2be96bd19a61434a746c749011d",
+    "hash": "0fe1b19cce90e51ee9c0782857eecd2ad39e0e83f1014d2ed84eb56e66437fd2",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::setTokenLedger empty intent — Check 10 gate"
   },
   {
-    "hash": "4a5df0f2961336e6e70353e10660513e404dec019e6db90c5c3fa192bb0ba225",
+    "hash": "6ae9f4cf33a9890fd036a4718af1ce9ef83d5eb86321e19c866369f3c59c2965",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::claimToken intent=transfer"
   },
   {
-    "hash": "5dbe386831b4b6f5c92a3b0888989724cd02bad9278dce7e1bfe179bf8a5bc80",
+    "hash": "3fcac3dd18f0553c1213fd9219a71a2e0fba69cdd56552f21419cbb93c05a3ae",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::claimToken empty intent — Check 10 gate"
   },
   {
-    "hash": "cb6358824e8a74731a5b82a1d71c651a4cd4bc965d31628c5e420ebf81138cd0",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::closeTokenLedger intent=transfer"
-  },
-  {
-    "hash": "b64ec8fd5edfe5d32bca46dfe7a14df3aadfa286fb9c7a154394914795cf8c68",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::closeTokenLedger empty intent — Check 10 gate"
-  },
-  {
-    "hash": "dda10250f1217cf612868aff99794af0760b4f23717632445a9c973d90093f03",
+    "hash": "c1911e621bfd97e63ab5e24bd4f3166d6c7a2116c3afc7d66904c3eb3666a1cd",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::route_v2 intent=swap"
   },
   {
-    "hash": "d4153d92806b01b2c958d3e66ce5c489edcd494d07dfab73d3ebd0578730e861",
+    "hash": "7947998319dda70b9844f37b817904f3c76cfaad8837d6abd8a7b816a6a55e6f",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::route_v2 empty intent — Check 10 gate"
   },
   {
-    "hash": "06f7ac17347a5ca0c4718397af2d118d1d31b20b59e5fb221f329ffe38bfd328",
+    "hash": "59c2dedcc2fea0cfacf1fd8b1ef1aa8cbaa074fd98d9b827a65789ad2c205145",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::shared_accounts_route_v2 intent=swap"
   },
   {
-    "hash": "90d15405d58b6c17928b0aa4ac647c8b213d5e1ef843f93dd72c0183aa7fc074",
+    "hash": "dc913cd695495657a76ee026797e9720389bf9c06346281cc31dab15a668dfe0",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::shared_accounts_route_v2 empty intent — Check 10 gate"
   },
   {
-    "hash": "6fb52815ae1d53f2b84c225b7cd4ef7d34bf7cac911fed34de65686f5d574ea7",
+    "hash": "c0a3aff7c63a8154d73728c1539673cf1e736be1d80ee14cb3eb75f828355802",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::exact_out_route_v2 intent=swap"
   },
   {
-    "hash": "5d6803771ca527e8f99bd9d54925d700bdb4a9a21eada728cdeedc7ca93e2f31",
+    "hash": "53aa19dc577ef5cdad85f680706e1fbd91fa840eb68c2ec5ebd869241ce5fc20",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::exact_out_route_v2 empty intent — Check 10 gate"
   },
   {
-    "hash": "db6005059ea42d45392a0b6108c4c75d9934a785cd96a5728f4b2ccca67966a0",
+    "hash": "66c95d147a9bc4c466af2040cebe3337feeb8a99300a7f4dd13a4c73d0bd37b4",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::shared_accounts_exact_out_route_v2 intent=swap"
   },
   {
-    "hash": "12e754faf72139ddf03f5400fc17a306e742e7897a63246e6475ff2e0c41da45",
+    "hash": "af731a107f7493662e2fadf5ca932dc9ad8d144bda241349141254884046978e",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::shared_accounts_exact_out_route_v2 empty intent — Check 10 gate"
   },
   {
-    "hash": "654b2163a1cfa20ff2bc99a9494d4f5ce913e71dbd239eb8bccbb3d0aa18cf1c",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::route_with_token_ledger_v2 intent=swap"
-  },
-  {
-    "hash": "47bb782897475022c80d4e6f60df68f83cd165e8530f6a9ca0d3bf1dc8655f6a",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::route_with_token_ledger_v2 empty intent — Check 10 gate"
-  },
-  {
-    "hash": "b15e94ede934468a1ee2a51b4f0c5839b5f53c8e2d9c32f5b22a121dc4dee26d",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::shared_accounts_route_with_token_ledger_v2 intent=swap"
-  },
-  {
-    "hash": "4c337f4fccbfb92da98337c032091516ca3271a19fe3eb68468073ef9f8c3f23",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Jupiter V6 Aggregator::shared_accounts_route_with_token_ledger_v2 empty intent — Check 10 gate"
-  },
-  {
-    "hash": "abd4e82ef4db2490abcfefc46c4d8f6be6dfac66b2c7f9b27385252d75032671",
+    "hash": "ac3a5453d9d765d47c795ece7bfb9576ab6e7dfac43c982742293914821ecfb9",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::routeWithTokenLedger intent=swap"
   },
   {
-    "hash": "496a82f38ba409589b5c29473fb2ca049a9d1ba96f2e3ffb4d5ceae41b432e8b",
+    "hash": "92bc4c6a4a499ccbd959644fae20c856e21cdc3b7059eb13c9d3c17a4d235950",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::routeWithTokenLedger empty intent — Check 10 gate"
   },
   {
-    "hash": "c298338f6ff40ac0886ff52b1cc5654a32a05d95df901a79de22f740622c5b27",
+    "hash": "d9830e8c28248702bc7954cfa63331ac8cb4fcb215adfc2f93581318e3fb8be4",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::sharedAccountsRouteWithTokenLedger intent=swap"
   },
   {
-    "hash": "c7bb5a1e23d9ec2d842dac09451f61691ceec80cc5e222b5c311b11c61c8226a",
+    "hash": "998ad255c0935389d7d26264373acf69bc5575ab4d3baa200d2ff45cbdc6c404",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::sharedAccountsRouteWithTokenLedger empty intent — Check 10 gate"
   },
   {
-    "hash": "bcacb68dfef20a54a5bc74a45374d34356ca76a8c4b9da141e23f3593dc419d1",
+    "hash": "feab147bd70f6e2876708dbea4b25903bf1645b7f9894a16eac56b994b4426c5",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::claim intent=transfer"
   },
   {
-    "hash": "de1e58b262b3d2cfcf1de6eb543c49bfd029981069476e7ca745de3053f60d31",
+    "hash": "255383a5f2431a37778e0f58712add864b5d7e7e50f925bd833ecd7eb1d27a8f",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::claim empty intent — Check 10 gate"
   },
   {
-    "hash": "d0a27f000011098a4b0c4d1c0f7f14ad195f4c17e481ccbe68f776b5b56d89a5",
+    "hash": "3a9ce4eddfa14b716e2d878794539366f0f91a000978105fddd7b735660c435c",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::close_token intent=transfer"
   },
   {
-    "hash": "32ccc3f59fdd3c1c61dc082ca7a02b7871178b260c9f7b52250d74d7427b2797",
+    "hash": "7ce4ab2878ff89fbd7a4fcc68416e66a7ff3ae92f82188f0ef0a145fe5d29381",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::close_token empty intent — Check 10 gate"
   },
   {
-    "hash": "d5b2aa58f178d1e8db5eabca98b806ab2863d61ce2d71e718b577a8c01834e63",
+    "hash": "c95c8928bc2788a88445570518be058e62a61c3e13d3edab34657bbe9828ffc5",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::create_token_ledger intent=transfer"
   },
   {
-    "hash": "c3afbecb869d91624a88e2685aa53e8413351b2ac80cf4463201d91ed1f7cf3f",
+    "hash": "8afa838b8f7b4ae0e01702061a9ba6d3897669ea22e8f1f0a0d828814cce3c42",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::create_token_ledger empty intent — Check 10 gate"
   },
   {
-    "hash": "39d0eafe27a333be153aaf68fac368fc628b2bb381609c83fcca5b5d9e85b4e2",
+    "hash": "f8a4d33bf7b35f0e2043bc25a5cc45186045326e8f0fda87e97f3966f2ef4d60",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::create_token_account intent=transfer"
   },
   {
-    "hash": "d388ba170508c408c5222e67fe984fec5be0f0f57abaa550eb872507fc730b29",
+    "hash": "e4a7fac0a90332452a48d07a3e6b3fbea9760a529f3dcfb5c491f853b1cc308e",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::create_token_account empty intent — Check 10 gate"
   },
   {
-    "hash": "04d37d131325ae3b03586e8e25a40488485007d0b1899425814bc9f42b5e0f64",
+    "hash": "500878e89e6cd76896147d6d769e320382d285964a9fb7faaa7e0aa51d19adc2",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::close_wsol_token_account intent=transfer"
   },
   {
-    "hash": "113f3a32160fa99052c6e2bea77a4740b9221dc40f086248c315927a05a3a8d7",
+    "hash": "1018643299d3c7d09495cb59bfb9dbbabac13ba728fff100108a8b4e62822b31",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -34496,1148 +34286,1036 @@
     "note": "Meteora DLMM::addLiquidity empty intent — Check 10 gate"
   },
   {
-    "hash": "a10faf713b21a5f323be3c664a421695348d1e5cf56589eb23dda144512ab618",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Meteora DLMM::initialize_pool intent=transfer"
-  },
-  {
-    "hash": "d4801e960d2345a659ab991a7c541768487ccc325add2d4d3f8922c020ce7182",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Meteora DLMM::initialize_pool empty intent — Check 10 gate"
-  },
-  {
-    "hash": "e833b22837b69a3f4579b7ea11cc9def496f038844d95d1ea6b774bb24d31fcb",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Meteora DLMM::initialize_pool_with_custom_curve intent=transfer"
-  },
-  {
-    "hash": "d200b6933070150a10af622705e4e39f663e87d44c86184aaaa98835638e2b98",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Meteora DLMM::initialize_pool_with_custom_curve empty intent — Check 10 gate"
-  },
-  {
-    "hash": "a46841d1240477b38f0418b75a59410caa15aa19e4784b3d04637b3dded14228",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Meteora DLMM::add_pool_fee intent=transfer"
-  },
-  {
-    "hash": "13fdddcc73664824d87fa371f014efbb9deb2ab5c30bc055f1263ebfaf57000c",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Meteora DLMM::add_pool_fee empty intent — Check 10 gate"
-  },
-  {
-    "hash": "38b8990c177a5262efcd732e9b5a6dca4a3a4383feb0b2a7920c6fcdd7c446da",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Meteora DLMM::remove_pool_fee intent=transfer"
-  },
-  {
-    "hash": "4c716d7a47acd8ee749cae7d931ca3bdf6a44b7a7670174c3e54474751783b7c",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Meteora DLMM::remove_pool_fee empty intent — Check 10 gate"
-  },
-  {
-    "hash": "0412e1e112a45869eff5f90780e989f7dfe4b3d4f3f47902d87fa5ef18518f1e",
+    "hash": "b9885585f4b17fe1883f73962160084eea088e725cd8824645308ffdf99b9917",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::swap_exact_out intent=swap"
   },
   {
-    "hash": "d55a9f21ac0180dc6b64c531520357800411773f90383332f1fd15e4f4c44bde",
+    "hash": "7939a278013c8af38aec6eb03b6ffe1fc56b70de5f70de61d00cc9c2379b0262",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::swap_exact_out empty intent — Check 10 gate"
   },
   {
-    "hash": "d983a8775364bdcb9ebd5ebab77fc2b937dd1742ea5ee3bacc06f6269df371fc",
+    "hash": "161040a5f80dc65c2a78e60e9cd32af424a0bfad82c5cba5594526625406c202",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::remove_liquidity intent=transfer"
   },
   {
-    "hash": "bfc1dc208557a4a066436a23cb5d87f1a725cb1018f1e64e1194831a003c731d",
+    "hash": "27bd969cdd2ec9c1e6e8e12897956b32ec52ded5019fc7d774f09c4b6856a538",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::remove_liquidity empty intent — Check 10 gate"
   },
   {
-    "hash": "1f080ae0e8a23443a094e904d8ddab1fe22a5d237a114783bb6816dbb6761a50",
+    "hash": "cf55f65c16cec34ec470ca7814d7ee5549972548ebc24c7f595e303edf9fe8f4",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::add_liquidity_by_strategy intent=transfer"
   },
   {
-    "hash": "53064f843376a1ff1623a56b3d8356ca38d047bf1c47926279f923136a95a363",
+    "hash": "9712d6231282b9133ac2991e8612a7ec787f8e1e21fc4c7fb8d2b572d902f9f1",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::add_liquidity_by_strategy empty intent — Check 10 gate"
   },
   {
-    "hash": "804b1fa9bb5f63cb7cf2f3943c7480ea19dd9d17d3cb23bfd7dd9e6969893867",
+    "hash": "c173e6ec69c8fc9025fbbcc592a510d1b14f597e5eb0125e4aa5faac47ee298c",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::add_liquidity_by_strategy_one_side intent=transfer"
   },
   {
-    "hash": "4980041946373e161456ce70336a66925a94a03cf3ed11cb470168abd9fbdc12",
+    "hash": "7ab240124a8582f232e69d2ed71971e13d9c23be52f72ab6896a2fb77dcb4f7f",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::add_liquidity_by_strategy_one_side empty intent — Check 10 gate"
   },
   {
-    "hash": "0edef371f351476912ec766f1ff480e2668290932f40d82e5cb8c90b1cfae650",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Meteora DLMM::remove_liquidity_by_strategy intent=transfer"
-  },
-  {
-    "hash": "83f0e5e400bd878a98706aebe9170e592064474ca3667099f715fcd595b67e01",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Meteora DLMM::remove_liquidity_by_strategy empty intent — Check 10 gate"
-  },
-  {
-    "hash": "00d9dcbc2438dc7883f0236eb2207da9fbb4b7fe2c49aac8690c8887622245f8",
+    "hash": "12182c1a56a45ae258610cad97640f1bb3bb6f9461c587002d399593bd13132d",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::remove_liquidity_by_range intent=transfer"
   },
   {
-    "hash": "f7d27214e354c9b39ce5e6e0a57332bf2c32565d452e2cbbc94ffc0e7e92d228",
+    "hash": "17df3045b8dc9cee95caf1ef4e22e990ec18c6fc16994c980430034096bdad3b",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::remove_liquidity_by_range empty intent — Check 10 gate"
   },
   {
-    "hash": "d536c1414b7159c5e6beb252181e1cc81f4b9ffd34a05245f88f237fa299cc33",
+    "hash": "eb18c4a74a25a91c0984d569656cdca7c77000b0251281d0f01894bdd87f7a4c",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::claim_fee intent=transfer"
   },
   {
-    "hash": "030a3d003823d0f9343732d90eb1e284211825e414ee52eae3e622caac8a8f88",
+    "hash": "9682290042dd6a74c5bad22ba390c7ea3d21b17b00a89eede6123d7d6b3aa7a5",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::claim_fee empty intent — Check 10 gate"
   },
   {
-    "hash": "e37f3c2a32f7555bb84f94903dbc50d8c7b19fead2e1c7bd46bf9f3de256b29f",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Meteora DLMM::claim_all_reward intent=transfer"
-  },
-  {
-    "hash": "fad20d88fab719dbf1dd4a18ec2b44e7cbc021bdfe03750ed3e7e2a687df54fe",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Meteora DLMM::claim_all_reward empty intent — Check 10 gate"
-  },
-  {
-    "hash": "36313a984d19255171fea3a15de100af8c8249e8988db8bac809f5f7c2a0d8de",
+    "hash": "22833cd4ac248ee0a36bfc476540687b18c433c38a47b20a829c96090f1a7186",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_bin_array intent=transfer"
   },
   {
-    "hash": "f4be2b71a5304010109f477af2dc29aeae01ec7385ebce84b9488885030007bc",
+    "hash": "d7f04c9df35e57cfe1f31dfe5957c10e3ab007852f9bdfeddfbf26d6c631483d",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_bin_array empty intent — Check 10 gate"
   },
   {
-    "hash": "cd96d918675fb5cc527dd35c68e1863fc5e5f30068a45b09ef7477e34d2e87aa",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Meteora DLMM::add_liquidity_single_side intent=transfer"
-  },
-  {
-    "hash": "af615a17c83b4622388210fa136d68376e8c2d6e8cc947414c68adc4a58ae029",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Meteora DLMM::add_liquidity_single_side empty intent — Check 10 gate"
-  },
-  {
-    "hash": "ce5175123ae6bc11c80e8a9ce0bb9b9297bc57a32a331693e2339800dc3d7f4d",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Meteora DLMM::swap_2 intent=swap"
-  },
-  {
-    "hash": "01fd8f413282157af0e1ce9c135f3625a036ff21bd1bd2888b8a02132e311799",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Meteora DLMM::swap_2 empty intent — Check 10 gate"
-  },
-  {
-    "hash": "46f7debcf6c3ee9c1ec047cb6ec1f71c89704fc3d98ceac7a47f59e30e419c6b",
+    "hash": "2626bc88fc22f1c1f0a7797d42260641c962fd26e945d6f33da689db675cb89c",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::add_liquidity2 intent=transfer"
   },
   {
-    "hash": "f32ac43184777923a19268f63e9bb61e35a11445f8c0a59193a4052970326dc4",
+    "hash": "2a1c6f87cea20c481cedcdde04a34ed0a9c35e693acd744a9cc2ecbbaa26076b",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::add_liquidity2 empty intent — Check 10 gate"
   },
   {
-    "hash": "9d97205fedf5f1eab8d2419fba25e9f933543e4dc351a777a5128e77ad93cb4d",
+    "hash": "da3a11036355f4df918ad23fb562d4b2fcb9d98e4265a316a1e2707582f6954a",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::add_liquidity_by_strategy2 intent=transfer"
   },
   {
-    "hash": "fd0bd04a1e45c28d109eafe2c7f3381b5fd79ad7aed9a44b3313ba9ef69950ff",
+    "hash": "bf01a0e2ce2a0acb0278de05882a38dc616612537553c432911602995c1436aa",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::add_liquidity_by_strategy2 empty intent — Check 10 gate"
   },
   {
-    "hash": "d4ea85323ccc659ef4f4ff4c179721e7f8312cf077747ae43eb3d75fb3635f2a",
+    "hash": "26a0ecdbd0a8ded8c43d74eb3e94e915867290f0dbec6c17ca30e24ce506d5db",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::add_liquidity_by_weight intent=transfer"
   },
   {
-    "hash": "d7f3d786c0a0c5c94558a1d33f02dff43240dff591477b84e76db7cc7e02f36b",
+    "hash": "4c205d7d640a1dac15f834aa54da7628150b9f7e83d907c8d6d4c9e583528cb1",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::add_liquidity_by_weight empty intent — Check 10 gate"
   },
   {
-    "hash": "fa22132f6a606501dcd49f9c7e502eb2a3f1937c6901151d66ebae39f909c18b",
+    "hash": "7a95ec0ee6a5456a0c6badccec43beed936f9a3d58be016c75c9173ec5f7f048",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::add_liquidity_by_weight2 intent=transfer"
   },
   {
-    "hash": "b8c0ed11d1cd458ad341e4c36e155dfc6808326495ea5252ad0f230ee58327ca",
+    "hash": "9df13dc85856fb26cd025168d7377b0525706e43f0d8fcd85fdb72d4dae9bbc1",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::add_liquidity_by_weight2 empty intent — Check 10 gate"
   },
   {
-    "hash": "8cf10e41724a38947b12b2491e987aea76728c4d00563a9bc0f34dd081768ac8",
+    "hash": "44c5e2c745370ba7d756dbc8dda921a235e2c09cadad858b42eacb03bc8b8e2a",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::add_liquidity_one_side intent=transfer"
   },
   {
-    "hash": "044220ab1b87b17ab098e6f03ecac6dd1f50444e950a1aa2add58425c3752efa",
+    "hash": "e9dafd5e5c717226b3f3c459493ba724f1a2af1c097c8aa692b63d927277aeb5",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::add_liquidity_one_side empty intent — Check 10 gate"
   },
   {
-    "hash": "37e39866327e34a34b64615219b220538ae38409e6f235f92461118405d9095c",
+    "hash": "1d1c6b6879a62967279a50987996cca04d0f4faad5760b8db82301e27f5070e9",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::add_liquidity_one_side_precise intent=transfer"
   },
   {
-    "hash": "097201e964e2b4971d8a31bf3a3dff88dde528ec1c2a1d2473039804d9682b32",
+    "hash": "29596bcc9b0a51ddf7e2b892d5ec4dca37af8e0ff1bcb971a987f0310da1e95f",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::add_liquidity_one_side_precise empty intent — Check 10 gate"
   },
   {
-    "hash": "0762938f4cd573fddde9970799f2444e04140f7f4a833d03f070aa0edf4a62c7",
+    "hash": "f3ee74ec37e166714bfc9b39571c9c39201ce35f4f48064151b39ecc9d90ccd4",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::add_liquidity_one_side_precise2 intent=transfer"
   },
   {
-    "hash": "3bc4041b6a129a5d5d65274d571cb609e7b7f5fbbf8abffa7af5c019ff6dd6a6",
+    "hash": "d430b9a3a1f5bd48db39750c41482b054012be86f4ff6cdb04294f4939414660",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::add_liquidity_one_side_precise2 empty intent — Check 10 gate"
   },
   {
-    "hash": "754d841e9c8dbe179108b13efbcc6fe7eb111a204ee5d24fdaed288625831459",
+    "hash": "28dfdf547681b0bc5b9219baa597568da1b77e7bd0dbfe143d49f24f2fd7cc9e",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::cancel_limit_order intent=transfer"
   },
   {
-    "hash": "5042700b16176744618d79809c1b8dcb9af89bd076987e052c30a689a3b5cd1c",
+    "hash": "1be853e7c6dd813375cac822d0a62c706e2cbfec98db099148c9f245b3972e11",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::cancel_limit_order empty intent — Check 10 gate"
   },
   {
-    "hash": "ca0d0f6c44008843fe3a5e38f88a7022d1fc1786f165afc6895aa1d652e5bdd3",
+    "hash": "32acad2f6634adc7d1be6ca4d87e1ac0d88622fd9dc698b2017081772165daba",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::claim_fee2 intent=transfer"
   },
   {
-    "hash": "465652c8280ca1ea20c328cd699622ec6524db85e3e2b2609b1d5ad75085a3a7",
+    "hash": "a062a39a32358079c51b9171d25c74047481e6bbe934f82b7e843f483afd52b8",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::claim_fee2 empty intent — Check 10 gate"
   },
   {
-    "hash": "30c55074f20e2d61504a4f14a833c55180a8112177eb964dbb9b290e3fb28092",
+    "hash": "ed8cdebb4e561333001e6af40a6df736c4b5618dd63daebfd3f6dcdcc7afbd55",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::claim_reward intent=transfer"
   },
   {
-    "hash": "d738bfa19e75e1199e8c4a3bf7637f9ab13b84664df4979502f901ee055c216e",
+    "hash": "31f42a046eff9bb545add09f488dfc51d25378cbcf2aa0cda179cdde6c9a1574",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::claim_reward empty intent — Check 10 gate"
   },
   {
-    "hash": "b67060eb55dddb853a1b8ccab2435042b547773b5ed5411b1941bce4b15143e8",
+    "hash": "0df1d73e72bb6d486da8f40e14ef1d7fb28872c6af0888c0b105e4580bf087bb",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::claim_reward2 intent=transfer"
   },
   {
-    "hash": "2c67ffba7acc46a4cb64d4c03a2375569b9ff25451e3a0c3ca624b09e76da3b5",
+    "hash": "a6b4ce4734a0b7f7f1f603445d36752ceeb0934b724f18bcdbd56be880826f5a",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::claim_reward2 empty intent — Check 10 gate"
   },
   {
-    "hash": "d885df01651af2d3608df39a0dcea178f6af4a26bf9c16274b26af4efdd31274",
+    "hash": "10e75e57f30cd621a2bc13538894d1517936bb2f14bd035e89b1120e84ef9e38",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_bin_array intent=transfer"
   },
   {
-    "hash": "33f0e15fec1c72ef76fa8126cfe0a9f7c3d225e49ac3965558c066d245c261df",
+    "hash": "792c15e2ebd7c628a72ebd944cefa0e8c539dda3a12a3433f0b3dd60cbafb5b5",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_bin_array empty intent — Check 10 gate"
   },
   {
-    "hash": "0f332164eac907a183ffcd1ae67c2248b6db7cde1e5a6b8bd1ae2b1efe838d54",
+    "hash": "b1b72a2c616781f55a69086d03ff5db34586b048d252a150b8c67f2266975267",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_claim_fee_operator_account intent=transfer"
   },
   {
-    "hash": "9729d504e6401b119c218036bdb1e30e3e5302088ecbb21fa42fc8f2d196d473",
+    "hash": "c14a7f803a21d87752991417450555ca94d9165000c37a106c262a9dcbe21849",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_claim_fee_operator_account empty intent — Check 10 gate"
   },
   {
-    "hash": "e58a9f035b42794b4c681690bb11c90fe02391a8f3d2ee9994ff0550e0c65427",
+    "hash": "aecb1584ec1363a497551af6a232ca6f3da3b196a576820dfd961b4d4f1ae0a9",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_limit_order_if_empty intent=transfer"
   },
   {
-    "hash": "80c4cdebc023b264fcf40355766b2e84df66cd2fd4c3e271e83652c0d272b7dd",
+    "hash": "8411964369eeb13a8da4caaa2f9300ceec44112f2949c65bb241ebf430b1d7cc",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_limit_order_if_empty empty intent — Check 10 gate"
   },
   {
-    "hash": "95f01fcc27a25118fe24435300772081ac78d73e3e4a6212daedddce555c82f5",
+    "hash": "3b2a080806f04db34b84d58d9f16dca247c6aa2180de0c754be0085039aa4777",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_operator_account intent=transfer"
   },
   {
-    "hash": "0e526927fdec48fbc248780857db78bf3c6c5ad12e2d9d2bc6f7b6a7edcb5588",
+    "hash": "b3bf65e594c8c8488327d5ffecfb25db62d008d91895dc0d06508bcd2d9023da",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_operator_account empty intent — Check 10 gate"
   },
   {
-    "hash": "cfd192638cf04c1edc1b14f3b4a4c5d79c79b758f847b331e7a06dd1e92b2f64",
+    "hash": "f8b3f36b1e1d529d7aee32b1c739024d54a084dcbea304f91e3ed8a9277d6fd9",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_position intent=transfer"
   },
   {
-    "hash": "a75cd8d5cb2f0beb1ac46df5491f795e90399ab6eeea061e9761af3656aceec5",
+    "hash": "4be2f6607803454e8d105170d231f38c2273a10bb27fb5e8cd2c72beb91e2238",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_position empty intent — Check 10 gate"
   },
   {
-    "hash": "04618ab0325429c37f3634fed8c0149cd0063c532d02d12afa340253747625aa",
+    "hash": "24b6383174bbedfd6223bfca9fd3507bf9b6e388233d8058394399e09de7ce60",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_position2 intent=transfer"
   },
   {
-    "hash": "a8e9a99afe3230f519d9aa1b43371099bafeb816ea464c170ff0db17d89d05e9",
+    "hash": "f6d113c8997ea3664e0c4623c4511b774ed3d3d7f18a314133d4109c3bedee17",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_position2 empty intent — Check 10 gate"
   },
   {
-    "hash": "5c562a607f288c3e41a4ad9b025967aed5ef921ae4a0f3f6e6c3b9398b7c7f18",
+    "hash": "431009d193f254f674fe7729d54909382b1570e32accdc52774573d370ca9e3b",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_position_if_empty intent=transfer"
   },
   {
-    "hash": "988ec52a48bb54ba79c2206d51311a8a7713789fc06c85e8427adb3ef998c8d8",
+    "hash": "5f827ae3b9dd54fefce3d882d7544f122bc1c9245b224fee20ef40c1ecca79d4",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_position_if_empty empty intent — Check 10 gate"
   },
   {
-    "hash": "ff09c86e6b542a495bd1434e7b5428add09659fe70c2f5455f7fd479717ccc44",
+    "hash": "fa352816eb8f4fbe5954a16c6f3d5b22d8751a20dfba5ec926d9fb26bdde1113",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_preset_parameter intent=transfer"
   },
   {
-    "hash": "c861d27aed18c933da01dd6daa09be73ba0980a95e61e4f96b5c26577148771f",
+    "hash": "b914626ed822540de43927b6c9c7dbd529c8c764d35478ca06e2d1d90c31a2bf",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_preset_parameter empty intent — Check 10 gate"
   },
   {
-    "hash": "94476d95309c0b1eaae50bc6c130a5c8918d51e1fb26f1feb469b1efbf1ad1d0",
+    "hash": "1a32be3fca714b071e6ed231cfde725b2e10c0c8bf37398323bc27a2d7232e72",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_preset_parameter2 intent=transfer"
   },
   {
-    "hash": "a6391a0eb007c56c4477b3ec0d5a705292c0f5c78e68a5c1f8b9ee87d35b9031",
+    "hash": "7d076b43cef4979a1c1dae95fc1fb4655effa736848ac5fdc7168289bfe9b884",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_preset_parameter2 empty intent — Check 10 gate"
   },
   {
-    "hash": "01a1040113dd3a1c95e6bd8befcc728c7e146d10aa731872b09df566f9f61753",
+    "hash": "4955a6b102717dd2a7e718c90654cf2af0d56b8c064868854096e565f4706170",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_token_badge intent=transfer"
   },
   {
-    "hash": "fbcdd5964f056815e7a4e21af356fcf7159980484b7e3897d006705a76431db2",
+    "hash": "e1c636f7bef08bf4dc40d686b509b0d8c03f5506b07c372f3df9b91e9a158781",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::close_token_badge empty intent — Check 10 gate"
   },
   {
-    "hash": "dc5651201f9a0e92dde8fca4d65cfc77a425961b5398dd56f5bf162feef3606c",
+    "hash": "1796468bebc71c2aa3faef3bb3aacc06bb30417064a6d3082b42288ee89e603c",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::create_operator_account intent=transfer"
   },
   {
-    "hash": "9e3b1e978b1162f5627ee941d26371f05df18a135d35168a6bdb985f7c9f459b",
+    "hash": "c09b85f4bcc6a0c6861dabd1110f4986fbc5b5d954d3f0ab0d40dca1da203b3c",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::create_operator_account empty intent — Check 10 gate"
   },
   {
-    "hash": "66999faf91b5695b24812034f06a0d4c9ec7de8eacadcba1395c0a35f21c7322",
+    "hash": "8b57f025be8ac0be1af211f9b4793c341797269ead041600ab4160ba5bbe11ad",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::decrease_position_length intent=transfer"
   },
   {
-    "hash": "f9a6a239b4158338d15d88813398b53b406551cc1eac481011803ff3e3c39e9a",
+    "hash": "82fad7d08c21fac1ef7dfbc861ac1d8d1511f157eeada1fd5df755b9a35d8b4b",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::decrease_position_length empty intent — Check 10 gate"
   },
   {
-    "hash": "387d2c8e065208056248cb4d1db882a84f07de05f1ec7c03f5efe1bcb1eea4bd",
+    "hash": "3c542e0f3bcb2806f9bf965252baca2df70042cd9380a7ce293bacd69ae464fd",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::for_idl_type_generation_do_not_call intent=transfer"
   },
   {
-    "hash": "718c3e85ab5e2b93184ec26d82e919d43ffd01cfa984e90e4c59081cb6ab0c49",
+    "hash": "517aede3c4f31d8f77675df243c8221da58a48c9925e2451158ed7f93c0f1c02",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::for_idl_type_generation_do_not_call empty intent — Check 10 gate"
   },
   {
-    "hash": "2ad12d9ea3ff95a106187ab89134a787ffb437d3ae47b026754e051197fb977e",
+    "hash": "e69496f06ff7d785b6b94779e750f35ec7fc1bf4b60539f0b2e6a936bc23c662",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::fund_reward intent=transfer"
   },
   {
-    "hash": "8b516d99fad024a1218d85cb329ca97a4cadd0d0a2d2880d7ab0d3261bcbcbcb",
+    "hash": "b27cd3727160e5555d62f5d0770b3b9e7677c3fab760f86bdcc157d65e093fef",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::fund_reward empty intent — Check 10 gate"
   },
   {
-    "hash": "5fb097b07c8024b8c2373a145eef2a9fbe8505d3b9c205cf3fe8320c1d12f64c",
+    "hash": "4f8ac5da5951689dbda609a8891e7b9f80246a406f14f743cda6e98bafddec62",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::go_to_a_bin intent=transfer"
   },
   {
-    "hash": "63030727faff5f763cb21d45b1cf6f00412da3f57a21e4ad2f2a5ca64dafcf90",
+    "hash": "dd365716761a4dd4392ba2c15618bb6e435e7bd357e7553ccfec6c7365b0afbd",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::go_to_a_bin empty intent — Check 10 gate"
   },
   {
-    "hash": "4937c76e47a50b74b6ee2ff0e997baa9e92e9a9e5be3970dc3de89f31bdff130",
+    "hash": "23fae6e2b6cd674496ba7bc96237aae6adfea1e90368c9b8c2103b9a0a063fd2",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::increase_oracle_length intent=transfer"
   },
   {
-    "hash": "69cf66abeb6e5265d628593a5bd116eaf8124292cf57afa98ba614da8117785e",
+    "hash": "a4f46bf9ba14e4046b008a498d9c67512e380571fafcffeb8c54b16628467016",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::increase_oracle_length empty intent — Check 10 gate"
   },
   {
-    "hash": "a3bd6f5a28abf2a0941f667047cb4b4266ff7573d60a42ec1c9073456864d1d7",
+    "hash": "d0296293941bf5ea7c2076c4b8e729eec4ecef80610f5d64ccf263d7e436ce95",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::increase_position_length intent=transfer"
   },
   {
-    "hash": "91cfc608c6dd32f9a8ba387804711afc8ca747640d52504ea8998800c2f71fcf",
+    "hash": "0e3e6a97ec48b6f35eaa0e5b21f0fb1b403abb5c4b34c45c03ab2a82d315f7ea",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::increase_position_length empty intent — Check 10 gate"
   },
   {
-    "hash": "aad79151d3c46d6b1e37086945fc9ff3c01dc7fd0e05f40bd074c15b850b53ed",
+    "hash": "e7cb7cccf8faa69eac63b01981626aac5eefec23850951dda54bd2b9268bf9d3",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::increase_position_length2 intent=transfer"
   },
   {
-    "hash": "f6fecb3b7dcaab0cb08451cb7b976db5d018f50357a7154d3136b43d647949f6",
+    "hash": "64af25d52b307d9ce03bbb1f326beec9edf68656ab2d09d3ebe07e2c8c70663c",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::increase_position_length2 empty intent — Check 10 gate"
   },
   {
-    "hash": "60e3361b80b07819e70c6a8008dd35b3e226c27c8865727e07c19d5409d5f795",
+    "hash": "22790f250b9f71ab2e860e9b0dc025b40576541b72ff3137d1eddc0ce8f4bb7b",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_bin_array_bitmap_extension intent=transfer"
   },
   {
-    "hash": "d176e67ddb3fbe931731c6c96bc692dbd83a89238a86b714a5cac3ac79accfd4",
+    "hash": "6970187ec5f57e46f72cf58a20ae626cec3a249a7e68275142e1d327992741d9",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_bin_array_bitmap_extension empty intent — Check 10 gate"
   },
   {
-    "hash": "4cb10a8aa3d640274076fabc1a57203b414754c891338e6865985ab646931d02",
+    "hash": "fa602d60e510d55b1d1a923b7e39ba9d57f8a6802bc50ef09a309f5e9d812158",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_customizable_permissionless_lb_pair intent=transfer"
   },
   {
-    "hash": "1bcbbe6dffceb3e64c178d1d9cacac91629a6f9438d5103c8f7fbf69e1dd5def",
+    "hash": "bc38fa6c17f9c5a535cb79d6fabbca02202533279e642ea166874db069e093e8",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_customizable_permissionless_lb_pair empty intent — Check 10 gate"
   },
   {
-    "hash": "869769fa7ab60b655f44ce36a1144e4cd1475b848afbe7a1dfd67183be178eb0",
+    "hash": "30c77954061336feadccd5a2d36addb88cf7c9abd303d4cebc7421dc598e410d",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_customizable_permissionless_lb_pair2 intent=transfer"
   },
   {
-    "hash": "aeaaa1f41c116119b3ee7cf9e3da37347e47cf573c6f7c3f53c63b7d4f80ee29",
+    "hash": "74322a0dae1ee6c11c80c2c5c3dc6b19b541c1d7e76e7c1ec2aaa500b2396240",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_customizable_permissionless_lb_pair2 empty intent — Check 10 gate"
   },
   {
-    "hash": "eefe238162d6db60b73ffe2054d105605e6a71ca74dc970580b2a9db30789c4b",
+    "hash": "9a3f5c3f50454f1f4e0e530fc96da66929d1f13633ea492daf5a78e39e2ca704",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_lb_pair intent=transfer"
   },
   {
-    "hash": "4a48136c4fd93551586b82f0639aaff6d986f8474043fb0f27058581e9a4b2a7",
+    "hash": "73d1cab624e588fe7a60f26f4effe33d6e6b3376de3747201e9e558fbf6f4199",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_lb_pair empty intent — Check 10 gate"
   },
   {
-    "hash": "b1d43f14b6596a2ac27c91d1f2995924506c537c779be83af58a9342710f234d",
+    "hash": "b4ba8d4434a6336cd68cee0db4a36eb71213e7074fc5e85758d30c067100fd58",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_lb_pair2 intent=transfer"
   },
   {
-    "hash": "7c6078c4529d03f89495ceaefaeee4f5a3bbf67339223eb090e91bc960ffd40e",
+    "hash": "0f4c810b6f4ce5e82ff721176ecef9f07b55a4c95dac71097221cc64c8a634d8",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_lb_pair2 empty intent — Check 10 gate"
   },
   {
-    "hash": "2eb3673ea0119e45cf9b07059669e0351e55f9f8b8757bf4bf48456d087a370c",
+    "hash": "6cd0253345d6e9fa2c1c901ac7c05f3b6d19f14439abd33355b613975c76ad26",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_permission_lb_pair intent=transfer"
   },
   {
-    "hash": "c7a7b72546cb87857eda0cdb2188869600aa03076954b7e5dc946ff07ce11124",
+    "hash": "457da7409b751b088fdc4b681ec2719861b59ff01e34e25347ee5fa3fe4e49a6",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_permission_lb_pair empty intent — Check 10 gate"
   },
   {
-    "hash": "22e7d857c3c594ce133bf409cd7882f03f74805a644cf6cfdf99ff98a2c639b7",
+    "hash": "91b15feff956a61b4a802957a5565f21fc88327dbbfa01d20470fa7e44684f97",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_position intent=transfer"
   },
   {
-    "hash": "1509b3c2ef311ad6f5391e99d74c0d38cff19ad356b6c12b4ddc6fce5dbbc3c0",
+    "hash": "b6ebf047f81b34e5d71ce7c81da4c62de5e6bf1cdf48f0e39ecd3c7e1a84a2cb",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_position empty intent — Check 10 gate"
   },
   {
-    "hash": "9b500299d29eb3b2c7d9b0ed5b1856338ea2c4e27043a5945273b284eb7cefe3",
+    "hash": "dc75da8ddf42227921ec5009c2861d6a03b60ca3e60b4d0bc742f2b72ae5d036",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_position2 intent=transfer"
   },
   {
-    "hash": "3e87587799c2d0925dcc18db3c82d21fcd5b47f12f7d14bde7c91393d9000ae4",
+    "hash": "aa45e4d096526642c77d410ce5c1325e7853400ea6249ece55094b42880aa00f",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_position2 empty intent — Check 10 gate"
   },
   {
-    "hash": "ed89adde8a9fe147ac2e10b6e4b2193513dfa4c209b9908765e796e14589cff4",
+    "hash": "e511f5d60a0ca044145b49a8dcdf2e17cc523f76e32365abfa5de93d0f349c66",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_position_by_operator intent=transfer"
   },
   {
-    "hash": "e36289b8a112ecb847de7e88aeed13724f8757430c4ceee7fd28aa56b0db325c",
+    "hash": "985bdc4032c08df0f87f401c524d119c1724ce27fa1b7c5b2ce46ccdacd7a4c4",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_position_by_operator empty intent — Check 10 gate"
   },
   {
-    "hash": "b9cbf704f0604b608b522362e93505fd77aa5367818b58a964be950e95d68619",
+    "hash": "69efa867ec141900cca446cebabf6ea2b96d06002e19d2be2957a6debbb72252",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_position_pda intent=transfer"
   },
   {
-    "hash": "6e06a3f100a627eb841f7c26b21ae1c5539b5e84e2ee2fdf1843a3e6240538ce",
+    "hash": "0fbc139f0fceaca8846e570e20435f5a95f10551504f69ba767e892932a9e3bb",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_position_pda empty intent — Check 10 gate"
   },
   {
-    "hash": "f3ace00f3e95dd0a5fc0d77f57e08fc6d650c88d73b6b6205b07d4599bc0b7d6",
+    "hash": "15c01138b27b342c53582021e1f7384b3af16c160948f9bf226eeb5cbb13e990",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_preset_parameter intent=transfer"
   },
   {
-    "hash": "589619a5636c723472d48aa29d769c778f71957191c27f29505a477e298cd5db",
+    "hash": "0a38ad7b0e4c9c2f47c8a1c05779f7d07ab0e77500fb1bdda3f539be0ede4d4f",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_preset_parameter empty intent — Check 10 gate"
   },
   {
-    "hash": "1c7648f418471b8a596dcd71aec55782e5c26f811dd3754025a73f0334ebfa28",
+    "hash": "8c51d059680892eb709eacb90462892da1b97a5f859b2aeafdd38a2ef6baa8a3",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_reward intent=transfer"
   },
   {
-    "hash": "cbd21e2070c859f54c9ebbb75794f564f2da664ef97bcfc372826ee7b588eeb2",
+    "hash": "ef040ec33b0319ae1344200a0133ad702a0a89317c649adcf814e643cd57ddbd",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_reward empty intent — Check 10 gate"
   },
   {
-    "hash": "78da6deaef3b2dba2f9e5bcd370f527448c06958843d42d285d142f06367ca8d",
+    "hash": "a14e1af562c69150db05421573e722cd86f869c8956dd41b04133d6a737db6d9",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_token_badge intent=transfer"
   },
   {
-    "hash": "d522e1755129514571a427cb062a9fd2a24aca819bf6bbc10fef74c1dae232a3",
+    "hash": "771e43ff9cdacb434d3ffd9902a9d86fc74744b0d0253552dd875fef9730511f",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::initialize_token_badge empty intent — Check 10 gate"
   },
   {
-    "hash": "3f399875e67c897565c8bfb47ac9b4db8f6e13e41e76b1a2132ac9088290deb8",
+    "hash": "45aea2ff0c7dd845965873d3ad9894bcc5fc4a373069eb0ec3cb46d0173ab1c3",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::place_limit_order intent=transfer"
   },
   {
-    "hash": "e334d5445138f691c3d0295d5a5f4673b089cee39747fcb41f74a8ffd1dbad92",
+    "hash": "611f4a1cc496db22632b45f9a24db3fee5ecfdb26e2939f8402df092e2c27b06",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::place_limit_order empty intent — Check 10 gate"
   },
   {
-    "hash": "525caeedaaf47673bc642f4146dbd35ec806ba4f32d44127605cef61776bd5fa",
+    "hash": "37b2a62232ac798415ef8f3e9c2c15b4a88a83063a22e791654f995b5aaf852a",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::rebalance_liquidity intent=transfer"
   },
   {
-    "hash": "69eaae3bdd71abaf716f23cc95f5c2f14f5fc1c85f137e0b2e840d2c85da4b51",
+    "hash": "5a5eed626f4cad5206efd16444fabc15acee535ec956ff53397a73abba6c8648",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::rebalance_liquidity empty intent — Check 10 gate"
   },
   {
-    "hash": "f5a76e3ecd420421a9e6bed11917301e03b19c3723e717d29e72fb2b78629e08",
+    "hash": "cb206efc79848cebedbbea2145726294afd83c1a20b0e25722ec4d536dc8adcf",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::remove_all_liquidity intent=transfer"
   },
   {
-    "hash": "3dab8f530a8597d49a349a51c8e9599ba62c48c50a13d556cf74409d10bec912",
+    "hash": "9a2a81339515c9f37b77dd25200860e62271ae2903826988fc71e82c045c1b14",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::remove_all_liquidity empty intent — Check 10 gate"
   },
   {
-    "hash": "1b4135602f382d1db630c4e7b94fded398efbc9952211688553adbdf6cb22fad",
+    "hash": "6e0038c61fe822727cf270e7c0c34f32de8c276c019a04e8d5676d2bea5b5774",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::remove_liquidity2 intent=transfer"
   },
   {
-    "hash": "c1a0e71082a3db432747de3ba38e067ed2832a365ce4f1aa0ac95656ed899c84",
+    "hash": "ec6777cf51bd50846987c9792cc068f5072394ce0a556dd9790e6ad38c46c63a",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::remove_liquidity2 empty intent — Check 10 gate"
   },
   {
-    "hash": "32659e4488b9ac9f2208e3f6bb06e305c7a971eac217d9e5130de6c5927d2166",
+    "hash": "cd3ab131855ac1b0a58875159a6bfefc7c62ef22964a08d4b627ac672f5b6808",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::remove_liquidity_by_range2 intent=transfer"
   },
   {
-    "hash": "5f9e076215d43b0ef5f5db027027cff1b7d6e9f8aebe40b48a9e6a0796331410",
+    "hash": "c7f68244926f4fe5181d7776ee9d79f824d34cee22b1aa9f56da9652d15d30fb",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::remove_liquidity_by_range2 empty intent — Check 10 gate"
   },
   {
-    "hash": "7fff174388d292ea7ce7a71643dedef2830014fe57fc72efd5734208c4dfbc26",
+    "hash": "8bcddaaeae9e22961fc9d52383d00cc71bb26697e84f8a9be84904b5fa4669f4",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::set_activation_point intent=transfer"
   },
   {
-    "hash": "c20f04cbe25a3fe826ef98f37a9407fcc3906131dc03f44910a38b7cd8c704eb",
+    "hash": "1f6b1126c16f33fcfda14eac62bc9bd1926987b68e3ba5340a11afc607807b6a",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::set_activation_point empty intent — Check 10 gate"
   },
   {
-    "hash": "0c7e619f8bf78ed22b7c4e93f6a32c7b8908ed0d240b48764071f31878bd24e6",
+    "hash": "964c24d5bdee0776d1716251704f54d2ba7fdc8cef3e2105d4eb6c0965adb0cd",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::set_pair_status intent=transfer"
   },
   {
-    "hash": "f4088a4842ab38f82307fa6be0ef6d673eb7f9f21933a5d3c391c97a11f856e1",
+    "hash": "f73272ba025b85409714ce2a735ab0f0d09a44833e21213112e7c9b168b1b90e",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::set_pair_status empty intent — Check 10 gate"
   },
   {
-    "hash": "ccfe6e7b098f27e5cf3bb5c61bee4f202bcd5e6c59e14178c02f6523334ecf17",
+    "hash": "5b5359dd69080b87cc184a9be81929bc19fb1b3eabb42107c554e3d2e63cadda",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::set_pair_status_permissionless intent=transfer"
   },
   {
-    "hash": "ba84215874e7380eb83a5c6b14cdd2ae44b4c8999b4f20f76bc4f0a16a56b659",
+    "hash": "3d5daff9318bddbb4e08331db696b46bc9b4cd128e81dacdf625939ad9e9a399",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::set_pair_status_permissionless empty intent — Check 10 gate"
   },
   {
-    "hash": "902d00045f085e0c7a4121797309d8bd5c6787262454365ffa12d1e33cf7d8e6",
+    "hash": "651e71e814a3c3af72a05d43fd4a24ae962b0ea90242b3e16355e33cfebc9a0d",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::set_permissionless_operation_bits intent=transfer"
   },
   {
-    "hash": "eed072cb58dd68689efdce88bcd27f2a1fe34a541e00f5141beaaab1319943e4",
+    "hash": "c1197df9f9145e336fa60f8f640e57b76805abb5c9a8260ff29e4eb780c074e3",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::set_permissionless_operation_bits empty intent — Check 10 gate"
   },
   {
-    "hash": "4aed0f652a916b7966c0b45824c754b4e12fcc06a589b4fb2a24e12a219e5740",
+    "hash": "2418e77397cdf5694335b4bc7c328f3982a4d8c3f299af2d440445ad68aa6b07",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::set_pre_activation_duration intent=transfer"
   },
   {
-    "hash": "f59cd7fc6a07fa026966d53b8de2b31e894389c11fc71304cf0ec5421d59db43",
+    "hash": "5c6cf97ea6f45969733bd4fddaa2de97ca5daf5de480c364e2b294afc786efee",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::set_pre_activation_duration empty intent — Check 10 gate"
   },
   {
-    "hash": "fcdb77cebe71796d4f9c67a614d6e567f5383521c8cbb0e20cb9914d6a630a88",
+    "hash": "afbda735130080f31fca3f65ac8028f021659291388e0a86f2207e041bc10193",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::set_pre_activation_swap_address intent=swap"
   },
   {
-    "hash": "21b4608f68d6e58b8b51b72d165dab608b6cbe654cdaf826e1524c3b9e169e3b",
+    "hash": "b9e2259d4a80a2c6b2c3a6193fb166be1cc8f9be5638a4366a257c3d0ead2b83",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::set_pre_activation_swap_address empty intent — Check 10 gate"
   },
   {
-    "hash": "088fc0b6dac8e7d916f17abb2b7059af74c3f61cde46e63ccd4e49bc06059046",
+    "hash": "64f23d6a33f126e45a0b9857ec3985c9c3b1b59ccc42354ddc09422f7aaec5c1",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::swap2 intent=swap"
   },
   {
-    "hash": "cf3428afc2d5637aaca45604b42962818f27e53884cc0fdd139b618c9c533003",
+    "hash": "7337049c2e340a37e5409bfc33025c16d0ce168f657772b2c326e0596a7221e7",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::swap2 empty intent — Check 10 gate"
   },
   {
-    "hash": "8d749c652a95cd706b8f6dd5298d1187c1ce92bff7c015c36afe75e86abb7e32",
+    "hash": "d308c3e84630c95147b0027b686634c3d170fd1239fd09864d5f7e6ae073efa6",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::swap_exact_out2 intent=swap"
   },
   {
-    "hash": "87baee4bdaa17888e3f198e61a9c558dc0f39d92ed82250f361ace140092b942",
+    "hash": "2c20cf79514dbb63ea61dbce1f3537f7b7adfcaa9e68863c6cbbb30c3d27994e",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::swap_exact_out2 empty intent — Check 10 gate"
   },
   {
-    "hash": "c9253a79050219650052c126ffd67a76234e8204c06a9037f878b4a1077bd713",
+    "hash": "532ee557833a09f2bb93834acad21bf7f50ad2769d379d35ac41f5673691f837",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::swap_with_price_impact intent=swap"
   },
   {
-    "hash": "1f13ccadec381012fc7edec6d12bdd2724c0a315f819d71a7862bfa7d1c9f5d0",
+    "hash": "646cd11e4cfd8912ff13145a5741545b266cd7afa565a926c225d43afd3e416a",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::swap_with_price_impact empty intent — Check 10 gate"
   },
   {
-    "hash": "7ba45c645b0d02392ce485efc4739998d356af640b3561809411136bfffd019b",
+    "hash": "f3f0645bbe68dba77e5eadc4d20aec09e1f55b288626e62f8708c20c6fe4aa78",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::swap_with_price_impact2 intent=swap"
   },
   {
-    "hash": "d85a9add94151f71a19ab8af41f1da61d84e74b3e00c88c71abef296b18c0def",
+    "hash": "420ce8056ec942a42b9eda0a5784e5ce8f4c2cd76741d336782d16a7d757a2c5",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::swap_with_price_impact2 empty intent — Check 10 gate"
   },
   {
-    "hash": "e3f13f8cdd28e4e24c43b0125cababfea62832529e74b6e462aa5c5add71085a",
+    "hash": "f7fceb4df23b91c59c1a99d86b5112db4e6aa7d50d0a30353dab3a3fe22a5157",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::update_base_fee_parameters intent=transfer"
   },
   {
-    "hash": "c7316484d6520027ee6826a7ddc34f94d61cfed7067ea5f71ebba0808e92e413",
+    "hash": "fc66b8f30126d121da577307800da71a262a5830de3448421ceb1b7093820c26",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::update_base_fee_parameters empty intent — Check 10 gate"
   },
   {
-    "hash": "6c014ab5d2ad9bf106c2b4d09d98a810718e8fa2a24886ab8770f0a0918083e6",
+    "hash": "5b1d7bfeeb75ebd0046db15b395030855f570fa734e703951b85ba61f8e50c10",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::update_dynamic_fee_parameters intent=transfer"
   },
   {
-    "hash": "99ba51d141389dbd1b3530f9cdcbef491ed9c2f82d31507064a65278db2b9a45",
+    "hash": "a13aa457ae3441a5e4bf1ceb18c62c91f3a0eb9dd9380b2fcf3b5d136aa01a2c",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::update_dynamic_fee_parameters empty intent — Check 10 gate"
   },
   {
-    "hash": "cb897a26dd97bdcb9a31b7a53bfc0318ba4dcb2308e10f328b1399e172fce575",
+    "hash": "2c7c7f847d4afbdc862925ff0b1654ef332ae12401b1c8d4dcf85280499bce24",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::update_fees_and_reward2 intent=transfer"
   },
   {
-    "hash": "8430e9852ba8f0a383b24c76e95a76dfe944d607b3e909101f835091a1788163",
+    "hash": "3a62a4a6fed9cd3124f0198f00ee17c3b4f6029beaa4f4989adc39fb65bdfc22",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::update_fees_and_reward2 empty intent — Check 10 gate"
   },
   {
-    "hash": "c208c52ed5507c2f53dd9edcd208af73e4ed7320c2049998c1ad855e5631ee08",
+    "hash": "7b7ab08bbfe0e2a3f75675de150e344059e8b3df35d24d4a8686ccc789dbc1ce",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::update_fees_and_rewards intent=transfer"
   },
   {
-    "hash": "c5e7e5d7c5e165c6c9657025b626028305bea7d684e05c37cfaffb3668f22a56",
+    "hash": "e70efb73120020d5c314b373b25ad520b1d035fcc60890b4f811458b6275a422",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::update_fees_and_rewards empty intent — Check 10 gate"
   },
   {
-    "hash": "4776b07e6aae983f0eaa1bacb3d7d722cc67fb3fd5218077f099e71b0be103aa",
+    "hash": "3f28bf69db3b7279130d6dc9393f87ae517dd9a5d224c73503ba7916ba5cdba3",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::update_position_operator intent=transfer"
   },
   {
-    "hash": "c657d5bd969bedcfaa15846dd21a49e87a6e20e7234e9f3813f65a4319ccfdb4",
+    "hash": "520d8e28f721d7addd127aae8a35f3552dc79b0d9f48784a519667364fab4747",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::update_position_operator empty intent — Check 10 gate"
   },
   {
-    "hash": "4423a1244c3a410bbbc2061784d3167c4288f2136c8d55430c62d510702e62e6",
+    "hash": "7952438b870bfdd26aaf2ef09f9148510db38d6fb1f33cc4ce487c9db8268e74",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::update_reward_duration intent=transfer"
   },
   {
-    "hash": "7e047db086aac51378b28340ae871800b4ec9bcfa8f7b70f70f8b4763a8f43cd",
+    "hash": "0bd33982fb2079d79d497a64a3a919a8c955966e97eb97da742b42fee2d9727b",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::update_reward_duration empty intent — Check 10 gate"
   },
   {
-    "hash": "c625786b9f4610228514258d37398470d912d3ef04fff96b2b4eb2e34674f893",
+    "hash": "b43edd52fcd81ec0c62e2915eedd63227264da005d3143cf210744f5584b0c60",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::update_reward_funder intent=transfer"
   },
   {
-    "hash": "161e785da7995953aeada1e9223619afacd211dd43d9e12c38a01f40c6a2ef84",
+    "hash": "fe462085afb8a0a50c1d4aa3d6bd918a5dfc7d3f3be658d175612ccf2bf860a3",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::update_reward_funder empty intent — Check 10 gate"
   },
   {
-    "hash": "08d28f42e01636771d2b728cfae8d6994c5c13f66e36b7c59b97d9097bd948dc",
+    "hash": "26cb4f953308d796647b135524f24a5491ee179d66b46527c4fa9b79f23c45e3",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::withdraw_ineligible_reward intent=transfer"
   },
   {
-    "hash": "114ff1e4332363eac92966c0d168a109e1f419747f8c49967aeabc83d7514142",
+    "hash": "615e4d471a84b6028d877a3fd667e7422ecec3e400ec6f42d0929ab759bed2c1",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::withdraw_ineligible_reward empty intent — Check 10 gate"
   },
   {
-    "hash": "6597f8f6d954e842a3a34f7ee57a53db365aa7ead6075bec8292cae6dbd12d1e",
+    "hash": "523817a84d20d69294435f2f56cc944c475f64474f6bf1fbd9c51cfcf781d4b1",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::withdraw_protocol_fee intent=transfer"
   },
   {
-    "hash": "d706abb60fe2d3c656ee74d1e5ef70c826cd9f7199ed570ca50d03d4ec5502a0",
+    "hash": "37c148c4fd31820815fc2f1344f44ea90ad998f031fa2c1a5f254b0badc81659",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::withdraw_protocol_fee empty intent — Check 10 gate"
   },
   {
-    "hash": "4d95cf8c39e7c3de7cc56808a0e58255ece6d5bae79f1bd9b113cc8b946f5e46",
+    "hash": "3f0dbf293e4acacd8da2c7f627030468571a9e202e6c8c96dbf210e4f4ea7681",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Meteora DLMM::zap_protocol_fee intent=transfer"
   },
   {
-    "hash": "2fc6b1d8b3e665f1941496d6331254b4b6a74fbda5d8b76a2c48ac87fdabc254",
+    "hash": "557d0c4abb8f0b1fa20d10762d835278b70b7b2c7ed5badd2d7bc8ff08e597d0",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
