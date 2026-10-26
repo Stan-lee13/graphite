@@ -67,8 +67,14 @@ nothing is ever signed before the verdict.
 
 **What it is not, yet:** independently audited (every review here is internal engineering work
 plus two external reviews and one full-repository audit, answered item by item), or publicly
-deployed. A fresh instance approves nothing on the built-in profiles until it has evidence —
-seeded by the operator, or earned from approved, simulated traffic; that is deliberate. Open
+deployed. A fresh instance approves nothing on the built-in profiles until it has evidence;
+that is deliberate. One explicit, audited operator command, `graphite evidence import-census`
+(Round 40), imports the measured mainnet census the repository commits
+(`graphite-core/protocols/battle_tested_evidence.json`, reproducible with
+`graphite-core/scripts/battle_tested_census.py`) as each program's transaction-volume evidence: a
+manifested program's verdict then reaches 0.59 against the Gaming profile's 0.55, and the
+stricter profiles still refuse. Every attack of Rounds 38–39 was re-run in that state and is still
+refused. Otherwise evidence is seeded by the operator or earned from approved, simulated traffic. Open
 items are listed, with their measured cost, in [`AUDIT/FINAL.md`](AUDIT/FINAL.md).
 
 ---
@@ -204,8 +210,9 @@ nothing: every manifest's tier is capped at `OfficialManifest` when a verdict is
 computed (Constitution P7), so the measured `BattleTested` tier is registry and
 display information — the protocol table, `graphite protocol status`, the
 dashboard. A verdict reaches `BattleTested` only through the Semantic Graph,
-whose transaction volume comes from the operator (`graphite evidence seed`):
-asserted, not earned at runtime. The bar itself is thin, and the numbers say so:
+whose transaction volume comes from an operator command — `graphite evidence
+import-census` (the census's measured counts) or `graphite evidence seed`
+(asserted) — not from runtime observation. The bar itself is thin, and the numbers say so:
 across the 113 records that carry the tier, the observed-instruction sample is
 21 at the least and 54 at the median (82 records observed fewer than 100);
 70 records name three or fewer distinct instructions; 30 sit at exactly 1,000
@@ -621,7 +628,7 @@ curl -X POST http://localhost:7331/verify \
   -H "Authorization: Bearer $GRAPHITE_API_KEY" \
   -d @../examples/verify-input.json | jq .
 ```
-> ⚠️ The example input uses the `TradingBot` profile (0.80 threshold) and sends no transaction bytes, so its verdict is `descriptive`. On a fresh Core (no earned evidence) the achievable confidence for a known protocol is ~0.44, so this example returns **BLOCKED** — that is the engine being honest, not a bug. The confidence signals are *earned*, not asserted: `SimulationMatch`, `HistoricalVolume`, and `CommunityVerification` read from the Semantic Graph's internal accumulator (simulation baselines from approved traffic or the operator, and Behavior evidence the operator seeds), so the presets become satisfiable as the graph accumulates history. A `Custom` profile below Gaming (0.55) is raised to Gaming unless the server was started with `GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1` — a development setting that disables the confidence gate. With it, this shows the pipeline approving the descriptive example (which is still not executable: nothing is bound):
+> ⚠️ The example input uses the `TradingBot` profile (0.80 threshold) and sends no transaction bytes, so its verdict is `descriptive`. On a fresh Core (no evidence) the achievable confidence for a known protocol is ~0.44 — 0.59 after `graphite evidence import-census`, still short of TradingBot's 0.80 and its SimulationValidated tier floor — so this example returns **BLOCKED** — that is the engine being honest, not a bug. The confidence signals are *earned*, not asserted: `SimulationMatch`, `HistoricalVolume`, and `CommunityVerification` read from the Semantic Graph's internal accumulator (simulation baselines from approved traffic or the operator, and Behavior evidence the operator seeds or imports from the measured census), so the presets become satisfiable as the graph accumulates history. A `Custom` profile below Gaming (0.55) is raised to Gaming unless the server was started with `GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1` — a development setting that disables the confidence gate. With it, this shows the pipeline approving the descriptive example (which is still not executable: nothing is bound):
 > 
 > ```bash
 > jq '.wallet_profile = {"Custom": {"min_confidence": 0.40, "min_trust_tier": "OfficialManifest"}}' ../examples/verify-input.json | curl -X POST http://localhost:7331/verify -H "Content-Type: application/json" -H "Authorization: Bearer $GRAPHITE_API_KEY" -d @- | jq .approved
@@ -738,13 +745,22 @@ graphite manifest-verify --manifest ./candidate.json
 ```
 
 ```bash
-# Bootstrap: a fresh graph has no earned evidence, and the evidence-derived
-# confidence signals are half the total weight -- so an instance with an empty
-# graph and no GRAPHITE_RPC_URL blocks 100% of traffic (max reachable
-# confidence 0.44 against a 0.55 floor). These restore an exported graph or
-# stand an instance up before that history exists. CLI-only: request-body
-# evidence would let any caller mint an earned-looking tier.
-# Both take a base58 program id and write an operator_action row to the audit trail.
+# Bootstrap: a fresh graph has no evidence, and the evidence-derived confidence
+# signals are half the total weight -- so a fresh instance refuses everything on
+# the built-in profiles (0.44 against Gaming's 0.55). Start from the measured
+# census: it imports each program's successful-transaction count from the
+# committed, reproducible protocols/battle_tested_evidence.json (records below
+# its bar are listed with the reason and skipped), recomputes the tier from that
+# evidence (no signature asserted), and writes one operator_action row per
+# program naming the census's sha256 and measurement time. Re-running it imports
+# nothing new, and it never re-imports a program upgraded since the census.
+# A manifested program then reaches 0.59: Gaming only. Run it with the server
+# stopped and the server's GRAPHITE_AUDIT_KEY_FILE (docs/ops/install.md).
+graphite evidence import-census --dry-run
+graphite evidence import-census
+# Restore an exported graph, or vouch for evidence by hand (operator-asserted).
+# CLI-only: request-body evidence would let any caller mint an earned-looking
+# tier. Both take a base58 program id and write an operator_action row.
 graphite evidence seed --program <id> --signed-manifest --community-verified 2   --battle-tested 1500 --simulation-matches 100
 graphite evidence baseline --program <id> --mean-compute-units 150   --std-compute-units 12 --samples 50
 graphite evidence show --program <id>
