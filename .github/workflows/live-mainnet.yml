@@ -59,6 +59,10 @@ on:
         description: "Import the measured census for the System and SPL Token programs, and their L3 anchor, first (a fresh Core approves nothing without evidence)"
         default: false
         type: boolean
+      whole_census:
+        description: "With seed_evidence: import every record the census admits (an operator's first start), not only System and SPL Token"
+        default: true
+        type: boolean
 
 concurrency:
   group: live-mainnet-${{ github.ref }}
@@ -169,11 +173,18 @@ jobs:
       - name: Import the measured census and the L3 anchor (System, SPL Token)
         id: seed
         if: steps.fetch.outputs.skip == 'false' && (inputs.seed_evidence || github.event_name == 'pull_request')
+        env:
+          EVENT: ${{ github.event_name }}
+          WHOLE_CENSUS: ${{ inputs.whole_census }}
         run: |
           mkdir -p "$RUNNER_TEMP/data"
           set +e
+          # Round 40: a labelled PR, or a dispatch with whole_census, imports
+          # the whole census, the state an operator's first start leaves.
+          whole=()
+          if [ "$EVENT" = "pull_request" ] || [ "$WHOLE_CENSUS" = "true" ]; then whole=(--whole-census); fi
           python3 tools/live-measure/live_mainnet.py seed --graphite graphite-core/target/release/graphite \
-            --data-dir "$RUNNER_TEMP/data" --out "$REPORT_DIR/seed.json"
+            --data-dir "$RUNNER_TEMP/data" --out "$REPORT_DIR/seed.json" "${whole[@]}"
           code=$?
           set -e
           echo "exit=$code" >> "$GITHUB_OUTPUT"

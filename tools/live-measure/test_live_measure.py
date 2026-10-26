@@ -598,6 +598,19 @@ def test_seeding_covers_system_and_spl_token():
     assert not failed["ok"] and "import-census" in failed["error"]
 
 
+def test_whole_census_seeding_imports_every_admitted_record_and_still_anchors_both():
+    # Round 40: a labelled run imports the whole census (an operator's first
+    # start), so `import-census` names no program; the L3 anchors stay the two.
+    ran = []
+    doc = lm.seed("graphite", "/d", whole_census=True, run=lambda c, **k: ran.append(c) or Done())
+    assert doc["ok"] and doc["evidence"] == "census-imported (whole census)"
+    imported = [c for c in ran if c[2] == "import-census"]
+    assert len(imported) == 1 and "--program" not in imported[0]
+    assert imported[0][imported[0].index("--cluster") + 1] == "mainnet-beta"
+    assert sorted(c[c.index("--program") + 1] for c in ran if c[2] == "baseline") == sorted(
+        [lm.SYSTEM_PROGRAM, lm.SPL_TOKEN_PROGRAM])
+
+
 def test_a_seeded_run_reports_the_seeded_programs_and_the_caveat():
     post_fn, get_fn, _ = fake_core([fixture("executable_approved"), fixture("blocked")])
     entries = selected(2)

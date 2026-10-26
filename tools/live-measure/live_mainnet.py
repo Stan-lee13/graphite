@@ -970,16 +970,19 @@ def watched_markdown(report):
 # ── seed (operator evidence, before the Core starts) ────────────────────────
 
 
-def seed(graphite, data_dir, programs=None, *, run=subprocess.run):
+def seed(graphite, data_dir, programs=None, *, whole_census=False, run=subprocess.run):
     """`graphite evidence import-census` for the programs (Round 40: their
-    measured census volume, never typed numbers), then `baseline` (the L3
-    anchor) and `show` for each. Returns the record the replay report carries.
-    Read-only towards the chain: nothing here signs or sends."""
+    measured census volume, never typed numbers) — or, with `whole_census`,
+    for every record the census admits, as an operator's first start does —
+    then `baseline` (the L3 anchor) and `show` for each of the programs.
+    Returns the record the replay report carries. Read-only towards the
+    chain: nothing here signs or sends."""
     programs = programs or SEED_BASELINES
-    doc = {"ok": True, "evidence": "census-imported", "programs": {}}
+    doc = {"ok": True, "evidence": "census-imported (whole census)" if whole_census else "census-imported", "programs": {}}
     imp = [graphite, "evidence", "import-census", "--cluster", "mainnet-beta", "--data-dir", data_dir]
-    for p in programs:
-        imp += ["--program", p]
+    if not whole_census:
+        for p in programs:
+            imp += ["--program", p]
     r = run(imp, capture_output=True, text=True)
     if r.returncode != 0:
         doc.update(ok=False, error=f"`graphite evidence import-census` exited {r.returncode}: {(r.stderr or '')[-300:]}")
@@ -1031,10 +1034,12 @@ def main(argv=None):
     sd.add_argument("--graphite", required=True)
     sd.add_argument("--data-dir", required=True)
     sd.add_argument("--out", required=True)
+    sd.add_argument("--whole-census", action="store_true",
+                    help="import every record the census admits (an operator's first start), not only the seeded programs")
     args = ap.parse_args(argv)
 
     if args.cmd == "seed":
-        doc = seed(args.graphite, args.data_dir)
+        doc = seed(args.graphite, args.data_dir, whole_census=args.whole_census)
         with open(args.out, "w", encoding="utf-8") as fh:
             json.dump(doc, fh, indent=1)
         for p, d in doc["programs"].items():
