@@ -26,6 +26,9 @@
 //! failure, and an unparseable artifact an L2 failure, so `artifact_bound`
 //! means what its prose says in every verdict.
 
+// Round 40 (bootstrap): every test below runs again with each Core it builds
+// census-imported (`round40_census_imported::*`), its profiles unchanged.
+mod round40_imported;
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
 use graphite_core::semantic_graph_store::BehaviorEvidence;
@@ -140,7 +143,7 @@ fn cluster() -> String {
 }
 
 fn core_at(endpoint: &str) -> GraphiteCore {
-    let mut core = GraphiteCore::new();
+    let mut core = round40_imported::core();
     core.attach_rpc_client(SolanaRpcClient::new(RpcConfig {
         endpoint: endpoint.to_string(),
         timeout: std::time::Duration::from_secs(5),
@@ -497,3 +500,14 @@ async fn unobserved_prose_and_codes_are_parallel() {
         }
     }
 }
+
+// Round 40 (bootstrap): the same tests after `graphite evidence import-census`
+// (tests/round40_imported/mod.rs); a learning suite's profiles are its own.
+imported_core_twins!(
+    the_honest_request_with_data_is_approved_and_bound,
+    an_artifact_without_identifying_data_fails_l2_instead_of_skipping_the_check,
+    an_undescribed_destination_is_an_l2_failure_even_without_data,
+    an_unparseable_artifact_fails_l2,
+    a_hundred_sol_artifact_under_a_small_transfer_description_is_refused,
+    unobserved_prose_and_codes_are_parallel,
+);

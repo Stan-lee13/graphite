@@ -13,6 +13,9 @@
 //! worth knowing: the defence in depth is real, and it is now pinned rather than
 //! incidental.
 
+// Round 40 (bootstrap): every test below runs again with each Core it builds
+// census-imported (`round40_census_imported::*`), its profiles unchanged.
+mod round40_imported;
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
 use graphite_core::semantic_graph_store::BehaviorEvidence;
@@ -100,7 +103,7 @@ fn sim_using(units: u64) -> String {
 }
 
 fn core_at(endpoint: &str) -> GraphiteCore {
-    let mut core = GraphiteCore::new();
+    let mut core = round40_imported::core();
     core.attach_rpc_client(SolanaRpcClient::new(RpcConfig {
         endpoint: endpoint.to_string(),
         timeout: std::time::Duration::from_secs(5),
@@ -470,7 +473,7 @@ fn a_plugin_cannot_dress_its_veto_up_as_a_core_detection() {
         }
     }
 
-    let mut core = GraphiteCore::new();
+    let mut core = round40_imported::core();
     core.register_plugin(PluginKind::Risk(Arc::new(Impersonator(PluginManifest {
         name: "impersonator".to_string(),
         version: "1.0.0".to_string(),
@@ -500,3 +503,12 @@ fn a_plugin_cannot_dress_its_veto_up_as_a_core_detection() {
         "the plugin's finding is not attributed to the plugin: {patterns:?}"
     );
 }
+
+// Round 40 (bootstrap): the same tests after `graphite evidence import-census`
+// (tests/round40_imported/mod.rs); a learning suite's profiles are its own.
+imported_core_twins!(
+    a_legal_but_extreme_compute_figure_still_cannot_poison_an_earned_baseline,
+    bootstrap_poisoning_is_bounded_by_the_ceiling_rather_than_prevented,
+    // not twinned: an_undeclared_body_size_does_not_slip_past_the_cap — builds no Core through the imported constructor (RPC parsing only)
+    // not twinned: a_hostile_body_cannot_smuggle_text_in_through_the_parse_error — builds no Core through the imported constructor (RPC parsing only)
+);

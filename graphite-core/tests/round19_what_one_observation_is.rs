@@ -23,6 +23,9 @@
 //!   256-key window counted again — `sample_count` 257 → 258 on bytes already
 //!   counted.
 
+// Round 40 (bootstrap): every test below runs again with each Core it builds
+// census-imported (`round40_census_imported::*`), its profiles unchanged.
+mod round40_imported;
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
 use graphite_core::semantic_graph_store::{
@@ -202,7 +205,7 @@ fn cluster(simulations: Arc<AtomicUsize>) -> String {
 }
 
 fn core_at(endpoint: &str) -> GraphiteCore {
-    let mut core = GraphiteCore::new();
+    let mut core = round40_imported::core();
     core.attach_rpc_client(SolanaRpcClient::new(RpcConfig {
         endpoint: endpoint.to_string(),
         timeout: std::time::Duration::from_secs(5),
@@ -407,3 +410,11 @@ async fn a_descriptive_request_is_not_simulated_and_teaches_nothing() {
     );
     assert_eq!(samples(&core), 0);
 }
+
+// Round 40 (bootstrap): the same tests after `graphite evidence import-census`
+// (tests/round40_imported/mod.rs); a learning suite's profiles are its own.
+imported_core_twins!(
+    // not twinned: a_fresh_blockhash_is_not_a_new_observation — its premise is a fresh program below Gaming (0.44); after the import the same honest request clears the built-in floor, so the property is restated for the imported state in round30_trust_learning.rs `round40_*`
+    distinct_transactions_still_earn,
+    a_descriptive_request_is_not_simulated_and_teaches_nothing,
+);

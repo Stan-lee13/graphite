@@ -31,6 +31,9 @@
 //! An RPC that returns another transaction's bytes gets nothing attributed,
 //! and the caller's keys do not stand in for the rejected bytes.
 
+// Round 40 (bootstrap): every test below runs again with each Core it builds
+// census-imported (`round40_census_imported::*`), its profiles unchanged.
+mod round40_imported;
 use graphite_core::durable::{audit_path, AuditLog, VerificationKey};
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
@@ -274,7 +277,7 @@ fn cluster(chain: ChainBytes) -> String {
 }
 
 fn core_at(endpoint: &str) -> GraphiteCore {
-    let mut core = GraphiteCore::new();
+    let mut core = round40_imported::core();
     core.attach_rpc_client(SolanaRpcClient::new(RpcConfig {
         endpoint: endpoint.to_string(),
         timeout: std::time::Duration::from_secs(5),
@@ -987,3 +990,15 @@ async fn an_rpc_that_substitutes_bytes_cannot_attribute_the_execution() {
     assert_eq!(audit.caller_keys_disagree.len(), 1);
     std::fs::remove_dir_all(&dir).ok();
 }
+
+// Round 40 (bootstrap): the same tests after `graphite evidence import-census`
+// (tests/round40_imported/mod.rs); a learning suite's profiles are its own.
+imported_core_twins!(
+    the_same_instruction_in_different_transactions_shares_a_content_hash_but_not_a_digest,
+    an_executed_blocked_transaction_is_attributed_by_the_chain_not_by_its_content_hash,
+    caller_keys_that_name_a_different_verification_are_reported_not_believed,
+    an_execution_of_unverified_bytes_is_not_attributed_to_a_sibling_verification,
+    without_chain_bytes_the_most_exact_caller_key_decides_and_content_hash_alone_is_ambiguous,
+    // not twinned: every_key_is_exact_across_rotation_and_concurrency — writes a temp dir named by the process id alone, which its twin would share
+    an_rpc_that_substitutes_bytes_cannot_attribute_the_execution,
+);
