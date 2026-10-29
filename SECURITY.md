@@ -229,6 +229,32 @@ applies to decompressed chunks — 65 KB inflating to 64 MiB is refused at 32 Mi
 the rate limiter at its million-bucket bound (452 ns per check, measured); `audit_trail_id`
 spoofing (a fabricated id resolves to nothing and is never rescued by a coarser key).
 
+## The Open Decisions, Decided (2026-10-26; Round 40)
+
+Internal engineering work. Each decision, its options and the principles it touches:
+`docs/audit/TECHNICAL_LEAD_DECISIONS.md`; detail in `docs/audit/parts-r40/`.
+
+- **Bootstrap from the measured census (G4, confidence gaming).** `graphite evidence import-census`
+  is CLI-only, hash-pinned to the compiled-in census, lifts only HistoricalVolume, never lowers
+  evidence and is mainnet-beta's only (enforced at import and at server start). After it, a
+  manifested program reaches the Gaming floor, so the Round 39 P0-class precondition is met under
+  the defaults: every Round 38/39 attack was re-run in that state and after training an imported
+  program's baseline, and all are refused; a deliberate break of the R39-1 fix makes the imported
+  runs fail. **Residuals:** anyone holding the verify key can shape an imported program's first
+  baseline. It buys nothing on the built-in profiles (training tops out at 0.75, the OfficialManifest
+  ceiling), but it would open a custom profile with a floor between 0.59 and 0.75, and a skewed
+  baseline can make L3 flag honest traffic (recoverable with `graphite evidence promote-shadow`).
+  A library embedder that attaches its own RPC must call `confirm_evidence_cluster` itself.
+- **Swap declarations rewritten from IDLs.** 60 declarations now name the user-side account they
+  debit; every rewritten venue was attacked (a sibling skim, a second owner account debited, both
+  sides debited, the output to a stranger) in all three configurations and is refused. On venues
+  `decode_swap` does not read, L4 no longer refuses a skim beside the swap; the swap stays unbound
+  and therefore never executable (P14 note in the CHANGELOG).
+- **Phantom instructions removed.** 23 manifest instructions no committed IDL has; such bytes are
+  now undescribed and refused.
+- **CI checks that were "reasoned":** the agent guard now runs on Windows in CI; per-binary floors
+  stop a security suite from losing tests behind growth elsewhere; actionlint is pinned and run.
+
 ## The Exhaustive Production-Readiness Audit of `c087bfb` (2026-10-25; Round 39)
 
 Internal engineering work by the maintainer and AI agents, not an independent audit and not a

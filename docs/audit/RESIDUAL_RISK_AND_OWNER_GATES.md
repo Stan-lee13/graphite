@@ -26,26 +26,30 @@ mutation-score floors — F-015, still no complete module score), item 8 (benchm
 (release rehearsal), item 10c (`publish = false` or not in `graphite-core/Cargo.toml`), the
 Dependabot holds of item 6, and K-14 stale branches.
 
-## 2. Owner decisions (fail-closed meanwhile)
+## 2. Owner decisions — decided in Round 40
 
-None of these was decided by this round. Each is left in its safer state.
+The owner delegated every decision below to the technical lead on 2026-10-25. Each is recorded,
+with its options, reason and Constitution principles, in
+[`TECHNICAL_LEAD_DECISIONS.md`](TECHNICAL_LEAD_DECISIONS.md), and implemented with tests
+([`parts-r40/`](parts-r40/)):
 
-| ID | Decision | Current behaviour | Options | What would change |
-|---|---|---|---|---|
-| R39-CORE-DECISION-4 | Rewrite the swap declarations that refuse honest swaps | 101 of 115 swap/route declarations refuse an honest swap (93 declare a debit naming no account; 8 declare nothing L4 can read). Raydium CPMM `swap_base_input`, Meteora DAMM v2 `swap`, Orca `swap`/`swapV2` are refused end to end. | (a) keep refusing; (b) rewrite from the committed IDLs (`scripts/idls/raydium_cpmm.json`, `orca-whirlpools.json`, `jupiter.json`) with each rewrite reviewed like the nine medium ones | the census test in `round39_decision_campaigns.rs` would change; each rewritten declaration needs a manifest review |
-| R39-CORE-DECISION-5 | `update_offer` (configure grant) can never pass | `UndeclaredTokenDebit` on every call, honest or not | declare its debit, or drop the grant | one manifest change |
-| R39-CB-8 | `GRAPHITE_TRUST_PROXY` trusts `X-Forwarded-For` from any peer; in the prod compose the `ai` service shares the backend network and could choose its own rate-limit bucket | as documented in `.env.example` and `docs/ops/install.md` | (a) a trusted-proxy address allowlist (code change); (b) a Core-only network between Caddy and Core (compose change) | rate-limit isolation between the AI layer and other callers |
-| R39-CB-13 | The RPC client honours `HTTP(S)_PROXY`; the connect-time address guard then sees only the proxy | proxies honoured | (a) ignore env proxies (`.no_proxy()`); (b) allow them, documented as trusted infrastructure | whether a deployment behind a proxy needs a new setting |
-| R39-CORE-IDENTITY-7 | First-manifest validation | a first manifest is checked only against fixtures recorded under itself | four strategies in `parts/core-identity.md` §2.7; each needs a bar only the owner sets | how a new protocol enters the registry |
-| R39-SUPPLY-CHAIN-11 | Phantom discriminators | Meteora / Jupiter / Squads manifests carry `swap_2` beside the real `swap2` and 27 discriminators in no instruction of the committed IDL; harmless (never matched by real traffic) but misleading | remove them in a manifest PR, or keep and label | manifests only |
-| F-005 | The nine medium-confidence rewrites | not promoted; `validate_corpora.py` fails if one changes | sign off each, or keep them medium | the confidence a call through them can reach |
-| Checklist 4, 5 | Round 32 refusal defaults; R-M9; `GRAPHITE_QUARANTINE_ON_UPGRADE`; self-heal threshold | refusal defaults on | keep, or relax after measuring against real traffic | false-refusal rate vs. protection |
+| ID | Decided | Status |
+|---|---|---|
+| R39-CORE-DECISION-4 | swap declarations rewritten from the committed IDLs (60); 26 left with reasons | done |
+| R39-CORE-DECISION-5 | the `update_offer` grant removed (its IDL never says the USDC moves) | done |
+| R39-SUPPLY-CHAIN-11 | 23 instructions no committed IDL has removed; the 5 Squads ones kept (the committed IDL has them) | done |
+| F-005 | 7 of the 9 medium rewrites promoted with recorded evidence; Stake Pool `WithdrawSol*` stay medium | done |
+| Fresh-instance confidence | `graphite evidence import-census --cluster mainnet-beta` (D-6) | done |
+| R39-CB-8 | `GRAPHITE_TRUSTED_PROXIES`, refusing to start without it when proxy trust is on | in progress |
+| R39-CB-13 | RPC and witness clients ignore environment proxies | in progress |
+| R39-CORE-IDENTITY-7 | a first registry manifest capped at `HeuristicInferred` | in progress |
+| Checklist 4, 5 | Round 32 refusal defaults kept; R-M9 kept with its reasoning; upgrade quarantine stays opt-in; no automatic self-heal quarantine | decided, no change |
 
 ## 3. Accepted limitations (tested, fail-closed or bounded)
 
 | Item | Limitation | Why accepted | Where pinned |
 |---|---|---|---|
-| Fresh-instance confidence | a fresh instance scores 0.44, below every built-in profile, so nothing is executable until a program has an L3 baseline (or an operator lowers the profile) | conservative by design; it is also the precondition that kept R39-CORE-DECISION-1/-2 from being reachable on a fresh instance | `PRODUCTION_READINESS_FINDINGS.md` §2.1 |
+| Fresh-instance confidence | a fresh instance scores 0.44, below every built-in profile; one explicit operator command, `graphite evidence import-census --cluster mainnet-beta`, imports the measured census and lifts a manifested program to 0.59 (Gaming only); the stricter profiles need earned simulation evidence (training tops out at 0.75 on an OfficialManifest tier) | conservative by design; every Round 38/39 attack was re-run in the imported and trained states and is refused | `parts-r40/bootstrap.md` |
 | Relayed / co-signed swaps | refused by L4 | safer than inferring whose value it is | `round38_sibling_skims` |
 | B-5 in-transaction price manipulation | not modelled | needs a pricing oracle Graphite does not have | CURRENT |
 | No cumulative value cap across calls to an unmanifested program | per-transaction only | stateful policy is outside the verifier | `risk_engine.rs`, CURRENT |
@@ -68,20 +72,19 @@ None of these was decided by this round. Each is left in its safer state.
 
 | Claim | Why not shown | How to obtain |
 |---|---|---|
-| Real-traffic false-refusal rates | needs a public RPC, which this round may not contact | `GRAPHITE_MAINNET_RPC_URL=… cargo test --test mainnet_transfer_fee_live -- --ignored`; `.github/workflows/live-mainnet.yml` |
-| Mutation scores (F-015) | about 260 runner-hours for a full run | the weekly mutation job; then checklist item 7 |
+| Real-traffic approval and false-refusal rates | Round 40's first live run (PR #55, run 40280048548, census imported) replayed 200 recent mainnet transactions: 0 executable, 2 analysis-only, 198 refused, 0 server errors; replays of other people's transactions mostly fail simulation against later state, so this does not measure the approval path. A constructed-honest-transaction pass is being added | `.github/workflows/live-mainnet.yml` |
+| Mutation scores (F-015) | shards re-sized in Round 40 to fit the step (≤ 20 mutants each); not yet dispatched (~210–290 runner-hours) | Actions → Assurance → Run workflow; then checklist item 7 |
 | Execution-level differential against a bank (R39-CORE-IDENTITY-6) | not built; the runtime oracle covers the decoder and sanitizer only | a harness replaying artifacts through a bank |
 | Coverage-guided runtime side of the oracle | the generator is not coverage-guided there | cargo-fuzz harness linking the oracle |
-| Windows behaviour of the guard (locks, file permissions, R39-CLIENTS-6) | no Windows runner here | a Windows CI job for `integrations/agent-guard` |
-| HTTP/CLI JSON and dashboard rendering over the shared conformance corpus | only the four library implementations run it | drive `examples/decisions/conformance.json` through the server and the dashboard |
+| Windows behaviour of the guard (locks, file permissions, R39-CLIENTS-6) | **closed in Round 40**: the `agent-guard-windows` CI job runs the guard's suite on a pinned Windows image (green) | — |
+| HTTP/CLI JSON and dashboard rendering over the shared conformance corpus | **closed in Round 40**: `tests/round40_surface_conformance.rs` and `dashboard/src/conformance.test.ts` | — |
 | The `release` environment's configuration | the session token could not read it | G-1 check above, as admin |
 | CI on the `main` push of `c087bfb` (run 40182789822) | queued during this round; the same tree was green in PR CI (40152966496) | Actions → that run |
 
-## 5. Recorded, no change
+## 5. Recorded
 
-R39-CB-14 (the registry signer key file is read without the audit key's permission check), R39-CB-15
-(`graphite explain` prints caller strings unescaped to the terminal), R39-SUPPLY-CHAIN-6 (pin and run
-actionlint ≥ 1.7.11), R39-SUPPLY-CHAIN-12 and -13 (manifest labels; IDL `address` fields), D2-8
-(per-binary Rust floors are printed but no floors file is passed), and the P3 observations of
-`PRODUCTION_READINESS_FINDINGS.md` §2.1. Each is a candidate for a later round; none lets a refusal
-become executable.
+R39-SUPPLY-CHAIN-13 (two on-chain IDLs' `address` field differs from the program read; informational)
+and the P3 observations of `PRODUCTION_READINESS_FINDINGS.md` §2.1 remain recorded. Since Round 40:
+R39-SUPPLY-CHAIN-6 (actionlint pinned and run), D2-8 (per-binary floors) and R39-SUPPLY-CHAIN-12
+(label fixes) are done; R39-CB-14 (registry signer key permissions) and R39-CB-15 (escaped terminal
+output) are in progress. None lets a refusal become executable.
