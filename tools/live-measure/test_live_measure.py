@@ -575,53 +575,106 @@ class Done:
         self.returncode, self.stdout, self.stderr = code, out, "boom" if code else ""
 
 
-def test_seeding_covers_system_and_spl_token():
+JUPITER = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
+
+
+def census_output(ids, sha="ab" * 32):
+    """What `graphite evidence import-census` prints (cli.rs, run_import_census)."""
+    lines = [f"CENSUS  battle_tested_evidence.json sha256={sha}  (compiled in)", ""]
+    for p in ids:
+        lines += [f"IMPORT  {p}  (Name)", "  census       1456 successful transactions over 1s, slots 1..2, measured_at x"]
+    lines += ["SKIP    Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo  (Memo): no decode rate", "",
+              f"IMPORTED {len(ids)} program(s) into /d; each is one operator_action row on its audit trail."]
+    return "\n".join(lines)
+
+
+def fake_graphite(ran, imported=(lm.SYSTEM_PROGRAM, lm.SPL_TOKEN_PROGRAM), fail=None):
+    def run(c, **k):
+        ran.append(c)
+        if c[2] == fail:
+            return Done(1)
+        return Done(out=census_output(imported)) if c[2] == "import-census" else Done()
+    return run
+
+
+def test_seeding_imports_the_census_and_types_no_baseline():
     ran = []
-    doc = lm.seed("graphite", "/d", run=lambda c, **k: ran.append(c) or Done())
+    doc = lm.seed("graphite", "/d", run=fake_graphite(ran))
     assert doc["ok"] and set(doc["programs"]) == {lm.SYSTEM_PROGRAM, lm.SPL_TOKEN_PROGRAM}
-    seeded = [(c[2], c[c.index("--program") + 1]) for c in ran]
-    # Round 40: the evidence is the measured census, imported in one
-    # command; no `evidence seed` with typed numbers is run.
+    # Round 40: the evidence is the measured census, imported in one command;
+    # no `evidence seed` with typed numbers, and (Round 40, measure) no typed
+    # L3 baseline — it flagged honest System and SPL Token instructions in run
+    # 40280048548.
     imported = [c for c in ran if c[2] == "import-census"]
-    assert len(imported) == 1 and not any(c[2] == "seed" for c in ran)
+    assert len(imported) == 1 and not any(c[2] in ("seed", "baseline") for c in ran)
     assert imported[0][imported[0].index("--cluster") + 1] == "mainnet-beta"
     assert [imported[0][i + 1] for i, a in enumerate(imported[0]) if a == "--program"] == [
         lm.SYSTEM_PROGRAM, lm.SPL_TOKEN_PROGRAM]
-    for p in (lm.SYSTEM_PROGRAM, lm.SPL_TOKEN_PROGRAM):
-        assert ("baseline", p) in seeded and ("show", p) in seeded
-    token_baseline = next(c for c in ran if c[2] == "baseline" and lm.SPL_TOKEN_PROGRAM in c)
-    assert token_baseline[token_baseline.index("--mean-compute-units") + 1] == "5000"
+    assert sorted(c[c.index("--program") + 1] for c in ran if c[2] == "show") == sorted(
+        [lm.SYSTEM_PROGRAM, lm.SPL_TOKEN_PROGRAM])
     assert all(c[c.index("--data-dir") + 1] == "/d" for c in ran)
-    failed = lm.seed("graphite", "/d", run=lambda c, **k: Done(1 if c[2] == "baseline" else 0))
-    assert not failed["ok"] and "baseline" in failed["error"]
-    failed = lm.seed("graphite", "/d", run=lambda c, **k: Done(1 if c[2] == "import-census" else 0))
+    assert doc["imported"] == [lm.SYSTEM_PROGRAM, lm.SPL_TOKEN_PROGRAM] and doc["imported_count"] == 2
+    assert doc["census_sha256"] == "ab" * 32 and "none typed" in doc["l3_baselines"]
+    assert all(d["imported"] for d in doc["programs"].values())
+    failed = lm.seed("graphite", "/d", run=fake_graphite([], fail="import-census"))
     assert not failed["ok"] and "import-census" in failed["error"]
 
 
-def test_whole_census_seeding_imports_every_admitted_record_and_still_anchors_both():
+def test_a_census_import_that_skipped_a_named_program_fails_the_seeding():
+    # Asked for and not in force: the report would call it census-imported.
+    doc = lm.seed("graphite", "/d", run=fake_graphite([], imported=[lm.SYSTEM_PROGRAM]))
+    assert not doc["ok"] and lm.SPL_TOKEN_PROGRAM in doc["error"]
+    assert lm.main(["seed", "--graphite", "/bin/false", "--data-dir", "/nonexistent", "--out", os.devnull]) == 1
+
+
+def test_whole_census_seeding_imports_every_admitted_record():
     # Round 40: a labelled run imports the whole census (an operator's first
-    # start), so `import-census` names no program; the L3 anchors stay the two.
+    # start), so `import-census` names no program.
     ran = []
-    doc = lm.seed("graphite", "/d", whole_census=True, run=lambda c, **k: ran.append(c) or Done())
-    assert doc["ok"] and doc["evidence"] == "census-imported (whole census)"
+    doc = lm.seed("graphite", "/d", whole_census=True,
+                  run=fake_graphite(ran, imported=[lm.SYSTEM_PROGRAM, JUPITER, lm.SPL_TOKEN_PROGRAM]))
+    assert doc["ok"] and doc["evidence"] == "census-imported (whole census)" and doc["whole_census"]
     imported = [c for c in ran if c[2] == "import-census"]
     assert len(imported) == 1 and "--program" not in imported[0]
     assert imported[0][imported[0].index("--cluster") + 1] == "mainnet-beta"
-    assert sorted(c[c.index("--program") + 1] for c in ran if c[2] == "baseline") == sorted(
-        [lm.SYSTEM_PROGRAM, lm.SPL_TOKEN_PROGRAM])
+    assert doc["imported_count"] == 3 and JUPITER in doc["imported"]
+    assert not any(c[2] == "baseline" for c in ran)
 
 
-def test_a_seeded_run_reports_the_seeded_programs_and_the_caveat():
+def test_a_seeded_run_reports_the_census_programs_and_the_caveat():
     post_fn, get_fn, _ = fake_core([fixture("executable_approved"), fixture("blocked")])
     entries = selected(2)
     entries[0]["program_id"] = lm.SYSTEM_PROGRAM
-    seeded = {"ok": True, "programs": {lm.SYSTEM_PROGRAM: {}, lm.SPL_TOKEN_PROGRAM: {}}}
+    seeded = {"ok": True, "imported": [lm.SYSTEM_PROGRAM, lm.SPL_TOKEN_PROGRAM], "imported_count": 2,
+              "programs": {lm.SYSTEM_PROGRAM: {"imported": True}, lm.SPL_TOKEN_PROGRAM: {"imported": True}}}
     rep = lm.replay(entries, sample_rows(2), "http://core", "k", pace=0, l8=0, seeded=seeded, sleep=lambda s: None, post_fn=post_fn, get_fn=get_fn)
     assert rep["seeded_outcomes"][lm.SYSTEM_PROGRAM]["decisions"] == {"executable_approved": 1}
     assert rep["seeded_outcomes"][lm.SPL_TOKEN_PROGRAM]["verdicts"] == 0
+    assert rep["decisions_by_evidence"] == {"census-imported program": {"executable_approved": 1},
+                                            "program not imported": {"blocked": 1}}
     md = lm.markdown(rep)
-    assert "operator evidence was seeded for" in md and "## Seeded programs" in md
-    assert "A fresh Core has earned no evidence for any other program" in md
+    assert f"the measured census was imported for `{lm.SYSTEM_PROGRAM}`, `{lm.SPL_TOKEN_PROGRAM}` only" in md
+    assert "## System and SPL Token (census-imported)" in md
+    assert "Programs the import did not cover have no evidence" in md
+    assert "No L3 baseline was typed" in md and "| census-imported program | 1 |" in md
+
+
+def test_after_a_whole_census_import_the_report_does_not_say_two_programs():
+    # Round 40 (measure): run 40280048548 imported the whole census and its
+    # report said evidence was seeded for System and SPL Token only.
+    post_fn, get_fn, _ = fake_core([fixture("blocked")])
+    seeded = {"ok": True, "whole_census": True, "imported": [lm.SYSTEM_PROGRAM, lm.SPL_TOKEN_PROGRAM, JUPITER],
+              "imported_count": 114, "census_sha256": "cd" * 32,
+              "programs": {lm.SYSTEM_PROGRAM: {"imported": True}, lm.SPL_TOKEN_PROGRAM: {"imported": True}}}
+    rep = lm.replay(selected(1), sample_rows(1), "http://core", "k", pace=0, l8=0, seeded=seeded, sleep=lambda s: None,
+                    post_fn=post_fn, get_fn=get_fn)
+    md = lm.markdown(rep)
+    assert "for every program the committed census admits — 114 program(s) imported" in md
+    assert " only (" not in md and "seeded for" not in md and "cd" * 32 in md
+    # An old record with a typed baseline is still named as such.
+    old = dict(seeded, programs={lm.SYSTEM_PROGRAM: {"baseline": {"mean": 150}}})
+    assert "An L3 compute baseline was also typed" in "\n".join(lm.evidence_markdown(old, [lm.SYSTEM_PROGRAM]))
+    assert "A fresh Core has earned no evidence for any program" in "\n".join(lm.evidence_markdown({}, []))
 
 
 # ── devnet: faucet retries, then a local real runtime ───────────────────────
@@ -786,3 +839,329 @@ def test_fetch_keeps_going_until_the_sample_is_large_enough(tmp_path, monkeypatc
     doc = lm.fetch("https://rpc.example", 2, out, sleep=lambda s: None, call=fake_call(400, skip={940}))
     assert doc["skipped_slots"] == [940] and doc["slots"] == [960, 920, 900] and doc["count"] == 1200
     assert json.load(open(out))["count"] == 1200
+
+
+# ── Round 40 (measure): the message parser and the legacy builder ───────────
+
+# Committed legacy rows that are one System Transfer (and Compute Budget
+# instructions) whose wallet ordered its accounts as `build_legacy` does:
+# rebuilt from their parts they are the same bytes, signature slot aside.
+LEGACY_TRANSFER_ROWS_BYTE_IDENTICAL = (443, 1070, 1115, 1387)
+
+
+def privileges(msg, i):
+    nreq, ro_s, ro_u = msg.num_required_signatures, msg.num_readonly_signed, msg.num_readonly_unsigned
+    signer = i < nreq
+    writable = i < nreq - ro_s if signer else i < len(msg.static_keys) - ro_u
+    return signer, writable
+
+
+def parts(msg, keys):
+    """A message as (fee payer, [(program, [(account, signer, writable)], data)])."""
+    return keys[0], [
+        (keys[ix.program_index], [(keys[a], *privileges(msg, a)) for a in ix.accounts], ix.data)
+        for ix in msg.instructions
+    ]
+
+
+def test_the_message_parser_agrees_with_layout_on_every_committed_frame(sample):
+    frames, rows = sample
+    for frame in frames:
+        msg, lay = wire.message(frame), wire.layout(frame)
+        assert (msg.version, msg.num_required_signatures, msg.durable_nonce) == (lay.version, lay.signature_count, lay.durable_nonce)
+        assert msg.blockhash == wire.blockhash(frame)
+    with pytest.raises(ValueError):
+        wire.message(frames[0] + b"\0")
+    with pytest.raises(ValueError):
+        wire.message(frames[8][:-1])
+
+
+def test_the_builder_reproduces_real_wallet_transfers_byte_for_byte(sample):
+    # The known fixture: real mainnet bytes (the committed sample), built by
+    # wallets, compared byte for byte with what `build_legacy` makes of their
+    # parts. The signature slot is the only difference, and it is zeroed.
+    frames, rows = sample
+    for row in LEGACY_TRANSFER_ROWS_BYTE_IDENTICAL:
+        msg = wire.message(frames[row])
+        payer, ixs = parts(msg, wire.account_keys(msg))
+        assert any(p == lm.SYSTEM_PROGRAM for p, _, _ in ixs)
+        assert wire.build_legacy(payer, ixs, msg.blockhash) == unsigned(frames[row]), row
+
+
+def test_every_committed_simple_transfer_rebuilds_to_the_same_instructions(sample):
+    # Every executed simple transfer in the committed sample (legacy and v0,
+    # its lookups resolved from the block's own record), rebuilt as legacy:
+    # same instructions, accounts, privileges, data and blockhash. Wallets
+    # order read-only keys differently (some sort them), so bytes may differ.
+    frames, rows = sample
+    found = 0
+    for i, r in enumerate(rows):
+        t, _ = lm.simple_transfer(dict(r, row=i))
+        if t is None:
+            continue
+        msg = wire.message(frames[i])
+        payer, ixs = parts(msg, wire.account_keys(msg, r["loaded_writable"], r["loaded_readonly"]))
+        rebuilt = wire.message(wire.build_legacy(payer, ixs, msg.blockhash))
+        assert rebuilt.version == "legacy" and rebuilt.blockhash == msg.blockhash
+        assert parts(rebuilt, wire.account_keys(rebuilt)) == (payer, ixs), i
+        found += 1
+    assert found >= 15
+
+
+def test_a_built_transfer_checked_has_the_runtime_layout():
+    owner, src, dst, mint = (solrpc.b58encode(bytes([n]) * 32) for n in (1, 2, 3, 4))
+    frame = wire.build_legacy(owner, [wire.token_transfer_checked(src, mint, dst, owner, 7, 6)], bytes(range(32)))
+    msg = wire.message(frame)
+    assert frame[0] == 1 and frame[1:65] == bytes(64)  # one zeroed signature slot
+    assert (msg.num_required_signatures, msg.num_readonly_signed, msg.num_readonly_unsigned) == (1, 0, 2)
+    keys = wire.account_keys(msg)
+    assert keys == [owner, src, dst, mint, lm.SPL_TOKEN_PROGRAM]
+    (ix,) = msg.instructions
+    assert [keys[a] for a in ix.accounts] == [src, mint, dst, owner]
+    assert ix.data == bytes([12]) + (7).to_bytes(8, "little") + bytes([6])
+    # A built frame is unsigned, so the measurement-side rewrite accepts it;
+    # the same frame with its slot filled is refused.
+    assert wire.blockhash(wire.patch_blockhash(frame, bytes(32))) == bytes(32)
+    with pytest.raises(ValueError, match="signature"):
+        wire.patch_blockhash(frame[:1] + b"\1" * 64 + frame[65:], bytes(32))
+    with pytest.raises(ValueError):
+        wire.build_legacy(owner, [], bytes(31))
+
+
+@pytest.mark.parametrize("units,decimals,text", [(1, 9, "0.000000001"), (1, 6, "0.000001"), (1, 0, "1"),
+                                                 (1_500_000, 6, "1.5"), (10**9, 9, "1"), (12, 1, "1.2")])
+def test_amounts_are_stated_in_display_units_exactly(units, decimals, text):
+    assert lm.ui_amount(units, decimals) == text
+
+
+# ── Round 40 (measure): the honest-transfer pass ────────────────────────────
+
+ALICE, BOB, CAROL, DAVE = (solrpc.b58encode(bytes([n]) * 32) for n in (11, 12, 13, 14))
+ALICE_ATA, BOB_ATA, MINT = (solrpc.b58encode(bytes([n]) * 32) for n in (21, 22, 23))
+CU_PRICE = (lm.COMPUTE_BUDGET_PROGRAM, [], bytes([3]) + (50_000).to_bytes(8, "little"))
+CU_LIMIT = (lm.COMPUTE_BUDGET_PROGRAM, [], bytes([2]) + (1_000).to_bytes(4, "little"))
+
+
+def chain_row(payer, ixs, err=False, **extra):
+    """A sample row as `fetch` records it: the chain's (signed) bytes."""
+    frame = bytearray(wire.build_legacy(payer, ixs, bytes(range(1, 33))))
+    nsig = frame[0]
+    frame[1 : 1 + 64 * nsig] = b"\x07" * (64 * nsig)
+    return dict({"slot": 9, "version": "legacy", "b64": base64.b64encode(bytes(frame)).decode(), "err": err, "cu": 450,
+                 "loaded_writable": [], "loaded_readonly": []}, **extra)
+
+
+def honest_sample():
+    nonce_advance = (lm.SYSTEM_PROGRAM, [(CAROL, False, True), (lm.SYSTEM_PROGRAM, False, False), (DAVE, True, False)],
+                     (4).to_bytes(4, "little"))
+    rows = [
+        chain_row(ALICE, [CU_LIMIT, CU_PRICE, wire.system_transfer(ALICE, BOB, 5_000_000)]),         # 0 System
+        chain_row(ALICE, [wire.token_transfer_checked(ALICE_ATA, MINT, BOB_ATA, ALICE, 250, 6)]),    # 1 token
+        chain_row(CAROL, [wire.system_transfer(ALICE, BOB, 1)]),                                     # 2 someone else pays
+        chain_row(ALICE, [wire.system_transfer(ALICE, BOB, 9)]),                                     # 3 duplicate of 0
+        chain_row(ALICE, [wire.system_transfer(ALICE, DAVE, 9)], err=True),                          # 4 failed on chain
+        chain_row(ALICE, [wire.system_transfer(ALICE, DAVE, 9), wire.system_transfer(ALICE, BOB, 1)]),  # 5 two transfers
+        chain_row(DAVE, [nonce_advance, wire.system_transfer(DAVE, BOB, 3)]),                        # 6 durable nonce
+        chain_row(DAVE, [wire.system_transfer(DAVE, DAVE, 3)]),                                      # 7 self-transfer
+        chain_row(CAROL, [create_idempotent(CAROL, BOB_ATA, BOB), memo(),                            # 8 token, ATA + memo
+                          wire.token_transfer_checked(ALICE_ATA, MINT, BOB_ATA, CAROL, 40, 6)]),
+        chain_row(DAVE, [memo(), wire.system_transfer(DAVE, CAROL, 70)]),                            # 9 System + memo
+        chain_row(DAVE, [(lm.SPL_TOKEN_PROGRAM, [(ALICE_ATA, False, True), (BOB_ATA, False, True), (DAVE, True, False)],
+                          bytes([3]) + (5).to_bytes(8, "little"))]),                                 # 10 Token Transfer
+        chain_row(DAVE, [create_idempotent(BOB, BOB_ATA, BOB),                                       # 11 ATA paid by another
+                         wire.token_transfer_checked(ALICE_ATA, MINT, BOB_ATA, DAVE, 40, 6)]),
+        chain_row(DAVE, [wire.system_transfer(DAVE, CAROL, 70), (JUPITER, [(DAVE, True, True)], b"\x01")]),  # 12 not simple
+    ]
+    return [dict(r, row=i) for i, r in enumerate(rows)]
+
+
+def create_idempotent(payer, ata, owner):
+    return (lm.ATA_PROGRAM, [(payer, True, True), (ata, False, True), (owner, False, False), (MINT, False, False),
+                             (lm.SYSTEM_PROGRAM, False, False), (lm.SPL_TOKEN_PROGRAM, False, False)], b"\x01")
+
+
+def memo():
+    return (lm.MEMO_PROGRAMS[0], [], b"the original sender's words")
+
+
+def test_only_executed_simple_transfers_by_their_own_fee_payer_are_taken():
+    picked, stats = lm.honest_candidates(honest_sample(), 10)
+    assert [(t["row"], t["kind"]) for t in picked] == [
+        (0, "System Transfer"), (1, "SPL Token TransferChecked"), (9, "System Transfer"), (8, "SPL Token TransferChecked")]
+    assert stats["set aside"] == {"sender is not the fee payer": 1, "duplicate sender, recipient and asset": 1,
+                                  "durable nonce": 1, "self-transfer": 1,
+                                  "SPL Token Transfer (no mint recorded for its source)": 1, "ATA created by another payer": 1}
+    assert stats["by kind"] == {"System Transfer": 2, "SPL Token TransferChecked": 2}
+    assert picked[0]["budget_source"] == "2 Compute Budget" and len(picked[0]["layout"]) == 3
+    assert picked[3]["budget_source"] == "1 ATA CreateIdempotent"
+    assert picked[2]["budget_source"] == "none"  # the memo is dropped
+    assert [t["row"] for t in lm.honest_candidates(honest_sample(), 1)[0]] == [0]
+
+
+def test_an_idempotent_ata_create_is_copied_and_declared_and_a_memo_is_dropped():
+    picked, _ = lm.honest_candidates(honest_sample(), 10)
+    token = next(t for t in picked if t["row"] == 8)
+    frame, body = lm.honest_request(token, bytes(32))
+    msg = wire.message(frame)
+    keys = wire.account_keys(msg)
+    assert [keys[ix.program_index] for ix in msg.instructions] == [lm.ATA_PROGRAM, lm.SPL_TOKEN_PROGRAM]
+    assert body["transaction_instructions"] == [{
+        "program_id": lm.ATA_PROGRAM, "instruction_discriminator": "01",
+        "account_addresses": [CAROL, BOB_ATA, BOB, MINT, lm.SYSTEM_PROGRAM, lm.SPL_TOKEN_PROGRAM], "cpi_targets": []}]
+    assert wire.privileges(msg, keys.index(BOB_ATA)) == (False, True) and wire.privileges(msg, 0) == (True, True)
+    system = next(t for t in picked if t["row"] == 9)
+    frame, body = lm.honest_request(system, bytes(32))
+    assert [wire.account_keys(wire.message(frame))[ix.program_index] for ix in wire.message(frame).instructions] == [lm.SYSTEM_PROGRAM]
+    assert body["transaction_instructions"] == []
+
+
+def test_the_honest_request_is_a_new_unsigned_one_lamport_transfer_with_everything_stated():
+    (sys_t, tok_t), _ = lm.honest_candidates(honest_sample(), 2)
+    fresh = bytes(range(100, 132))
+    frame, body = lm.honest_request(sys_t, fresh)
+    msg = wire.message(frame)
+    assert frame[1:65] == bytes(64) and msg.blockhash == fresh and msg.version == "legacy"
+    keys = wire.account_keys(msg)
+    assert keys[0] == ALICE  # the sender pays its own fee
+    assert [(keys[ix.program_index], ix.data) for ix in msg.instructions] == [
+        (lm.COMPUTE_BUDGET_PROGRAM, CU_LIMIT[2]), (lm.COMPUTE_BUDGET_PROGRAM, CU_PRICE[2]),
+        (lm.SYSTEM_PROGRAM, (2).to_bytes(4, "little") + (1).to_bytes(8, "little"))]
+    assert bytes(body["signed_transaction"]) == frame
+    assert body["proposed_intent"]["intent_type"] == "transfer"
+    assert body["proposed_intent"]["extracted_parameters"] == {"amount": "0.000000001", "destination": BOB, "input_token": "SOL"}
+    assert body["program_id"] == lm.SYSTEM_PROGRAM and body["account_addresses"] == [ALICE, BOB]
+    assert body["instruction_discriminator"] == "0200000001000000" and body["wallet_profile"] == "Gaming"
+    assert [s["program_id"] for s in body["transaction_instructions"]] == [lm.COMPUTE_BUDGET_PROGRAM] * 2
+    # Exactly the fields VerificationInput accepts (it refuses unknown ones).
+    assert set(body) <= {"proposed_intent", "program_id", "protocol_version", "instruction_discriminator",
+                         "account_addresses", "instruction_data", "cpi_targets", "wallet_profile", "behavior_evidence",
+                         "compute_units", "account_writes", "cpi_hops", "signed_transaction", "transaction_instructions",
+                         "cpi_trace", "uses_versioned_transaction", "lookup_table_count", "real_account_metas", "state_diff"}
+    frame, body = lm.honest_request(tok_t, fresh)
+    msg = wire.message(frame)
+    keys = wire.account_keys(msg)
+    (ix,) = msg.instructions
+    assert keys[0] == ALICE and [keys[a] for a in ix.accounts] == [ALICE_ATA, MINT, BOB_ATA, ALICE]
+    assert ix.data == bytes([12]) + (1).to_bytes(8, "little") + bytes([6])
+    assert body["proposed_intent"]["extracted_parameters"] == {"amount": "0.000001", "destination": BOB_ATA, "input_token": MINT}
+    # Never more than the original.
+    capped = wire.message(lm.honest_request(dict(tok_t, original_amount=1), fresh, amount=5)[0])
+    assert capped.instructions[0].data[1:9] == (1).to_bytes(8, "little")
+
+
+def test_the_honest_pass_runs_first_and_reports_every_refusal():
+    post_fn, get_fn, calls = fake_core([fixture("executable_approved"), fixture("blocked"), fixture("analysis_only")])
+    rep = lm.replay(selected(1), honest_sample(), "http://core", "k", pace=0, l8=0, honest=2,
+                    blockhash_fn=lambda: bytes(range(100, 132)), sleep=lambda s: None, post_fn=post_fn, get_fn=get_fn)
+    h = rep["honest"]
+    assert h["constructed"] == 2 and h["decisions"] == {"executable_approved": 1, "blocked": 1}
+    assert h["decisions_by_kind"] == {"System Transfer": {"executable_approved": 1}, "SPL Token TransferChecked": {"blocked": 1}}
+    bodies = [b for u, b in calls if u.endswith("/verify")]
+    # honest first, then the replay; nothing goes anywhere but the local Core
+    assert [(b.get("proposed_intent") or {}).get("extracted_parameters") is not None for b in bodies] == [True, True, False]
+    assert all(u.startswith("http://core/") for u, _ in calls)
+    assert all(not any(bytes(b["signed_transaction"])[1:65]) for b in bodies[:2])
+    # the replay's numbers are the replay's alone
+    assert rep["measured"] == 1 and rep["decisions"] == {"analysis_only": 1}
+    md = lm.markdown(rep)
+    assert "## Honest transfers: what an agent's own transaction gets" in md
+    assert "constructed and verified: **2**" in md
+    line = next(l for l in md.splitlines() if l.startswith("| 1 | SPL Token TransferChecked"))
+    assert "`blocked`" in line and "InstructionError{0, Custom(1)}" in line
+    assert md.index("## Honest transfers") < md.index("## Decisions (the replay")
+
+
+def test_without_a_fresh_blockhash_nothing_is_built():
+    post_fn, get_fn, calls = fake_core([fixture("blocked")])
+    rep = lm.replay(selected(1), honest_sample(), "http://core", "k", pace=0, l8=0, honest=2, blockhash_fn=None,
+                    sleep=lambda s: None, post_fn=post_fn, get_fn=get_fn)
+    assert rep["honest"]["skipped"] == {"no RPC for a fresh blockhash": 2} and rep["honest"]["constructed"] == 0
+    assert len(calls) == 1
+
+
+# ── Round 40 (measure): signer debits, set beside the fee and the chain ────
+
+
+def test_a_signer_debit_row_carries_the_fee_and_what_the_chain_did():
+    tip = wire.system_transfer(ALICE, DAVE, 10_000)
+    row = chain_row(ALICE, [CU_LIMIT, CU_PRICE, (JUPITER, [(ALICE, True, True), (BOB, False, True)], b"\xe5"), tip],
+                    fee=5_050, pre_balances=[1_000_000, 0, 0, 0, 0, 0], post_balances=[984_950, 0, 10_000, 0, 0, 0])
+    v = fixture("blocked")
+    for l in v["layers"]:
+        if l["layer"].startswith("L4"):
+            l["status"], l["reason"] = "failed", ("State diff contradicts the manifest across 2 account(s): UndeclaredSignerLamportDebit: "
+                                                  "the transaction's signers lose 10000 lamports beyond the fee, what stayed")
+    v["scope"]["compute_budget"] = {"compute_unit_limit": 1000, "effective_compute_unit_limit": 1000,
+                                    "compute_unit_price_micro_lamports": 50_000, "priority_fee_lamports": 50,
+                                    "source": "compute_budget_instructions"}
+    post_fn, get_fn, _ = fake_core([v])
+    sel = selected(1)
+    sel[0]["program_id"] = JUPITER
+    rep = lm.replay(sel, [dict(row, row=0)], "http://core", "k", pace=0, l8=0, sleep=lambda s: None, post_fn=post_fn, get_fn=get_fn)
+    f = rep["rows"][0]["fee_breakdown"]
+    assert f["graphite_beyond_fee"] == 10_000 and f["signatures"] == 1 and f["precompile_signatures"] == 0
+    assert (f["cu_price_micro_lamports"], f["cu_limit"], f["priority_fee"]) == (50_000, 1000, 50)
+    assert f["expected_fee"] == 5_050 == f["chain_fee"]
+    assert f["signer_deltas"] == [{"signer": ALICE, "delta": -15_050, "beyond_fee": 10_000}]
+    assert f"System Transfer 10000 lamports {ALICE[:8]}→{DAVE[:8]}" in f["instructions"]
+    md = lm.markdown(rep)
+    assert "### Signer debits beyond the fee" in md
+    line = next(l for l in md.splitlines() if l.startswith("| 0 |") and "µl" in l)
+    assert "| 10000 | 1 (+0) | 50000 µl × 1000 → 50 | 5050 | 5050 |" in line and "(10000)" in line
+
+
+def test_a_row_the_sample_recorded_without_meta_says_so():
+    row = chain_row(ALICE, [wire.system_transfer(ALICE, BOB, 3)])
+    f = lm.fee_breakdown(row, {"l4_reason_full": "1 lamports left this signer's wallet", "compute_budget": {"priority_fee_lamports": 0}})
+    assert f["graphite_beyond_fee"] == 1 and f["chain_fee"] is None and "signer_deltas" not in f
+    assert f["expected_fee"] == 5000
+
+
+def test_the_mock_charges_agaves_fee_every_signature_and_the_priority_fee():
+    # Round 40 (measure): the loopback mock the Core is dry-run against now
+    # reports `fee` as Agave's simulate does (`fee_details.total_fee()`), with
+    # the payer's post-state after it: 5,000 per signature plus price × limit.
+    import mock_rpc
+
+    two_signers = (lm.SYSTEM_PROGRAM, [(ALICE, True, True), (CAROL, True, True)], (2).to_bytes(4, "little") + (7).to_bytes(8, "little"))
+    frame = wire.build_legacy(ALICE, [CU_LIMIT, CU_PRICE, two_signers], bytes(32))
+    keys, delta, fee, _ = mock_rpc.effects(frame)
+    assert fee == 2 * 5000 + 50 and delta[keys.index(ALICE)] == -(fee + 7) and delta[keys.index(CAROL)] == 7
+    # no limit set: 200,000 per non-Compute-Budget instruction, rounded up
+    frame = wire.build_legacy(ALICE, [CU_PRICE, wire.system_transfer(ALICE, BOB, 1)], bytes(32))
+    assert mock_rpc.effects(frame)[2] == 5000 + 10_000
+    assert mock_rpc.effects(wire.build_legacy(ALICE, [wire.system_transfer(ALICE, BOB, 1)], bytes(32)))[2] == 5000
+
+
+def test_a_token_transfer_is_taken_when_the_block_names_its_mint():
+    # SPL Token `Transfer` names no mint; with the block's token balances the
+    # new transaction states it (and is a TransferChecked, decimals included).
+    row = honest_sample()[10]
+    msg = wire.message(base64.b64decode(row["b64"]))
+    source_index = wire.account_keys(msg).index(ALICE_ATA)
+    t, why = lm.simple_transfer(dict(row, pre_token_balances=[{"account_index": source_index, "mint": MINT, "decimals": 6}]))
+    assert why is None and t["original_kind"] == "SPL Token Transfer" and (t["sender"], t["recipient"], t["mint"]) == (DAVE, BOB_ATA, MINT)
+    frame, body = lm.honest_request(t, bytes(32))
+    (ix,) = wire.message(frame).instructions
+    assert ix.data == bytes([12]) + (1).to_bytes(8, "little") + bytes([6])
+    assert body["proposed_intent"]["extracted_parameters"] == {"amount": "0.000001", "destination": BOB_ATA, "input_token": MINT}
+    # A balance for another account does not name this one's mint.
+    assert lm.simple_transfer(dict(row, pre_token_balances=[{"account_index": source_index + 1, "mint": MINT, "decimals": 6}]))[1] == \
+        "SPL Token Transfer (no mint recorded for its source)"
+
+
+def test_fetch_records_the_chains_fee_and_balances_beside_each_row():
+    block = {"transactions": [
+        {"transaction": ["AAA=", "base64"], "meta": {"fee": 5000, "preBalances": [10, 0], "postBalances": [4, 1]}},
+        {"transaction": {"json": 1}},
+        {"transaction": ["BBB=", "base64"], "meta": {"fee": 10000, "preBalances": [1], "postBalances": [1],
+                                                     "preTokenBalances": [{"accountIndex": 2, "mint": MINT, "owner": BOB,
+                                                                           "uiTokenAmount": {"decimals": 6, "amount": "9"}}]}},
+    ]}
+    rows = [{"b64": "AAA="}, {"b64": "BBB="}]
+    out = lm.with_chain_meta(rows, block)
+    assert [(r["fee"], r["pre_balances"], r["post_balances"]) for r in out] == [(5000, [10, 0], [4, 1]), (10000, [1], [1])]
+    assert out[1]["pre_token_balances"] == [{"account_index": 2, "mint": MINT, "decimals": 6}] and out[0]["pre_token_balances"] == []
+    # Not paired: nothing is attributed.
+    assert lm.with_chain_meta([{"b64": "AAA="}], block) == [{"b64": "AAA="}]
+    assert lm.with_chain_meta([{"b64": "XXX="}, {"b64": "BBB="}], block) == [{"b64": "XXX="}, {"b64": "BBB="}]
