@@ -1360,8 +1360,13 @@ mod tests {
         let folded = orch.fold_verifier(LayerId::L2InstructionVerification, base, &ctx());
         assert_eq!(folded.status, LayerStatus::Failed);
         assert!(!folded.passed);
+        // Round 40: a crash is reported as `panicked`, or as `timed-out`
+        // when unwinding (and the panic hook's backtrace, with
+        // RUST_BACKTRACE set, on a loaded machine) outlasts the 250 ms
+        // deadline. Both refuse; the label is diagnostic, the refusal and the
+        // plugin's name are what this test holds.
         assert!(
-            folded.reason.contains("panic:panicked"),
+            folded.reason.contains("panic:panicked") || folded.reason.contains("panic:timed-out"),
             "{}",
             folded.reason
         );
@@ -1385,7 +1390,10 @@ mod tests {
         assert!(outcome.blocked);
         assert_eq!(outcome.findings.len(), 1);
         assert!(
-            outcome.findings[0].pattern.ends_with(":panicked"),
+            outcome.findings[0].pattern.ends_with("panic-risk:panicked")
+                || outcome.findings[0]
+                    .pattern
+                    .ends_with("panic-risk:timed-out"),
             "{}",
             outcome.findings[0].pattern
         );
@@ -1413,7 +1421,7 @@ mod tests {
         let runs = orch3.simulation_verdicts(&ctx());
         assert_eq!(runs.len(), 1);
         assert!(
-            matches!(&runs[0].verdict, PluginVerdict::Block { pattern, .. } if pattern == "panic-sim:panicked"),
+            matches!(&runs[0].verdict, PluginVerdict::Block { pattern, .. } if pattern == "panic-sim:panicked" || pattern == "panic-sim:timed-out"),
             "{:?}",
             runs[0].verdict
         );
