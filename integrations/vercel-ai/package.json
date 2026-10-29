@@ -12,7 +12,7 @@
     "test": "tsx --test *.test.ts"
   },
   "dependencies": {
-    "ai": "^7.0.148",
+    "ai": "^7.0.154",
     "zod": "^4.6.7"
   },
   "devDependencies": {
