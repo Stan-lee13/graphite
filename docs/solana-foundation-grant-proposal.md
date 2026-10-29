@@ -116,9 +116,12 @@ observe, and the guard refuses to sign over any such gap the operator has not ac
   the finding that changed it ([`round24-the-intent-is-the-class-2026-10-03.md`](round24-the-intent-is-the-class-2026-10-03.md)).
   The samples are fetched by slot list, with their SHA-256 recorded, so anyone can re-measure
   them ([`../tools/mainnet-sample/SAMPLES.md`](../tools/mainnet-sample/SAMPLES.md)).
-  Live replays on a real RPC approve nothing yet: on the Round 35 head, 0 of 200 replayed
-  transactions were approved in each of two runs, most failing simulation against later state,
-  so the approval path on live traffic is unmeasured.
+  On a real mainnet RPC (Round 40, 2026-10-29, after `graphite evidence import-census`), 27 of
+  28 new, never-signed honest transfers built from accounts that had just transferred were
+  approved for signing (21/21 System, 6/7 SPL Token; the refusal would have failed on chain)
+  ([report](evidence/live-mainnet/run-40839253280.md)). Replays of other people's transactions
+  mostly fail simulation against later state, so they do not measure the approval path; no
+  swap was measured.
 - **Real exploits.** 35 mainnet exploit transactions from the public SolPhishHunter dataset
   (arXiv:2505.04094), labelled outside Graphite, are all refused.
 

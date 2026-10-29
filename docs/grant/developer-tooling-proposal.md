@@ -3,8 +3,8 @@
 Solana Foundation, Developer Tooling. Draft of 2026-10-26, prepared from the repository at the head
 of PR #55. Every figure below is taken from a file in the repository, named next to it, and can
 be reproduced from that file or command (Constitution P16). Items marked **[OWNER]** are yours to
-fill or confirm; items marked **[LIVE]** are filled from the live-mainnet measurement run
-(`.github/workflows/live-mainnet.yml`) once it finishes.
+fill or confirm. Live figures come from one run of `.github/workflows/live-mainnet.yml`, whose report
+is committed under `docs/evidence/live-mainnet/`; a live run measures that moment's chain.
 
 ---
 
@@ -255,8 +255,16 @@ These come from `docs/CURRENT.md` and `docs/audit/RESIDUAL_RISK_AND_OWNER_GATES.
   - Most mainnet transactions touch at least one unmanifested program. There Graphite refuses
     rather than approves.
   - Swaps through venues it cannot yet decode are analysis-only, never executable.
-  - **[LIVE: the measured approval and refusal rates on recent mainnet traffic, from the run on
-    PR #55.]**
+  - **Measured live (2026-10-29, PR #55 run 40839253280; report committed as
+    `docs/evidence/live-mainnet/run-40839253280.md`):** after `graphite evidence import-census`, a
+    Core with a mainnet RPC verified 28 new, never-signed honest transfers built from accounts that
+    had just transferred on mainnet (1 lamport or 1 base unit each): **27 were
+    `executable_approved`** (21 of 21 System, 6 of 7 SPL Token), and the one refusal was a transfer
+    the simulator showed would fail on chain. In the same run, 200 recent mainnet transactions
+    replayed through `/verify` gave 0 server errors and p50 / p99 latency of 208 / 430 ms; none of
+    those replays was executable (most fail simulation against later state, and 155 call programs
+    the census does not cover), which is why the replay is not an approval rate. No swap was
+    measured: building an honest one needs a route the runner would have to invent.
 - **Real exploits.** 35 mainnet exploit transactions from the public SolPhishHunter dataset
   (arXiv:2505.04094), labelled outside Graphite, are all refused.
 - **Real traffic.**

@@ -796,7 +796,11 @@ transaction under the stated threat model, and no external party has yet tried.
   state diff, so the committed data cannot show the rate; the live mainnet workflow
   can. It ran on the Round 35 head (runs 39950918074, 39950924519): 200 of 200
   replays blocked in each, none executable, so the rate of honest flows refused is
-  not separable from that sample; it has not run on Round 36–38 code. Opt-out:
+  not separable from that sample. Round 40 (run 40839253280, census imported, report in
+  `docs/evidence/live-mainnet/run-40839253280.md`): 27 of 28 constructed honest transfers
+  were `executable_approved`; of the replayed transactions, the signer-debit refusals
+  printed with the chain's fee are tips or transfers beside instructions whose manifest
+  declares nothing (Graphite's fee equals the chain's in every row). Opt-out:
   `GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS=1` (value classes only).
 - **What binds an amount.** L4 binds a System `Transfer`/`CreateAccount`'s stated
   lamports (Round 34, R33-15). The request's own amount, recipient and asset are

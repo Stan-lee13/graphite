@@ -108,8 +108,10 @@ An independent security audit is not in this budget; it is pursued separately.
 > - **Real exploits:** all 35 labelled mainnet exploit transactions from the public SolPhishHunter
 >   dataset are refused.
 > - **Coverage:** 137 manifests covering 3,518 instructions.
-> - **Live approval rate:** **[LIVE: the approval and refusal rates on recent mainnet traffic from
->   the measurement run.]**
+> - **Live, on mainnet (2026-10-29):** 27 of 28 honest transfers built from live mainnet accounts
+>   were approved for signing (21/21 System, 6/7 SPL Token); the one refusal was a transfer that
+>   would have failed on chain. 200 replayed mainnet transactions: 0 server errors, p50 latency
+>   208 ms. Report: `docs/evidence/live-mainnet/run-40839253280.md` in the repository.
 >
 > Adoption is what Milestones 1 and 3 and the adoption metrics pay for.
 
