@@ -40,9 +40,9 @@ with its options, reason and Constitution principles, in
 | R39-SUPPLY-CHAIN-11 | 23 instructions no committed IDL has removed; the 5 Squads ones kept (the committed IDL has them) | done |
 | F-005 | 7 of the 9 medium rewrites promoted with recorded evidence; Stake Pool `WithdrawSol*` stay medium | done |
 | Fresh-instance confidence | `graphite evidence import-census --cluster mainnet-beta` (D-6) | done |
-| R39-CB-8 | `GRAPHITE_TRUSTED_PROXIES`, refusing to start without it when proxy trust is on | in progress |
-| R39-CB-13 | RPC and witness clients ignore environment proxies | in progress |
-| R39-CORE-IDENTITY-7 | a first registry manifest capped at `HeuristicInferred` | in progress |
+| R39-CB-8 | `GRAPHITE_TRUSTED_PROXIES`, refusing to start without it when proxy trust is on | done |
+| R39-CB-13 | RPC and witness clients ignore environment proxies | done |
+| R39-CORE-IDENTITY-7 | a first registry manifest capped at `HeuristicInferred` | done |
 | Checklist 4, 5 | Round 32 refusal defaults kept; R-M9 kept with its reasoning; upgrade quarantine stays opt-in; no automatic self-heal quarantine | decided, no change |
 
 ## 3. Accepted limitations (tested, fail-closed or bounded)
@@ -53,7 +53,7 @@ with its options, reason and Constitution principles, in
 | Relayed / co-signed swaps | refused by L4 | safer than inferring whose value it is | `round38_sibling_skims` |
 | B-5 in-transaction price manipulation | not modelled | needs a pricing oracle Graphite does not have | CURRENT |
 | No cumulative value cap across calls to an unmanifested program | per-transaction only | stateful policy is outside the verifier | `risk_engine.rs`, CURRENT |
-| No per-plugin timeout | a slow plugin delays the verdict; it never lifts one | delay, not bypass | campaign 12 |
+| Plugin deadline | a plugin that overruns its 250 ms deadline is treated as crashed (a blocking family refuses, a note family notes); at most 16 overrunning runs are left behind before the orchestrator refuses outright | a thread cannot be killed safely; the bound keeps abandoned work finite | campaign 12, `plugin_orchestrator.rs` |
 | R39-CB-5 reader memory | 59 MiB at 1,000,000 adopted unkeyed records | adopt a key early or prune | ignored measurement test |
 | R39-CB-9 hot backup | may include a record whose write later failed | restore over-records, never under-records | `backup.sh` |
 | R39-CB-10 refused-connection drain | ≤ 1 MiB, ≤ 1 s | bounded | `server.rs` |
@@ -72,7 +72,7 @@ with its options, reason and Constitution principles, in
 
 | Claim | Why not shown | How to obtain |
 |---|---|---|
-| Real-traffic approval and false-refusal rates | Round 40's first live run (PR #55, run 40280048548, census imported) replayed 200 recent mainnet transactions: 0 executable, 2 analysis-only, 198 refused, 0 server errors; replays of other people's transactions mostly fail simulation against later state, so this does not measure the approval path. A constructed-honest-transaction pass is being added | `.github/workflows/live-mainnet.yml` |
+| Real-traffic approval and false-refusal rates | **measured for simple transfers in Round 40**: run 40839253280 (PR #55, census imported) built 28 honest 1-lamport / 1-base-unit transfers from real senders and gave 27 `executable_approved`; the one `blocked` was a transfer the simulator showed would fail on chain. The replay of 200 other transactions in the same run had 0 server errors, p50/p99 208/430 ms. Not measured: any honest swap or other protocol call | `.github/workflows/live-mainnet.yml`; [`../evidence/live-mainnet/run-40839253280.md`](../evidence/live-mainnet/run-40839253280.md) |
 | Mutation scores (F-015) | shards re-sized in Round 40 to fit the step (≤ 20 mutants each); not yet dispatched (~210–290 runner-hours) | Actions → Assurance → Run workflow; then checklist item 7 |
 | Execution-level differential against a bank (R39-CORE-IDENTITY-6) | not built; the runtime oracle covers the decoder and sanitizer only | a harness replaying artifacts through a bank |
 | Coverage-guided runtime side of the oracle | the generator is not coverage-guided there | cargo-fuzz harness linking the oracle |
@@ -87,4 +87,4 @@ R39-SUPPLY-CHAIN-13 (two on-chain IDLs' `address` field differs from the program
 and the P3 observations of `PRODUCTION_READINESS_FINDINGS.md` §2.1 remain recorded. Since Round 40:
 R39-SUPPLY-CHAIN-6 (actionlint pinned and run), D2-8 (per-binary floors) and R39-SUPPLY-CHAIN-12
 (label fixes) are done; R39-CB-14 (registry signer key permissions) and R39-CB-15 (escaped terminal
-output) are in progress. None lets a refusal become executable.
+output) are done. None lets a refusal become executable.

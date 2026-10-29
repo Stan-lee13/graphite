@@ -207,3 +207,20 @@ Integration fixes in the main session: the census-import and swap-rewrite tests 
 and two plugin-crash tests that accept `timed-out` as well as `panicked` for a crash slower than
 the deadline (both refuse). Live evidence: [`../evidence/live-mainnet/run-40839253280.md`](../evidence/live-mainnet/run-40839253280.md)
 — 27 of 28 constructed honest transfers `executable_approved` after the census import.
+
+### 4.1 Verification at the end of Round 40 (2026-10-29)
+
+| Command | Result |
+|---|---|
+| `cargo test -j 4 --locked --no-fail-fast` (default leg) | 2,607 passed, 0 failed, 15 ignored (all listed), 189 targets; 48 binaries at or above their per-binary floors |
+| `cargo test -j 4 --locked --no-default-features --features cli --no-fail-fast` | 2,011 passed, 0 failed, 6 ignored; 32 binaries at or above their floors |
+| `cargo test -j 4 --locked --no-default-features --lib` | 533 passed, 0 failed, 4 ignored |
+| `cargo fmt --check`, `cargo clippy -D warnings` (all three legs) | clean |
+| `cargo audit` on `graphite-core` and both oracles | no vulnerability; only the allowed bincode-unmaintained warning in the oracles |
+| agent guard / dashboard (`npm test`) | 348 / 51 passed |
+| `pytest`: AI layer, mainnet-sample, live-measure | 51 / 7 / 83 passed |
+| `.github/scripts/ci-scripts.test.sh` | 137 passed |
+| `docs/audit/build_inventory.py` | every tracked file covered by a workstream |
+
+Rust test floors in `ci.yml` raised to these counts: default 2,464 → 2,607, lib 530 → 533, cli
+1,980 → 2,011.

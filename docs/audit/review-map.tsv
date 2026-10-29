@@ -101,3 +101,6 @@ docs/ops/*	main session + supply-chain + core-boundary	read-fully	none	runbooks 
 LICENSE	main session	read-fully	none	no finding
 assets/*	main session	machine-validated	none	image headers checked
 graphite-core/build_manifests.py	supply-chain	read-in-part	none	manifest generator; outputs validated by validate_corpora.py
+# ── Round 40: files the Round 40 workstreams added ──
+graphite-core/src/census_import.rs	r40-bootstrap	read-fully	none	D-6: explicit census import; tests round40_census_import, round40_import_census_cli, round40_cluster_guard
+docs/audit-r40/*	r40-manifests	machine-validated	none	declaration rewrite records; checked by validate_corpora.py
