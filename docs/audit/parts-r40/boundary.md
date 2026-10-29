@@ -6,7 +6,7 @@ by the technical lead, each implemented with tests, a deliberate break and its r
 (R39-CORE-IDENTITY-7), `core-decision.md` (P3 "No per-plugin timeout").
 
 Commits (oldest first): `6229edb` CB-8, `e46f10a` CB-13, `3e4d968` CB-14, `f1c1f80` CB-15,
-`0afbe72` plugin deadline, `7476682` IDENTITY-7, then this report and the merge of the main branch.
+`0afbe72` plugin deadline, `7476682` IDENTITY-7, then this report (`a2e41e3`), the merges of the main branch and `abb840c` (census import, floors).
 
 ## 1. Decisions implemented, and why
 
@@ -321,6 +321,13 @@ CARGO_PROFILE_TEST_DEBUG=0 -j 2`, in `graphite-core/`:
   for the five new suites (the two server/rpc-gated ones named "not in this leg" in cli), the
   library's floors raised to the merged counts (742 / 600 / 533) and
   `round39_decision_campaigns` to 23.
+- After merging the branch again (`efafd80`, then the docs-only `050adbb`; no conflicts, no new
+  `Behavior` literal): default leg 2,606 passed, 1 failed, 15 ignored, 188 binaries — the failure
+  `round10_attribution::every_key_is_exact_across_rotation_and_concurrency` (reopening a trail it
+  had just dropped: "held by another writer"); it touches no code changed here and passed 3 of 3
+  reruns (15/15 each) — an intermittent lock race, recorded, not fixed; cli leg 2,011 passed, 0
+  failed, 6 ignored; lib leg 533 passed; both clippy legs clean (0 diagnostics); fmt clean.
+  `round39_decision_campaigns` now has 24 tests (its floor stays 23, a minimum).
 
 New tests: 8 lib unit tests, 9 integration tests (`round40_trusted_proxies` 1, `round40_rpc_no_proxy`
 1, `round40_signer_key_mode` 2, `round40_terminal_escapes` 2, `round40_first_manifest_cap` 2,
