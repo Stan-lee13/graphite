@@ -16,6 +16,13 @@ Round 40 (2026-10-26) — every open Round 39 decision taken by the technical le
   - The marketplace `update_offer` configure grant removed (it could never pass; grants 27 → 26).
   - F-005: 7 of the 9 medium-confidence rewrites promoted to high, each with a recorded evidence record (the committed Marinade IDL; `solana-program/stake-pool` and `raydium-io/raydium-amm` at pinned commits) that `validate_corpora.py` re-checks.
   - Label fixes in the ATA, Kamino and Solend manifests.
+- **Behaviour (stricter), boundary:**
+  - `GRAPHITE_TRUST_PROXY` ≥ 1 now requires `GRAPHITE_TRUSTED_PROXIES` (addresses / CIDR ranges): `X-Forwarded-For` is believed only from a listed peer; any other peer is keyed by its own address. **Existing proxied deployments refuse to start until it is set**; a malformed entry, `/0` or host bits set refuses to start. The per-peer connection cap behind a proxy exempts only a listed proxy. The production compose pins Caddy to `10.73.31.2` and trusts only it (R39-CB-8).
+  - The RPC and witness clients ignore `HTTP(S)_PROXY`/`ALL_PROXY` (R39-CB-13); RPC egress must be direct.
+  - `registry submit` refuses a signer key file group or others can read or write (R39-CB-14).
+  - CLI output escapes C0/C1, DEL, ESC, BIDI and zero-width characters (`explain`, `verify`, `execution`, `audit`, `protocol`) (R39-CB-15).
+  - Each plugin run has a 250 ms deadline (`PLUGIN_DEADLINE`); a run past it is treated as a crash (a blocking family refuses, `<name>:timed-out`); at most 16 abandoned runs per gate, beyond which a plugin is not started and the run refuses (`<name>:not-run`).
+  - A program's first registry manifest (or an upgrade with no earlier fixture in force) earns HeuristicInferred at most until a validated upgrade or BattleTested-level measured volume lifts it (`semantic_graph_store::compute_trust_tier_for`; R39-CORE-IDENTITY-7). Operator-asserted signatures or attestations do not lift it.
 - **Validation:** `validate_corpora.py` treats an instruction in no committed IDL as an error, requires the debit/credit words in a rewritten swap declaration, and accepts a promotion only with a checked evidence record.
 - **Crate:** `publish = false`.
 - **CI:** per-binary Rust test floors (`.github/test-floors/`); a required `agent-guard-windows` job; actionlint 1.7.11 pinned and run; mutation shards of at most 20 mutants; `test-count.sh` reads cargo's coloured output.

@@ -287,11 +287,20 @@ certification. Findings, evidence and owner gates: `docs/audit/PRODUCTION_READIN
   after signing and refuses a state directory others can write; `healthcheck --strict` follows no
   redirect; logging cannot crash the server; transport refusals are counted; `protocol diff` shows
   every field the runtime judges by; the ruleset drift check compares the live rulesets in full.
-- **Open, owner:** the live rulesets and `release` environment (R39-SUPPLY-CHAIN-1);
-  `GRAPHITE_TRUST_PROXY` trusts `X-Forwarded-For` from any peer, so a peer that reaches the Core
-  without passing the proxy (in the production compose, the `ai` service) picks its own rate-limit
-  bucket — keep the Core on a network only the proxy reaches (R39-CB-8); the RPC client honours
-  `HTTP(S)_PROXY` (R39-CB-13).
+- **Open, owner:** the live rulesets and `release` environment (R39-SUPPLY-CHAIN-1).
+- **Fixed in Round 40:** `X-Forwarded-For` is believed only from `GRAPHITE_TRUSTED_PROXIES` (a hop
+  count without it refuses to start; the production compose trusts only Caddy's fixed address), and
+  the RPC/witness client ignores `HTTP(S)_PROXY`/`ALL_PROXY` (RPC egress is direct) (R39-CB-8,
+  R39-CB-13). `registry submit` refuses a group/other-accessible signer key file (R39-CB-14); CLI
+  output escapes control and BIDI characters (R39-CB-15); each plugin run has a 250 ms deadline,
+  and a run past it refuses like a crash. A version whose replay validated nothing independent — a
+  program's first registry manifest, or an upgrade with no earlier fixture in force — earns
+  HeuristicInferred at most, in the record, the manifest in force and the graph; an upgrade the gate
+  replays against fixtures an earlier version pinned, or measured volume at the BattleTested
+  threshold, lifts it, and operator-asserted signatures or attestations do not
+  (R39-CORE-IDENTITY-7). Remaining: a compromised proxy can still choose rate-limit buckets; the
+  plugin deadline is per plugin, not per request; registry states written before Round 40 keep
+  uncapped first manifests.
 
 ## The Round 33 Deep Audit, Remediated (2026-10-23; Round 34)
 

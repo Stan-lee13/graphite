@@ -856,9 +856,10 @@ transaction under the stated threat model, and no external party has yet tried.
   executable in either SDK (R39-CLIENTS-1). The agent guard refuses to start
   when its state file's directory is writable by other users (R39-CLIENTS-6;
   on Windows only file kinds are checked). `graphite audit verify` of a directory
-  holding no trail exits 3, not 2 (R39-CB-6). A first manifest is checked only
-  against fixtures recorded under itself (R39-CORE-IDENTITY-7, owner decision).
-  No plugin has its own timeout: a slow one delays the verdict, never lifts it.
+  holding no trail exits 3, not 2 (R39-CB-6). A first registry manifest is
+  capped at HeuristicInferred until a validated upgrade or measured volume lifts
+  it (R39-CORE-IDENTITY-7, Round 40). Each plugin run has a 250 ms deadline; a
+  run past it refuses as a crash does (Round 40).
 - **Manifest account counts (K-7).** 75 instructions whose account count differs
   from their on-chain IDL (65 Orca instructions without a trailing
   `whirlpool_program`, 10 Kamino admin instructions without
@@ -930,7 +931,7 @@ transaction under the stated threat model, and no external party has yet tried.
 | Manifests below the decode bar | Open: 13 records measure a decode rate under 90% after Round 29 recomputed every rate against the loaded manifests (Bubblegum, Light System Program, Coinflow, Pump Fees, Account Compression, Doorcash, Main, Merkle Distributor, Ocr2, Oridion, Rush, Timelock, Zeta). Metaplex Token Metadata reached 100% in Round 29. Each is recorded in `battle_tested_evidence.json` with the unnamed leading bytes. Round 30 re-counted every manifest from the files (137, 137 unique program ids, 3,541 instructions, 46 unclassed) and showed an undescribed instruction of each of the 13 refused under all four built-in profiles even with evidence seeded (`tests/r30_low_decode_manifests.rs`); no manifest data was invented | Engineering |
 | Branch protection on `main` (required CI, no force-push) | **STOP-SHIP.** Not as committed: the live `Main-review` ruleset requires no approval and 26 actors bypass it (row above); the committed rulesets are ready to apply. Until they are, every CI gate is advisory | Owner |
 | GitHub private vulnerability reporting | Off on 2026-10-25 (Round 39); once enabled, link it from `.github/ISSUE_TEMPLATE/config.yml` and `SECURITY.md` (R39-SUPPLY-CHAIN-9) | Owner |
-| Round 39 owner decisions | **Decided in Round 40** by the technical lead, under the owner's delegation (`docs/audit/TECHNICAL_LEAD_DECISIONS.md`): swap declarations rewritten from IDLs and `update_offer` removed (done); 23 phantom instructions removed, the 5 Squads ones kept because the committed IDL has them (done); the census import (done); `GRAPHITE_TRUSTED_PROXIES`, RPC clients ignore env proxies, the first-manifest cap, a per-plugin deadline (in progress) | — |
+| Round 39 owner decisions | **Decided in Round 40** by the technical lead, under the owner's delegation (`docs/audit/TECHNICAL_LEAD_DECISIONS.md`): swap declarations rewritten from IDLs and `update_offer` removed (done); 23 phantom instructions removed, the 5 Squads ones kept because the committed IDL has them (done); the census import (done); `GRAPHITE_TRUSTED_PROXIES`, RPC clients ignore env proxies, the first-manifest cap, a per-plugin deadline, the signer-key mode check and escaped terminal output (done) | — |
 | Stale unprotected branches (`copilot/fix-rust-core-actions-job`, `phase2-development`) | Delete or protect them with the rulesets (K-14) | Owner |
 | The crate's publish flag; tagging `0.3.0-beta`; deployment | Owner decisions, unchanged by Rounds 29–30 | Owner |
 | The 2026-10-21 forensic brief (Round 30: G-01 … G-12, K-01 … K-20) | **Closed in Round 30** except the owner items in this table; see the Round 30 report and its findings registry ([`audit-r30/findings-registry.md`](audit-r30/findings-registry.md)) | — |
