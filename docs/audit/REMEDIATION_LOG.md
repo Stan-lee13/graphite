@@ -185,3 +185,25 @@ failures of the code. The final head's runs are recorded in the PR.
 - Caddy, promtool and Docker checks (not in this container; green in PR CI).
 - Mutation testing (about 260 runner-hours for a full run).
 - Windows behaviour of the guard (reasoned).
+
+## 4. Round 40 — the open decisions implemented (2026-10-26 → 2026-10-29)
+
+The owner delegated every open Round 39 decision; each is recorded in
+[`TECHNICAL_LEAD_DECISIONS.md`](TECHNICAL_LEAD_DECISIONS.md) and implemented by one workstream, whose
+report (changes, tests, breaks, Constitution check, verification answers, commands) is in
+[`parts-r40/`](parts-r40/):
+
+| Workstream | What changed | Report |
+|---|---|---|
+| assurance | conformance corpus through the server, CLI and dashboard; actionlint 1.7.11 pinned and run; per-binary Rust floors; a required Windows CI job for the agent guard; `publish = false`; mutation shards that fit the step; `test-count.sh` reads coloured cargo output | [`assurance.md`](parts-r40/assurance.md) |
+| bootstrap | `graphite evidence import-census --cluster mainnet-beta` (measured volume, mainnet-only enforced, never re-imports an upgraded program); every Round 38/39 attack re-run in the imported and trained states | [`bootstrap.md`](parts-r40/bootstrap.md) |
+| manifests | 60 swap declarations rewritten from the committed IDLs; 23 phantom instructions and the dead `update_offer` grant removed; 7 F-005 promotions with evidence; label fixes | [`manifests.md`](parts-r40/manifests.md) |
+| boundary | `GRAPHITE_TRUSTED_PROXIES`; RPC clients ignore env proxies; signer-key mode check; escaped terminal output; a 250 ms per-plugin deadline; first registry manifests capped at HeuristicInferred | [`boundary.md`](parts-r40/boundary.md) |
+| measure | the live runner imports the census and types no baseline; a constructed-honest-transfer pass; per-row fee detail (no Core fee defect) | [`measure.md`](parts-r40/measure.md) |
+
+Integration fixes in the main session: the census-import and swap-rewrite tests combined
+(`CONFIGS`), per-binary floors for every new suite, the inner-instruction oracle moved to Agave
+4.4.0 (removes `zstd-safe` 7.3.0 and eight RUSTSEC-2026 unsound advisories; no audit exception),
+and two plugin-crash tests that accept `timed-out` as well as `panicked` for a crash slower than
+the deadline (both refuse). Live evidence: [`../evidence/live-mainnet/run-40839253280.md`](../evidence/live-mainnet/run-40839253280.md)
+— 27 of 28 constructed honest transfers `executable_approved` after the census import.

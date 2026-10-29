@@ -50,6 +50,12 @@ severity (R39-CORE-IDENTITY-7, first-manifest validation), and one suspected fin
 GitHub rulesets (R39-SUPPLY-CHAIN-1), which only the owner can change. Release remains blocked by the
 gates in [`RESIDUAL_RISK_AND_OWNER_GATES.md`](RESIDUAL_RISK_AND_OWNER_GATES.md).
 
+**Round 40 (2026-10-26 → 2026-10-29).** The owner delegated every open decision below; each was
+decided and implemented (`TECHNICAL_LEAD_DECISIONS.md`, `parts-r40/`). Status changes since this
+register was written: R39-CORE-DECISION-4 and -5, R39-CB-8, -13, -14, -15, R39-CORE-IDENTITY-7,
+R39-SUPPLY-CHAIN-6, -11, -12 and D2-8 are **fixed**; the no-per-plugin-timeout observation is fixed
+(250 ms deadline). R39-SUPPLY-CHAIN-1 (the live rulesets) remains the owner's.
+
 ## 2. New findings (Round 39)
 
 Status words: **fixed** (with a regression test that fails without the fix, and a break that proves
