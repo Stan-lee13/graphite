@@ -34,6 +34,7 @@ from solrpc import b58decode  # noqa: E402
 DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG"
 BLOCKHASH = "4sGjMW1sUnHzSxGspuhpqLDx6wiyjNtZAMdL4VZHirAn"
 SYSTEM_PROGRAM = "11111111111111111111111111111111"
+COMPUTE_BUDGET = "ComputeBudget111111111111111111111111111111"
 NATIVE_LOADER = "NativeLoader1111111111111111111111111111111"
 B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 
@@ -60,10 +61,17 @@ def shortvec(data, at):
 
 def effects(raw):
     """(account keys, lamport deltas, fee, top-level program ids) of a wire
-    transaction: the fee (5000 per
-    signature) from the payer, and every top-level System transfer. Enough for
-    a balance-array answer that is consistent with the bytes; nothing else
-    about execution is modelled."""
+    transaction: the fee from the payer, and every top-level System transfer.
+    Enough for a balance-array answer that is consistent with the bytes;
+    nothing else about execution is modelled.
+
+    The fee is Agave's (Round 40, measure: `fee/src/lib.rs` and the bank's
+    `simulate_transaction`, whose `fee` is `fee_details.total_fee()`): 5,000
+    lamports per signature plus the priority fee, the Compute Budget price ×
+    limit / 10^6 rounded up — with no limit set, 200,000 per non-Compute-Budget
+    instruction (the default's upper bound; the runtime grants builtins
+    less). `preBalances` is before the fee, the post-state after it, as the
+    SVM's balance collector records them."""
     nsig, at = shortvec(raw, 0)
     at += 64 * nsig
     if raw[at] & 0x80:  # versioned message prefix
@@ -73,8 +81,8 @@ def effects(raw):
     keys = [b58encode(raw[at + 32 * i : at + 32 * (i + 1)]) for i in range(nkeys)]
     at += 32 * nkeys + 32  # keys, recent blockhash
     delta = [0] * nkeys
-    delta[0] -= 5000 * nsig
     programs = []
+    limit, price, others = None, 0, 0
     nix, at = shortvec(raw, at)
     for _ in range(nix):
         prog = raw[at]
@@ -86,13 +94,23 @@ def effects(raw):
         ndata, at = shortvec(raw, at)
         data = raw[at : at + ndata]
         at += ndata
+        if prog < nkeys and keys[prog] == COMPUTE_BUDGET:
+            if data[:1] == b"\x02" and len(data) >= 5:
+                limit = int.from_bytes(data[1:5], "little")
+            elif data[:1] == b"\x03" and len(data) >= 9:
+                price = int.from_bytes(data[1:9], "little")
+        else:
+            others += 1
         # An index past the static keys is a lookup-table account: not modelled.
         if prog < nkeys and keys[prog] == SYSTEM_PROGRAM and len(data) == 12 and int.from_bytes(data[:4], "little") == 2 \
                 and len(accs) >= 2 and max(accs[:2]) < nkeys:
             lamports = int.from_bytes(data[4:12], "little")
             delta[accs[0]] -= lamports
             delta[accs[1]] += lamports
-    return keys, delta, 5000 * nsig, programs
+    limit = min(limit if limit is not None else 200_000 * others, 1_400_000)
+    fee = 5000 * nsig + (price * limit + 999_999) // 1_000_000
+    delta[0] -= fee
+    return keys, delta, fee, programs
 
 
 def recent_blockhash(raw):
@@ -122,6 +140,20 @@ class State:
         self.calls = defaultdict(int)
         self.sent = {}  # signature -> (slot, base64 transaction)
         self.lock = threading.Lock()
+
+    def chain_meta(self, r):
+        """`fee` and the native balances, as a block records them, for a
+        frame this mock reads (Round 40, measure); nothing for one it does
+        not. Static keys only: a lookup-table account is not modelled."""
+        try:
+            raw = base64.b64decode(r["b64"])
+            if raw[:1] == bytes([wire.V1_PREFIX]):
+                return {}
+            keys, delta, fee, _ = effects(raw)
+        except (IndexError, ValueError, KeyError):
+            return {}
+        pre = [self.balance(k) for k in keys]
+        return {"fee": fee, "preBalances": pre, "postBalances": [a + d for a, d in zip(pre, delta)]}
 
     def balance(self, address):
         return self.balances.get(address, self.default_balance)
@@ -159,6 +191,7 @@ class State:
                             "err": {"InstructionError": [0, "Custom(1)"]} if r["err"] else None,
                             "computeUnitsConsumed": r["cu"],
                             "loadedAddresses": {"writable": r["loaded_writable"], "readonly": r["loaded_readonly"]},
+                            **self.chain_meta(r),
                         },
                     }
                     for r in self.blocks[pick]

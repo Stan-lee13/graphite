@@ -31,18 +31,38 @@ wire.py: a measurement-side byte rewrite; nothing is signed or sent), each
 right after its stale twin, and reports the two passes side by side: the
 stale replay is not what an agent submits, the fresh one is.
 
-`seed` seeds operator evidence for the System and SPL Token programs before
-the Core starts (as live_devnet.py does for System), so that a simple transfer
-can reach `executable_approved` and the L3 anchored-baseline path runs.
+`seed` imports the measured census (`graphite evidence import-census`) before
+the Core starts — for the System and SPL Token programs, or with
+`--whole-census` for every record the census admits, as an operator's first
+start does — so that a simple transfer can reach `executable_approved`.
+Round 40 (measure): it no longer types an L3 baseline. The typed per-program
+compute bands (System 150±30 CU, SPL Token 5000±1500 CU) flagged an honest
+`AdvanceNonceAccount` (450 CU) at 8σ and SPL Token `TransferChecked` /
+`InitializeAccount` (≈400 CU) at −3σ in run 40280048548: refusals the
+measurement setup made. With no mature baseline L3 is inconclusive, which
+does not prevent `executable_approved` (the committed `executable_approved`
+fixture and the Round 40 bootstrap campaign are both such verdicts); a
+baseline is learned from the run's own clean simulations.
+
+`--honest N` (Round 40, measure) measures what an honest agent's OWN
+transactions get, which a replay of other people's transactions cannot: from
+the fetched sample it takes executed simple transfers (one System `Transfer`
+or SPL Token `TransferChecked`, nothing else but Compute Budget instructions,
+sent by the transaction's own fee payer) and builds, for each, a NEW unsigned
+legacy transaction from the same sender to the same recipient for 1 lamport /
+1 base unit, with the original's Compute Budget instructions and a fresh
+blockhash, and verifies it with the intent `transfer` and the amount, recipient
+and asset stated. Never signed (the signature slot is zeroed), never sent:
+the bytes go to the local Core's /verify only.
 
     python3 live_mainnet.py fetch   --rpc URL --blocks 2 --out sample.json
     (graphite-core) GRAPHITE_MAINNET_SAMPLE=sample.json GRAPHITE_MAINNET_HONEST_INTENT=1 \\
         GRAPHITE_MAINNET_REQUESTS=requests.jsonl cargo test --release --test mainnet_conformance \\
         -- --ignored real_mainnet_traffic --nocapture
     python3 live_mainnet.py select  --requests requests.jsonl --n 200 --out selected.jsonl
-    python3 live_mainnet.py seed    --graphite graphite --data-dir DATA --out seed.json   # optional
+    python3 live_mainnet.py seed    --graphite graphite --data-dir DATA --out seed.json [--whole-census]  # optional
     GRAPHITE_API_KEY=... LIVE_RPC_URL=... python3 live_mainnet.py replay --selected selected.jsonl \\
-        --sample sample.json --core http://127.0.0.1:7331 --fresh 40 [--seeded seed.json] --out-dir report/
+        --sample sample.json --core http://127.0.0.1:7331 --fresh 40 --honest 40 [--seeded seed.json] --out-dir report/
 
 No credentials are read but GRAPHITE_API_KEY (the local Core's) and an
 optional RPC URL, which is never printed: logs name its host only.
@@ -69,18 +89,26 @@ import wire  # noqa: E402
 SYSTEM_PROGRAM = "11111111111111111111111111111111"
 SPL_TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 # What an operator does before a fresh Core approves anything (Round 40):
-# `graphite evidence import-census` for these programs — the measured,
-# committed mainnet census (protocols/battle_tested_evidence.json), not typed
-# numbers — and a baseline L3 anchors on. The baseline is the one typed input
-# left: an L3 calibration, so the run can show L3 FLAG; it also feeds the
-# SimulationMatch signal through its sample count, and the report says so.
-# System matches live_devnet.py; SPL Token's band covers Transfer (~4.6k CU)
-# through TransferChecked (~6.2k CU) — a whole multi-program transaction
-# measured against it is expected to fall outside, which is what the run shows.
-SEED_BASELINES = {
-    SYSTEM_PROGRAM: {"mean": 150, "std": 30, "samples": 10},
-    SPL_TOKEN_PROGRAM: {"mean": 5000, "std": 1500, "samples": 10},
-}
+# `graphite evidence import-census` — the measured, committed mainnet census
+# (protocols/battle_tested_evidence.json), not typed numbers. These two are
+# imported by name without `--whole-census`, and reported by name either way.
+#
+# Round 40 (measure): no typed L3 baseline any more. The runner used to type
+# System 150±30 CU and SPL Token 5000±1500 CU; in run 40280048548 that flagged
+# an honest System AdvanceNonceAccount (450 CU, +8σ) and SPL Token
+# TransferChecked / InitializeAccount (482 / 413 CU, −3σ). A baseline is not
+# needed for `executable_approved` (L3 without a mature one is inconclusive,
+# not failed), and one typed here measures the typing, not Graphite.
+SEEDED_PROGRAMS = (SYSTEM_PROGRAM, SPL_TOKEN_PROGRAM)
+COMPUTE_BUDGET_PROGRAM = "ComputeBudget111111111111111111111111111111"
+# Agave's signature fee counts these precompiles' signatures too
+# (`fee/src/lib.rs`, `calculate_signature_fee`: the first data byte of each).
+PRECOMPILES = (
+    "Ed25519SigVerify111111111111111111111111111",
+    "KeccakSecp256k11111111111111111111111111111",
+    "Secp256r1SigVerify1111111111111111111111111",
+)
+LAMPORTS_PER_SIGNATURE = 5000
 
 INHERENT = {"program_semantics", "inner_instructions"}
 DECISIONS = ("executable_approved", "analysis_only", "inconclusive", "blocked")
@@ -131,7 +159,7 @@ def fetch(rpc_url, blocks, out, *, min_transactions=1000, max_blocks=8, offset=4
         if "error" in r or r.get("result") is None:
             skipped.append(slot)  # a leader's skipped slot is ordinary
         else:
-            rows.extend(rows_from_block(slot, r["result"]))
+            rows.extend(with_chain_meta(rows_from_block(slot, r["result"]), r["result"]))
             fetched.append(slot)
         slot -= stride
         sleep(1.0)
@@ -142,6 +170,34 @@ def fetch(rpc_url, blocks, out, *, min_transactions=1000, max_blocks=8, offset=4
     with open(out, "w", encoding="utf-8") as f:
         json.dump(doc, f)
     return doc
+
+
+def with_chain_meta(rows, block):
+    """`rows_from_block`'s rows, each with what the chain charged and moved
+    (Round 40, measure): the block's `meta.fee` and the native balances
+    before and after, so a signer debit Graphite reports can be set beside
+    the chain's own. Extra fields; the conformance harness ignores them.
+    Rows and transactions are paired by the same filter rows_from_block
+    applies (base64 payloads, in block order)."""
+    txs = [t for t in block.get("transactions", [])
+           if isinstance(t.get("transaction"), list) and len(t["transaction"]) >= 2 and t["transaction"][1] == "base64"]
+    if len(txs) != len(rows):
+        return rows  # not paired: record nothing rather than misattribute
+    out = []
+    for row, t in zip(rows, txs):
+        if t["transaction"][0] != row.get("b64"):
+            return rows
+        meta = t.get("meta") or {}
+        out.append(dict(row, fee=meta.get("fee"), pre_balances=meta.get("preBalances"),
+                        post_balances=meta.get("postBalances"),
+                        # accountIndex → mint and decimals, for a token
+                        # `Transfer` whose bytes name no mint.
+                        pre_token_balances=[
+                            {"account_index": b.get("accountIndex"), "mint": b.get("mint"),
+                             "decimals": (b.get("uiTokenAmount") or {}).get("decimals")}
+                            for b in meta.get("preTokenBalances") or [] if isinstance(b, dict)
+                        ]))
+    return out
 
 
 # ── select ───────────────────────────────────────────────────────────────────
@@ -519,6 +575,15 @@ def verify_one(report, entry, body_in, core, key, post_fn, tag=""):
                 "simulation_flagged": result.get("simulation_flagged"),
                 "simulation_divergence": result.get("simulation_divergence"),
                 "unobserved_codes": (result.get("scope") or {}).get("unobserved_codes"),
+                # Round 40 (measure): what the Core read of the fee the bytes
+                # ask for, and the standing it gave the verdict.
+                "compute_budget": (result.get("scope") or {}).get("compute_budget"),
+                "confidence": result.get("confidence"),
+                "trust_tier": result.get("trust_tier"),
+                "finding_reasons": [
+                    f"{f.get('pattern')}: {str(f.get('reason', ''))[:200]}"
+                    for f in (result.get("risk_verdict") or {}).get("findings") or [] if isinstance(f, dict)
+                ],
                 "transaction_sha256": (result.get("scope") or {}).get("transaction_sha256"),
                 "audit_trail_id": result.get("audit_trail_id"),
                 "rpc_rate_limited": rate_limited(result),
@@ -619,8 +684,294 @@ def fresh_one(report, entry, stale_row, core, key, post_fn, blockhash_fn):
         f["pairs"].append({"row": entry["row"], "program_id": entry["program_id"], "version": lay.version, "stale": s, "fresh": n, "changed": s != n})
 
 
+# ── signer debits beyond the fee: the fee, set beside the chain's (Round 40) ─
+
+SIGNER_LOSS_RE = re.compile(r"signers lose (\d+) lamports beyond the fee|(\d+) lamports left (?:a|this) signer")
+SIGNER_DEBIT_FINDINGS = ("UndeclaredSignerLamportDebit", "SignerLamportsOutsideDeclaredDebit")
+
+
+def short(address, n=8):
+    return str(address)[:n]
+
+
+def describe_instruction(keys, ix):
+    """One top-level instruction, as a reader judging a signer debit needs
+    it: a System transfer with its amount and destination, a Compute Budget
+    value, else the program and the first data byte."""
+    program = keys[ix.program_index] if ix.program_index < len(keys) else "?"
+    data = ix.data
+    acct = [keys[a] if a < len(keys) else "?" for a in ix.accounts]
+    if program == SYSTEM_PROGRAM and len(data) == 12 and data[:4] == (2).to_bytes(4, "little") and len(acct) >= 2:
+        return f"System Transfer {int.from_bytes(data[4:12], 'little')} lamports {short(acct[0])}→{short(acct[1])}"
+    if program == COMPUTE_BUDGET_PROGRAM and data:
+        if data[0] == 2 and len(data) >= 5:
+            return f"SetComputeUnitLimit {int.from_bytes(data[1:5], 'little')}"
+        if data[0] == 3 and len(data) >= 9:
+            return f"SetComputeUnitPrice {int.from_bytes(data[1:9], 'little')} µlamports/CU"
+        return f"ComputeBudget tag {data[0]}"
+    return f"{short(program)} [{data[:1].hex() or '-'}]"
+
+
+def fee_breakdown(src, row):
+    """For a verdict naming a signer lamport debit: Graphite's figure beyond
+    the fee; the signature count (and precompile signatures, which Agave also
+    charges); the compute-unit price × limit and the priority fee as the Core
+    read them from the bytes; the fee Agave's rule gives (5,000 × signatures +
+    priority fee, `fee/src/lib.rs`); the fee the chain charged and each
+    signer's balance change on chain (when the sample recorded them); and
+    every top-level instruction. Read from the sample and the verdict; no
+    RPC call."""
+    out = {}
+    m = SIGNER_LOSS_RE.search(str(row.get("l4_reason_full") or ""))
+    out["graphite_beyond_fee"] = int(m.group(1) or m.group(2)) if m else None
+    try:
+        msg = wire.message(base64.b64decode(src["b64"]))
+    except (KeyError, TypeError, ValueError) as e:
+        out["error"] = f"frame not read: {e}"
+        return out
+    keys = wire.account_keys(msg, src.get("loaded_writable") or [], src.get("loaded_readonly") or [])
+    precompile = sum(ix.data[0] for ix in msg.instructions
+                     if ix.data and ix.program_index < len(keys) and keys[ix.program_index] in PRECOMPILES)
+    cb = row.get("compute_budget") or {}
+    priority = cb.get("priority_fee_lamports")
+    out.update(
+        version=msg.version,
+        signatures=msg.num_required_signatures,
+        precompile_signatures=precompile,
+        cu_price_micro_lamports=cb.get("compute_unit_price_micro_lamports"),
+        cu_limit=cb.get("effective_compute_unit_limit"),
+        priority_fee=priority,
+        expected_fee=(LAMPORTS_PER_SIGNATURE * (msg.num_required_signatures + precompile) + priority)
+        if priority is not None else None,
+        chain_fee=src.get("fee"),
+        instructions=[describe_instruction(keys, ix) for ix in msg.instructions],
+    )
+    pre, post_ = src.get("pre_balances"), src.get("post_balances")
+    if isinstance(pre, list) and isinstance(post_, list) and len(pre) == len(post_) >= msg.num_required_signatures:
+        fee = src.get("fee") or 0
+        out["signer_deltas"] = [
+            {"signer": keys[i], "delta": post_[i] - pre[i], "beyond_fee": -(post_[i] - pre[i]) - (fee if i == 0 else 0)}
+            for i in range(msg.num_required_signatures)
+        ]
+    return out
+
+
+# ── the honest-transfer pass (Round 40, measure) ─────────────────────────────
+
+
+def ui_amount(base_units, decimals):
+    """`base_units` in display units, exactly (intent_binding.rs reads a
+    decimal string with at most `decimals` fractional digits)."""
+    if decimals == 0:
+        return str(base_units)
+    s = str(base_units).rjust(decimals + 1, "0")
+    whole, frac = s[:-decimals], s[-decimals:].rstrip("0")
+    return whole + ("." + frac if frac else "")
+
+
+ATA_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+SPL_TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+MEMO_PROGRAMS = ("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr", "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo")
+
+
+def simple_transfer(src):
+    """The executed simple transfer a sample row is: (transfer, None), or
+    (None, why it was set aside), or (None, None) when the row is not a
+    simple transfer at all.
+
+    Simple: exactly one value-moving instruction, a System `Transfer` or an
+    SPL Token `TransferChecked`; every other top-level instruction one that
+    moves nothing a wallet adds beside a transfer — Compute Budget (copied
+    into the new transaction), an associated-token-account `CreateIdempotent`
+    paid by the sender (copied: a no-op when the account exists), a memo
+    (dropped: its text is the original sender's). Succeeded on chain, not a
+    durable-nonce transaction, and sent by its own fee payer (an agent pays
+    its own fee). Near misses are counted by reason: an SPL Token `Transfer`
+    (its bytes name no mint, so the asset cannot be stated), Token-2022, a
+    non-idempotent ATA `Create`."""
+    if src.get("err"):
+        return None, None
+    try:
+        msg = wire.message(base64.b64decode(src["b64"]))
+    except (KeyError, TypeError, ValueError):
+        return None, None
+    lw = src.get("loaded_writable") or []
+    keys = wire.account_keys(msg, lw, src.get("loaded_readonly") or [])
+    if any(ix.program_index >= len(keys) or any(a >= len(keys) for a in ix.accounts) for ix in msg.instructions):
+        return None, None
+    ixs = list(msg.instructions)
+    if msg.durable_nonce:
+        ixs = ixs[1:]  # its AdvanceNonceAccount moves nothing; set aside below
+    moving, layout, aside = [], [], None
+    for ix in ixs:
+        program, data = keys[ix.program_index], ix.data
+        accounts = [(keys[a], *wire.privileges(msg, a, len(lw))) for a in ix.accounts]
+        if program == COMPUTE_BUDGET_PROGRAM:
+            layout.append(("copy", (program, accounts, data)))
+        elif program in MEMO_PROGRAMS:
+            continue
+        elif program == ATA_PROGRAM and data == b"\x01":
+            layout.append(("copy", (program, accounts, data)))
+        elif program == ATA_PROGRAM and data in (b"", b"\x00"):
+            aside = aside or "ATA Create (not idempotent)"
+            layout.append(("copy", (program, accounts, data)))
+        elif program == SYSTEM_PROGRAM and len(data) == 12 and data[:4] == (2).to_bytes(4, "little") and len(accounts) >= 2:
+            moving.append({"kind": "System Transfer", "sender": accounts[0][0], "recipient": accounts[1][0], "asset": "SOL",
+                           "original_amount": int.from_bytes(data[4:12], "little"), "decimals": 9})
+            layout.append(("transfer",))
+        elif program == SPL_TOKEN_PROGRAM and len(data) == 10 and data[0] == 12 and len(accounts) >= 4:
+            moving.append({"kind": "SPL Token TransferChecked", "sender": accounts[3][0], "source": accounts[0][0],
+                           "mint": accounts[1][0], "recipient": accounts[2][0], "asset": accounts[1][0],
+                           "original_amount": int.from_bytes(data[1:9], "little"), "decimals": data[9]})
+            layout.append(("transfer",))
+        elif program == SPL_TOKEN_PROGRAM and len(data) == 9 and data[0] == 3 and len(accounts) >= 3:
+            # Transfer names no mint; the block's own token balances do.
+            known = [b for b in src.get("pre_token_balances") or []
+                     if b.get("account_index") == ix.accounts[0] and b.get("mint") and isinstance(b.get("decimals"), int)]
+            if not known:
+                aside = aside or "SPL Token Transfer (no mint recorded for its source)"
+                moving.append(None)
+                continue
+            moving.append({"kind": "SPL Token TransferChecked", "original_kind": "SPL Token Transfer",
+                           "sender": accounts[2][0], "source": accounts[0][0], "mint": known[0]["mint"],
+                           "recipient": accounts[1][0], "asset": known[0]["mint"],
+                           "original_amount": int.from_bytes(data[1:9], "little"), "decimals": known[0]["decimals"]})
+            layout.append(("transfer",))
+        elif program == SPL_TOKEN_2022_PROGRAM and data[:1] in (b"\x03", b"\x0c"):
+            aside = aside or "Token-2022 (not in this pass)"
+            moving.append(None)
+        else:
+            return None, None
+    if len(moving) != 1:
+        return None, None
+    if aside:
+        return None, aside
+    t = moving[0]
+    if msg.durable_nonce:
+        return None, "durable nonce"
+    if t["sender"] != keys[0]:
+        return None, "sender is not the fee payer"
+    if t["recipient"] in (t["sender"], t.get("source")):
+        return None, "self-transfer"
+    if t["original_amount"] < 1:
+        return None, "original amount 0"
+    for step in layout:
+        if step[0] == "copy" and step[1][0] == ATA_PROGRAM and (not step[1][1] or step[1][1][0][0] != t["sender"]):
+            return None, "ATA created by another payer"
+    if msg.version == "1":
+        layout = [s for s in layout if not (s[0] == "copy" and s[1][0] == COMPUTE_BUDGET_PROGRAM)]
+    t["layout"] = layout
+    copied = Counter("Compute Budget" if s[1][0] == COMPUTE_BUDGET_PROGRAM else "ATA CreateIdempotent"
+                     for s in layout if s[0] == "copy")
+    t["budget_source"] = ", ".join(f"{v} {k}" for k, v in copied.items()) or (
+        "none (a v1 header's values are not translated)" if msg.version == "1" else "none")
+    t["version"] = msg.version
+    t["cu"] = src.get("cu") or 0
+    t["row"] = src.get("row")
+    t["slot"] = src.get("slot")
+    return t, None
+
+
+def honest_candidates(sample_rows, n):
+    """Up to `n` simple transfers, System and SPL Token alternated, one per
+    (sender, recipient, asset); and how many simple transfers were set aside
+    and why."""
+    found, skipped, seen = {"System Transfer": [], "SPL Token TransferChecked": []}, Counter(), set()
+    for src in sample_rows:
+        t, why = simple_transfer(src)
+        if why:
+            skipped[why] += 1
+        if t is None:
+            continue
+        k = (t["sender"], t["recipient"], t["asset"])
+        if k in seen:
+            skipped["duplicate sender, recipient and asset"] += 1
+            continue
+        seen.add(k)
+        found[t["kind"]].append(t)
+    picked, lists = [], list(found.values())
+    for i in range(max((len(l) for l in lists), default=0)):
+        for l in lists:
+            if i < len(l) and len(picked) < n:
+                picked.append(l[i])
+    return picked, {"simple transfers": sum(len(l) for l in lists) + sum(skipped.values()),
+                    "by kind": {k: len(v) for k, v in found.items()}, "set aside": dict(skipped)}
+
+
+def honest_request(t, recent_blockhash, amount=1):
+    """The new transaction and the /verify request an honest agent sends
+    for it: `amount` (1 lamport / 1 base unit, never more than the original)
+    from the same sender to the same recipient, the original's Compute Budget
+    instructions, the given blockhash, one zeroed signature slot."""
+    amount = min(amount, t["original_amount"])
+    if t["kind"] == "System Transfer":
+        primary = wire.system_transfer(t["sender"], t["recipient"], amount)
+    else:
+        primary = wire.token_transfer_checked(t["source"], t["mint"], t["recipient"], t["sender"], amount, t["decimals"])
+    ixs = [primary if step[0] == "transfer" else step[1] for step in t["layout"]]
+    siblings = [step[1] for step in t["layout"] if step[0] == "copy"]
+    frame = wire.build_legacy(t["sender"], ixs, recent_blockhash)
+    program, accounts, data = primary
+    stated = ui_amount(amount, t["decimals"])
+    body = {
+        "proposed_intent": {
+            "intent_type": "transfer",
+            "raw_natural_language": f"send {stated} {t['asset'] if t['asset'] == 'SOL' else 'of mint ' + t['asset']} to {t['recipient']}",
+            "confidence_of_parse": 1.0,
+            "extracted_parameters": {"amount": stated, "destination": t["recipient"], "input_token": t["asset"]},
+        },
+        "program_id": program,
+        "protocol_version": "1.0.0",
+        "instruction_discriminator": data[:8].hex(),
+        "account_addresses": [a for a, _, _ in accounts],
+        "instruction_data": list(data),
+        "cpi_targets": [],
+        # The profile the conformance harness and the replay use: the
+        # weakest built-in one.
+        "wallet_profile": "Gaming",
+        "compute_units": t["cu"],
+        "signed_transaction": list(frame),
+        "transaction_instructions": [
+            {"program_id": p, "instruction_discriminator": d[:8].hex(), "account_addresses": [a for a, _, _ in accts],
+             "cpi_targets": []}
+            for p, accts, d in siblings
+        ],
+        "uses_versioned_transaction": False,
+        "lookup_table_count": 0,
+    }
+    return frame, body
+
+
+def honest_pass(report, sample_rows, n, core, key, post_fn, blockhash_fn, sleep, pace):
+    h = report["honest"]
+    picked, h["candidates"] = honest_candidates(sample_rows, n)
+    for t in picked:
+        if blockhash_fn is None:
+            h["skipped"]["no RPC for a fresh blockhash"] += 1
+            continue
+        try:
+            new_hash = blockhash_fn()
+        except (solrpc.RateLimited, solrpc.RpcError, KeyError, TypeError, ValueError) as e:
+            h["skipped"][f"no fresh blockhash ({type(e).__name__})"] += 1
+            continue
+        frame, body = honest_request(t, new_hash)
+        entry = {"row": t["row"], "slot": t["slot"], "program_id": body["program_id"], "instruction_name": t["kind"],
+                 "manifest_found": None, "failed_on_chain": False}
+        # Its own 4xx tally; server errors and defects are the run's.
+        sink = {"refused_requests": h["refused_requests"], "server_errors": report["server_errors"], "defects": report["defects"]}
+        row = verify_one(sink, entry, body, core, key, post_fn, tag="honest ")
+        sleep(pace)
+        if row is None:
+            continue
+        h["constructed"] += 1
+        row.update(kind=t["kind"], original_kind=t.get("original_kind", t["kind"]), sender=t["sender"], recipient=t["recipient"], asset=t["asset"],
+                   amount=body["proposed_intent"]["extracted_parameters"]["amount"], budget=t["budget_source"],
+                   original_version=t["version"], transaction_bytes=len(frame))
+        h["rows"].append(row)
+
+
 def replay(selected, sample_rows, core, key, *, pace=1.0, l8=10, fresh=0, blockhash_fn=None, seeded=None,
-           sleep=time.sleep, post_fn=post, get_fn=get):
+           honest=0, sleep=time.sleep, post_fn=post, get_fn=get):
     """Every selected request through the Core (the first `fresh` of them
     twice: stale, then with a fresh blockhash), then L8 for a few executed
     ones. Returns the report dict."""
@@ -635,6 +986,8 @@ def replay(selected, sample_rows, core, key, *, pace=1.0, l8=10, fresh=0, blockh
         "l8": [],
         "seeded": seeded,
         "fresh": {"asked": fresh, "requested": 0, "skipped": Counter(), "patched_by_version": Counter(), "rows": [], "pairs": []},
+        "honest": {"asked": honest, "constructed": 0, "skipped": Counter(), "refused_requests": Counter(), "rows": [],
+                   "candidates": None},
     }
     try:
         report["health"] = get_fn(f"{core}/health")
@@ -647,6 +1000,13 @@ def replay(selected, sample_rows, core, key, *, pace=1.0, l8=10, fresh=0, blockh
             f"health says verification_mode={report['health'].get('verification_mode')!r}"
         )
         return finish(report)
+
+    # Round 40 (measure): the honest agent's own transfers first, on the Core
+    # as the evidence step left it — before the replay's verdicts can teach
+    # it a baseline (a clean simulated verdict of an imported program is an
+    # observation, bootstrap G-13).
+    if honest:
+        honest_pass(report, sample_rows, honest, core, key, post_fn, blockhash_fn, sleep, pace)
 
     for i, entry in enumerate(selected):
         row = verify_one(report, entry, entry["input"], core, key, post_fn)
@@ -666,6 +1026,8 @@ def replay(selected, sample_rows, core, key, *, pace=1.0, l8=10, fresh=0, blockh
         if hits:
             r["watched"] = hits
             r.update(detail(r, by_row.get(r["row"]), inputs.get(r["row"])))
+            if any(f in hits for f in SIGNER_DEBIT_FINDINGS) and by_row.get(r["row"]):
+                r["fee_breakdown"] = fee_breakdown(by_row[r["row"]], r)
 
     # L8: a handful of transactions the chain executed, reconciled against the
     # verdict this run recorded for their exact bytes.
@@ -753,6 +1115,24 @@ def finish(report):
             f[f"{side}_decisions"] = dict(Counter(p[side]["decision"] for p in pairs))
             f[f"{side}_l3"] = dict(Counter(p[side]["l3"] for p in pairs))
             f[f"{side}_reasons"] = dict(Counter(x for p in pairs for x in p[side]["reasons"]).most_common())
+    imported = set((report.get("seeded") or {}).get("imported") or [])
+    if imported:
+        report["decisions_by_evidence"] = {
+            "census-imported program": dict(Counter(r["decision"] for r in rows if r["program_id"] in imported)),
+            "program not imported": dict(Counter(r["decision"] for r in rows if r["program_id"] not in imported)),
+        }
+    h = report.get("honest")
+    if h is not None:
+        hrows = [r for r in h["rows"] if r.get("decision")]
+        h["skipped"] = dict(h["skipped"])
+        h["refused_requests"] = dict(h["refused_requests"])
+        h["measured"] = len(hrows)
+        h["decisions"] = dict(Counter(r["decision"] for r in hrows))
+        h["decisions_by_kind"] = {k: dict(Counter(r["decision"] for r in hrows if r["kind"] == k))
+                                  for k in sorted({r["kind"] for r in hrows})}
+        h["l3"] = dict(Counter(r["l3"] for r in hrows))
+        h["reasons"] = dict(Counter(x for r in hrows for x in r.get("reasons") or []).most_common())
+        h["rate_limited_verdicts"] = sum(1 for r in hrows if r.get("rpc_rate_limited"))
     report["failed_on_chain"] = sum(1 for r in rows if r["failed_on_chain"])
     lat = [r["latency_ms"] for r in report["rows"] if "latency_ms" in r]
     report["latency_ms"] = {
@@ -786,27 +1166,11 @@ def markdown(report, harness=None):
             "That is the endpoint, not Graphite; rerun later or set the `GRAPHITE_LIVE_RPC_URL` secret.",
             "",
         ]
-    seeded = sorted(((report.get("seeded") or {}).get("programs") or {}))
-    if report.get("seeded") and not report["seeded"].get("ok", True):
-        out += [f"**Operator evidence seeding did not complete:** {report['seeded'].get('error')}", ""]
-    if seeded:
-        out += [
-            f"**Evidence:** operator evidence was seeded for {', '.join(f'`{p}`' for p in seeded)} only "
-            "(their measured census volume, `graphite evidence import-census`, and an operator-set anchored compute "
-            "baseline, `graphite evidence baseline`, which also feeds the SimulationMatch signal). Those programs "
-            "can reach `executable_approved`, and their L3 is judged against the seeded anchor, which can FLAG; every "
-            "other program is as on a fresh Core (next paragraph). See *Seeded programs* below.",
-            "",
-        ]
-    out += [
-        "**A fresh Core has earned no evidence for "
-        + ("any other program" if seeded else "any program")
-        + ".** No verdict for such a program can be `executable_approved` (every built-in profile refuses without "
-        "evidence), and L3 has no anchored baseline to compare against, so it cannot FLAG a divergence either: "
-        "`no mature baseline` below is that state, not a measurement failure. What this run measures for them is the "
-        "pipeline's behaviour and the simulator's answers, not approvals.",
-        "",
-    ]
+    seed_doc = report.get("seeded") or {}
+    seeded = sorted(seed_doc.get("programs") or {})
+    if seed_doc and not seed_doc.get("ok", True):
+        out += [f"**Operator evidence seeding did not complete:** {seed_doc.get('error')}", ""]
+    out += evidence_markdown(seed_doc, seeded)
     out += [
         "| | |",
         "|---|---:|",
@@ -818,13 +1182,26 @@ def markdown(report, harness=None):
         f"| server errors (5xx / transport) | {len(report['server_errors'])} |",
         f"| latency p50 / p90 / p99 / max (ms) | {report['latency_ms']['p50']} / {report['latency_ms']['p90']} / {report['latency_ms']['p99']} / {report['latency_ms']['max']} |",
         "",
-        "## Decisions",
+    ]
+    out += honest_markdown(report.get("honest"))
+    out += [
+        "## Decisions (the replay of other people's transactions)",
+        "",
+        "What the replay measures: the pipeline's behaviour on real traffic (no 5xx, no contradictory verdict, "
+        "latency) and the simulator's answers. What it does not measure: the approval path. These transactions were "
+        "built by other wallets minutes earlier; replayed against today's state many fail simulation (a spent "
+        "input, a moved price, a closed account), and some had failed on chain already. The honest-transfer pass "
+        "above is the approval-path measurement.",
         "",
         "| decision | count |",
         "|---|---:|",
     ]
     for d in DECISIONS:
         out.append(f"| `{d}` | {report['decisions'].get(d, 0)} |")
+    if report.get("decisions_by_evidence"):
+        out += ["", "| program's evidence | " + " | ".join(DECISIONS) + " |", "|---|" + "---:|" * len(DECISIONS)]
+        for k, c in report["decisions_by_evidence"].items():
+            out.append(f"| {k} | " + " | ".join(str(c.get(d, 0)) for d in DECISIONS) + " |")
     out += ["", "## By program (top 25)", "", "| program | " + " | ".join(DECISIONS) + " |", "|---|" + "---:|" * len(DECISIONS)]
     for p, c in list(report["decisions_by_program"].items())[:25]:
         out.append(f"| `{p}` | " + " | ".join(str(c.get(d, 0)) for d in DECISIONS) + " |")
@@ -852,9 +1229,12 @@ def markdown(report, harness=None):
         "",
         "## Reading this",
         "",
-        "- These are other people's transactions, replayed unsigned against today's state with the "
-        "intent an honest agent would declare. A fresh Core has earned no evidence, so most verdicts are "
-        "policy refusals; that is the design, not a defect.",
+        "- The replay's transactions are other people's, replayed unsigned against today's state with the "
+        "intent an honest agent would declare. A program with no evidence is refused by policy, and a transaction "
+        "whose inputs moved since fails simulation; that is the design, not a defect. The honest-transfer pass is "
+        "the one that measures approvals.",
+        "- A refusal is never counted here as a correct or an incorrect one: this run has no ground truth about "
+        "intent. `BlockedButExecuted` (L8) and the *Watched rows* are where a candidate false refusal is shown.",
         "- `BlockedButExecuted` in L8 is the alarm firing as designed: Graphite refused a transaction "
         "somebody else executed.",
         "- `inclusion_assurance` is `single_provider` unless a witness RPC was configured.",
@@ -867,6 +1247,136 @@ def markdown(report, harness=None):
 
 def _cell(text):
     return str(text).replace("\n", " ").replace("|", "\\|")
+
+
+def evidence_markdown(seed_doc, seeded):
+    """What evidence the Core started with, said plainly (Round 40, measure:
+    the text used to name System and SPL Token alone after a whole-census
+    import, and an L3 anchor no longer typed)."""
+    out = []
+    if seeded and seed_doc.get("ok", True):
+        n = seed_doc.get("imported_count")
+        if seed_doc.get("whole_census"):
+            what = (f"for every program the committed census admits — {n} program(s) imported"
+                    if n is not None else "for every program the committed census admits")
+        else:
+            what = f"for {', '.join(f'`{p}`' for p in seeded)} only"
+        typed = [p for p, d in (seed_doc.get("programs") or {}).items() if isinstance(d, dict) and d.get("baseline")]
+        l3 = (f"An L3 compute baseline was also typed for {', '.join(f'`{p}`' for p in typed)} (an older seeding record)."
+              if typed else
+              "No L3 baseline was typed (Round 40): every program starts with no mature baseline, so L3 reads "
+              "`no mature baseline` (inconclusive, which does not prevent `executable_approved`) until the Core has "
+              "learned one from 10 of this run's own clean simulated verdicts; after that it can FLAG.")
+        out += [
+            f"**Evidence:** the measured census was imported {what} (`graphite evidence import-census`, from the "
+            "committed mainnet census `battle_tested_evidence.json`, census sha256 "
+            f"`{seed_doc.get('census_sha256') or 'not reported'}`): the state an operator's first start leaves. An "
+            "imported program can reach `executable_approved` under the built-in Gaming profile; it is not thereby "
+            f"approved — every other gate still decides. {l3} See *System and SPL Token* below.",
+            "",
+            "**Programs the import did not cover have no evidence.** No verdict for such a program can be "
+            "`executable_approved` (every built-in profile refuses without evidence). What this run measures for "
+            "them is the pipeline's behaviour and the simulator's answers, not approvals.",
+            "",
+        ]
+    else:
+        out += [
+            "**A fresh Core has earned no evidence for any program.** No verdict can be `executable_approved` "
+            "(every built-in profile refuses without evidence), and L3 has no baseline to compare against: `no "
+            "mature baseline` below is that state, not a measurement failure. What this run measures is the "
+            "pipeline's behaviour and the simulator's answers, not approvals.",
+            "",
+        ]
+    return out
+
+
+def honest_markdown(h):
+    if not h or not h.get("asked"):
+        return []
+    c = h.get("candidates") or {}
+    out = [
+        "## Honest transfers: what an agent's own transaction gets",
+        "",
+        f"From the fetched blocks, the executed simple transfers (one System `Transfer` or SPL Token "
+        "`TransferChecked`, nothing else but Compute Budget instructions, sent by the transaction's own fee payer) "
+        f"were taken — up to {h['asked']}, one per sender, recipient and asset — and for each a NEW unsigned legacy "
+        "transaction was built: the same sender to the same recipient, 1 lamport or 1 base unit (never more than "
+        "the original), the original's Compute Budget instructions, a blockhash just fetched, and a zeroed signature "
+        "slot. Each was verified with the intent `transfer` and its amount, recipient and asset stated, under the "
+        "built-in Gaming profile. Nothing was signed or sent: the bytes went to the local Core's /verify only.",
+        "",
+        "What this measures: the decision an honest agent's own simple transfer gets from this Core against "
+        "today's mainnet state. What it does not measure: swaps or any other protocol (no honest swap is built: "
+        "that needs a route and pool accounts this runner would have to invent), what happens after signing, or "
+        "wallets the runner controls — the senders are real wallets as they stand now.",
+        "",
+        f"- simple transfers in the sample: {c.get('simple transfers', 0)} ({c.get('by kind') or {}}); set aside: "
+        f"{c.get('set aside') or {}}",
+        f"- constructed and verified: **{h.get('constructed', 0)}** · verdicts: {h.get('measured', 0)} · not built: "
+        f"{h.get('skipped') or {}} · refused as requests (4xx): {h.get('refused_requests') or {}} · "
+        f"touched by an RPC rate limit: {h.get('rate_limited_verdicts', 0)}",
+        "",
+        "| decision | " + " | ".join(sorted(h.get("decisions_by_kind") or {})) + " | all |",
+        "|---|" + "---:|" * (len(h.get("decisions_by_kind") or {}) + 1),
+    ]
+    for d in DECISIONS:
+        out.append(f"| `{d}` | " + " | ".join(str(v.get(d, 0)) for _, v in sorted((h.get("decisions_by_kind") or {}).items()))
+                   + f" | {(h.get('decisions') or {}).get(d, 0)} |")
+    if h.get("l3"):
+        out += ["", "L3 on these: " + ", ".join(f"{k}: {v}" for k, v in sorted(h["l3"].items(), key=lambda kv: -kv[1]))]
+    rest = [r for r in h.get("rows") or [] if r.get("decision") != "executable_approved"]
+    if rest:
+        out += [
+            "",
+            "Every one that was not `executable_approved`, and why:",
+            "",
+            "| row | kind | sender → recipient | decision | risk · policy · confidence | L3 | L3/L4 reasons | findings | L4 |",
+            "|---:|---|---|---|---|---|---|---|---|",
+        ]
+        for r in rest:
+            out.append(
+                f"| {r['row']} | {r.get('kind')} | `{short(r.get('sender'))}` → `{short(r.get('recipient'))}` | "
+                f"`{r.get('decision') or r.get('http')}` | {r.get('risk')} · {r.get('policy')} · {r.get('confidence')} | "
+                f"{_cell(r.get('l3') or '')} | {_cell('; '.join(r.get('reasons') or []))} | "
+                f"{_cell('; '.join(r.get('finding_reasons') or []))[:600]} | {_cell(r.get('l4_reason') or r.get('refusal') or '')} |"
+            )
+    out.append("")
+    return out
+
+
+def fee_markdown(rows):
+    """The signer-debit rows with the fee set beside the chain's (Round 40)."""
+    rows = [r for r in rows if r.get("fee_breakdown")]
+    if not rows:
+        return []
+    out = [
+        "",
+        "### Signer debits beyond the fee: the fee, and what the chain did",
+        "",
+        "Graphite credits the fee the simulator reports (`simulateTransaction`'s `fee`: Agave's total fee — "
+        "5,000 lamports per signature, precompile signatures included, plus the priority fee — charged to the fee "
+        "payer). What a signer lost beyond it is value the transaction moved: a sibling System transfer (a tip), or "
+        "a transfer the program made. Under a manifest that declares nothing for the instruction it is refused: a "
+        "declaration Graphite cannot read does not excuse a signer's loss. `chain fee` and the per-signer change are "
+        "the block's own record (`meta`), when this run's sample recorded them; a Graphite figure equal to the "
+        "chain's beyond-the-fee figure means the fee was credited as the chain charged it.",
+        "",
+        "| row | signature | Graphite: beyond the fee | signatures (+precompile) | CU price × limit → priority fee | "
+        "expected fee | chain fee | per-signer change on chain (beyond the fee) | instructions |",
+        "|---:|---|---:|---|---|---:|---:|---|---|",
+    ]
+    for r in rows:
+        f = r["fee_breakdown"]
+        deltas = "; ".join(f"`{short(d['signer'])}` {d['delta']:+d} ({d['beyond_fee']})" for d in f.get("signer_deltas") or []) \
+            or "not recorded"
+        out.append(
+            f"| {r['row']} | `{(r.get('signature') or '')[:16]}` | {f.get('graphite_beyond_fee')} | "
+            f"{f.get('signatures')} (+{f.get('precompile_signatures')}) | "
+            f"{f.get('cu_price_micro_lamports')} µl × {f.get('cu_limit')} → {f.get('priority_fee')} | "
+            f"{f.get('expected_fee')} | {f.get('chain_fee') if f.get('chain_fee') is not None else 'not recorded'} | "
+            f"{deltas} | {_cell('; '.join(f.get('instructions') or [f.get('error', '')]))} |"
+        )
+    return out
 
 
 def reasons_markdown(report, top=60):
@@ -926,7 +1436,7 @@ def seeded_markdown(report):
     outcomes = report.get("seeded_outcomes") or {}
     if not outcomes:
         return []
-    out = ["", "## Seeded programs", ""]
+    out = ["", "## System and SPL Token (census-imported)", ""]
     seed = report.get("seeded") or {}
     if not seed.get("ok", True):
         out += [f"**Seeding did not complete:** {seed.get('error')}", ""]
@@ -964,21 +1474,32 @@ def watched_markdown(report):
             f"{_cell(' '.join(p[:8] for p in r.get('programs') or []))} | {_cell(r.get('l3_reason') or r.get('l3') or '')} | "
             f"{_cell(r.get('l4_reason_full') or '')} |"
         )
-    return out
+    return out + fee_markdown(rows)
 
 
 # ── seed (operator evidence, before the Core starts) ────────────────────────
 
 
-def seed(graphite, data_dir, programs=None, *, whole_census=False, run=subprocess.run):
+IMPORT_LINE_RE = re.compile(r"^IMPORT\s+([1-9A-HJ-NP-Za-km-z]{32,44})\s", re.M)
+IMPORTED_RE = re.compile(r"^IMPORTED (\d+) program", re.M)
+CENSUS_SHA_RE = re.compile(r"sha256=([0-9a-f]{64})")
+
+
+def seed(graphite, data_dir, programs=SEEDED_PROGRAMS, *, whole_census=False, run=subprocess.run):
     """`graphite evidence import-census` for the programs (Round 40: their
     measured census volume, never typed numbers) — or, with `whole_census`,
     for every record the census admits, as an operator's first start does —
-    then `baseline` (the L3 anchor) and `show` for each of the programs.
-    Returns the record the replay report carries. Read-only towards the
-    chain: nothing here signs or sends."""
-    programs = programs or SEED_BASELINES
-    doc = {"ok": True, "evidence": "census-imported (whole census)" if whole_census else "census-imported", "programs": {}}
+    then `show` for each of the programs. No L3 baseline is typed (Round 40,
+    measure; see SEEDED_PROGRAMS). Returns the record the replay report
+    carries, naming every program the import actually imported. Read-only
+    towards the chain: nothing here signs or sends."""
+    doc = {
+        "ok": True,
+        "evidence": "census-imported (whole census)" if whole_census else "census-imported",
+        "whole_census": bool(whole_census),
+        "l3_baselines": "none typed (learned from this run's own clean simulations only)",
+        "programs": {},
+    }
     imp = [graphite, "evidence", "import-census", "--cluster", "mainnet-beta", "--data-dir", data_dir]
     if not whole_census:
         for p in programs:
@@ -987,16 +1508,21 @@ def seed(graphite, data_dir, programs=None, *, whole_census=False, run=subproces
     if r.returncode != 0:
         doc.update(ok=False, error=f"`graphite evidence import-census` exited {r.returncode}: {(r.stderr or '')[-300:]}")
         return doc
-    doc["import"] = (r.stdout or "")[-1500:]
-    for p, b in programs.items():
-        c = [graphite, "evidence", "baseline", "--data-dir", data_dir, "--program", p, "--mean-compute-units", str(b["mean"]),
-             "--std-compute-units", str(b["std"]), "--samples", str(b["samples"])]
-        r = run(c, capture_output=True, text=True)
-        if r.returncode != 0:
-            doc.update(ok=False, error=f"`graphite {' '.join(c[1:3])}` for {p} exited {r.returncode}: {(r.stderr or '')[-300:]}")
-            return doc
+    out = r.stdout or ""
+    doc["import"] = out[-1500:]
+    doc["imported"] = IMPORT_LINE_RE.findall(out)
+    m = IMPORTED_RE.search(out)
+    doc["imported_count"] = int(m.group(1)) if m else len(doc["imported"])
+    sha = CENSUS_SHA_RE.search(out)
+    doc["census_sha256"] = sha.group(1) if sha else None
+    for p in programs:
         show = run([graphite, "evidence", "show", "--data-dir", data_dir, "--program", p], capture_output=True, text=True)
-        doc["programs"][p] = {"baseline": b, "show": ((show.stdout or show.stderr) or "")[-600:]}
+        doc["programs"][p] = {"imported": p in doc["imported"], "show": ((show.stdout or show.stderr) or "")[-600:]}
+    # Asked for and not in force is a failed seeding (Round 36's rule): the
+    # report would otherwise call these programs census-imported.
+    missing = [p for p in programs if p not in doc["imported"]]
+    if missing:
+        doc.update(ok=False, error=f"`graphite evidence import-census` did not import {', '.join(missing)} (see its SKIP lines)")
     return doc
 
 
@@ -1026,6 +1552,9 @@ def main(argv=None):
     r.add_argument("--pace", type=float, default=1.0)
     r.add_argument("--l8", type=int, default=10)
     r.add_argument("--fresh", type=int, default=0, help="re-verify the first N with a fresh blockhash (needs --rpc)")
+    r.add_argument("--honest", type=int, default=0,
+                   help="first verify up to N new unsigned 1-lamport / 1-base-unit transfers built from the sample's "
+                        "executed simple transfers (needs --rpc for a fresh blockhash; never signed or sent)")
     r.add_argument("--rpc", default=os.environ.get("LIVE_RPC_URL"), help="for getLatestBlockhash only (default: $LIVE_RPC_URL)")
     r.add_argument("--seeded", default=None, help="the record `seed` wrote, when evidence was seeded")
     r.add_argument("--harness-exit", type=int, default=None)
@@ -1035,15 +1564,17 @@ def main(argv=None):
     sd.add_argument("--data-dir", required=True)
     sd.add_argument("--out", required=True)
     sd.add_argument("--whole-census", action="store_true",
-                    help="import every record the census admits (an operator's first start), not only the seeded programs")
+                    help="import every record the census admits (an operator's first start), not only System and SPL Token")
     args = ap.parse_args(argv)
 
     if args.cmd == "seed":
         doc = seed(args.graphite, args.data_dir, whole_census=args.whole_census)
         with open(args.out, "w", encoding="utf-8") as fh:
             json.dump(doc, fh, indent=1)
+        if doc["ok"]:
+            print(f"census imported for {doc['imported_count']} program(s) ({doc['evidence']}); no L3 baseline typed")
         for p, d in doc["programs"].items():
-            print(f"seeded {p}: baseline {d['baseline']}\n{d['show']}")
+            print(f"{p}: imported={d['imported']}\n{d['show']}")
         if not doc["ok"]:
             print(f"SEEDING FAILED: {doc['error']}", flush=True)
             return 1
@@ -1079,11 +1610,13 @@ def main(argv=None):
                 seeded = json.load(fh)
         except (OSError, ValueError) as e:
             seeded = {"ok": False, "programs": {}, "error": f"no seeding record: {type(e).__name__}: {e}"}
-    blockhash_fn = FreshBlockhash(args.rpc) if (args.fresh and args.rpc) else None
+    blockhash_fn = FreshBlockhash(args.rpc) if ((args.fresh or args.honest) and args.rpc) else None
     if args.fresh:
         print(f"fresh pass: {args.fresh} transactions, blockhash from {solrpc.host_of(args.rpc) if args.rpc else '(no RPC: skipped)'}", flush=True)
+    if args.honest:
+        print(f"honest pass: up to {args.honest} constructed transfers, blockhash from {solrpc.host_of(args.rpc) if args.rpc else '(no RPC: skipped)'}", flush=True)
     report = replay(read_jsonl(args.selected), sample_rows, args.core, key, pace=args.pace, l8=args.l8,
-                    fresh=args.fresh, blockhash_fn=blockhash_fn, seeded=seeded)
+                    fresh=args.fresh, blockhash_fn=blockhash_fn, seeded=seeded, honest=args.honest)
     if seeded is not None and not seeded.get("ok", True):
         report["defects"].append(f"operator evidence seeding failed: {seeded.get('error')}")
         report["status"] = "DEFECTS"
