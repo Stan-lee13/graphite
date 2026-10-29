@@ -1297,12 +1297,13 @@ def honest_markdown(h):
     out = [
         "## Honest transfers: what an agent's own transaction gets",
         "",
-        f"From the fetched blocks, the executed simple transfers (one System `Transfer` or SPL Token "
-        "`TransferChecked`, nothing else but Compute Budget instructions, sent by the transaction's own fee payer) "
-        f"were taken — up to {h['asked']}, one per sender, recipient and asset — and for each a NEW unsigned legacy "
+        "From the fetched blocks, the executed simple transfers were taken — one System `Transfer` or SPL Token "
+        "`TransferChecked` (or `Transfer`, when the block names its mint), beside nothing but Compute Budget, an "
+        "idempotent associated-token-account create paid by the sender, or a memo; sent by the transaction's own "
+        f"fee payer — up to {h['asked']}, one per sender, recipient and asset; and for each a NEW unsigned legacy "
         "transaction was built: the same sender to the same recipient, 1 lamport or 1 base unit (never more than "
-        "the original), the original's Compute Budget instructions, a blockhash just fetched, and a zeroed signature "
-        "slot. Each was verified with the intent `transfer` and its amount, recipient and asset stated, under the "
+        "the original), the original's Compute Budget and ATA-create instructions (a memo is dropped: its text was "
+        "the original sender's), a blockhash just fetched, and a zeroed signature slot. Each was verified with the intent `transfer` and its amount, recipient and asset stated, under the "
         "built-in Gaming profile. Nothing was signed or sent: the bytes went to the local Core's /verify only.",
         "",
         "What this measures: the decision an honest agent's own simple transfer gets from this Core against "
