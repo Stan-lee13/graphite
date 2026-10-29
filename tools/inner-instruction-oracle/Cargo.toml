@@ -16,9 +16,9 @@ graphite-core = { path = "../../graphite-core", default-features = false }
 # The parser `simulateTransaction` runs every inner instruction through
 # (`parse_ui_instruction`), at the version mainnet RPCs run.
 # Agave gates the whole crate behind this feature.
-solana-transaction-status = { version = "=4.3.2", features = ["agave-unstable-api"] }
+solana-transaction-status = { version = "=4.4.0", features = ["agave-unstable-api"] }
 # The types that parser takes, at the versions it resolves to.
-solana-message = "4.6.0"
+solana-message = "5.1.0"
 solana-pubkey = "4.4.0"
 solana-program-option = "3.1.0"
 # The programs' own instruction encoders: the reference bytes.
