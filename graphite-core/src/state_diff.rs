@@ -1647,27 +1647,145 @@ fn wsol_kept_by(
                 && lamports_kept_by(s, signers).as_deref() == Some(wallet)
         });
     }
-    is_transient_own_wsol(account, wallet, ixs)
+    is_transient_own_wsol(
+        account,
+        wallet,
+        ixs,
+        diff.transaction_privileges.as_ref().map(|p| &p.signers),
+    )
 }
 
-/// Whether `account` is `wallet`'s associated wrapped-SOL account under SPL
-/// Token and a top-level associated-token-account `Create` or
-/// `CreateIdempotent` of `ixs` creates it for `wallet` and the native mint
-/// (Round 41, D-20). Asked only of an account the simulation observed absent
-/// both before and after the transaction: the address fixes whose it is —
-/// the associated token program creates it owned by `wallet`, with no
-/// delegate and no close authority — and it holds nothing at the end. L4
-/// (`wsol_kept_by`) and the intent binding (`kept_by`) share it.
+/// A top-level System instruction that creates an account (Round 41, D-24),
+/// read exactly: `CreateAccount { lamports, space, owner }` (52 bytes,
+/// `[funder, new]`) or `CreateAccountWithSeed { base, seed, lamports, space,
+/// owner }` (`[funder, new, (base)]`, the seed a bincode `String`, the data
+/// ending where the layout ends).
+struct SystemCreation<'a> {
+    funder: &'a str,
+    new: &'a str,
+    lamports: u64,
+    space: u64,
+    owner: String,
+    /// `(base, seed)` for `CreateAccountWithSeed`.
+    seeded: Option<(String, &'a [u8])>,
+}
+
+fn system_creation(ix: &TopLevelInstruction) -> Option<SystemCreation<'_>> {
+    if ix.program_id != SYSTEM_PROGRAM {
+        return None;
+    }
+    let d = ix.data.as_slice();
+    let u64_at = |at: usize| -> Option<u64> {
+        Some(u64::from_le_bytes(
+            d.get(at..at.checked_add(8)?)?.try_into().ok()?,
+        ))
+    };
+    let key_at = |at: usize| -> Option<String> {
+        let bytes: [u8; 32] = d.get(at..at.checked_add(32)?)?.try_into().ok()?;
+        Some(bs58::encode(bytes).into_string())
+    };
+    let funder = ix.accounts.first()?.as_str();
+    let new = ix.accounts.get(1)?.as_str();
+    match u32::from_le_bytes(d.get(0..4)?.try_into().ok()?) {
+        0 if d.len() == 52 => Some(SystemCreation {
+            funder,
+            new,
+            lamports: u64_at(4)?,
+            space: u64_at(12)?,
+            owner: key_at(20)?,
+            seeded: None,
+        }),
+        3 => {
+            let base = key_at(4)?;
+            let len = usize::try_from(u64_at(36)?).ok()?;
+            let seed_end = 44usize.checked_add(len)?;
+            let seed = d.get(44..seed_end)?;
+            if d.len() != seed_end.checked_add(48)? {
+                return None;
+            }
+            Some(SystemCreation {
+                funder,
+                new,
+                lamports: u64_at(seed_end)?,
+                space: u64_at(seed_end + 8)?,
+                owner: key_at(seed_end + 16)?,
+                seeded: Some((base, seed)),
+            })
+        }
+        _ => None,
+    }
+}
+
+/// `(account, mint, owner)` of a top-level SPL Token `InitializeAccount`
+/// (tag 1, `[account, mint, owner, rent]`), `InitializeAccount2` (tag 16,
+/// owner in the data, `[account, mint, rent]`) or `InitializeAccount3` (tag
+/// 18, owner in the data, `[account, mint]`), read exactly (Round 41, D-24).
+fn token_initialization(ix: &TopLevelInstruction) -> Option<(&str, &str, String)> {
+    if ix.program_id != SPL_TOKEN_PROGRAM {
+        return None;
+    }
+    let account = ix.accounts.first()?.as_str();
+    let mint = ix.accounts.get(1)?.as_str();
+    match ix.data.as_slice() {
+        [1] => Some((account, mint, ix.accounts.get(2)?.clone())),
+        [16 | 18, owner @ ..] if owner.len() == 32 => {
+            Some((account, mint, bs58::encode(owner).into_string()))
+        }
+        _ => None,
+    }
+}
+
+/// Whether a top-level token-program instruction of `ixs` hands `account`
+/// to someone: `Approve` (4), `ApproveChecked` (13) or `SetAuthority` (6)
+/// naming it first (Round 41, D-24). Read by tag alone, whatever follows.
+fn handed_away(account: &str, ixs: &[TopLevelInstruction]) -> bool {
+    ixs.iter().any(|ix| {
+        (ix.program_id == SPL_TOKEN_PROGRAM || ix.program_id == SPL_TOKEN_2022_PROGRAM)
+            && matches!(ix.data.first(), Some(4 | 6 | 13))
+            && ix.accounts.first().map(String::as_str) == Some(account)
+    })
+}
+
+/// Whether `account` — one the simulation observed absent both before and
+/// after the transaction, so one that exists only inside it — is `wallet`'s
+/// own wrapped SOL, as the transaction's OWN top-level instructions prove it
+/// (Round 41, D-20 and D-24). Nothing a top-level `Approve`,
+/// `ApproveChecked` or `SetAuthority` names qualifies. Otherwise either:
+///
+/// - **D-20, the associated account:** `account` is `wallet`'s associated
+///   token account for the native mint under SPL Token, created by a
+///   top-level associated-token-account `Create` / `CreateIdempotent` for
+///   `wallet` and the native mint. The address fixes whose it is: the
+///   associated token program creates it owned by `wallet`, with no delegate
+///   and no close authority.
+/// - **D-24, a temporary account:** created by a top-level System
+///   `CreateAccountWithSeed` whose funder AND base are `wallet` — and
+///   `account` is the address `create_with_seed(base, seed, owner)` derives,
+///   checked, not taken from the slot — or by a `CreateAccount` funded by
+///   `wallet` whose new account is itself a signer of the transaction (a
+///   keypair made for it); in both, owner SPL Token and 165 bytes; and
+///   initialized by a top-level SPL Token `InitializeAccount` / `2` / `3`
+///   with the native mint and `wallet` as owner. A keypair or a seed confers
+///   nothing over a token account; its owner field does, and the bytes set
+///   it to `wallet`.
+///
+/// `tx_signers` are the transaction's own signers (from its bytes); without
+/// them a keypair-created account never qualifies. L4 (`wsol_kept_by`) and
+/// the intent binding (`kept_by`) share this.
 pub(crate) fn is_transient_own_wsol(
     account: &str,
     wallet: &str,
     ixs: &[TopLevelInstruction],
+    tx_signers: Option<&std::collections::BTreeSet<String>>,
 ) -> bool {
     use crate::intent_binding::{is_ata_under, ATA_PROGRAM, NATIVE_MINT};
+    if handed_away(account, ixs) {
+        return false;
+    }
     let named = |ix: &TopLevelInstruction, i: usize, who: &str| {
         ix.accounts.get(i).map(String::as_str) == Some(who)
     };
-    is_ata_under(account, wallet, NATIVE_MINT, SPL_TOKEN_PROGRAM)
+    let associated = is_ata_under(account, wallet, NATIVE_MINT, SPL_TOKEN_PROGRAM)
         && ixs.iter().any(|ix| {
             ix.program_id == ATA_PROGRAM
                 && matches!(ix.data.as_slice(), [] | [0] | [1])
@@ -1675,7 +1793,35 @@ pub(crate) fn is_transient_own_wsol(
                 && named(ix, 2, wallet)
                 && named(ix, 3, NATIVE_MINT)
                 && named(ix, 5, SPL_TOKEN_PROGRAM)
-        })
+        });
+    if associated {
+        return true;
+    }
+    let derived = |base: &str, seed: &[u8], owner: &str| -> bool {
+        let (Ok(base), Ok(owner)) = (
+            crate::solana_types::Pubkey::from_base58(base),
+            crate::solana_types::Pubkey::from_base58(owner),
+        ) else {
+            return false;
+        };
+        crate::solana_types::create_with_seed(&base, seed, &owner)
+            .is_ok_and(|a| a.to_base58() == account)
+    };
+    let created = ixs.iter().filter_map(system_creation).any(|c| {
+        c.funder == wallet
+            && c.new == account
+            && c.owner == SPL_TOKEN_PROGRAM
+            && c.space == 165
+            && match &c.seeded {
+                Some((base, seed)) => base == wallet && derived(base, seed, &c.owner),
+                None => tx_signers.is_some_and(|s| s.contains(account)),
+            }
+    });
+    created
+        && ixs
+            .iter()
+            .filter_map(token_initialization)
+            .any(|(a, mint, owner)| a == account && mint == NATIVE_MINT && owner == wallet)
 }
 
 /// What each signer's wallet put into its own wrapped-SOL account for the
@@ -1723,33 +1869,60 @@ fn wrapped_for_declared_debit(
         return out;
     };
     // Per wSOL account: the wallet that keeps it and what it wrapped there.
-    let mut wrapped: BTreeMap<&str, (&str, i128)> = BTreeMap::new();
+    let mut wrapped: BTreeMap<&str, (&str, i128, i128)> = BTreeMap::new();
     for ix in ixs {
-        if ix.program_id != SYSTEM_PROGRAM || ix.data.len() != 12 || ix.data[..4] != [2, 0, 0, 0] {
-            continue;
-        }
-        let (Some(from), Some(to)) = (ix.accounts.first(), ix.accounts.get(1)) else {
+        // What this instruction puts into an account from a wallet, and the
+        // rent of the account it creates: a `Transfer` (exact layout), or a
+        // `CreateAccount` / `CreateAccountWithSeed` (D-24).
+        let moved: Option<(&str, &str, i128, i128)> = if ix.program_id == SYSTEM_PROGRAM
+            && ix.data.len() == 12
+            && ix.data[..4] == [2, 0, 0, 0]
+        {
+            let mut lamports = [0u8; 8];
+            lamports.copy_from_slice(&ix.data[4..12]);
+            match (ix.accounts.first(), ix.accounts.get(1)) {
+                (Some(from), Some(to)) => Some((
+                    from.as_str(),
+                    to.as_str(),
+                    i128::from(u64::from_le_bytes(lamports)),
+                    0,
+                )),
+                _ => None,
+            }
+        } else {
+            system_creation(ix).map(|c| {
+                let rent = usize::try_from(c.space).map_or(i128::MAX, rent_exempt_minimum);
+                (c.funder, c.new, i128::from(c.lamports), rent)
+            })
+        };
+        let Some((from, to, lamports, rent)) = moved else {
             continue;
         };
-        if from == to || !wallets.contains(from.as_str()) {
+        if from == to || !wallets.contains(from) {
             continue;
         }
-        let names = names_of.get(to.as_str()).map(Vec::as_slice).unwrap_or(&[]);
+        let names = names_of.get(to).map(Vec::as_slice).unwrap_or(&[]);
         if !declared.covers_by_name("debit", names) || !wsol_kept_by(diff, ixs, to, from, signers) {
             continue;
         }
-        let mut lamports = [0u8; 8];
-        lamports.copy_from_slice(&ix.data[4..12]);
-        let entry = wrapped.entry(to.as_str()).or_insert((from.as_str(), 0));
-        entry.1 += i128::from(u64::from_le_bytes(lamports));
+        let entry = wrapped.entry(to).or_insert((from, 0, 0));
+        entry.1 += lamports;
+        entry.2 += rent;
     }
     let mut left = i128::from(spend);
-    for (account, (wallet, lamports)) in wrapped {
-        let stayed = diff
-            .deltas
-            .iter()
-            .find(|d| d.pubkey == account)
-            .map_or(0, |d| d.lamport_delta().max(0));
+    for (account, (wallet, lamports, rent)) in wrapped {
+        // What did not leave by the route: for an account the diff saw, its
+        // net gain (`signer_lamport_losses` credits it as kept); for one that
+        // exists only inside the transaction, at least the rent of its
+        // creation, which the account's close returns to whoever it names
+        // and is never the route's spend (D-24).
+        let d = diff.deltas.iter().find(|d| d.pubkey == account);
+        let transient = d.is_none_or(|d| d.before.is_none() && d.after.is_none());
+        let stayed = if transient {
+            rent
+        } else {
+            d.map_or(0, |d| d.lamport_delta().max(0))
+        };
         let spent = (lamports - stayed).max(0).min(left);
         left -= spent;
         *out.entry(wallet.to_string()).or_default() += spent;

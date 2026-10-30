@@ -185,6 +185,36 @@ pub fn create_program_address(
     program_address(seeds, bump, program_id).ok_or(SolanaTypeError::OnCurve)
 }
 
+/// Solana's `Pubkey::create_with_seed(base, seed, owner)` (Round 41, D-24):
+/// `sha256(base || seed || owner)`. Refused as the runtime refuses it: a seed
+/// over `MAX_SEED_LEN` bytes or not UTF-8 (the System program's seed is a
+/// `String`), or an owner whose last bytes are the PDA marker
+/// (`IllegalOwner`). The address the System program's `CreateAccountWithSeed`
+/// creates; a caller checks the instruction's account against it rather than
+/// trusting the slot.
+pub fn create_with_seed(
+    base: &Pubkey,
+    seed: &[u8],
+    owner: &Pubkey,
+) -> Result<Pubkey, SolanaTypeError> {
+    if seed.len() > MAX_SEED_LEN || std::str::from_utf8(seed).is_err() {
+        return Err(SolanaTypeError::SeedLimit(format!(
+            "a {}-byte seed is over the runtime's {MAX_SEED_LEN}-byte limit or not UTF-8",
+            seed.len()
+        )));
+    }
+    if owner.as_bytes().ends_with(PDA_MARKER) {
+        return Err(SolanaTypeError::SeedLimit(
+            "the owner ends with the PDA marker (IllegalOwner)".to_string(),
+        ));
+    }
+    let mut hasher = Sha256::new();
+    hasher.update(base.as_bytes());
+    hasher.update(seed);
+    hasher.update(owner.as_bytes());
+    Ok(Pubkey(hasher.finalize().into()))
+}
+
 /// The off-curve address for these seeds and bump, or `None` on the curve.
 /// Limits are the caller's to check.
 fn program_address(seeds: &[&[u8]], bump: u8, program_id: &Pubkey) -> Option<Pubkey> {
@@ -379,6 +409,26 @@ mod tests {
         assert!(!Pubkey::SPL_TOKEN.is_system_program());
         assert!(!Pubkey::TOKEN_2022.is_system_program());
         assert_eq!(Pubkey::default(), Pubkey::SYSTEM_PROGRAM);
+    }
+
+    /// Round 41 (D-24): `create_with_seed` is sha256(base || seed || owner),
+    /// checked against a vector computed independently (Python `hashlib`),
+    /// and refuses what the runtime refuses.
+    #[test]
+    fn create_with_seed_is_the_runtimes_derivation() {
+        let base = Pubkey::from_base58("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU").unwrap();
+        let token = Pubkey::from_base58("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
+        assert_eq!(
+            create_with_seed(&base, b"graphite-r41", &token)
+                .unwrap()
+                .to_base58(),
+            "6jaXAL75hshJMYhzBxZexV9CbN4kKXirAadoBV5WqCGd"
+        );
+        assert!(create_with_seed(&base, &[b'a'; 33], &token).is_err());
+        assert!(create_with_seed(&base, &[0xff], &token).is_err());
+        let mut marker = [7u8; 32];
+        marker[11..].copy_from_slice(PDA_MARKER);
+        assert!(create_with_seed(&base, b"x", &Pubkey(marker)).is_err());
     }
 
     /// `create_program_address` with the bump `find_program_address` found

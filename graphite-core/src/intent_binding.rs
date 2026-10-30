@@ -1591,7 +1591,10 @@ fn within_slippage(min_out: u64, simulated: i128, bps: u64) -> bool {
 /// the native mint under SPL Token: the address fixes whose it is, and the
 /// ordinary SOL -> token swap wraps there, the route spends it and
 /// `CloseAccount` returns the rent. It holds nothing at the end, so whatever
-/// left it went somewhere the rest of [`keeps_value`] judges.
+/// left it went somewhere the rest of [`keeps_value`] judges. Round 41
+/// (D-24): or a temporary wSOL account the keeper's own top-level
+/// instructions create and initialize to it, nothing handing it away
+/// (`state_diff::is_transient_own_wsol`).
 fn kept_by(account: &str, keepers: &[String], diff: &StateDiff, ixs: &[Ix]) -> bool {
     if keepers.iter().any(|k| k == account) {
         return true;
@@ -1601,9 +1604,10 @@ fn kept_by(account: &str, keepers: &[String], diff: &StateDiff, ixs: &[Ix]) -> b
         return false;
     };
     if d.before.is_none() && d.after.is_none() {
+        let tx_signers = diff.transaction_privileges.as_ref().map(|p| &p.signers);
         return keepers
             .iter()
-            .any(|k| crate::state_diff::is_transient_own_wsol(account, k, ixs));
+            .any(|k| crate::state_diff::is_transient_own_wsol(account, k, ixs, tx_signers));
     }
     // What the account is once the transaction has run; a closed one is
     // judged by what it was.
