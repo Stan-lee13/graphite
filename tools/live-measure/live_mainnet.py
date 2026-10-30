@@ -590,7 +590,7 @@ def verify_one(report, entry, body_in, core, key, post_fn, tag=""):
                 "confidence": result.get("confidence"),
                 "trust_tier": result.get("trust_tier"),
                 "finding_reasons": [
-                    f"{f.get('pattern')}: {str(f.get('reason', ''))[:200]}"
+                    f"{f.get('pattern')}: {str(f.get('reason', ''))[:600]}"
                     for f in (result.get("risk_verdict") or {}).get("findings") or [] if isinstance(f, dict)
                 ],
                 "transaction_sha256": (result.get("scope") or {}).get("transaction_sha256"),
@@ -951,7 +951,20 @@ def honest_request(t, recent_blockhash, amount=1):
     return frame, body
 
 
-def honest_pass(report, sample_rows, n, core, key, post_fn, blockhash_fn, sleep, pace):
+def chain_rejects(rpc, frame, call=solrpc.call):
+    """Round 41: why the RPC's simulator rejects the unsigned frame now (the
+    error class), or None when it runs. Signature verification off; nothing
+    is sent."""
+    r = call(rpc, "simulateTransaction", [base64.b64encode(bytes(frame)).decode(), {
+        "encoding": "base64", "sigVerify": False, "replaceRecentBlockhash": False, "commitment": "confirmed"}],
+        attempts=4)
+    if "error" in r:
+        raise solrpc.RpcError(f"simulateTransaction: {r['error']}")
+    err = ((r.get("result") or {}).get("value") or {}).get("err")
+    return None if err is None else sim_error_class(json.dumps(err))
+
+
+def honest_pass(report, sample_rows, n, core, key, post_fn, blockhash_fn, sleep, pace, rpc=None, call=solrpc.call):
     h = report["honest"]
     picked, h["candidates"] = honest_candidates(sample_rows, n)
     for t in picked:
@@ -964,6 +977,26 @@ def honest_pass(report, sample_rows, n, core, key, post_fn, blockhash_fn, sleep,
             h["skipped"][f"no fresh blockhash ({type(e).__name__})"] += 1
             continue
         frame, body = honest_request(t, new_hash)
+        # Round 41: a transfer the chain would reject now is not one an honest
+        # agent can send (run 41129142710: 11 of 12 refusals were the
+        # sender's account gone, or 1 lamport into an account that does not
+        # exist, under the rent minimum). It is counted, not verified: the
+        # Core refusing it would be right, and would measure the sender.
+        if rpc:
+            try:
+                why = chain_rejects(rpc, frame, call)
+                if why == "InsufficientFundsForRent" and t["original_amount"] > 1:
+                    frame, body = honest_request(t, new_hash, amount=t["original_amount"])
+                    h["rebuilt_with_original_amount"] = h.get("rebuilt_with_original_amount", 0) + 1
+                    why = chain_rejects(rpc, frame, call)
+            except (solrpc.RateLimited, solrpc.RpcError, KeyError, TypeError, ValueError) as e:
+                h["skipped"][f"not pre-simulated ({type(e).__name__})"] += 1
+                sleep(pace)
+                continue
+            if why:
+                h["skipped"][f"the chain would reject it now ({why})"] += 1
+                sleep(pace)
+                continue
         entry = {"row": t["row"], "slot": t["slot"], "program_id": body["program_id"], "instruction_name": t["kind"],
                  "manifest_found": None, "failed_on_chain": False}
         # Its own 4xx tally; server errors and defects are the run's.
@@ -1018,6 +1051,7 @@ def swap_pass(report, sample_rows, requests_by_row, n, core, key, post_fn, block
             continue
         s["constructed"] += 1
         row.update(venue=c["venue"], sender=c["sender"], asset_in=c["asset_in"], asset_out=c["asset_out"],
+                   original_signature=c.get("signature"), swap_accounts=c.get("accounts"),
                    amount=body["proposed_intent"]["extracted_parameters"]["amount"], quoted=quoted,
                    minimum=honest_swaps.minimum_of(c["layout"], data), original_version=c["version"],
                    primary=(harness or {}).get("program_id"))
@@ -1063,7 +1097,7 @@ def replay(selected, sample_rows, core, key, *, pace=1.0, l8=10, fresh=0, blockh
     # it a baseline (a clean simulated verdict of an imported program is an
     # observation, bootstrap G-13).
     if honest:
-        honest_pass(report, sample_rows, honest, core, key, post_fn, blockhash_fn, sleep, pace)
+        honest_pass(report, sample_rows, honest, core, key, post_fn, blockhash_fn, sleep, pace, rpc=rpc, call=rpc_call)
     if swaps:
         swap_pass(report, sample_rows, requests_by_row or {}, swaps, core, key, post_fn, blockhash_fn, rpc, sleep,
                   pace, call=rpc_call)
@@ -1376,19 +1410,24 @@ def honest_markdown(h):
         f"fee payer — up to {h['asked']}, one per sender, recipient and asset; and for each a NEW unsigned legacy "
         "transaction was built: the same sender to the same recipient, 1 lamport or 1 base unit (never more than "
         "the original), the original's Compute Budget and ATA-create instructions (a memo is dropped: its text was "
-        "the original sender's), a blockhash just fetched, and a zeroed signature slot. Each was verified with the intent `transfer` and its amount, recipient and asset stated, under the "
-        "built-in Gaming profile. Nothing was signed or sent: the bytes went to the local Core's /verify only.",
+        "the original sender's), a blockhash just fetched, and a zeroed signature slot. Each was first simulated by the "
+        "RPC (signature verification off): one the chain would reject now — the sender's account gone or emptied, "
+        "or 1 lamport into an account that does not exist, under the rent minimum (that one is rebuilt once with the "
+        "original's amount) — is counted under *not built*, never verified, because refusing it would be right and "
+        "would measure the sender, not the Core. Each that would land was verified with the intent `transfer` and "
+        "its amount, recipient and asset stated, under the built-in Gaming profile. Nothing was signed or sent: the "
+        "bytes went to the RPC's simulateTransaction and the local Core's /verify only.",
         "",
         "What this measures: the decision an honest agent's own simple transfer gets from this Core against "
-        "today's mainnet state. What it does not measure: swaps or any other protocol (no honest swap is built: "
-        "that needs a route and pool accounts this runner would have to invent), what happens after signing, or "
-        "wallets the runner controls — the senders are real wallets as they stand now.",
+        "today's mainnet state. What it does not measure: swaps (their own section below) or any other protocol, "
+        "what happens after signing, or wallets the runner controls — the senders are real wallets as they stand now.",
         "",
         f"- simple transfers in the sample: {c.get('simple transfers', 0)} ({c.get('by kind') or {}}); set aside: "
         f"{c.get('set aside') or {}}",
         f"- constructed and verified: **{h.get('constructed', 0)}** · verdicts: {h.get('measured', 0)} · not built: "
         f"{h.get('skipped') or {}} · refused as requests (4xx): {h.get('refused_requests') or {}} · "
-        f"touched by an RPC rate limit: {h.get('rate_limited_verdicts', 0)}",
+        f"touched by an RPC rate limit: {h.get('rate_limited_verdicts', 0)} · rebuilt with the original's amount "
+        f"(rent minimum): {h.get('rebuilt_with_original_amount', 0)}",
         "",
         "| decision | " + " | ".join(sorted(h.get("decisions_by_kind") or {})) + " | all |",
         "|---|" + "---:|" * (len(h.get("decisions_by_kind") or {}) + 1),
@@ -1474,6 +1513,13 @@ def swaps_markdown(s):
                 f"{_cell(r.get('l3') or '')} | {_cell('; '.join(r.get('reasons') or []))} | "
                 f"{_cell('; '.join(r.get('finding_reasons') or []))[:600]} | {_cell(r.get('l4_reason') or r.get('refusal') or '')} |"
             )
+        out += ["", "The original transaction and the swap instruction's accounts of each (`s` signer, `w` writable), "
+                    "and every finding in full:", ""]
+        for r in rest:
+            accts = ", ".join(f"{i}:`{short(a)}`{'s' if sg else ''}{'w' if w else ''}" for i, (a, sg, w) in enumerate(r.get("swap_accounts") or []))
+            out.append(f"- row {r['row']} (`{r.get('original_signature')}`): {accts}")
+            for f in r.get("finding_reasons") or []:
+                out.append(f"  - {_cell(f)}")
     out.append("")
     return out
 

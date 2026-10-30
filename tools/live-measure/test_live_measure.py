@@ -1364,3 +1364,60 @@ def test_a_swap_that_does_not_simulate_now_is_counted_not_verified():
                        post_fn=lambda *a: pytest.fail("unreachable"),
                        get_fn=lambda url: {"verification_mode": "executable", "rpc_attached": True})
     assert report["swaps"]["skipped"] == {"the harness built no request for the row": 1}
+
+
+def test_a_transfer_the_chain_would_reject_now_is_counted_not_verified():
+    """Round 41: run 41129142710 refused 12 honest transfers, 11 of them ones
+    the chain itself would reject (the sender's account gone; 1 lamport into
+    an account that does not exist). Pre-simulated, they are counted; one
+    under the rent minimum is rebuilt once with the original's amount."""
+    sims = []
+
+    def rpc_call(url, method, params, **kw):
+        assert method == "simulateTransaction" and params[1]["sigVerify"] is False
+        msg = wire.message(base64.b64decode(params[0]))
+        data = msg.instructions[-1].data
+        sims.append(data)
+        if data[:4] == (2).to_bytes(4, "little") and int.from_bytes(data[4:12], "little") == 1:
+            return {"result": {"value": {"err": {"InsufficientFundsForRent": {"account_index": 1}}}}}
+        if data[:1] == b"\x0c":
+            return {"result": {"value": {"err": "AccountNotFound"}}}
+        return {"result": {"value": {"err": None}}}
+
+    post_fn, get_fn, calls = fake_core([fixture("executable_approved"), fixture("analysis_only")])
+    rep = lm.replay(selected(1), honest_sample(), "http://core", "k", pace=0, l8=0, honest=2,
+                    blockhash_fn=lambda: bytes(range(100, 132)), sleep=lambda s: None, post_fn=post_fn,
+                    get_fn=get_fn, rpc="rpc", rpc_call=rpc_call)
+    h = rep["honest"]
+    assert h["skipped"] == {"the chain would reject it now (AccountNotFound)": 1}
+    assert h["constructed"] == 1 and h["rebuilt_with_original_amount"] == 1
+    (row,) = h["rows"]
+    # The System transfer, rebuilt with its original amount, is what was verified.
+    body = next(b for u, b in calls if u.endswith("/verify") and (b.get("proposed_intent") or {}).get("extracted_parameters"))
+    sent = wire.message(bytes(body["signed_transaction"])).instructions[-1].data
+    assert int.from_bytes(sent[4:12], "little") > 1 and row["kind"] == "System Transfer"
+    md = lm.markdown(rep)
+    assert "the chain would reject it now (AccountNotFound)" in md and "rebuilt with the original's amount (rent minimum): 1" in md
+    # An RPC failure during pre-simulation is counted, never verified blind.
+    def broken(url, method, params, **kw):
+        return {"error": {"code": -32005, "message": "busy"}}
+    post_fn, get_fn, calls = fake_core([fixture("analysis_only")])
+    rep = lm.replay(selected(1), honest_sample(), "http://core", "k", pace=0, l8=0, honest=2,
+                    blockhash_fn=lambda: bytes(32), sleep=lambda s: None, post_fn=post_fn, get_fn=get_fn,
+                    rpc="rpc", rpc_call=broken)
+    assert rep["honest"]["skipped"] == {"not pre-simulated (RpcError)": 2} and rep["honest"]["constructed"] == 0
+
+
+def test_a_refused_swap_names_its_original_transaction_and_accounts():
+    row, frame = usdc_to_bonk()
+    harness = {"program_id": hs.RAYDIUM_CPMM, "signed_transaction": list(frame)}
+    call, _ = fake_rpc([0], [20_000])
+    post_fn, get_fn, _ = fake_core([fixture("blocked")])
+    report = lm.replay([], [row], "http://core", "", swaps=5, requests_by_row={3: {"row": 3, "input": harness}},
+                       rpc="rpc", rpc_call=call, blockhash_fn=lambda: bytes(32), sleep=lambda s: None,
+                       post_fn=post_fn, get_fn=get_fn)
+    (r,) = report["swaps"]["rows"]
+    assert r["decision"] == "blocked" and r["original_signature"] == solrpc.b58encode(bytes(64))
+    assert r["swap_accounts"][0] == (WALLET, True, True) and r["swap_accounts"][2] == (W_USDC, False, True)
+    md = "\n".join(lm.swaps_markdown(report["swaps"]))
+    assert f"- row 3 (`{solrpc.b58encode(bytes(64))}`): 0:`{WALLET[:8]}`sw" in md

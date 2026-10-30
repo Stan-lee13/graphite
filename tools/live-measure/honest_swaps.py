@@ -264,8 +264,14 @@ def swap_candidate(src):
     a_in = amount_in(kind, sw.data)
     if a_in < 1:
         return None, "the input amount is 0"
+    try:
+        signature = solrpc.first_signature(base64.b64decode(src["b64"]))
+    except ValueError:
+        signature = None
+    accounts = [(keys[a], *wire.privileges(msg, a, len(lw))) for a in sw.accounts]
     return {
         "row": src.get("row"), "slot": src.get("slot"), "sender": sender, "program": program, "venue": name,
+        "signature": signature, "accounts": accounts,
         "layout": kind, "index": at, "data": bytes(sw.data), "asset_in": asset_in, "asset_out": asset_out,
         "decimals_in": dec_in, "amount_in": a_in, "watch": watch, "fee": fee, "version": msg.version,
     }, None
