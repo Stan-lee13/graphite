@@ -390,3 +390,49 @@ def patch_blockhash(frame, new_hash):
     if lay.durable_nonce:
         raise ValueError("durable nonce: the blockhash slot holds the nonce value")
     return frame[: lay.blockhash_at] + bytes(new_hash) + frame[lay.blockhash_at + 32 :]
+
+
+# ── the honest-swap pass (Round 41) ──────────────────────────────────────────
+
+
+def instruction_data_spans(frame):
+    """(start, end) of each top-level instruction's data in a legacy or v0
+    frame, read by the same walk `message` makes. ValueError for a v1 frame
+    (its payloads sit after a header table; not needed by this pass) or a
+    frame that does not parse."""
+    frame = bytes(frame)
+    message(frame)  # parses to its last byte, or raises
+    if frame[0] == V1_PREFIX:
+        raise ValueError("a v1 frame: its instruction data is not patched by this pass")
+    r = Reader(frame)
+    r.take(64 * r.compact("signature count"), "signatures")
+    if r.u8("message header or version prefix") & 0x80 == 0:
+        r.pos -= 1
+    r.take(3, "message header")
+    r.take(32 * r.compact("account key count"), "account keys")
+    r.take(32, "recent blockhash")
+    spans = []
+    for _ in range(r.compact("instruction count")):
+        r.u8("program index")
+        r.take(r.compact("account index count"), "account indexes")
+        n = r.compact("data length")
+        spans.append((r.pos, r.pos + n))
+        r.take(n, "instruction data")
+    return spans
+
+
+def patch_instruction_data(frame, index, new_data):
+    """The same unsigned frame with top-level instruction `index`'s data
+    replaced by `new_data` of the SAME length (so no length prefix or offset
+    moves). Refuses a frame with a filled signature slot."""
+    frame = bytes(frame)
+    lay = layout(frame)
+    if any(frame[lay.signatures_at : lay.signatures_at + 64 * lay.signature_count]):
+        raise ValueError("the frame carries a signature; only unsigned bytes are rewritten")
+    spans = instruction_data_spans(frame)
+    if not 0 <= index < len(spans):
+        raise ValueError(f"no instruction {index} (the frame has {len(spans)})")
+    start, end = spans[index]
+    if len(new_data) != end - start:
+        raise ValueError(f"instruction {index}'s data is {end - start} bytes; the replacement is {len(new_data)}")
+    return frame[:start] + bytes(new_data) + frame[end:]

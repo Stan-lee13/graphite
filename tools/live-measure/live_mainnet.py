@@ -83,6 +83,7 @@ from collections import Counter, defaultdict
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "mainnet-sample"))
 
+import honest_swaps  # noqa: E402
 import solrpc  # noqa: E402
 import wire  # noqa: E402
 
@@ -191,13 +192,21 @@ def with_chain_meta(rows, block):
         out.append(dict(row, fee=meta.get("fee"), pre_balances=meta.get("preBalances"),
                         post_balances=meta.get("postBalances"),
                         # accountIndex → mint and decimals, for a token
-                        # `Transfer` whose bytes name no mint.
-                        pre_token_balances=[
-                            {"account_index": b.get("accountIndex"), "mint": b.get("mint"),
-                             "decimals": (b.get("uiTokenAmount") or {}).get("decimals")}
-                            for b in meta.get("preTokenBalances") or [] if isinstance(b, dict)
-                        ]))
+                        # `Transfer` whose bytes name no mint; owner and
+                        # amount before and after, for the honest-swap pass
+                        # (Round 41: what the wallet gave and got).
+                        pre_token_balances=token_balances(meta.get("preTokenBalances")),
+                        post_token_balances=token_balances(meta.get("postTokenBalances"))))
     return out
+
+
+def token_balances(entries):
+    return [
+        {"account_index": b.get("accountIndex"), "mint": b.get("mint"), "owner": b.get("owner"),
+         "amount": (b.get("uiTokenAmount") or {}).get("amount"),
+         "decimals": (b.get("uiTokenAmount") or {}).get("decimals")}
+        for b in entries or [] if isinstance(b, dict)
+    ]
 
 
 # ── select ───────────────────────────────────────────────────────────────────
@@ -970,8 +979,54 @@ def honest_pass(report, sample_rows, n, core, key, post_fn, blockhash_fn, sleep,
         h["rows"].append(row)
 
 
+def swap_pass(report, sample_rows, requests_by_row, n, core, key, post_fn, blockhash_fn, rpc, sleep, pace,
+              call=solrpc.call):
+    """Round 41: the honest-swap pass (honest_swaps.py says what it builds
+    and why). Each candidate costs two RPC calls for its quote."""
+    s = report["swaps"]
+    picked, s["candidates"] = honest_swaps.swap_candidates(sample_rows, n)
+    for c in picked:
+        harness = (requests_by_row.get(c["row"]) or {}).get("input")
+        frame = (harness or {}).get("signed_transaction")
+        if not frame:
+            s["skipped"]["the harness built no request for the row"] += 1
+            continue
+        if blockhash_fn is None or not rpc:
+            s["skipped"]["no RPC for a quote and a fresh blockhash"] += 1
+            continue
+        try:
+            new_hash = blockhash_fn()
+            probe, _ = honest_swaps.build(frame, c, 1, 0, new_hash)
+            quoted = honest_swaps.quote(rpc, probe, c, call=call)
+            final, data = honest_swaps.build(frame, c, quoted, honest_swaps.QUOTE_SLIPPAGE_BPS, new_hash)
+        except honest_swaps.QuoteFailed as e:
+            why = f"{e} ({sim_error_class(json.dumps(e.sim_err))})" if e.sim_err is not None else norm(e, 70)
+            s["skipped"][f"no quote: {why}"] += 1
+            sleep(pace)
+            continue
+        except (solrpc.RateLimited, solrpc.RpcError, KeyError, TypeError, ValueError) as e:
+            s["skipped"][f"not built ({type(e).__name__}: {norm(e, 60)})"] += 1
+            sleep(pace)
+            continue
+        body = honest_swaps.request(c, harness, final, data)
+        entry = {"row": c["row"], "slot": c["slot"], "program_id": c["program"], "instruction_name": c["venue"],
+                 "manifest_found": None, "failed_on_chain": False}
+        sink = {"refused_requests": s["refused_requests"], "server_errors": report["server_errors"], "defects": report["defects"]}
+        row = verify_one(sink, entry, body, core, key, post_fn, tag="swap ")
+        sleep(pace)
+        if row is None:
+            continue
+        s["constructed"] += 1
+        row.update(venue=c["venue"], sender=c["sender"], asset_in=c["asset_in"], asset_out=c["asset_out"],
+                   amount=body["proposed_intent"]["extracted_parameters"]["amount"], quoted=quoted,
+                   minimum=honest_swaps.minimum_of(c["layout"], data), original_version=c["version"],
+                   primary=(harness or {}).get("program_id"))
+        s["rows"].append(row)
+
+
 def replay(selected, sample_rows, core, key, *, pace=1.0, l8=10, fresh=0, blockhash_fn=None, seeded=None,
-           honest=0, sleep=time.sleep, post_fn=post, get_fn=get):
+           honest=0, swaps=0, requests_by_row=None, rpc=None, rpc_call=solrpc.call, sleep=time.sleep, post_fn=post,
+           get_fn=get):
     """Every selected request through the Core (the first `fresh` of them
     twice: stale, then with a fresh blockhash), then L8 for a few executed
     ones. Returns the report dict."""
@@ -988,6 +1043,8 @@ def replay(selected, sample_rows, core, key, *, pace=1.0, l8=10, fresh=0, blockh
         "fresh": {"asked": fresh, "requested": 0, "skipped": Counter(), "patched_by_version": Counter(), "rows": [], "pairs": []},
         "honest": {"asked": honest, "constructed": 0, "skipped": Counter(), "refused_requests": Counter(), "rows": [],
                    "candidates": None},
+        "swaps": {"asked": swaps, "constructed": 0, "skipped": Counter(), "refused_requests": Counter(), "rows": [],
+                  "candidates": None},
     }
     try:
         report["health"] = get_fn(f"{core}/health")
@@ -1007,6 +1064,9 @@ def replay(selected, sample_rows, core, key, *, pace=1.0, l8=10, fresh=0, blockh
     # observation, bootstrap G-13).
     if honest:
         honest_pass(report, sample_rows, honest, core, key, post_fn, blockhash_fn, sleep, pace)
+    if swaps:
+        swap_pass(report, sample_rows, requests_by_row or {}, swaps, core, key, post_fn, blockhash_fn, rpc, sleep,
+                  pace, call=rpc_call)
 
     for i, entry in enumerate(selected):
         row = verify_one(report, entry, entry["input"], core, key, post_fn)
@@ -1133,6 +1193,18 @@ def finish(report):
         h["l3"] = dict(Counter(r["l3"] for r in hrows))
         h["reasons"] = dict(Counter(x for r in hrows for x in r.get("reasons") or []).most_common())
         h["rate_limited_verdicts"] = sum(1 for r in hrows if r.get("rpc_rate_limited"))
+    s = report.get("swaps")
+    if s is not None:
+        srows = [r for r in s["rows"] if r.get("decision")]
+        s["skipped"] = dict(s["skipped"])
+        s["refused_requests"] = dict(s["refused_requests"])
+        s["measured"] = len(srows)
+        s["decisions"] = dict(Counter(r["decision"] for r in srows))
+        s["decisions_by_venue"] = {v: dict(Counter(r["decision"] for r in srows if r["venue"] == v))
+                                   for v in sorted({r["venue"] for r in srows})}
+        s["l3"] = dict(Counter(r["l3"] for r in srows))
+        s["reasons"] = dict(Counter(x for r in srows for x in r.get("reasons") or []).most_common())
+        s["rate_limited_verdicts"] = sum(1 for r in srows if r.get("rpc_rate_limited"))
     report["failed_on_chain"] = sum(1 for r in rows if r["failed_on_chain"])
     lat = [r["latency_ms"] for r in report["rows"] if "latency_ms" in r]
     report["latency_ms"] = {
@@ -1184,6 +1256,7 @@ def markdown(report, harness=None):
         "",
     ]
     out += honest_markdown(report.get("honest"))
+    out += swaps_markdown(report.get("swaps"))
     out += [
         "## Decisions (the replay of other people's transactions)",
         "",
@@ -1337,6 +1410,66 @@ def honest_markdown(h):
         for r in rest:
             out.append(
                 f"| {r['row']} | {r.get('kind')} | `{short(r.get('sender'))}` → `{short(r.get('recipient'))}` | "
+                f"`{r.get('decision') or r.get('http')}` | {r.get('risk')} · {r.get('policy')} · {r.get('confidence')} | "
+                f"{_cell(r.get('l3') or '')} | {_cell('; '.join(r.get('reasons') or []))} | "
+                f"{_cell('; '.join(r.get('finding_reasons') or []))[:600]} | {_cell(r.get('l4_reason') or r.get('refusal') or '')} |"
+            )
+    out.append("")
+    return out
+
+
+def swaps_markdown(s):
+    if not s or not s.get("asked"):
+        return []
+    c = s.get("candidates") or {}
+    out = [
+        "## Honest swaps: what an agent's own direct swap gets",
+        "",
+        "From the fetched blocks, the executed swaps a wallet made directly on a venue whose instruction the Core "
+        "decodes (Jupiter v6 route / shared_accounts_route, Orca Whirlpools, Raydium CLMM, CPMM and AMM v4, Meteora "
+        "DLMM), signed by its own fee payer alone, beside nothing but Compute Budget, an ATA create it pays, wrapping "
+        "and unwrapping its own SOL, or a memo — up to "
+        f"{s['asked']}, venues alternated, one per wallet, venue and pair. For each, the same swap was made again: the "
+        "same wallet, pool accounts, lookup tables and amount in, a blockhash just fetched, signatures zeroed, and "
+        f"the minimum output re-quoted: the RPC simulated the swap with a minimum of 1, the wallet's output accounts "
+        f"were read before and after, and the minimum was set {honest_swaps.QUOTE_SLIPPAGE_BPS} bps under that "
+        "quote (a Jupiter route: its quoted output and slippage). Each was verified with the intent `swap` — the "
+        f"amount in, the input and output, `slippage_bps` {honest_swaps.REQUEST_SLIPPAGE_BPS} — under the built-in "
+        "Gaming profile. Nothing was signed or sent: the bytes went to the RPC's simulateTransaction (for the quote) "
+        "and the local Core's /verify only.",
+        "",
+        "What this measures: the decision an honest agent's own direct swap gets from this Core against today's "
+        "mainnet state. What it does not measure: an aggregator's fresh route (each swap keeps the route its wallet "
+        "chose), swaps beside a tip or another program (set aside below), or anything after signing.",
+        "",
+        f"- swaps on decoded venues in the sample: {c.get('swaps on decoded venues', 0)} (candidates by venue: "
+        f"{c.get('by venue') or {}}); set aside: {c.get('set aside') or {}}",
+        f"- quoted, constructed and verified: **{s.get('constructed', 0)}** · verdicts: {s.get('measured', 0)} · not "
+        f"built: {s.get('skipped') or {}} · refused as requests (4xx): {s.get('refused_requests') or {}} · touched "
+        f"by an RPC rate limit: {s.get('rate_limited_verdicts', 0)}",
+        "",
+        "| decision | " + " | ".join(sorted(s.get("decisions_by_venue") or {})) + " | all |",
+        "|---|" + "---:|" * (len(s.get("decisions_by_venue") or {}) + 1),
+    ]
+    for d in DECISIONS:
+        out.append(f"| `{d}` | " + " | ".join(str(v.get(d, 0)) for _, v in sorted((s.get("decisions_by_venue") or {}).items()))
+                   + f" | {(s.get('decisions') or {}).get(d, 0)} |")
+    if s.get("l3"):
+        out += ["", "L3 on these: " + ", ".join(f"{k}: {v}" for k, v in sorted(s["l3"].items(), key=lambda kv: -kv[1]))]
+    rest = [r for r in s.get("rows") or [] if r.get("decision") != "executable_approved"]
+    if rest:
+        out += [
+            "",
+            "Every one that was not `executable_approved`, and why:",
+            "",
+            "| row | venue | wallet · in → out (amount) | quote · minimum | decision | risk · policy · confidence | L3 | "
+            "L3/L4 reasons | findings | L4 |",
+            "|---:|---|---|---|---|---|---|---|---|---|",
+        ]
+        for r in rest:
+            out.append(
+                f"| {r['row']} | {r.get('venue')} | `{short(r.get('sender'))}` · {short(r.get('asset_in'))} → "
+                f"{short(r.get('asset_out'))} ({r.get('amount')}) | {r.get('quoted')} · {r.get('minimum')} | "
                 f"`{r.get('decision') or r.get('http')}` | {r.get('risk')} · {r.get('policy')} · {r.get('confidence')} | "
                 f"{_cell(r.get('l3') or '')} | {_cell('; '.join(r.get('reasons') or []))} | "
                 f"{_cell('; '.join(r.get('finding_reasons') or []))[:600]} | {_cell(r.get('l4_reason') or r.get('refusal') or '')} |"
@@ -1556,7 +1689,12 @@ def main(argv=None):
     r.add_argument("--honest", type=int, default=0,
                    help="first verify up to N new unsigned 1-lamport / 1-base-unit transfers built from the sample's "
                         "executed simple transfers (needs --rpc for a fresh blockhash; never signed or sent)")
-    r.add_argument("--rpc", default=os.environ.get("LIVE_RPC_URL"), help="for getLatestBlockhash only (default: $LIVE_RPC_URL)")
+    r.add_argument("--swaps", type=int, default=0,
+                   help="then verify up to N honest direct swaps rebuilt from the sample's executed ones, the minimum "
+                        "re-quoted by RPC simulation (needs --rpc and --requests; never signed or sent)")
+    r.add_argument("--requests", default=None, help="the harness's requests.jsonl (every row's request), for --swaps")
+    r.add_argument("--rpc", default=os.environ.get("LIVE_RPC_URL"),
+                   help="for getLatestBlockhash, and the swap quotes' simulateTransaction (default: $LIVE_RPC_URL)")
     r.add_argument("--seeded", default=None, help="the record `seed` wrote, when evidence was seeded")
     r.add_argument("--harness-exit", type=int, default=None)
     r.add_argument("--out-dir", required=True)
@@ -1611,13 +1749,17 @@ def main(argv=None):
                 seeded = json.load(fh)
         except (OSError, ValueError) as e:
             seeded = {"ok": False, "programs": {}, "error": f"no seeding record: {type(e).__name__}: {e}"}
-    blockhash_fn = FreshBlockhash(args.rpc) if ((args.fresh or args.honest) and args.rpc) else None
+    blockhash_fn = FreshBlockhash(args.rpc) if ((args.fresh or args.honest or args.swaps) and args.rpc) else None
     if args.fresh:
         print(f"fresh pass: {args.fresh} transactions, blockhash from {solrpc.host_of(args.rpc) if args.rpc else '(no RPC: skipped)'}", flush=True)
     if args.honest:
         print(f"honest pass: up to {args.honest} constructed transfers, blockhash from {solrpc.host_of(args.rpc) if args.rpc else '(no RPC: skipped)'}", flush=True)
+    if args.swaps:
+        print(f"swap pass: up to {args.swaps} honest swaps, quotes and blockhash from {solrpc.host_of(args.rpc) if args.rpc else '(no RPC: skipped)'}", flush=True)
+    requests_by_row = {e["row"]: e for e in read_jsonl(args.requests)} if (args.swaps and args.requests) else {}
     report = replay(read_jsonl(args.selected), sample_rows, args.core, key, pace=args.pace, l8=args.l8,
-                    fresh=args.fresh, blockhash_fn=blockhash_fn, seeded=seeded, honest=args.honest)
+                    fresh=args.fresh, blockhash_fn=blockhash_fn, seeded=seeded, honest=args.honest,
+                    swaps=args.swaps, requests_by_row=requests_by_row, rpc=args.rpc)
     if seeded is not None and not seeded.get("ok", True):
         report["defects"].append(f"operator evidence seeding failed: {seeded.get('error')}")
         report["status"] = "DEFECTS"

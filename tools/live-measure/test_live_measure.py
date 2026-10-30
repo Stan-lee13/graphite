@@ -1161,7 +1161,205 @@ def test_fetch_records_the_chains_fee_and_balances_beside_each_row():
     rows = [{"b64": "AAA="}, {"b64": "BBB="}]
     out = lm.with_chain_meta(rows, block)
     assert [(r["fee"], r["pre_balances"], r["post_balances"]) for r in out] == [(5000, [10, 0], [4, 1]), (10000, [1], [1])]
-    assert out[1]["pre_token_balances"] == [{"account_index": 2, "mint": MINT, "decimals": 6}] and out[0]["pre_token_balances"] == []
+    # Round 41: the owner and amount too, before and after (the swap pass reads what the wallet gave and got).
+    assert out[1]["pre_token_balances"] == [{"account_index": 2, "mint": MINT, "owner": BOB, "amount": "9", "decimals": 6}]
+    assert out[0]["pre_token_balances"] == [] and out[1]["post_token_balances"] == [] == out[0]["post_token_balances"]
     # Not paired: nothing is attributed.
     assert lm.with_chain_meta([{"b64": "AAA="}], block) == [{"b64": "AAA="}]
     assert lm.with_chain_meta([{"b64": "XXX="}, {"b64": "BBB="}], block) == [{"b64": "XXX="}, {"b64": "BBB="}]
+
+
+# ── the honest-swap pass (Round 41) ──────────────────────────────────────────
+
+import honest_swaps as hs  # noqa: E402
+
+CPMM_SELECTOR = bytes.fromhex("8fbe5adac41e33de")
+WALLET, POOL, VAULT_IN, VAULT_OUT, USDC, BONK, W_USDC, W_BONK, W_WSOL, TIPPER = (
+    solrpc.b58encode(bytes([n]) * 32) for n in range(31, 41))
+CB = (hs.COMPUTE_BUDGET_PROGRAM, [], bytes([2]) + (200_000).to_bytes(4, "little"))
+
+
+def cpmm(src, dst, amount, minimum=7):
+    """A Raydium CPMM swap_base_input: the wallet signs; its input and output
+    accounts, the pool and its vaults are named."""
+    return (hs.RAYDIUM_CPMM,
+            [(WALLET, True, True), (POOL, False, True), (src, False, True), (dst, False, True),
+             (VAULT_IN, False, True), (VAULT_OUT, False, True)],
+            CPMM_SELECTOR + amount.to_bytes(8, "little") + minimum.to_bytes(8, "little"))
+
+
+def swap_row(instructions, pre, post, *, fee=5000, lamports=(10**9, 10**9 - 5000), err=None):
+    """A sample row as fetch records it: `pre` / `post` are (account, mint,
+    owner, amount) token balances, indexed against the built frame."""
+    frame = wire.build_legacy(WALLET, instructions, bytes(32))
+    keys = wire.account_keys(wire.message(frame))
+    bal = lambda side: [{"account_index": keys.index(a), "mint": m, "owner": o, "amount": str(n), "decimals": 6}  # noqa: E731
+                        for a, m, o, n in side]
+    return {"row": 3, "slot": 9, "b64": base64.b64encode(frame).decode(), "err": err, "fee": fee,
+            "pre_balances": [lamports[0]] + [0] * (len(keys) - 1), "post_balances": [lamports[1]] + [0] * (len(keys) - 1),
+            "pre_token_balances": bal(pre), "post_token_balances": bal(post)}, frame
+
+
+def usdc_to_bonk(extra=()):
+    return swap_row([CB, cpmm(W_USDC, W_BONK, 2_000_000), *extra],
+                    pre=[(W_USDC, USDC, WALLET, 5_000_000), (W_BONK, BONK, WALLET, 0)],
+                    post=[(W_USDC, USDC, WALLET, 3_000_000), (W_BONK, BONK, WALLET, 900)])
+
+
+def test_the_swap_layouts_are_the_cores():
+    data = CPMM_SELECTOR + (5).to_bytes(8, "little") + (9).to_bytes(8, "little")
+    assert hs.venue(hs.RAYDIUM_CPMM, data) == ("Raydium CPMM swap_base_input", "in_min8")
+    assert hs.amount_in("in_min8", data) == 5 and hs.minimum_of("in_min8", data) == 9
+    assert hs.minimum_of("in_min8", hs.with_minimum("in_min8", data, 1000, 50)) == 995
+    assert hs.minimum_of("in_min8", hs.with_minimum("in_min8", data, 1, 0)) == 1
+    v4 = bytes([9]) + (5).to_bytes(8, "little") + (9).to_bytes(8, "little")
+    assert hs.venue(hs.RAYDIUM_AMM_V4, v4)[1] == "in_min1" and hs.amount_in("in_min1", v4) == 5
+    assert hs.minimum_of("in_min1", hs.with_minimum("in_min1", v4, 2000, 50)) == 1990
+    # Jupiter: the last 19 bytes are in_amount, quoted_out_amount, slippage_bps, platform_fee_bps.
+    route = bytes.fromhex("e517cb977ae3ad2a") + b"\x01\x02plan" + (7).to_bytes(8, "little") + (100).to_bytes(8, "little") \
+        + (30).to_bytes(2, "little") + b"\x00"
+    assert hs.venue(hs.JUPITER_V6, route)[1] == "jupiter" and hs.amount_in("jupiter", route) == 7
+    assert hs.minimum_of("jupiter", route) == 99
+    patched = hs.with_minimum("jupiter", route, 4000, 50)
+    assert patched[:-11] == route[:-11] and patched[-1:] == b"\x00" and hs.minimum_of("jupiter", patched) == 3980
+    assert hs.venue(hs.JUPITER_V6, route[:-1] + b"\x05") == (None, "Jupiter route with a platform fee (the Core refuses one)")
+    # Concentrated: an exact-output swap is not bound by the Core, so not built.
+    clmm = bytes.fromhex("f8c69e91e17587c8") + (5).to_bytes(8, "little") + (9).to_bytes(8, "little") + bytes(16)
+    assert hs.venue(hs.RAYDIUM_CLMM, clmm + b"\x01")[1] == "concentrated"
+    assert hs.venue(hs.RAYDIUM_CLMM, clmm + b"\x00")[0] is None
+    assert hs.venue(hs.RAYDIUM_CPMM, bytes(24))[0] is None and hs.venue(hs.SYSTEM_PROGRAM, data) is None
+
+
+def test_an_honest_direct_swap_is_a_candidate_with_what_the_wallet_gave_and_got():
+    row, _ = usdc_to_bonk()
+    c, why = hs.swap_candidate(row)
+    assert why is None
+    assert (c["venue"], c["asset_in"], c["asset_out"], c["amount_in"], c["decimals_in"]) == \
+        ("Raydium CPMM swap_base_input", USDC, BONK, 2_000_000, 6)
+    assert c["index"] == 1 and c["watch"] == [W_BONK] and c["sender"] == WALLET
+
+
+def test_a_swap_beside_a_tip_or_another_signer_is_set_aside_by_reason():
+    row, _ = usdc_to_bonk([wire.system_transfer(WALLET, TIPPER, 10_000)])
+    assert hs.swap_candidate(row) == (None, "a SOL transfer beside the swap (a tip or a payment)")
+    row, _ = usdc_to_bonk([wire.token_transfer_checked(W_USDC, USDC, ALICE_ATA, WALLET, 1, 6)])
+    assert hs.swap_candidate(row) == (None, "another program beside the swap")
+    row, _ = usdc_to_bonk([(hs.SPL_TOKEN_PROGRAM, [(W_BONK, False, True), (TIPPER, False, True), (WALLET, True, False)], b"\x09")])
+    assert hs.swap_candidate(row) == (None, "an account closed to someone else")
+    two = swap_row([cpmm(W_USDC, W_BONK, 1), (hs.MEMO_PROGRAMS[0], [(TIPPER, True, False)], b"hi")],
+                   pre=[(W_USDC, USDC, WALLET, 5)], post=[(W_BONK, BONK, WALLET, 1)])[0]
+    assert hs.swap_candidate(two) == (None, "more than one signer")
+    failed, _ = swap_row([cpmm(W_USDC, W_BONK, 1)], pre=[], post=[], err={"InstructionError": [0, "X"]})
+    assert hs.swap_candidate(failed) == (None, None)
+    no_owner, _ = usdc_to_bonk()
+    no_owner["pre_token_balances"][0]["owner"] = None
+    assert hs.swap_candidate(no_owner) == (None, "the block's token balances name no owners")
+
+
+def test_wrapping_and_unwrapping_its_own_sol_is_part_of_the_swap():
+    sync = (hs.SPL_TOKEN_PROGRAM, [(W_WSOL, False, True)], b"\x11")
+    close = (hs.SPL_TOKEN_PROGRAM, [(W_WSOL, False, True), (WALLET, False, True), (WALLET, True, False)], b"\x09")
+    row, _ = swap_row([CB, wire.system_transfer(WALLET, W_WSOL, 3_000_000), sync, cpmm(W_WSOL, W_BONK, 3_000_000), close],
+                      pre=[(W_WSOL, hs.NATIVE_MINT, WALLET, 0), (W_BONK, BONK, WALLET, 0)],
+                      post=[(W_BONK, BONK, WALLET, 777)], lamports=(10**9, 10**9 - 3_005_000))
+    c, why = hs.swap_candidate(row)
+    assert why is None and (c["asset_in"], c["asset_out"], c["decimals_in"]) == ("SOL", BONK, 9)
+    # BONK for SOL, unwrapped: the output is SOL, quoted on the wallet itself.
+    row, _ = swap_row([cpmm(W_BONK, W_WSOL, 500), close],
+                      pre=[(W_BONK, BONK, WALLET, 500), (W_WSOL, hs.NATIVE_MINT, WALLET, 0)],
+                      post=[(W_BONK, BONK, WALLET, 0)], lamports=(10**9, 10**9 + 40_000))
+    c, why = hs.swap_candidate(row)
+    assert why is None and (c["asset_in"], c["asset_out"]) == (BONK, "SOL") and c["watch"] == [WALLET, W_WSOL]
+
+
+def test_only_the_swap_data_and_blockhash_change_in_the_rebuilt_frame():
+    row, frame = usdc_to_bonk()
+    c, _ = hs.swap_candidate(row)
+    built, data = hs.build(frame, c, 1000, 50, bytes([7]) * 32)
+    old, new = wire.message(frame), wire.message(built)
+    assert new.blockhash == bytes([7]) * 32 and new.static_keys == old.static_keys
+    assert [ix.data for ix in new.instructions] == [old.instructions[0].data, data]
+    assert hs.minimum_of("in_min8", data) == 995 and hs.amount_in("in_min8", data) == 2_000_000
+    with pytest.raises(ValueError, match="replacement is"):
+        wire.patch_instruction_data(frame, 1, b"short")
+    signed = bytes([1]) + bytes([9]) * 64 + bytes(frame[65:])
+    with pytest.raises(ValueError, match="carries a signature"):
+        wire.patch_instruction_data(signed, 1, data)
+
+
+def fake_rpc(before, after, err=None):
+    calls = []
+
+    def call(url, method, params, **kw):
+        calls.append(method)
+        acct = lambda n: None if n is None else {"lamports": n if isinstance(n, int) and n > 10**6 else 2039280,  # noqa: E731
+                                                  "data": [base64.b64encode(bytes(64) + int(n).to_bytes(8, "little")).decode(), "base64"]}
+        if method == "getMultipleAccounts":
+            return {"result": {"value": [acct(n) for n in before]}}
+        if method == "simulateTransaction":
+            return {"result": {"value": {"err": err, "accounts": [acct(n) for n in after]}}}
+        raise AssertionError(method)
+    return call, calls
+
+
+def test_the_quote_is_what_the_simulation_delivers_to_the_wallet():
+    row, frame = usdc_to_bonk()
+    c, _ = hs.swap_candidate(row)
+    call, calls = fake_rpc([100], [1100])
+    assert hs.quote("rpc", frame, c, call=call) == 1000 and calls == ["getMultipleAccounts", "simulateTransaction"]
+    call, _ = fake_rpc([None], [640])  # the output account is created by the swap
+    assert hs.quote("rpc", frame, c, call=call) == 640
+    with pytest.raises(hs.QuoteFailed) as e:
+        hs.quote("rpc", frame, c, call=fake_rpc([100], [100], err={"InstructionError": [1, {"Custom": 6005}]})[0])
+    assert e.value.sim_err == {"InstructionError": [1, {"Custom": 6005}]}
+    with pytest.raises(hs.QuoteFailed, match="delivered nothing"):
+        hs.quote("rpc", frame, c, call=fake_rpc([100], [100])[0])
+    # SOL out: the wallet's lamports, plus the fee it paid (what reached it before the fee).
+    sol = dict(c, asset_out="SOL", watch=[WALLET], fee=5000)
+    call, _ = fake_rpc([2 * 10**9], [2 * 10**9 + 35_000])
+    assert hs.quote("rpc", frame, sol, call=call) == 40_000
+
+
+def test_the_swap_pass_verifies_the_requoted_swap_with_a_swap_intent():
+    row, frame = usdc_to_bonk()
+    harness = {"program_id": hs.RAYDIUM_CPMM, "instruction_data": [0], "signed_transaction": list(frame),
+               "proposed_intent": {"intent_type": "unknown"}, "wallet_profile": "Gaming"}
+    sent = []
+
+    def post_fn(url, key, body):
+        sent.append(body)
+        return 200, {"decision": "executable_approved", "executable": True, "approved": True, "layers": []}
+
+    call, _ = fake_rpc([0], [20_000])
+    report = lm.replay([], [row], "http://core", "", swaps=5, requests_by_row={3: {"row": 3, "input": harness}},
+                       rpc="rpc", rpc_call=call, blockhash_fn=lambda: bytes([5]) * 32, sleep=lambda s: None,
+                       post_fn=post_fn, get_fn=lambda url: {"verification_mode": "executable", "rpc_attached": True})
+    s = report["swaps"]
+    assert s["constructed"] == 1 and s["decisions"] == {"executable_approved": 1}
+    (body,) = sent
+    assert body["proposed_intent"]["intent_type"] == "swap"
+    assert body["proposed_intent"]["extracted_parameters"] == {"amount": "2", "input_token": USDC, "output_token": BONK,
+                                                               "slippage_bps": 100}
+    msg = wire.message(bytes(body["signed_transaction"]))
+    assert msg.blockhash == bytes([5]) * 32 and hs.minimum_of("in_min8", msg.instructions[1].data) == 19_900
+    assert body["instruction_data"] == list(msg.instructions[1].data)
+    assert s["rows"][0]["quoted"] == 20_000 and s["rows"][0]["minimum"] == 19_900
+    md = "\n".join(lm.swaps_markdown(s))
+    assert "Honest swaps" in md and "Raydium CPMM swap_base_input" in md
+
+
+def test_a_swap_that_does_not_simulate_now_is_counted_not_verified():
+    row, frame = usdc_to_bonk()
+    harness = {"program_id": hs.RAYDIUM_CPMM, "signed_transaction": list(frame)}
+    call, _ = fake_rpc([0], [0], err={"InstructionError": [1, {"Custom": 1}]})
+    report = lm.replay([], [row], "http://core", "", swaps=5, requests_by_row={3: {"row": 3, "input": harness}},
+                       rpc="rpc", rpc_call=call, blockhash_fn=lambda: bytes(32), sleep=lambda s: None,
+                       post_fn=lambda *a: pytest.fail("nothing is verified without a quote"),
+                       get_fn=lambda url: {"verification_mode": "executable", "rpc_attached": True})
+    assert report["swaps"]["constructed"] == 0
+    assert report["swaps"]["skipped"] == {"no quote: the swap does not simulate now (InstructionError{1, Custom(1)})": 1}
+    # No harness request, or no RPC: counted as not built.
+    report = lm.replay([], [row], "http://core", "", swaps=5, requests_by_row={}, rpc=None, sleep=lambda s: None,
+                       post_fn=lambda *a: pytest.fail("unreachable"),
+                       get_fn=lambda url: {"verification_mode": "executable", "rpc_attached": True})
+    assert report["swaps"]["skipped"] == {"the harness built no request for the row": 1}
