@@ -2100,3 +2100,494 @@ async fn round41_a_jupiter_route_v2_attack_is_never_executable() {
     }
     out.assert_none_executable();
 }
+
+// ─── D-24: SOL wrapped in a temporary account, not the wallet's ATA ────────
+
+/// Live run 41141950725 row 110: 0.15874092 SOL.
+const TEMP_IN: u64 = 158_740_920;
+const SEED: &[u8] = b"r41-temp-wsol";
+const SYSVAR_RENT: &str = "SysvarRent111111111111111111111111111111111";
+
+/// `Pubkey::create_with_seed`, computed here independently of the Core:
+/// sha256(base || seed || owner).
+fn with_seed(base: &str, seed: &[u8], owner: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(pk(base).as_bytes());
+    h.update(seed);
+    h.update(pk(owner).as_bytes());
+    bs58::encode(h.finalize()).into_string()
+}
+
+/// System `CreateAccountWithSeed { base, seed, lamports, space, owner }`.
+fn create_with_seed_data(
+    base: &str,
+    seed: &[u8],
+    lamports: u64,
+    space: u64,
+    owner: &str,
+) -> Vec<u8> {
+    let mut d = 3u32.to_le_bytes().to_vec();
+    d.extend_from_slice(pk(base).as_bytes());
+    d.extend_from_slice(&(seed.len() as u64).to_le_bytes());
+    d.extend_from_slice(seed);
+    d.extend_from_slice(&lamports.to_le_bytes());
+    d.extend_from_slice(&space.to_le_bytes());
+    d.extend_from_slice(pk(owner).as_bytes());
+    d
+}
+
+/// The shapes of the temporary-account wrap.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Temp {
+    /// `CreateAccountWithSeed` (base and funder the wallet) of rent +
+    /// `in_amount`, `InitializeAccount3` (native mint, the wallet), the
+    /// route, `CloseAccount` to the wallet.
+    SeedInit3,
+    /// `CreateAccountWithSeed` of the rent only, `InitializeAccount`, a
+    /// `Transfer` of `in_amount`, `SyncNative`, the route, the close.
+    SeedRentInit1Transfer,
+    /// `CreateAccount` of a fresh keypair (which signs), `InitializeAccount2`.
+    KeypairInit2,
+    /// Initialized with the ATTACKER as its owner.
+    InitOwnerAttacker,
+    /// Created with the attacker as the seed's base (the attacker signs).
+    BaseNotWallet,
+    /// Funded by the attacker (who signs), the wallet the base.
+    FunderNotWallet,
+    /// Closed to the attacker.
+    CloseToStranger,
+    /// Funded with `x` beyond `in_amount`; the excess moved out as wSOL.
+    OverFundSkim(u64),
+    /// `SetAuthority(CloseAccount)` of it to the attacker in the same tx.
+    SetAuthorityOnIt,
+    /// `Approve` of it to the attacker in the same tx.
+    ApproveOnIt,
+    /// Initialized for a non-native mint.
+    NonNativeMint,
+    /// `CreateAccountWithSeed` (base and funder the wallet) naming an
+    /// account that is not the address its base, seed and owner derive.
+    SlotNotDerived,
+}
+
+/// A Jupiter v6 `route` of `TEMP_IN` lamports of SOL for MINT_T22 (a
+/// Token-2022 mint, the route's `token_program` Token-2022, the wallet's
+/// Token-2022 ATA created beside it), wrapped in a temporary account.
+fn temp_wrap_swap(shape: Temp) -> (Cluster, Vec<Ix>, usize) {
+    let mut c = Cluster::default();
+    base_programs(&mut c);
+    let d = def(JUPITER, "route");
+    let base = if shape == Temp::BaseNotWallet {
+        ATTACKER
+    } else {
+        OWNER
+    };
+    let temp = if shape == Temp::KeypairInit2 {
+        key(70)
+    } else if shape == Temp::SlotNotDerived {
+        key(71)
+    } else {
+        with_seed(base, SEED, TOKEN)
+    };
+    let dst = ata_under(OWNER, MINT_T22, TOKEN_2022);
+    let keys = accounts_for(
+        JUPITER,
+        &d,
+        &[
+            ("token_program", TOKEN_2022.to_string()),
+            ("user_transfer_authority", OWNER.to_string()),
+            ("user_source_token_account", temp.clone()),
+            ("user_destination_token_account", dst.clone()),
+            ("destination_token_account", JUPITER.to_string()),
+            ("destination_mint", MINT_T22.to_string()),
+            ("platform_fee_account", JUPITER.to_string()),
+            ("program", JUPITER.to_string()),
+        ],
+    );
+    let mut data = hex_to_bytes(&d.discriminator);
+    data.extend_from_slice(&1u32.to_le_bytes());
+    data.extend_from_slice(&[26, 100, 0, 1]);
+    data.extend_from_slice(&TEMP_IN.to_le_bytes());
+    data.extend_from_slice(&OUT.to_le_bytes());
+    data.extend_from_slice(&50u16.to_le_bytes());
+    data.push(0);
+    let pool = key(90);
+    let (in_vault, out_vault) = (key(91), key(92));
+    let mut accounts: Vec<(String, bool, bool)> = d
+        .accounts
+        .iter()
+        .zip(&keys)
+        .map(|(a, k)| (k.clone(), a.is_signer, a.is_writable))
+        .collect();
+    accounts.push((in_vault.clone(), false, true));
+    accounts.push((out_vault.clone(), false, true));
+    for (a, k) in d.accounts.iter().zip(&keys) {
+        if ![OWNER, JUPITER, TOKEN_2022, MINT_T22].contains(&k.as_str())
+            && *k != temp
+            && *k != dst
+            && !a.is_signer
+        {
+            c.set(k, acct(5 * SOL, JUPITER, vec![1u8; 64]));
+        }
+    }
+    c.set(NATIVE_MINT, acct(1_461_600, TOKEN, mint(0, 9)));
+    c.set(MINT_X, acct(1_461_600, TOKEN, mint(10u64.pow(15), 6)));
+    c.set(
+        MINT_T22,
+        acct(1_461_600, TOKEN_2022, mint(10u64.pow(15), 6)),
+    );
+    let reserve = 10u64.pow(12);
+    c.set(
+        &in_vault,
+        acct(
+            RENT + reserve,
+            TOKEN,
+            token_account(NATIVE_MINT, &pool, reserve),
+        ),
+    );
+    c.after(
+        &in_vault,
+        acct(
+            RENT + reserve + TEMP_IN,
+            TOKEN,
+            token_account(NATIVE_MINT, &pool, reserve + TEMP_IN),
+        ),
+    );
+    c.set(
+        &out_vault,
+        acct(RENT, TOKEN_2022, token_account(MINT_T22, &pool, reserve)),
+    );
+    c.after(
+        &out_vault,
+        acct(
+            RENT,
+            TOKEN_2022,
+            token_account(MINT_T22, &pool, reserve - OUT),
+        ),
+    );
+    let mut delivered = token2022_ata_account(MINT_T22, OWNER);
+    delivered[64..72].copy_from_slice(&OUT.to_le_bytes());
+    c.after(&dst, acct(RENT_T22, TOKEN_2022, delivered));
+    c.set(ATTACKER, acct(SOL, SYSTEM, vec![]));
+
+    let mut owner_out: i128 = i128::from(FEE + RENT_T22);
+    let mut attacker_in: i128 = 0;
+    let mut ixs = vec![
+        ix(COMPUTE_BUDGET, &[], compute_limit()),
+        create_idempotent(OWNER, &dst, OWNER, MINT_T22, TOKEN_2022),
+    ];
+    let mut init = vec![18u8];
+    init.extend_from_slice(pk(OWNER).as_bytes());
+    for (program, accounts, data) in [
+        (TOKEN_2022, vec![MINT_T22.to_string()], vec![21u8, 7, 0]),
+        (
+            SYSTEM,
+            vec![OWNER.to_string(), dst.clone()],
+            system_create(RENT_T22, 170, TOKEN_2022),
+        ),
+        (TOKEN_2022, vec![dst.clone()], vec![22u8]),
+        (TOKEN_2022, vec![dst.clone(), MINT_T22.to_string()], init),
+    ] {
+        c.inner.push(Inner {
+            top: 1,
+            program: program.to_string(),
+            accounts,
+            data,
+        });
+    }
+
+    // The creation: who funds it, with how much.
+    let extra = match shape {
+        Temp::OverFundSkim(x) => x,
+        _ => 0,
+    };
+    let funded = if shape == Temp::SeedRentInit1Transfer {
+        RENT
+    } else {
+        RENT + TEMP_IN + extra
+    };
+    let funder = if shape == Temp::FunderNotWallet {
+        ATTACKER
+    } else {
+        OWNER
+    };
+    if funder == OWNER {
+        owner_out += i128::from(funded);
+    } else {
+        attacker_in -= i128::from(funded);
+    }
+    match shape {
+        Temp::KeypairInit2 => ixs.push(ix(
+            SYSTEM,
+            &[(OWNER, true, true), (&temp, true, true)],
+            system_create(funded, 165, TOKEN),
+        )),
+        Temp::BaseNotWallet => ixs.push(ix(
+            SYSTEM,
+            &[
+                (OWNER, true, true),
+                (&temp, false, true),
+                (ATTACKER, true, false),
+            ],
+            create_with_seed_data(ATTACKER, SEED, funded, 165, TOKEN),
+        )),
+        Temp::FunderNotWallet => ixs.push(ix(
+            SYSTEM,
+            &[
+                (ATTACKER, true, true),
+                (&temp, false, true),
+                (OWNER, true, false),
+            ],
+            create_with_seed_data(OWNER, SEED, funded, 165, TOKEN),
+        )),
+        _ => ixs.push(ix(
+            SYSTEM,
+            &[(OWNER, true, true), (&temp, false, true)],
+            create_with_seed_data(OWNER, SEED, funded, 165, TOKEN),
+        )),
+    }
+    // The initialization.
+    let (init_mint, init_owner) = match shape {
+        Temp::InitOwnerAttacker => (NATIVE_MINT, ATTACKER),
+        Temp::NonNativeMint => (MINT_X, OWNER),
+        _ => (NATIVE_MINT, OWNER),
+    };
+    match shape {
+        Temp::SeedRentInit1Transfer => {
+            ixs.push(ix(
+                TOKEN,
+                &[
+                    (&temp, false, true),
+                    (init_mint, false, false),
+                    (init_owner, false, false),
+                    (SYSVAR_RENT, false, false),
+                ],
+                vec![1u8],
+            ));
+            ixs.push(ix(
+                SYSTEM,
+                &[(OWNER, true, true), (&temp, false, true)],
+                system_transfer(TEMP_IN),
+            ));
+            owner_out += i128::from(TEMP_IN);
+            ixs.push(ix(TOKEN, &[(&temp, false, true)], vec![17u8]));
+        }
+        Temp::KeypairInit2 => {
+            let mut d = vec![16u8];
+            d.extend_from_slice(pk(init_owner).as_bytes());
+            ixs.push(ix(
+                TOKEN,
+                &[
+                    (&temp, false, true),
+                    (init_mint, false, false),
+                    (SYSVAR_RENT, false, false),
+                ],
+                d,
+            ));
+        }
+        _ => {
+            let mut d = vec![18u8];
+            d.extend_from_slice(pk(init_owner).as_bytes());
+            ixs.push(ix(
+                TOKEN,
+                &[(&temp, false, true), (init_mint, false, false)],
+                d,
+            ));
+        }
+    }
+    match shape {
+        Temp::SetAuthorityOnIt => {
+            let mut d = vec![6u8, 3, 1];
+            d.extend_from_slice(pk(ATTACKER).as_bytes());
+            ixs.push(ix(TOKEN, &[(&temp, false, true), (OWNER, true, false)], d));
+        }
+        Temp::ApproveOnIt => {
+            let mut d = vec![4u8];
+            d.extend_from_slice(&u64::MAX.to_le_bytes());
+            ixs.push(ix(
+                TOKEN,
+                &[
+                    (&temp, false, true),
+                    (ATTACKER, false, false),
+                    (OWNER, true, false),
+                ],
+                d,
+            ));
+        }
+        _ => {}
+    }
+    let route_at = ixs.len();
+    ixs.push(Ix {
+        program: JUPITER.to_string(),
+        accounts,
+        data,
+    });
+    for (from, to, auth, amount) in [
+        (&temp, &in_vault, OWNER, TEMP_IN),
+        (&out_vault, &dst, JUPITER, OUT),
+    ] {
+        let mut d = vec![3u8];
+        d.extend_from_slice(&amount.to_le_bytes());
+        c.inner.push(Inner {
+            top: route_at,
+            program: TOKEN.to_string(),
+            accounts: vec![from.clone(), to.clone(), auth.to_string()],
+            data: d,
+        });
+    }
+    if let Temp::OverFundSkim(x) = shape {
+        let theirs = ata(ATTACKER, NATIVE_MINT);
+        c.set(
+            &theirs,
+            acct(RENT, TOKEN, token_account(NATIVE_MINT, ATTACKER, 0)),
+        );
+        c.after(
+            &theirs,
+            acct(RENT + x, TOKEN, token_account(NATIVE_MINT, ATTACKER, x)),
+        );
+        ixs.push(ix(
+            TOKEN,
+            &[
+                (&temp, false, true),
+                (NATIVE_MINT, false, false),
+                (&theirs, false, true),
+                (OWNER, true, false),
+            ],
+            transfer_checked(x, 9),
+        ));
+    }
+    // The close returns the rent (all that is left) to whoever it names.
+    let to = if shape == Temp::CloseToStranger {
+        ATTACKER
+    } else {
+        OWNER
+    };
+    ixs.push(close_account(&temp, to, OWNER));
+    if to == OWNER {
+        owner_out -= i128::from(RENT);
+    } else {
+        attacker_in += i128::from(RENT);
+    }
+    c.closed(&temp);
+    c.set(OWNER, acct(10 * SOL, SYSTEM, vec![]));
+    c.after(
+        OWNER,
+        acct((i128::from(10 * SOL) - owner_out) as u64, SYSTEM, vec![]),
+    );
+    if attacker_in != 0 {
+        c.after(
+            ATTACKER,
+            acct((i128::from(SOL) + attacker_in) as u64, SYSTEM, vec![]),
+        );
+    }
+    (c, ixs, route_at)
+}
+
+fn temp_request() -> Option<ExtractedParameters> {
+    Some(ExtractedParameters {
+        amount: Some("0.15874092".to_string()),
+        input_token: Some("SOL".to_string()),
+        output_token: Some(MINT_T22.to_string()),
+        slippage_bps: Some(100),
+        ..Default::default()
+    })
+}
+
+async fn temp_verdict(shape: Temp, w: Waivers) -> VerificationResult {
+    let (c, ixs, route) = temp_wrap_swap(shape);
+    verify(c, &ixs, route, "swap", temp_request(), w).await
+}
+
+/// D-24 reproduction (live run 41141950725 row 110): SOL wrapped in a
+/// temporary account the wallet's own instructions create and initialize —
+/// by seed or by a fresh keypair, funded in the creation or by a transfer —
+/// and spent by a route into a Token-2022 mint, is executable under the
+/// defaults and every waiver, and bound to the request.
+#[tokio::test]
+async fn round41_an_honest_wrap_in_a_temporary_account_is_executable() {
+    for w in CONFIGS {
+        for shape in [
+            Temp::SeedInit3,
+            Temp::SeedRentInit1Transfer,
+            Temp::KeypairInit2,
+        ] {
+            let r = temp_verdict(shape, w).await;
+            assert!(
+                !names(&r, "SignerLamportsOutsideDeclaredDebit"),
+                "{shape:?} {w:?}: L4 counts the wrapped SOL as a loss: {}",
+                l4(&r)
+            );
+            assert!(
+                !r.scope
+                    .unobserved_codes()
+                    .contains(&UnobservedCode::IntentParameters),
+                "{shape:?} {w:?}: the swap is not bound"
+            );
+            assert_executable(&format!("{shape:?}, {w:?}"), &r);
+        }
+    }
+}
+
+/// D-24 attack controls: a temporary account that is not provably the
+/// wallet's own wSOL, or whose SOL leaves to anyone else — never executable.
+#[tokio::test]
+async fn round41_a_temporary_account_that_is_not_the_wallets_is_never_executable() {
+    let cases = [
+        (
+            "initialized with the attacker as owner",
+            Temp::InitOwnerAttacker,
+        ),
+        ("the seed's base is not the wallet", Temp::BaseNotWallet),
+        ("funded by someone else", Temp::FunderNotWallet),
+        ("closed to a stranger", Temp::CloseToStranger),
+        (
+            "over-funded, the excess moved out as wSOL",
+            Temp::OverFundSkim(50_000_000),
+        ),
+        ("SetAuthority on it", Temp::SetAuthorityOnIt),
+        ("Approve on it", Temp::ApproveOnIt),
+        ("initialized for a non-native mint", Temp::NonNativeMint),
+        (
+            "a seed creation naming an address it does not derive",
+            Temp::SlotNotDerived,
+        ),
+    ];
+    let mut out = Outcomes::default();
+    for w in ATTACK_CONFIGS {
+        for (tag, shape) in cases {
+            let r = temp_verdict(shape, w).await;
+            out.refused(&format!("{tag}, {w:?}"), &r);
+        }
+    }
+    out.assert_none_executable();
+}
+
+/// D-24: L4 under the defaults counts, to the lamport, what the credit
+/// must not cover: nothing is credited into an account that is not provably
+/// the wallet's own wSOL, and only `in_amount` net of the rent otherwise.
+#[tokio::test]
+async fn round41_l4_still_counts_what_leaves_a_temporary_account() {
+    for (tag, shape, lost) in [
+        ("owner the attacker", Temp::InitOwnerAttacker, TEMP_IN),
+        ("base not the wallet", Temp::BaseNotWallet, TEMP_IN),
+        ("closed to a stranger", Temp::CloseToStranger, RENT),
+        (
+            "over-funded skim",
+            Temp::OverFundSkim(50_000_000),
+            50_000_000,
+        ),
+        ("SetAuthority on it", Temp::SetAuthorityOnIt, TEMP_IN),
+        ("Approve on it", Temp::ApproveOnIt, TEMP_IN),
+        ("non-native mint", Temp::NonNativeMint, TEMP_IN),
+        ("slot not derived", Temp::SlotNotDerived, TEMP_IN),
+    ] {
+        let r = temp_verdict(shape, Waivers::None).await;
+        record(tag, &r);
+        let needle = format!("SignerLamportsOutsideDeclaredDebit: {lost} lamports left");
+        assert!(
+            names(&r, &needle),
+            "{tag}: L4 does not count exactly the {lost} lamports: {}",
+            l4(&r)
+        );
+    }
+}
