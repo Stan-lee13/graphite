@@ -1004,6 +1004,12 @@ async fn a_swap_beside_a_memo_is_executable() {
 /// the vault directly (`SignerLamportsOutsideDeclaredDebit`). That is a false
 /// refusal L4 had before Round 38, recorded in the Round 38 report as a
 /// documented limitation; it is not asserted here.
+///
+/// Round 41 (D-20): the wrap half is no longer refused — L4 reads the wrap
+/// from the bytes and counts it as the route's declared debit, up to the
+/// route's `in_amount` (`round41_live_false_refusals`); the own wrap here is
+/// now `executable_approved`. The unwrap's `UndeclaredAccountClosure`
+/// remains.
 #[tokio::test]
 async fn the_owners_own_wrap_and_unwrap_are_bound() {
     for (tag, (c, ixs), request) in [

@@ -78,6 +78,7 @@ fn l4_counts_a_data_only_change() {
         token2022_mints: Default::default(),
         transaction_accounts: None,
         transaction_privileges: None,
+        top_level_instructions: None,
     };
     let accts = vec![
         ResolvedAccount {

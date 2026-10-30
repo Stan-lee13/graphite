@@ -144,12 +144,9 @@ impl Binding {
 }
 
 /// One top-level instruction with every account resolved to an address.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Ix {
-    pub program_id: String,
-    pub accounts: Vec<String>,
-    pub data: Vec<u8>,
-}
+/// Round 41: the same type L4 reads (`state_diff::TopLevelInstruction`), so
+/// the binding and L4 read a transaction's instructions alike.
+pub type Ix = crate::state_diff::TopLevelInstruction;
 
 /// What the binding reads.
 pub struct BindingInput<'a> {
@@ -1290,7 +1287,16 @@ fn within_slippage(min_out: u64, simulated: i128, bps: u64) -> bool {
 ///   themselves as its close authority, and hands it to the victim: its owner
 ///   field is the victim's, and the attacker closes it to themselves after
 ///   the transaction lands, with whatever SOL was sent into it.
-fn kept_by(account: &str, keepers: &[String], diff: &StateDiff) -> bool {
+///
+/// Round 41 (D-20): an account the simulation observed absent both before
+/// and after the transaction — one that exists only inside it — is a
+/// keeper's when it is that keeper's associated wrapped-SOL account, created
+/// by an associated-token-account instruction of `ixs` for that keeper and
+/// the native mint under SPL Token: the address fixes whose it is, and the
+/// ordinary SOL -> token swap wraps there, the route spends it and
+/// `CloseAccount` returns the rent. It holds nothing at the end, so whatever
+/// left it went somewhere the rest of [`keeps_value`] judges.
+fn kept_by(account: &str, keepers: &[String], diff: &StateDiff, ixs: &[Ix]) -> bool {
     if keepers.iter().any(|k| k == account) {
         return true;
     }
@@ -1298,6 +1304,11 @@ fn kept_by(account: &str, keepers: &[String], diff: &StateDiff) -> bool {
     let Some(d) = diff.deltas.iter().find(|d| d.pubkey == account) else {
         return false;
     };
+    if d.before.is_none() && d.after.is_none() {
+        return keepers
+            .iter()
+            .any(|k| crate::state_diff::is_transient_own_wsol(account, k, ixs));
+    }
     // What the account is once the transaction has run; a closed one is
     // judged by what it was.
     d.after
@@ -1339,7 +1350,7 @@ fn keeps_value(
     diff: &StateDiff,
     mints: &[String],
 ) -> Result<(), Binding> {
-    let own = |a: &str| kept_by(a, keepers, diff);
+    let own = |a: &str| kept_by(a, keepers, diff, ixs);
     let signer = |a: &str| signers.iter().any(|s| s == a);
     for (i, ix) in ixs.iter().enumerate() {
         if route.iter().any(|r| std::ptr::eq(*r, ix)) {
@@ -1739,7 +1750,7 @@ fn bind_create(input: &BindingInput<'_>) -> Binding {
     // wallet that funds the creation — does not keep; a co-signer is not it.
     let payer: Vec<String> = input.signers.first().cloned().into_iter().collect();
     let own = |a: &str| {
-        kept_by(a, &payer, diff) || diff.deltas.iter().any(|d| d.pubkey == a && created(d))
+        kept_by(a, &payer, diff, ixs) || diff.deltas.iter().any(|d| d.pubkey == a && created(d))
     };
     for (i, ix) in ixs.iter().enumerate() {
         let moved = if ix.program_id == SYSTEM_PROGRAM {
