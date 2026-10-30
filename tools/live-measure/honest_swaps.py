@@ -65,12 +65,17 @@ SWAP_PROGRAMS = (JUPITER_V6, ORCA_WHIRLPOOLS, RAYDIUM_CPMM, RAYDIUM_CLMM, RAYDIU
 
 # (program, selector) → (name, layout), as `intent_binding::decode_swap` reads
 # them. Layouts: "jupiter" (in_amount, quoted_out_amount, slippage_bps,
-# platform_fee_bps are the data's last 19 bytes); "concentrated" (amount,
+# platform_fee_bps are the data's last 19 bytes); "jupiter_v2" (route_v2 /
+# shared_accounts_route_v2, Round 41 D-23: in_amount u64, quoted_out_amount
+# u64, slippage_bps u16, platform_fee_bps u16, positive_slippage_bps u16 at a
+# fixed offset, 8, or 9 after shared's id byte); "concentrated" (amount,
 # other_amount_threshold, sqrt_price_limit, exact-in flag at byte 40);
 # "in_min8" / "in_min1" (amount in, minimum out after an 8- or 1-byte selector).
 VENUES = {
     (JUPITER_V6, "e517cb977ae3ad2a"): ("Jupiter v6 route", "jupiter"),
     (JUPITER_V6, "c1209b3341d69c81"): ("Jupiter v6 shared_accounts_route", "jupiter"),
+    (JUPITER_V6, "bb64facc31c4af14"): ("Jupiter v6 route_v2", "jupiter_v2"),
+    (JUPITER_V6, "d19853937cfed8e9"): ("Jupiter v6 shared_accounts_route_v2", "jupiter_v2"),
     (ORCA_WHIRLPOOLS, "f8c69e91e17587c8"): ("Orca Whirlpools swap", "concentrated"),
     (ORCA_WHIRLPOOLS, "2b04ed0b1ac91e62"): ("Orca Whirlpools swapV2", "concentrated"),
     (RAYDIUM_CLMM, "f8c69e91e17587c8"): ("Raydium CLMM swap", "concentrated"),
@@ -96,6 +101,19 @@ def _put_u64(data, at, value):
     return data[:at] + int(value).to_bytes(8, "little") + data[at + 8 :]
 
 
+SHARED_ROUTE_V2 = "d19853937cfed8e9"
+
+
+def _v2_at(data):
+    """Where a v2 route's in_amount starts: after the selector, and after
+    shared_accounts_route_v2's id byte."""
+    return 9 if bytes(data[:8]).hex() == SHARED_ROUTE_V2 else 8
+
+
+def _u16(data, at):
+    return int.from_bytes(data[at : at + 2], "little")
+
+
 def venue(program, data):
     """(name, layout) of an exact-in swap instruction the Core decodes; or
     (None, why) for a swap program instruction it does not; or None for any
@@ -108,19 +126,26 @@ def venue(program, data):
         return None, (f"{PROGRAM_NAMES[program]} instruction {bytes(data[:width]).hex()} "
                       "(not an exact-in swap the Core decodes)")
     name, kind = found
-    need = {"jupiter": 8 + 19, "concentrated": 41, "in_min8": 24, "in_min1": 17}[kind]
+    need = {"jupiter": 8 + 19, "jupiter_v2": _v2_at(data) + 22, "concentrated": 41, "in_min8": 24,
+            "in_min1": 17}[kind]
     if len(data) < need:
         return None, f"{name}: shorter than its layout"
     if kind == "concentrated" and data[40] != 1:
         return None, "exact-output swap (the Core binds exact-in only)"
     if kind == "jupiter" and data[-1] != 0:
         return None, "Jupiter route with a platform fee (the Core refuses one)"
+    if kind == "jupiter_v2" and _u16(data, _v2_at(data) + 18) != 0:
+        return None, "Jupiter route with a platform fee (the Core refuses one)"
+    if kind == "jupiter_v2" and _u16(data, _v2_at(data) + 20) != 0:
+        return None, "Jupiter v2 route with a positive-slippage fee (the Core refuses one)"
     return name, kind
 
 
 def amount_in(kind, data):
     if kind == "jupiter":
         return _u64(data, len(data) - 19)
+    if kind == "jupiter_v2":
+        return _u64(data, _v2_at(data))
     if kind == "in_min1":
         return _u64(data, 1)
     return _u64(data, 8)
@@ -135,6 +160,9 @@ def with_minimum(kind, data, quoted, slippage_bps):
     if kind == "jupiter":
         at = len(data) - 11
         return data[:at] + int(quoted).to_bytes(8, "little") + int(slippage_bps).to_bytes(2, "little") + data[at + 10 :]
+    if kind == "jupiter_v2":
+        at = _v2_at(data) + 8
+        return data[:at] + int(quoted).to_bytes(8, "little") + int(slippage_bps).to_bytes(2, "little") + data[at + 10 :]
     minimum = max(1, quoted * (10_000 - slippage_bps) // 10_000)
     return _put_u64(data, 9 if kind == "in_min1" else 16, minimum)
 
@@ -144,6 +172,9 @@ def minimum_of(kind, data):
     if kind == "jupiter":
         quoted, bps = _u64(data, len(data) - 11), int.from_bytes(data[-3:-1], "little")
         return quoted * (10_000 - bps) // 10_000
+    if kind == "jupiter_v2":
+        at = _v2_at(data)
+        return _u64(data, at + 8) * (10_000 - _u16(data, at + 16)) // 10_000
     return _u64(data, 9 if kind == "in_min1" else 16)
 
 

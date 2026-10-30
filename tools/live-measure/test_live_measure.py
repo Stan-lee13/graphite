@@ -1231,6 +1231,37 @@ def test_the_swap_layouts_are_the_cores():
     assert hs.venue(hs.SYSTEM_PROGRAM, data) is None
 
 
+def _route_v2(shared, amount=7, quoted=100, slippage=30, platform=0, positive=0, plan=b"\x01\x00\x00\x00\x1a\x10\x27\x00\x01"):
+    head = bytes.fromhex("d19853937cfed8e9" if shared else "bb64facc31c4af14") + (b"\x03" if shared else b"")
+    return head + amount.to_bytes(8, "little") + quoted.to_bytes(8, "little") + slippage.to_bytes(2, "little") \
+        + platform.to_bytes(2, "little") + positive.to_bytes(2, "little") + plan
+
+
+def test_a_jupiter_v2_route_is_read_at_its_fixed_offsets():
+    # Round 41 (D-23): route_v2 / shared_accounts_route_v2 carry their amounts
+    # first (after shared's id byte), the route plan last.
+    for shared, name in ((False, "Jupiter v6 route_v2"), (True, "Jupiter v6 shared_accounts_route_v2")):
+        route = _route_v2(shared)
+        assert hs.venue(hs.JUPITER_V6, route) == (name, "jupiter_v2")
+        assert hs.amount_in("jupiter_v2", route) == 7 and hs.minimum_of("jupiter_v2", route) == 99
+        patched = hs.with_minimum("jupiter_v2", route, 4000, 50)
+        assert len(patched) == len(route) and hs.minimum_of("jupiter_v2", patched) == 3980
+        assert hs.amount_in("jupiter_v2", patched) == 7
+        # Only quoted_out_amount and slippage_bps changed: fees and plan are kept.
+        at = 9 if shared else 8
+        assert patched[: at + 8] == route[: at + 8] and patched[at + 18 :] == route[at + 18 :]
+
+
+def test_a_jupiter_v2_route_with_a_fee_or_cut_short_is_not_built():
+    for shared in (False, True):
+        assert hs.venue(hs.JUPITER_V6, _route_v2(shared, platform=5)) == (
+            None, "Jupiter route with a platform fee (the Core refuses one)")
+        assert hs.venue(hs.JUPITER_V6, _route_v2(shared, positive=5)) == (
+            None, "Jupiter v2 route with a positive-slippage fee (the Core refuses one)")
+        cut = _route_v2(shared, plan=b"")[:-1]
+        assert hs.venue(hs.JUPITER_V6, cut)[0] is None
+
+
 def test_an_honest_direct_swap_is_a_candidate_with_what_the_wallet_gave_and_got():
     row, _ = usdc_to_bonk()
     c, why = hs.swap_candidate(row)

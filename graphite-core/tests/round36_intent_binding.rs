@@ -11,8 +11,9 @@
 
 use graphite_core::confidence_engine::TrustTier;
 use graphite_core::intent_binding::{
-    bind, bind_withdrawal, decode_swap, wallet_effect, Binding, BindingInput, Ix, JupiterPayload,
-    WithdrawalContext, JUPITER_SWAP_VARIANTS, JUPITER_V6, NATIVE_MINT, RAYDIUM_CPMM,
+    bind, bind_withdrawal, decode_swap, wallet_effect, Binding, BindingInput, Ix,
+    WithdrawalContext, JUPITER_CANDIDATE_SWAPS, JUPITER_SWAP_VARIANTS, JUPITER_V6, NATIVE_MINT,
+    RAYDIUM_CPMM,
 };
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
@@ -990,39 +991,45 @@ fn a_jupiter_route_is_decoded_to_its_own_minimum() {
         decode_swap(JUPITER_V6, &fee).unwrap().is_err(),
         "platform fee"
     );
+    // Round 41 (D-23): the table is the on-chain IDL's 188 variants; the
+    // first tag past it is refused (62 was the first past the old table).
     let mut bad_variant = d.clone();
-    bad_variant[12] = 62;
+    bad_variant[12] = JUPITER_SWAP_VARIANTS.len() as u8;
+    assert!(decode_swap(JUPITER_V6, &bad_variant).unwrap().is_err());
+    bad_variant[12] = 255;
     assert!(decode_swap(JUPITER_V6, &bad_variant).unwrap().is_err());
 }
 
-/// The Core's Jupiter variant table is the agent guard's, entry by entry.
+/// One of the guard's payload tables (`name`), row by row.
+fn guard_table(ts: &str, name: &str) -> Vec<Vec<String>> {
+    let head = format!("{name}: readonly (readonly string[])[] = [");
+    let start = ts.find(&head).unwrap_or_else(|| panic!("{head}")) + head.len();
+    let body = &ts[start..start + ts[start..].find("\n];").unwrap()];
+    body.lines()
+        .map(|l| l.split("//").next().unwrap().trim().trim_end_matches(','))
+        .filter(|l| !l.is_empty())
+        .map(|l| serde_json::from_str::<Vec<String>>(l).unwrap_or_else(|e| panic!("{l}: {e}")))
+        .collect()
+}
+
+/// The Core's Jupiter payload tables are the agent guard's, entry by entry
+/// (Round 41: the Swap and CandidateSwap tables of the on-chain IDL).
 #[test]
 fn the_jupiter_variant_table_matches_the_guards() {
     let ts = include_str!("../../integrations/agent-guard/swap-instructions.ts");
-    let start = ts
-        .find("JUPITER_SWAP_VARIANTS: readonly JupiterSwapPayload[] = [")
-        .unwrap();
-    let body = &ts[start..ts[start..].find("];").unwrap() + start];
-    let guard: Vec<&str> = body
-        .lines()
-        .skip(1)
-        .flat_map(|l| l.split("//").next().unwrap().split(','))
-        .map(|s| s.trim().trim_matches('"'))
-        .filter(|s| !s.is_empty())
-        .collect();
-    let core: Vec<&str> = JUPITER_SWAP_VARIANTS
-        .iter()
-        .map(|v| match v {
-            JupiterPayload::Unit => "unit",
-            JupiterPayload::Bool => "bool",
-            JupiterPayload::Side => "side",
-            JupiterPayload::U64U64 => "u64u64",
-            JupiterPayload::U32 => "u32",
-            JupiterPayload::Clone => "clone",
-            JupiterPayload::WhirlpoolV2 => "whirlpoolV2",
-        })
-        .collect();
-    assert_eq!(core, guard);
+    let core = |t: &[&[&str]]| -> Vec<Vec<String>> {
+        t.iter()
+            .map(|v| v.iter().map(|s| s.to_string()).collect())
+            .collect()
+    };
+    assert_eq!(
+        core(&JUPITER_SWAP_VARIANTS),
+        guard_table(ts, "JUPITER_SWAP_VARIANTS")
+    );
+    assert_eq!(
+        core(&JUPITER_CANDIDATE_SWAPS),
+        guard_table(ts, "JUPITER_CANDIDATE_SWAPS")
+    );
 }
 
 #[test]
