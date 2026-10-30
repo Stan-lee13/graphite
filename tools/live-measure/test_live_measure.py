@@ -1227,7 +1227,8 @@ def test_the_swap_layouts_are_the_cores():
     clmm = bytes.fromhex("f8c69e91e17587c8") + (5).to_bytes(8, "little") + (9).to_bytes(8, "little") + bytes(16)
     assert hs.venue(hs.RAYDIUM_CLMM, clmm + b"\x01")[1] == "concentrated"
     assert hs.venue(hs.RAYDIUM_CLMM, clmm + b"\x00")[0] is None
-    assert hs.venue(hs.RAYDIUM_CPMM, bytes(24))[0] is None and hs.venue(hs.SYSTEM_PROGRAM, data) is None
+    assert hs.venue(hs.RAYDIUM_CPMM, bytes(24)) == (None, "Raydium CPMM instruction 0000000000000000 (not an exact-in swap the Core decodes)")
+    assert hs.venue(hs.SYSTEM_PROGRAM, data) is None
 
 
 def test_an_honest_direct_swap_is_a_candidate_with_what_the_wallet_gave_and_got():

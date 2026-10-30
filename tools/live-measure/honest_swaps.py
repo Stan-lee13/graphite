@@ -58,6 +58,8 @@ RAYDIUM_CPMM = "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C"
 RAYDIUM_CLMM = "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK"
 RAYDIUM_AMM_V4 = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8"
 METEORA_DLMM = "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
+PROGRAM_NAMES = {JUPITER_V6: "Jupiter v6", ORCA_WHIRLPOOLS: "Orca Whirlpools", RAYDIUM_CPMM: "Raydium CPMM",
+                 RAYDIUM_CLMM: "Raydium CLMM", RAYDIUM_AMM_V4: "Raydium AMM v4", METEORA_DLMM: "Meteora DLMM"}
 # The Core's DECODED_SWAP_PROGRAMS (graphite-core/src/intent_binding.rs).
 SWAP_PROGRAMS = (JUPITER_V6, ORCA_WHIRLPOOLS, RAYDIUM_CPMM, RAYDIUM_CLMM, RAYDIUM_AMM_V4, METEORA_DLMM)
 
@@ -103,7 +105,8 @@ def venue(program, data):
     width = 1 if program == RAYDIUM_AMM_V4 else 8
     found = VENUES.get((program, bytes(data[:width]).hex()))
     if found is None:
-        return None, "a swap-program instruction the Core does not decode as an exact-in swap"
+        return None, (f"{PROGRAM_NAMES[program]} instruction {bytes(data[:width]).hex()} "
+                      "(not an exact-in swap the Core decodes)")
     name, kind = found
     need = {"jupiter": 8 + 19, "concentrated": 41, "in_min8": 24, "in_min1": 17}[kind]
     if len(data) < need:
