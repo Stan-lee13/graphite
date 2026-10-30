@@ -408,7 +408,9 @@ echo "== ruleset-drift.py against the live state of 2026-10-25 (Round 39)"
 # no tag ruleset; 0 required approvals; RepositoryRole 2 and 5 and 24 GitHub Apps
 # with bypass_mode "always"; an extra copilot_code_review rule. Round 38's check
 # matched rulesets by name and only NOTED one without a committed file, so it
-# compared this ruleset with nothing.
+# compared this ruleset with nothing. Since 2026-10-30 the committed `main` rulesets
+# carry require_extra_approval_for_unattributed_changes (GitHub's import turned it
+# on live), so the snapshot no longer differs in that one parameter.
 SNAP="$here/testdata/ruleset-drift-live-2026-10-25"
 L1="$T/live-snap"
 rm -rf "$L1" && cp -r "$SNAP" "$L1"
@@ -418,7 +420,6 @@ for needle in "live ruleset 'Main-review' (id 25817024) has no committed file" \
               "named 'Main-review', committed 'main — integrity (Round 30, G-11)'" \
               "live rule 'copilot_code_review' is not in the committed file" \
               "pull_request.required_approving_review_count is 0, committed 1" \
-              "pull_request.require_extra_approval_for_unattributed_changes is true live" \
               "bypass actor RepositoryRole 2 (always) is live and not committed" \
               "bypass actor RepositoryRole 5 (always) is live and not committed" \
               "committed bypass actor RepositoryRole 5 (pull_request) is missing" \
@@ -440,8 +441,9 @@ mklive "$L"
 cp "$SNAP/ruleset-25817024.json" "$L/"
 edit_live "$L" 'l = j("rulesets.json"); l.append(j("ruleset-25817024.json")); w("rulesets.json", l)'
 expect 1 "an uncommitted ruleset beside the committed ones fails (Round 38: a notice, exit 0)" drift "$L"
-# Main-review renamed to main.json's name, its extra rule and parameter
-# removed: only its 26 always-bypass actors still differ.
+# Main-review renamed to main.json's name, its extra rule removed (its
+# unattributed-changes parameter is committed since 2026-10-30): only its 26
+# always-bypass actors still differ.
 mk_renamed() { # mk_renamed DIR [hide-bypass]
   mklive "$1" show
   python3 -I - "$1" "$SNAP/ruleset-25817024.json" "${2:-}" <<'PY' || bad "the renamed fixture could not be built"
@@ -452,9 +454,6 @@ listing = json.load(open(os.path.join(d, "rulesets.json")))
 main = next(x for x in listing if x["name"].startswith("main — integrity"))
 live.update(id=main["id"], name=main["name"])
 live["rules"] = [r for r in live["rules"] if r["type"] != "copilot_code_review"]
-for r in live["rules"]:
-    if r["type"] == "pull_request":
-        r["parameters"].pop("require_extra_approval_for_unattributed_changes")
 live["current_user_can_bypass"] = "never"
 if hide:
     for f in os.listdir(d):

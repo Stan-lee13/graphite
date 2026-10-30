@@ -6,7 +6,10 @@ Graphite is a transaction verification engine — security bugs in the verificat
 
 **Do NOT open a public issue for security vulnerabilities.**
 
-Instead, email: stanleyvic13@gmail.com with:
+Instead, report it privately through GitHub's advisory form:
+**https://github.com/Stan-lee13/graphite/security/advisories/new** (the repository's Security tab → *Report a vulnerability*).
+Only you and the maintainers see the report. If you cannot use GitHub, email
+stanleyvic13@gmail.com instead. Either way, include:
 - A clear description of the vulnerability
 - The affected component (core engine, SAK integration, SDK, AI layer)
 - Steps to reproduce or proof of concept
@@ -21,9 +24,9 @@ still undone is [docs/CURRENT.md](docs/CURRENT.md). The dated sections below
 record what was found and fixed, when; they are not edited afterwards. In one
 line: **CONDITIONAL — security-hardened alpha.** No known way to turn a blocked
 verdict into an executed transaction under the stated threat model; no
-independent third party has yet tried; `main` is not protected as committed (the
-rulesets in `.github/rulesets/` are not applied; the live `Main-review` ruleset lets 26
-actors bypass it, Round 39).
+independent third party has yet tried. Since 2026-10-30 `main` and the `v*` tags are protected
+by the four committed rulesets in `.github/rulesets/` (the uncommitted `Main-review`, which let
+26 actors bypass every rule, is deleted), and private vulnerability reporting is on.
 The verdict since Round 36: release blocked on those owner and external items;
 the code is conditionally ready for an independent audit, with the owner gates
 open (`docs/ops/production-checklist.md`). Only `executable: true` permits

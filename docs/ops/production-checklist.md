@@ -12,14 +12,19 @@ and `gh` authenticated as a repository admin.
 
 ## Repository (owner)
 
-- [ ] **1. Branch protection and immutable tags — STOP-SHIP.** Exactly the four committed rulesets
-  and nothing else: **R1** below (runbook: [branch-protection.md](branch-protection.md)). Live on
+- [x] **1. Branch protection and immutable tags.** Exactly the four committed rulesets
+  and nothing else: **R1** below (runbook: [branch-protection.md](branch-protection.md)). **Done
+  2026-10-30**: the four rulesets are live under their committed names, `active`, and match the
+  committed files (read back without admin rights with `ruleset-drift.py`; the bypass lists still
+  need the admin read of R5). `Main-review` is deleted. Before that, on
   2026-10-25 (Round 39): one uncommitted ruleset, `Main-review` (id 25817024), with 0 required
   approvals, RepositoryRole 2 and 5 and 24 GitHub Apps that may bypass it `always`, and an extra
   `copilot_code_review` rule; no tag ruleset. That is not this item done.
   Then delete or protect the stale branches (K-14): `git ls-remote --heads origin`, and for each one
   not in use, `git push origin --delete <branch>`.
-- [ ] **2. Private vulnerability reporting.** Off on 2026-10-25 (`GET …/private-vulnerability-reporting`
+- [x] **2. Private vulnerability reporting.** **Done 2026-10-30** (`GET …/private-vulnerability-reporting`
+  = `{"enabled": true}`; `SECURITY.md` and the issue template point at
+  `https://github.com/Stan-lee13/graphite/security/advisories/new`). Was off on 2026-10-25 (`GET …/private-vulnerability-reporting`
   = `{"enabled": false}`).
   `gh api -X PUT repos/Stan-lee13/graphite/private-vulnerability-reporting`
   (or Settings → Security → Code security → Private vulnerability reporting → Enable).
@@ -80,7 +85,7 @@ done, anyone with write access can still publish a release with genuine provenan
 
 Exactly what to apply, in order:
 
-- [ ] **R1. Four rulesets, under their committed names, and no other** (Round 39) — `main.json`
+- [x] **R1. Four rulesets, under their committed names, and no other** (Round 39; applied 2026-10-30) — `main.json`
   (main: no force-push or deletion, every change by pull request, the `CI gate` check from app
   15368, no bypass), `main-review.json` (one approving code-owner review of the last push; the
   admin role may bypass it through a pull request only, so one maintainer can merge and each such

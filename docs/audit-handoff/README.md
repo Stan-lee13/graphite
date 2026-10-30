@@ -204,7 +204,7 @@ audit) are items in [`docs/ops/production-checklist.md`](../ops/production-check
    does the release workflow's permission split and digest handling hold?
 9. **Residuals**: is any item in §6 worse than we describe, and which would you block a launch on?
 
-Send findings privately to the contact in `SECURITY.md` (GitHub private vulnerability reporting is
-not enabled on the repository yet; it is an owner item in `docs/ops/production-checklist.md`), one
+Send findings privately through GitHub's advisory form
+(https://github.com/Stan-lee13/graphite/security/advisories/new; `SECURITY.md` has an e-mail fallback), one
 per issue, with a reproduction where possible. We will answer each with its fix,
 its regression test and the deliberate revert that shows the test catches it, as every earlier round did.
