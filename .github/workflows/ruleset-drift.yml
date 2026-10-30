@@ -6,8 +6,8 @@ name: Ruleset drift
 # and until the owner applies them they do not exist (the Round 37 audit read
 # `GET /rulesets` = [] and no `release` environment). Once a week this reads
 # them back, read-only, and goes red when one is absent or differs from the
-# committed file (.github/rulesets/main.json, release-tags.json,
-# release-tags-create.json; .github/environments/release.json). Red is the
+# committed file (.github/rulesets/main.json, main-review.json,
+# release-tags.json, release-tags-create.json; .github/environments/release.json). Red is the
 # expected state until the owner's steps R1–R2 are done
 # (docs/ops/production-checklist.md).
 #
@@ -15,7 +15,17 @@ name: Ruleset drift
 # the run summary instead of assumed: GitHub shows a ruleset's bypass list
 # only to a caller that may edit it, so with this token the check proves the
 # workflow token itself cannot bypass (current_user_can_bypass = never) but
-# cannot read who else may. The owner reads that once by hand (R5).
+# cannot read who else may; the run then passes with the bypass lists marked
+# NOT VERIFIED, and the owner runs the same script with an admin token and
+# --require-bypass (R5).
+#
+# Round 39: the live state must be exactly the committed files. main-review.json
+# is required too, and a live ruleset with no committed file is a difference,
+# compared field by field with the committed ruleset for the same refs. On
+# 2026-10-25 the only live ruleset was an uncommitted "Main-review" (0 required
+# approvals, RepositoryRole 2 and 5 and 24 GitHub Apps with bypass_mode
+# "always", an extra copilot_code_review rule), which Round 38's check only
+# noted; .github/scripts/testdata/ruleset-drift-live-2026-10-25 is that answer.
 
 on:
   schedule:

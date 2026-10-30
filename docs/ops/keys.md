@@ -168,7 +168,7 @@ left after a prune, is not a verdict to L8. A reader without a key reads legacy
 records before the first chained record, as before.
 
 **Run the writing CLI commands with the server's key.** `graphite evidence
-seed` / `baseline`, `graphite quarantine` and the other commands that write the
+seed` / `baseline` / `import-census` (Round 40), `graphite quarantine` and the other commands that write the
 trail MAC their records under `GRAPHITE_AUDIT_KEY_FILE` when it is set, and
 write unkeyed records when it is not. Seeding a fresh data directory without
 the key leaves an unkeyed newest record, and the keyed server then refuses to
@@ -228,6 +228,17 @@ A server also refuses to start onto a newest record its readers' walk does not
 reach ("… does not continue the chain the readers walk …"): a copied or
 transplanted record at the end of the trail. Continuing after it would fork
 the chain. Run `graphite audit verify` and move the line aside.
+
+Since Round 39 (R39-CB-1) a server, `graphite execution` and every `graphite
+audit` command that writes also refuse a trail that holds records of two
+trails under one key ("… holds records of another trail under the same key
+…"): a record whose trail id is not the newest record's and whose MAC
+verifies, wherever it stands. The readers pin the newest record's trail id,
+and a record of another trail appended at the end used to become that pin:
+every genuine record then read as the other trail's, and a restarted server
+resumed onto the other trail with none of its own history readable.
+`graphite audit verify` names the first record of the other trail ("a record
+of another trail"); move it aside, or restore the trail from a backup.
 
 **Trail id (chain link version 2, Round 38).** Every record now carries
 `chain.v = 2` and `chain.trail`, a random 16-byte id drawn when the chain
@@ -319,7 +330,9 @@ writes comes near it: a request body is at most 1 MiB.
 
 `graphite registry submit` signs with the ed25519 key in
 `GRAPHITE_SIGNER_KEY_FILE` (or `--signer-key-file`). Keep that file mode 600 on
-the reviewer's machine, never on the server. A compromised reviewer key is
+the reviewer's machine, never on the server: since Round 40 (R39-CB-14) the
+command refuses a key file group or others can read or write, as the server
+refuses such an audit key file (Windows: the ACL is not inspected). A compromised reviewer key is
 revoked with `graphite registry revoke-reviewer --pubkey <base58>`; its
 signatures and attestations stop counting and the tiers they helped earn are
 recomputed.

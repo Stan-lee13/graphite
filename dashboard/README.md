@@ -46,7 +46,7 @@ label service.
 | View | Routes read | Content |
 | --- | --- | --- |
 | Overview | `/api/graph`, `/api/protocols/top`, `/api/confidence-history`, `/api/policy-violations`, `/metrics` | The verdict tape, whole-trail approval and refusal totals, executable vs not-executable approvals over the returned window (labelled "last N"), the six most recent refusals (risk vs policy drawn differently), the most exercised programs, a red band the moment any bypass counter is non-zero, and an "unknown — /metrics unavailable" band whenever those counters cannot be read |
-| Programs | `/api/graph`, `/api/protocols/top`, `/manifests` | Every program with a manifest, the most verified here first (every program's count, from `/api/protocols/top?limit=500`), then by mainnet census; a detail pane with the manifest's instructions, discriminators, account roles, expected state changes, risk rules and declared CPI targets. The trust tier shown is the one the Core **applied**, which since Round 18 is lowered from a declared `BattleTested` when the mainnet measurement in `battle_tested_evidence.json` does not support it |
+| Programs | `/api/graph`, `/api/protocols/top`, `/manifests` | Every program in the semantic graph, the most verified here first (every program's count, from `/api/protocols/top?limit=500`), then by mainnet census; a detail pane with the manifest's instructions, discriminators, account roles, expected state changes, risk rules and declared CPI targets. The trust tier shown is the one the Core **applied**, which since Round 18 is lowered from a declared `BattleTested` when the mainnet measurement in `battle_tested_evidence.json` does not support it |
 | Call graph | `/api/graph` | Declared CPI edges in call order; on a phone, the same roles as lists |
 | Verifications | `/api/confidence-history` | The trail's total, and its newest 500 verdicts in trail order — bound, descriptive and refused counted apart — with confidence drawn against the Gaming, Trading and Treasury floors |
 | Blocked | `/api/policy-violations` | Whole-trail refusal total, and the newest 200 refused transactions and 200 requests the Core could not parse |
@@ -61,7 +61,7 @@ npm ci
 npm run dev        # dev server on :5173, proxies the Core's routes to :7331
 npm run build      # typecheck + production build → dist/ (no source maps)
 npm run typecheck  # tsc --noEmit only
-npm test           # tsx --test (Node 22+): transport, router, connection storage, figures, CSP
+npm test           # tsx --test (Node 22+): transport, router, connection storage, figures, status, shapes, modal stack, CSP
 ```
 
 - The dev proxy target is `http://localhost:7331` by default; override with
@@ -98,9 +98,12 @@ npm test           # tsx --test (Node 22+): transport, router, connection storag
 ## Browser smoke test (Round 30)
 
 `e2e/smoke.mjs` walks every view of the built console in Chromium, at
-desktop and phone width, against a running Core, and fails on a CSP
+desktop, two tablet and two phone widths (1440, 820, 768, 390 and 320 CSS
+px), against a running Core, and fails on a CSP
 violation, a page error or a view's error boundary, a page wider than the
-viewport, any axe-core violation (when `AXE_CORE_PATH` names `axe.min.js`),
+viewport (Round 39: measured against the layout width, which mobile
+emulation does not widen to fit the overflow as it does `innerWidth`),
+any axe-core violation (when `AXE_CORE_PATH` names `axe.min.js`),
 or a verdict drawn "executable" that the Core's `/api/confidence-history`
 did not report as `executable_approved`:
 
@@ -109,6 +112,15 @@ npm run build && npm run preview -- --port 4173 &   # serves dist/ with the secu
 # a Core on loopback with GRAPHITE_CORS_ORIGINS=http://127.0.0.1:4173
 node e2e/smoke.mjs http://127.0.0.1:4173/ http://127.0.0.1:7331 "$GRAPHITE_API_KEY"
 ```
+
+`e2e/states.mjs` (Round 36, extended in Round 39) puts a fault proxy in
+front of the Core and walks what an operator sees when it does not answer
+well: 401, 500, not JSON, down, a `/metrics` that 404s or answers with a
+sign-in page, a `/health` missing fields, a Core that stops mid-session,
+hostile strings, a malformed manifest, a change of Core, deep links before
+the graph has answered, the palette over a detail pane, a refused copy and
+the connection test. `.github/scripts/dashboard-e2e.sh` runs both against a
+seeded throwaway Core.
 
 Playwright is not a dependency of the console; the script finds it in this
 package or under `PLAYWRIGHT_NODE_PATH`. Breaking the colour rule (drawing an
@@ -131,7 +143,10 @@ ones a Core with no RPC made.
 
 System shows **Simulation RPC** from `/health`'s `rpc_attached` — "None"
 means no approval from that Core is executable — and "Not reported" when
-the Core does not say. It also surfaces frozen baselines and detected
+the Core does not say. The audit trail and graph snapshots are "Not
+reported" too when `/health` omits them (Round 39: they were drawn "Off"),
+and a trail whose appends fail is "Failing", not "Writing". A `/metrics`
+that cannot be read faults the counters only; what `/health` said stays. It also surfaces frozen baselines and detected
 program upgrades from `/health`.
 
 Every response is checked for the fields the views read (`src/shape.ts`).
@@ -168,7 +183,10 @@ default the key is kept for this tab only (sessionStorage) and is gone when
 the tab closes; ticking "Remember the key on this device" keeps it in this
 browser's localStorage instead, and un-ticking it removes that copy. Either
 way it is never written to a URL, and "Forget key" drops it (and nothing
-else) with one click. Web Storage is readable by any script running on the
+else) with one click. Since Round 39 an address that carries a user name,
+password, query or fragment, or that is not a URL at all (a key pasted one
+field too high), is refused and not saved, no refusal repeats what was
+typed, and the sidebar shows only the address's host and path. Web Storage is readable by any script running on the
 console's origin, which is why the build carries a strict CSP. A rejected key is reported as such — distinct from a Core
 that is down — in the sidebar, in a banner, and on every panel.
 
@@ -186,7 +204,9 @@ that is down — in the sidebar, in a banner, and on every panel.
   `/api/registry` 5 s; `/manifests` 5 min (Round 30: it is every manifest in
   full, about 4.6 MB, and was fetched every 30 s). `/api/protocols/top` is
   asked for every row (`?limit=500`), so every program has its count. Every interval is six times longer
-  while the tab is hidden. Real-time push is deferred to Phase 3 by design
+  while the tab is hidden, and a tab brought back to the front polls at once
+  (Round 39); "Updated … ago" is recomputed every 5 s, not only when a poll
+  lands. Real-time push is deferred to Phase 3 by design
   (see `docs/phase2-plan.md` Feature 7).
 - Every request has a 15 s deadline (headers and body), so a Core that
   accepts a request and never answers cannot stall a view's polling.

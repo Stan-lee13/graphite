@@ -19,7 +19,7 @@
    "accounts": [
     {
      "name": "funding_account",
-     "role": "writable",
+     "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []
@@ -87,7 +87,7 @@
    "accounts": [
     {
      "name": "funding_account",
-     "role": "writable",
+     "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []

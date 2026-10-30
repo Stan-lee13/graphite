@@ -65,6 +65,11 @@ function layout(nodes: GraphNode[], edges: GraphEdge[]) {
     }));
 
   const all = [...nodes, ...stubs];
+  // Round 39: a stub is a callee with no node of its own. A node the Core
+  // knows from behaviour alone also has no manifest version, and was told
+  // apart from a stub by that — and described as "reached only as a CPI
+  // target", which it need not be.
+  const stubIds = new Set(stubs.map((s) => s.program_id));
   const fanIn = new Map<string, number>();
   const fanOut = new Map<string, number>();
   for (const e of edges) {
@@ -112,7 +117,7 @@ function layout(nodes: GraphNode[], edges: GraphEdge[]) {
     });
   });
 
-  return { all, placed, columns, isolated, H, lastCol: columns.length - 1, fanIn, fanOut };
+  return { all, placed, columns, isolated, H, lastCol: columns.length - 1, fanIn, fanOut, stubIds };
 }
 
 function edgePath(a: Placed, b: Placed) {
@@ -185,7 +190,7 @@ export function GraphView({ selected }: { selected?: string }) {
                       <li key={n.program_id} className="row">
                         <a className="row-main" href={hrefFor("graph", n.program_id)} aria-current={selected === n.program_id || undefined}>
                           <span className="row-title">
-                            <i className={`mark ${markClass(n)}`} aria-hidden="true" />
+                            <i className={`mark ${markClass(n, g.stubIds)}`} aria-hidden="true" />
                             {n.name}
                           </span>
                           <span className="row-meta">
@@ -195,7 +200,7 @@ export function GraphView({ selected }: { selected?: string }) {
                           </span>
                         </a>
                         <div className="row-side">
-                          {n.manifest_version === null ? <State kind="warn">undeclared</State> : <TierBadge tier={n.trust_tier} compact />}
+                          {g.stubIds.has(n.program_id) ? <State kind="warn">undeclared</State> : <TierBadge tier={n.trust_tier} compact />}
                         </div>
                       </li>
                     );
@@ -276,7 +281,7 @@ export function GraphView({ selected }: { selected?: string }) {
                   >
                     <rect className="node-hit" x={last ? -9 : -LABEL_W} y={-ROW / 2 + 2} width={LABEL_W + 9} height={ROW - 4} />
                     {p.fanIn > 0 && <rect className="fan-bar" x={-6} y={-6 - (10 * p.fanIn) / maxFan} width={12} height={12 + (20 * p.fanIn) / maxFan} />}
-                    <rect x={-5} y={-5} width={10} height={10} className={`node-mark ${markClass(n)}`} />
+                    <rect x={-5} y={-5} width={10} height={10} className={`node-mark ${markClass(n, g.stubIds)}`} />
                     <title>{`${n.name}\n${n.program_id}\nin ${p.fanIn}, out ${p.fanOut}`}</title>
                     <text className="node-label" x={last ? 13 : -13} y={3.5} textAnchor={last ? "start" : "end"}>
                       {label}
@@ -320,9 +325,13 @@ export function GraphView({ selected }: { selected?: string }) {
         )}
       </Section>
 
-      <Detail open={!!selected} onClose={() => navigate("graph")} title={node ? node.name : "Unknown program"}>
-        {node ? (
-          node.manifest_version === null ? (
+      {/* Round 39 (R39-DASH-1): not "Not in the graph" before the graph
+          has answered. */}
+      <Detail open={!!selected} onClose={() => navigate("graph")} title={loading ? "Loading…" : node ? node.name : "Unknown program"}>
+        {loading ? (
+          <Skeleton rows={6} cols={2} />
+        ) : node ? (
+          g.stubIds.has(node.program_id) ? (
             <div className="program">
               <div className="program-id">
                 <CopyId value={node.program_id} short={false} />
@@ -332,12 +341,10 @@ export function GraphView({ selected }: { selected?: string }) {
                 Reached only as a CPI target. Nothing in the registry describes it, so the gate cannot resolve its instructions: any call into it is
                 unobserved code.
               </p>
-              {g && (
-                <dl className="kv">
-                  <dt>Called by</dt>
-                  <dd>{fmt.int(g.fanIn.get(node.program_id) ?? 0)} programs</dd>
-                </dl>
-              )}
+              <dl className="kv">
+                <dt>Called by</dt>
+                <dd>{fmt.int(g.fanIn.get(node.program_id) ?? 0)} programs</dd>
+              </dl>
             </div>
           ) : (
             <ProgramDetail
@@ -356,6 +363,6 @@ export function GraphView({ selected }: { selected?: string }) {
   );
 }
 
-function markClass(n: GraphNode): string {
-  return n.quarantined ? "quarantined" : n.manifest_version === null ? "undeclared" : n.battle_tested_tx_count > 0 ? "hot" : "";
+function markClass(n: GraphNode, stubs: ReadonlySet<string>): string {
+  return n.quarantined ? "quarantined" : stubs.has(n.program_id) ? "undeclared" : n.battle_tested_tx_count > 0 ? "hot" : "";
 }

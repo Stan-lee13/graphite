@@ -385,6 +385,23 @@ pub enum EvidenceAction {
         mean_account_writes: f64,
         mean_cpi_hops: f64,
     },
+    /// Round 40 (bootstrap): seed each program's HistoricalVolume from the
+    /// committed, measured mainnet census (`protocols/battle_tested_evidence.json`)
+    /// instead of typed numbers. See `census_import`.
+    ImportCensus {
+        data_dir: Option<PathBuf>,
+        /// A census file to check against the compiled-in copy (default: the
+        /// compiled-in copy itself).
+        census: Option<PathBuf>,
+        /// Restrict the import to these programs (default: every record).
+        programs: Vec<String>,
+        /// Print what would be imported, and the resulting tier and
+        /// confidence per program, without writing anything.
+        dry_run: bool,
+        /// The cluster this Core verifies (`--cluster`): required, and only
+        /// `mainnet-beta` is accepted — the census measures mainnet-beta.
+        cluster: Option<String>,
+    },
     /// Show what the graph currently holds for a program.
     Show {
         data_dir: Option<PathBuf>,
@@ -537,6 +554,28 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                 },
                 None => None,
             };
+            // Round 39 (R39-CB-6): a data directory with no trail in it (a
+            // mistyped --data-dir, an unmounted volume) walked zero files and
+            // exited 2, "a trail with no chained record". Nothing was read:
+            // that is 3.
+            let trail = crate::durable::audit_path(&dir);
+            let stem = crate::durable::AUDIT_FILENAME;
+            let any_file = std::fs::read_dir(&dir).is_ok_and(|mut entries| {
+                entries.any(|e| {
+                    e.ok().is_some_and(|e| {
+                        let name = e.file_name();
+                        let name = name.to_string_lossy();
+                        name == stem || name.starts_with(&format!("{stem}."))
+                    })
+                })
+            });
+            if !any_file {
+                return Ok(unreadable(&format!(
+                    "no audit trail in {} ({} does not exist, and no archive of it): nothing was verified",
+                    dir.display(),
+                    trail.display()
+                )));
+            }
             let report = match crate::durable::verify_audit_trail(
                 &crate::durable::audit_path(&dir),
                 &keys,
@@ -548,8 +587,15 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                     return Ok(3);
                 }
             };
+            // Round 40 (R39-CB-15): file names and break reasons come from
+            // the trail's directory and records, which whoever can write the
+            // data directory chooses.
+            let t = terminal_safe;
             if json {
-                println!("{}", serde_json::to_string_pretty(&report)?);
+                println!(
+                    "{}",
+                    json_for_terminal(serde_json::to_string_pretty(&report)?)
+                );
             } else {
                 println!("integrity        {:?}", report.integrity);
                 println!("files            {}", report.files.len());
@@ -558,7 +604,7 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                     report.chained_records, report.legacy_unchained_records, report.legacy_adopted
                 );
                 if let Some(id) = &report.trail_id {
-                    println!("trail id         {id}");
+                    println!("trail id         {}", t(id));
                 }
                 println!(
                     "MACs             {} verified, {} under a key not supplied, {} records unkeyed ({} covered by a key-adoption record)",
@@ -572,7 +618,7 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                 for r in &report.key_ranges {
                     println!(
                         "key              {}  seq {}-{} ({} records)  {}  [{}]",
-                        r.key_id,
+                        t(&r.key_id),
                         r.first_seq,
                         r.last_seq,
                         r.records,
@@ -581,13 +627,18 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                         } else {
                             "NOT SUPPLIED, MACs not checked"
                         },
-                        r.introduced_by
+                        t(&r.introduced_by.to_string())
                     );
                 }
-                for t in &report.unacknowledged_tears {
+                for tear in &report.unacknowledged_tears {
                     println!(
                         "TEAR             {} line {} (byte {}, {} bytes): not JSON, and no record names it — a crash a pre-Round-34 writer resumed past, or bytes someone added. Inspect it; `graphite audit acknowledge-tear --file {} --offset {}` accepts it",
-                        t.file, t.line, t.offset, t.length, t.file, t.offset
+                        terminal_safe(&tear.file),
+                        tear.line,
+                        tear.offset,
+                        tear.length,
+                        terminal_safe(&tear.file),
+                        tear.offset
                     );
                 }
                 if report.keys_supplied && report.unkeyed_not_adopted() > 0 {
@@ -614,7 +665,7 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                     );
                 }
                 if let (Some(seq), Some(hash)) = (report.head_seq, &report.head_hash) {
-                    println!("head             seq {seq} hash {hash}");
+                    println!("head             seq {seq} hash {}", t(hash));
                 }
                 if let Some(first) = report.first_seq.filter(|s| *s > 0) {
                     if report.pruned_without_record {
@@ -636,15 +687,15 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                 if let Some(b) = &report.first_break {
                     println!(
                         "BREAK            {} line {} (byte {}){}: {}",
-                        b.file,
+                        t(&b.file),
                         b.line,
                         b.offset,
                         b.seq.map(|s| format!(", seq {s}")).unwrap_or_default(),
-                        b.reason
+                        t(&b.reason)
                     );
                 }
                 if let Some(cp) = &report.checkpoint {
-                    println!("checkpoint       {cp:?}");
+                    println!("checkpoint       {}", t(&format!("{cp:?}")));
                 }
             }
             Ok(report.exit_code())
@@ -741,7 +792,7 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
                         out.display()
                     );
                 }
-                None => println!("{text}"),
+                None => println!("{}", json_for_terminal(text)),
             }
             Ok(0)
         }
@@ -780,7 +831,9 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
             if let Some(b) = report.first_break.as_ref().filter(|_| !only_legacy) {
                 eprintln!(
                     "the trail is broken at {} line {}: {} — a key adoption would vouch for it; nothing written",
-                    b.file, b.line, b.reason
+                    terminal_safe(&b.file),
+                    b.line,
+                    terminal_safe(&b.reason)
                 );
                 return Ok(1);
             }
@@ -918,7 +971,10 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
             drop(log);
             println!(
                 "acknowledged the torn write at byte {} of {} ({} bytes, sha256 {}); run `graphite audit verify`",
-                tear.offset, tear.file, tear.length, tear.sha256
+                tear.offset,
+                terminal_safe(&tear.file),
+                tear.length,
+                tear.sha256
             );
             Ok(0)
         }
@@ -996,7 +1052,7 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
 /// trail — or an output it could not write: exit 3 (Round 38, T-14). It was
 /// an error out of `main`, exit 1, which reads as a break.
 fn unreadable(why: &str) -> i32 {
-    eprintln!("{why}");
+    eprintln!("{}", terminal_safe(why));
     3
 }
 
@@ -1005,7 +1061,7 @@ fn unreadable(why: &str) -> i32 {
 /// that too), 1 otherwise (the trail refused it: a break, or a head the
 /// writer cannot continue).
 fn writer_refused(e: &std::io::Error, why: &str) -> i32 {
-    eprintln!("{why}");
+    eprintln!("{}", terminal_safe(why));
     if e.kind() == std::io::ErrorKind::WouldBlock {
         75
     } else {
@@ -1074,10 +1130,14 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
             if let Some(note) = note {
                 // Disclosed where the verdict is read, as the server discloses
                 // it in the response's summary.
-                eprintln!("policy: {note}");
+                eprintln!("policy: {}", terminal_safe(&note));
                 result.summary = format!("{} | policy: {}", result.summary, note);
             }
-            println!("{}", serde_json::to_string_pretty(&result)?);
+            // Round 40 (R39-CB-15): the verdict echoes the request's text.
+            println!(
+                "{}",
+                json_for_terminal(serde_json::to_string_pretty(&result)?)
+            );
             // SECURITY FIX: Exit 1 on REJECT so CLI can be used as CI gate.
             // Round 30 (G-01): and 3 on an approval that does not permit
             // signing (`analysis_only`) — this command attaches no RPC, so
@@ -1295,8 +1355,16 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
             let url = health_url(&host, port)?;
             let rt = tokio::runtime::Runtime::new()?;
             let verdict = rt.block_on(async move {
+                // Round 39 (R39-CB-3): no redirect and no proxy. The probe
+                // followed up to ten redirects, to any host, and went through
+                // HTTP_PROXY / ALL_PROXY from the environment: a 302 from
+                // whatever answers on the port, to anything that answers
+                // `{"degraded":false}`, passed the strict check. /health never
+                // redirects, and the probe is for the process on this host.
                 let client = reqwest::Client::builder()
                     .timeout(std::time::Duration::from_secs(4))
+                    .redirect(reqwest::redirect::Policy::none())
+                    .no_proxy()
                     .build()
                     .map_err(|_| "health check failed: no HTTP client".to_string())?;
                 let res = client
@@ -1568,6 +1636,69 @@ fn operator_core() -> Result<(GraphiteCore, boundary::OperatorPolicy), String> {
     Ok((core, policy))
 }
 
+/// Whether `c` can change what a terminal shows rather than being shown
+/// (Round 40, R39-CB-15): the C0 and C1 control characters and DEL — ESC
+/// starts every ANSI sequence, so a string carrying one can recolour,
+/// overwrite or hide the lines around it — and the characters that reorder
+/// or hide text: the BIDI embeddings, overrides and isolates (U+202A-U+202E,
+/// U+2066-U+2069), the directional marks, the zero-width joiners and
+/// spaces, the line and paragraph separators and the BOM.
+fn terminal_unsafe(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{061C}'
+                | '\u{200B}'..='\u{200F}'
+                | '\u{2028}'..='\u{202E}'
+                | '\u{2060}'..='\u{2069}'
+                | '\u{FEFF}'
+        )
+}
+
+/// A caller-supplied string as the terminal should show it (Round 40,
+/// R39-CB-15): every [`terminal_unsafe`] character written as `\u{..}`,
+/// everything else as it is. `graphite explain` printed request strings
+/// (the intent type, account roles and addresses, reasons that quote the
+/// intent) to the terminal as given, so a request file's ESC sequences ran
+/// in the operator's terminal and a U+202E reversed the line it sat in.
+pub fn terminal_safe(s: &str) -> std::borrow::Cow<'_, str> {
+    if !s.chars().any(terminal_unsafe) {
+        return std::borrow::Cow::Borrowed(s);
+    }
+    let mut out = String::with_capacity(s.len() + 8);
+    for c in s.chars() {
+        if terminal_unsafe(c) {
+            out.push_str(&format!("\\u{{{:x}}}", c as u32));
+        } else {
+            out.push(c);
+        }
+    }
+    std::borrow::Cow::Owned(out)
+}
+
+/// JSON printed to the terminal (Round 40, R39-CB-15), with the same
+/// characters escaped as JSON escapes (`\uXXXX`), so the document parses to
+/// the same value. `serde_json` escapes C0 controls inside strings already
+/// and writes DEL, C1 and the BIDI characters raw; those are the ones
+/// replaced. A raw C0 character left in the text is the pretty-printer's own
+/// line break, outside any string, and stays.
+pub fn json_for_terminal(json: String) -> String {
+    let replaced = |c: char| terminal_unsafe(c) && u32::from(c) > 0x1F;
+    if !json.chars().any(replaced) {
+        return json;
+    }
+    let mut out = String::with_capacity(json.len() + 8);
+    for c in json.chars() {
+        if replaced(c) {
+            // Every such character is in the Basic Multilingual Plane.
+            out.push_str(&format!("\\u{:04x}", c as u32));
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 fn tier_label(tier: TrustTier) -> String {
     format!("{tier:?}")
 }
@@ -1584,26 +1715,31 @@ fn run_explain(
         result.summary = format!("{} | policy: {}", result.summary, note);
     }
     let (min_confidence, min_tier) = input.wallet_profile.thresholds();
+    // Round 40 (R39-CB-15): every string below may carry the request's own
+    // text, so each goes through `terminal_safe`.
+    let t = terminal_safe;
 
     println!(
         "{} {}",
-        result.protocol_name,
-        result
+        t(&result.protocol_name),
+        t(&result
             .manifest_version
             .as_deref()
             .map(|v| format!("v{v}"))
-            .unwrap_or_else(|| "(no manifest)".to_string())
+            .unwrap_or_else(|| "(no manifest)".to_string()))
     );
-    println!("  program      {}", input.program_id);
+    println!("  program      {}", t(&input.program_id));
     println!(
         "  instruction  {} ({})",
-        result.instruction_name, input.instruction_discriminator
+        t(&result.instruction_name),
+        t(&input.instruction_discriminator)
     );
     println!(
-        "  intent       {} — {:?}",
-        input.proposed_intent.intent_type, input.proposed_intent.raw_natural_language
+        "  intent       {} — {}",
+        t(&input.proposed_intent.intent_type),
+        t(&format!("{:?}", input.proposed_intent.raw_natural_language))
     );
-    println!("  content hash {}", result.content_hash);
+    println!("  content hash {}", t(&result.content_hash));
     println!();
 
     println!(
@@ -1632,10 +1768,13 @@ fn run_explain(
         tier_label(min_tier)
     );
     if let Some(note) = &note {
-        println!("  profile      {note}");
+        println!("  profile      {}", t(note));
     }
-    println!("  policy       {}", result.policy_verdict);
-    println!("  risk         {}", result.risk_verdict.status);
+    println!("  policy       {}", t(&result.policy_verdict.to_string()));
+    println!(
+        "  risk         {}",
+        t(&result.risk_verdict.status.to_string())
+    );
     println!();
 
     println!("Layers");
@@ -1648,7 +1787,11 @@ fn run_explain(
             crate::verification::LayerStatus::Failed => "FAIL",
             crate::verification::LayerStatus::Inconclusive => "n/a ",
         };
-        println!("  {mark}  {:<26} {}", layer.layer, layer.reason);
+        println!(
+            "  {mark}  {:<26} {}",
+            t(&layer.layer.to_string()),
+            t(&layer.reason)
+        );
     }
     println!();
 
@@ -1659,7 +1802,10 @@ fn run_explain(
         for item in &result.breakdown {
             println!(
                 "  {:<24} raw {:>5.2}  weight {:>5.2}  ->  {:+.3}",
-                item.kind, item.raw_value, item.weight, item.contribution
+                t(&item.kind.to_string()),
+                item.raw_value,
+                item.weight,
+                item.contribution
             );
         }
         let total: f64 = result.breakdown.iter().map(|b| b.contribution).sum();
@@ -1681,7 +1827,7 @@ fn run_explain(
         println!("  (none)");
     } else {
         for f in &result.risk_verdict.findings {
-            println!("  {:<26} {}", f.pattern, f.reason);
+            println!("  {:<26} {}", t(&f.pattern), t(&f.reason));
         }
     }
     println!();
@@ -1709,13 +1855,13 @@ fn run_explain(
         }
         println!(
             "  #{i:<3} {:<14} {}  {}",
-            a.role,
-            a.address,
+            t(&a.role),
+            t(&a.address),
             flags.join(" ")
         );
     }
     println!();
-    println!("{}", result.summary);
+    println!("{}", t(&result.summary));
 
     // Same convention as `verify`: usable as a shell gate.
     match verify_exit_code(&result) {
@@ -1755,9 +1901,12 @@ fn run_protocol(action: ProtocolAction) -> Result<(), Box<dyn std::error::Error>
             let snapshot = core.graph_snapshot();
             let node = snapshot.nodes.iter().find(|n| n.program_id == program_id);
             let manifest = core.registry().get(&program_id);
+            // Round 40 (R39-CB-15): names, labels and rules come from
+            // manifests, community submissions among them.
+            let t = terminal_safe;
 
             if node.is_none() && manifest.is_none() {
-                println!("{program_id}");
+                println!("{}", t(&program_id));
                 println!("  UNKNOWN — no manifest and no behaviour record.");
                 println!(
                     "  Verification would run in unknown-protocol mode, capped at the P6 \
@@ -1766,11 +1915,14 @@ fn run_protocol(action: ProtocolAction) -> Result<(), Box<dyn std::error::Error>
                 return Ok(());
             }
 
-            println!("{}", node.map(|n| n.name.as_str()).unwrap_or("(unnamed)"));
-            println!("  program        {program_id}");
+            println!(
+                "{}",
+                t(node.map(|n| n.name.as_str()).unwrap_or("(unnamed)"))
+            );
+            println!("  program        {}", t(&program_id));
             match manifest {
                 Some(m) => {
-                    println!("  manifest       v{}", m.version.label);
+                    println!("  manifest       v{}", t(&m.version.label));
                     println!("  instructions   {}", m.instructions.len());
                 }
                 None => println!("  manifest       (none — behaviour record only)"),
@@ -1799,7 +1951,7 @@ fn run_protocol(action: ProtocolAction) -> Result<(), Box<dyn std::error::Error>
                 None => {
                     println!(
                         "  trust tier     {}   (DECLARED by the manifest, not earned)",
-                        manifest.map(|m| m.trust_tier.as_str()).unwrap_or("Unknown")
+                        t(manifest.map(|m| m.trust_tier.as_str()).unwrap_or("Unknown"))
                     );
                     println!(
                         "  evidence       none — nothing recorded, so the verify path caps this \
@@ -1818,16 +1970,16 @@ fn run_protocol(action: ProtocolAction) -> Result<(), Box<dyn std::error::Error>
                 if n.quarantined {
                     println!(
                         "  QUARANTINED    {}",
-                        n.quarantine_reason
+                        t(n.quarantine_reason
                             .as_deref()
-                            .unwrap_or("no reason recorded")
+                            .unwrap_or("no reason recorded"))
                     );
                     println!(
                         "                 tier is forced to Unknown and verification hard-blocks"
                     );
                 }
                 if !n.cpi_targets.is_empty() {
-                    println!("  declared CPI   {}", n.cpi_targets.join(", "));
+                    println!("  declared CPI   {}", t(&n.cpi_targets.join(", ")));
                 }
             }
 
@@ -1840,12 +1992,20 @@ fn run_protocol(action: ProtocolAction) -> Result<(), Box<dyn std::error::Error>
                     } else {
                         format!("  [{}]", ix.risk_class)
                     };
-                    println!("  {:<28} {}{}", ix.name, ix.discriminator, class);
+                    println!(
+                        "  {:<28} {}{}",
+                        t(&ix.name),
+                        t(&ix.discriminator),
+                        t(&class)
+                    );
                     if !ix.expected_state_changes.is_empty() {
-                        println!("      changes: {}", ix.expected_state_changes.join("; "));
+                        println!(
+                            "      changes: {}",
+                            t(&ix.expected_state_changes.join("; "))
+                        );
                     }
                     if !ix.allowed_cpis.is_empty() {
-                        println!("      cpi:     {}", ix.allowed_cpis.join(", "));
+                        println!("      cpi:     {}", t(&ix.allowed_cpis.join(", ")));
                     }
                 }
             }
@@ -1880,7 +2040,7 @@ fn run_protocol(action: ProtocolAction) -> Result<(), Box<dyn std::error::Error>
                         None => {
                             println!(
                                 "no manifest in force for {} — this candidate would be its first",
-                                candidate_manifest.protocol.program_id
+                                terminal_safe(&candidate_manifest.protocol.program_id)
                             );
                             return Ok(());
                         }
@@ -1888,19 +2048,64 @@ fn run_protocol(action: ProtocolAction) -> Result<(), Box<dyn std::error::Error>
                 }
             };
 
+            // Round 40 (R39-CB-15): the candidate is the submitter's text,
+            // and this output is what the reviewer attests from.
             for line in manifest_diff(&baseline, &candidate_manifest) {
-                println!("{line}");
+                println!("{}", terminal_safe(&line));
             }
             Ok(())
         }
     }
 }
 
-/// Compare two manifests instruction by instruction.
-///
-/// Deliberately structural rather than textual: a reviewer needs to see that a
-/// discriminator moved or an account became writable, not that a JSON key was
-/// reordered. Ordering is by name so the output is stable (P2).
+/// The differences between two account lists, slot by slot. `prefix` names
+/// which list (the main one, or an alternative layout).
+fn slot_changes(
+    prefix: &str,
+    a: &[crate::manifest::AccountRoleDef],
+    b: &[crate::manifest::AccountRoleDef],
+) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    if a.len() != b.len() {
+        lines.push(format!("{prefix}account count {} -> {}", a.len(), b.len()));
+    }
+    for (i, (x, y)) in a.iter().zip(b.iter()).enumerate() {
+        if x.name != y.name || x.is_signer != y.is_signer || x.is_writable != y.is_writable {
+            lines.push(format!(
+                "{prefix}account #{i}: {} (signer {}, writable {}) -> {} (signer {}, writable {})",
+                x.name, x.is_signer, x.is_writable, y.name, y.is_signer, y.is_writable
+            ));
+        }
+        // Round 39 (R39-CB-12): everything else the runtime judges a slot
+        // by. A dropped expected address or changed seed formula weakens a
+        // verdict exactly as much as a privilege change does.
+        let mut slot: Vec<String> = Vec::new();
+        if x.role != y.role {
+            slot.push(format!("role {:?} -> {:?}", x.role, y.role));
+        }
+        if x.pda_seeds != y.pda_seeds {
+            slot.push(format!("pda seeds {:?} -> {:?}", x.pda_seeds, y.pda_seeds));
+        }
+        if x.expected_address != y.expected_address {
+            slot.push(format!(
+                "expected address {:?} -> {:?}",
+                x.expected_address, y.expected_address
+            ));
+        }
+        if x.optional != y.optional {
+            slot.push(format!("optional {} -> {}", x.optional, y.optional));
+        }
+        if !slot.is_empty() {
+            lines.push(format!(
+                "{prefix}account #{i} {}: {}",
+                y.name,
+                slot.join("; ")
+            ));
+        }
+    }
+    lines
+}
+
 /// Everything that differs between two versions of one instruction, as lines a
 /// reviewer can read. Shared by the changed-in-place path and the rename path,
 /// so a rename can never hide a privilege change riding along with it.
@@ -1915,20 +2120,31 @@ fn instruction_changes(
             a.discriminator, b.discriminator
         ));
     }
-    if a.accounts.len() != b.accounts.len() {
+    lines.extend(slot_changes("", &a.accounts, &b.accounts));
+    // Round 39 (R39-CB-12): an alternative layout is judged exactly like
+    // the main one when the transaction's account count selects it.
+    if a.account_layouts.len() != b.account_layouts.len() {
         lines.push(format!(
-            "account count {} -> {}",
-            a.accounts.len(),
-            b.accounts.len()
+            "account layouts {} -> {} alternative(s), sizes {:?} -> {:?}",
+            a.account_layouts.len(),
+            b.account_layouts.len(),
+            a.account_layouts.iter().map(Vec::len).collect::<Vec<_>>(),
+            b.account_layouts.iter().map(Vec::len).collect::<Vec<_>>()
         ));
     }
-    for (i, (x, y)) in a.accounts.iter().zip(b.accounts.iter()).enumerate() {
-        if x.name != y.name || x.is_signer != y.is_signer || x.is_writable != y.is_writable {
-            lines.push(format!(
-                "account #{i}: {} (signer {}, writable {}) -> {} (signer {}, writable {})",
-                x.name, x.is_signer, x.is_writable, y.name, y.is_signer, y.is_writable
-            ));
-        }
+    for (j, (x, y)) in a
+        .account_layouts
+        .iter()
+        .zip(b.account_layouts.iter())
+        .enumerate()
+    {
+        lines.extend(slot_changes(&format!("account layouts [{j}] "), x, y));
+    }
+    if a.risk_rules != b.risk_rules {
+        lines.push(format!(
+            "risk rules {:?} -> {:?}",
+            a.risk_rules, b.risk_rules
+        ));
     }
     if a.expected_state_changes != b.expected_state_changes {
         lines.push(format!(
@@ -1957,6 +2173,11 @@ fn instruction_changes(
     lines
 }
 
+/// Compare two manifests instruction by instruction.
+///
+/// Deliberately structural rather than textual: a reviewer needs to see that a
+/// discriminator moved or an account became writable, not that a JSON key was
+/// reordered. Ordering is by name so the output is stable (P2).
 pub fn manifest_diff(before: &ProtocolManifest, after: &ProtocolManifest) -> Vec<String> {
     use std::collections::BTreeMap;
     let mut out: Vec<String> = Vec::new();
@@ -2184,39 +2405,44 @@ fn run_execution(
     let rt = tokio::runtime::Runtime::new()?;
     let result = rt.block_on(core.audit_execution(signature, keys, audit.as_ref()));
 
-    println!("signature   {}", result.signature);
-    println!("chain       {:?}", result.chain_status);
-    println!("attribution {:?}", result.attribution);
+    // Round 40 (R39-CB-15): the signature and keys are the caller's, the
+    // record ids come from the trail and the reasons quote RPC answers, so
+    // every one goes through `terminal_safe`.
+    let t = terminal_safe;
+    let debug = |v: &dyn std::fmt::Debug| terminal_safe(&format!("{v:?}")).into_owned();
+    println!("signature   {}", t(&result.signature));
+    println!("chain       {}", debug(&result.chain_status));
+    println!("attribution {}", debug(&result.attribution));
     println!("assurance   {}", result.inclusion_assurance.as_str());
     if let Some(d) = &result.chain_transaction_sha256 {
-        println!("chain tx    {d}");
+        println!("chain tx    {}", t(d));
     }
     match result.recorded_approved {
         Some(a) => println!(
             "recorded    approved={a}  audit_trail_id={}  transaction_sha256={}",
-            result.recorded_audit_trail_id.as_deref().unwrap_or("-"),
-            result.recorded_transaction_sha256.as_deref().unwrap_or("-")
+            t(result.recorded_audit_trail_id.as_deref().unwrap_or("-")),
+            t(result.recorded_transaction_sha256.as_deref().unwrap_or("-"))
         ),
         None => println!("recorded    (no verification on file for this transaction)"),
     }
     for d in &result.caller_keys_disagree {
-        println!("WARNING     {d}");
+        println!("WARNING     {}", t(d));
     }
     if let Some(why) = &result.chain_bytes_rejected {
-        println!("REJECTED    {why}");
+        println!("REJECTED    {}", t(why));
     }
     if let Some(why) = &result.chain_bytes_unavailable {
-        println!("NOTE        {why}");
+        println!("NOTE        {}", t(why));
     }
     if let Some(why) = &result.chain_inconsistent {
-        println!("INCONSISTENT {why}");
+        println!("INCONSISTENT {}", t(why));
     }
     match &result.inclusion_witness {
-        Some(w) if w.agrees => println!("witness     agrees: {}", w.detail),
-        Some(w) => println!("WITNESS     DISAGREES: {}", w.detail),
+        Some(w) if w.agrees => println!("witness     agrees: {}", t(&w.detail)),
+        Some(w) => println!("WITNESS     DISAGREES: {}", t(&w.detail)),
         None => println!("witness     none attached (one RPC is the only source for inclusion)"),
     }
-    println!("verdict     {:?}", result.reconciliation);
+    println!("verdict     {}", debug(&result.reconciliation));
     println!();
 
     match &result.reconciliation {
@@ -2232,11 +2458,11 @@ fn run_execution(
                 "Approved, then failed on chain ({}). Not a security failure - Graphite verifies\n\
                  intent and structure, not that a transaction will succeed - but a pattern of\n\
                  these means the verified shape and the executable shape are drifting apart.",
-                error.as_deref().unwrap_or("no error reported")
+                t(error.as_deref().unwrap_or("no error reported"))
             );
         }
         ExecutionReconciliation::Unavailable { reason } => {
-            println!("Could not reconcile: {reason}");
+            println!("Could not reconcile: {}", t(reason));
             println!(
                 "An unavailable check reports that it is unavailable; it never reports a pass."
             );
@@ -2259,10 +2485,10 @@ fn run_execution(
                 "The audit_trail_id you supplied names a verification of DIFFERENT bytes\n\
                  (recorded for {}, the chain's bytes digest to {}). Nothing on the trail\n\
                  covers what actually executed under this signature.",
-                recorded_transaction_sha256
+                t(recorded_transaction_sha256
                     .as_deref()
-                    .unwrap_or("a descriptive verification"),
-                chain_transaction_sha256
+                    .unwrap_or("a descriptive verification")),
+                t(chain_transaction_sha256)
             );
         }
         _ => {}
@@ -2473,6 +2699,189 @@ impl OperatorTrail {
 const NO_SERVER_HOLDS_THIS_DIRECTORY: &str =
     "No server holds this data directory (this command took its lock); the next one started on it loads this change.";
 
+/// `graphite evidence import-census` (Round 40, bootstrap): seed each
+/// program's HistoricalVolume from the committed, measured census
+/// (`census_import`), recording every import on the audit trail as
+/// `evidence seed` does. `--dry-run` reads the data directory without its
+/// lock and writes nothing.
+fn run_import_census(
+    data_dir: Option<PathBuf>,
+    census_path: Option<PathBuf>,
+    programs: Vec<String>,
+    dry_run: bool,
+    cluster: Option<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::census_import::{self as ci, Census};
+
+    // Round 40: the census is mainnet-beta's; the operator states the Core's
+    // cluster, and the server holds the RPC to it at every start.
+    match cluster.as_deref() {
+        Some(c) => ci::check_cluster_arg(c)?,
+        None => {
+            return Err(format!(
+                "--cluster is required: the census measures {} only (--cluster {}); the server then refuses to start on an RPC of another cluster",
+                ci::CENSUS_CLUSTER,
+                ci::CENSUS_CLUSTER
+            )
+            .into())
+        }
+    }
+
+    let (census, source) = match &census_path {
+        Some(path) => {
+            let bytes = std::fs::read(path)
+                .map_err(|e| format!("the census file {} cannot be read: {e}", path.display()))?;
+            let census = Census::from_file_bytes(&bytes)
+                .map_err(|e| format!("refusing the census file {}: {e}", path.display()))?;
+            (
+                census,
+                format!(
+                    "file {}, identical to the copy compiled into this build",
+                    path.display()
+                ),
+            )
+        }
+        None => (
+            Census::embedded().map_err(|e| format!("the compiled-in census: {e}"))?,
+            "the copy compiled into this build".to_string(),
+        ),
+    };
+    let programs = programs
+        .iter()
+        .map(|p| program_id_arg(p))
+        .collect::<Result<Vec<_>, _>>()?;
+    let dir = data_dir_path(data_dir);
+
+    let print_plan = |plan: &ci::ImportPlan| {
+        println!(
+            "CENSUS  {} sha256={}  ({source})",
+            ci::CENSUS_FILE,
+            plan.census_sha256
+        );
+        println!(
+            "        {} record(s): {} to import, {} skipped{}",
+            census.records().len(),
+            plan.imports.len(),
+            plan.skipped.len(),
+            if plan.not_selected > 0 {
+                format!(", {} not selected (--program)", plan.not_selected)
+            } else {
+                String::new()
+            }
+        );
+        println!();
+        for i in &plan.imports {
+            println!("IMPORT  {}  ({})", i.program_id, i.name);
+            println!(
+                "  census       {} successful transactions over {}s, slots {}..{}, measured_at {}",
+                i.census_transactions,
+                i.window_seconds,
+                i.oldest_slot,
+                i.newest_slot,
+                ci::utc(i.measured_at_unix)
+            );
+            println!(
+                "  evidence     battle_tested {} -> {}   (every other field carried over; no signature asserted)",
+                i.previous_volume, i.census_transactions
+            );
+            println!(
+                "  graph tier   {} -> {:?}   (recomputed from that evidence, not set - P7)",
+                i.previous_graph_tier
+                    .map(|t| format!("{t:?}"))
+                    .unwrap_or_else(|| "(no record)".to_string()),
+                i.graph_tier
+            );
+            println!(
+                "  verdict      tier {:?} -> {:?}; standalone confidence {:.4} -> {:.4}",
+                i.before.verdict_tier,
+                i.after.verdict_tier,
+                i.before.confidence,
+                i.after.confidence
+            );
+        }
+        for s in &plan.skipped {
+            println!("SKIP    {}  ({}): {}", s.program_id, s.name, s.reason);
+        }
+        println!();
+    };
+
+    if dry_run {
+        let core = GraphiteCore::open_data_dir_read_only(&dir)?;
+        let plan = ci::plan(&core, &census, &programs)?;
+        print_plan(&plan);
+        println!(
+            "DRY RUN: nothing was written to {} and nothing was recorded on its audit trail.",
+            dir.display()
+        );
+        print_census_caveat();
+        return Ok(());
+    }
+
+    let mut core = GraphiteCore::open_data_dir(dir.clone())?;
+    // Before any change: a trail that cannot be written refuses the command.
+    let trail = OperatorTrail::open(&dir)?;
+    let plan = ci::plan(&core, &census, &programs)?;
+    print_plan(&plan);
+    let mut done: Vec<String> = Vec::new();
+    for i in &plan.imports {
+        match ci::apply(&mut core, i)? {
+            Ok(()) => {}
+            Err(e) => {
+                return Err(format!(
+                    "the evidence for {} did NOT reach the data directory ({e}); it is not in force for a server. \
+                     Imported, on disk and recorded before it: [{}]",
+                    i.program_id,
+                    done.join(", ")
+                )
+                .into());
+            }
+        }
+        // As `evidence seed`: an append-only graph has no undo, so an import
+        // the trail cannot take is a failure with the change in force.
+        if !trail.record(&i.program_id, ci::audit_detail(&plan.census_sha256, i)) {
+            return Err(format!(
+                "the evidence for {} was imported and is in force, but the audit trail did NOT record it. \
+                 Imported and recorded before it: [{}]",
+                i.program_id,
+                done.join(", ")
+            )
+            .into());
+        }
+        done.push(i.program_id.clone());
+    }
+    if done.is_empty() {
+        println!("Nothing imported: every selected record was skipped (see above).");
+    } else {
+        println!(
+            "IMPORTED {} program(s) into {}; each is one operator_action row on its audit trail.",
+            done.len(),
+            dir.display()
+        );
+    }
+    print_census_caveat();
+    println!("{NO_SERVER_HOLDS_THIS_DIRECTORY}");
+    Ok(())
+}
+
+fn print_census_caveat() {
+    println!();
+    println!(
+        "This evidence is CENSUS-MEASURED (read-only mainnet-beta counts in battle_tested_evidence.json),"
+    );
+    println!(
+        "not typed by an operator and not earned by this Core. It raises the HistoricalVolume signal only:"
+    );
+    println!(
+        "no tier rule, ceiling, floor or profile changes; on a fresh Core a manifested program's verdict"
+    );
+    println!(
+        "tier stays OfficialManifest. It describes mainnet-beta code at the time measured; an upgrade the Core"
+    );
+    println!(
+        "observes after that time withdraws it. A server on this data directory refuses to start unless its RPC serves mainnet-beta."
+    );
+}
+
 /// Seed operator-asserted evidence into the durable semantic graph.
 ///
 /// Deliberately loud about provenance. Evidence seeded here was ASSERTED by an
@@ -2532,6 +2941,7 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
                 evidence,
                 quarantined: false,
                 quarantine_reason: None,
+                first_manifest_unvalidated: false,
             })?;
 
             let earned = core
@@ -2570,6 +2980,14 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
             println!("{NO_SERVER_HOLDS_THIS_DIRECTORY}");
             Ok(())
         }
+
+        EvidenceAction::ImportCensus {
+            data_dir,
+            census,
+            programs,
+            dry_run,
+            cluster,
+        } => run_import_census(data_dir, census, programs, dry_run, cluster),
 
         EvidenceAction::Baseline {
             data_dir,
@@ -3088,6 +3506,20 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
                 "This pins what the pipeline DID, not what it should do. Every future \
                  version of this manifest is regressed against it — check the outcome above."
             );
+            // Round 40 (R39-CORE-IDENTITY-7): the gate replays a candidate at
+            // the tier the registry computes, and a program's first version
+            // earns HeuristicInferred at most. A fixture recorded at a higher
+            // declared tier can fail that replay, and a refused version is
+            // never taken again.
+            if TrustTier::from_manifest_str(&manifest.trust_tier) > TrustTier::HeuristicInferred {
+                eprintln!(
+                    "note: recorded at the manifest's declared tier {}. If this is the program's \
+                     first version, the registry replays it at HeuristicInferred: record with \
+                     \"trust_tier\": \"HeuristicInferred\" so the pinned outcome is the one the \
+                     gate will see.",
+                    terminal_safe(&manifest.trust_tier)
+                );
+            }
             Ok(())
         }
     }
@@ -3172,6 +3604,40 @@ pub fn verify_from_file(
     })
 }
 
+/// Read a `registry submit` signer key file (`--signer-key-file`,
+/// `GRAPHITE_SIGNER_KEY_FILE`): hex text, whitespace around it ignored.
+///
+/// Round 40 (R39-CB-14): it was read with no check at all, while the audit
+/// key file beside it is refused when group or others have any access
+/// (`durable::chain::AuditKey::load`). The signer key is a reviewer's
+/// ed25519 secret: whoever reads it signs manifests that earn a trust tier.
+/// The same refusal now applies, in the same words.
+pub fn read_signer_key_file(path: &std::path::Path) -> Result<String, String> {
+    let meta = std::fs::metadata(path)
+        .map_err(|e| format!("failed to read signer key file {}: {e}", path.display()))?;
+    if !meta.is_file() {
+        return Err(format!("signer key file {} is not a file", path.display()));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = meta.permissions().mode() & 0o777;
+        if mode & 0o077 != 0 {
+            return Err(format!(
+                "signer key file {} is readable or writable by group or others (mode {mode:03o}); chmod 600 it",
+                path.display()
+            ));
+        }
+    }
+    // Windows: the file's ACL is not inspected (docs/ops/keys.md, as for the
+    // audit key).
+    let raw = zeroize::Zeroizing::new(
+        std::fs::read_to_string(path)
+            .map_err(|e| format!("failed to read signer key file {}: {e}", path.display()))?,
+    );
+    Ok(raw.trim().to_string())
+}
+
 pub fn verify_from_stdin(profile: ProfileArg) -> Result<(), Box<dyn std::error::Error>> {
     use std::io::Read;
     let mut content = String::new();
@@ -3186,6 +3652,52 @@ pub fn verify_from_stdin(profile: ProfileArg) -> Result<(), Box<dyn std::error::
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Round 40 (R39-CB-15): what reaches the terminal. Every C0/C1 control,
+    /// DEL, ESC and the reordering and invisible characters are spelled out;
+    /// ordinary text, accents and other scripts are untouched.
+    #[test]
+    fn caller_text_reaches_the_terminal_escaped() {
+        for (raw, shown) in [
+            ("\u{1b}[31mred", "\\u{1b}[31mred"),
+            ("a\u{202e}cba", "a\\u{202e}cba"),
+            (
+                "\u{2066}\u{2069}\u{200f}\u{61c}",
+                "\\u{2066}\\u{2069}\\u{200f}\\u{61c}",
+            ),
+            ("tab\there\r\n", "tab\\u{9}here\\u{d}\\u{a}"),
+            ("\u{7f}\u{85}\u{9b}", "\\u{7f}\\u{85}\\u{9b}"),
+            ("zero\u{200b}width\u{feff}", "zero\\u{200b}width\\u{feff}"),
+        ] {
+            assert_eq!(terminal_safe(raw), shown, "{raw:?}");
+        }
+        for plain in ["Transfer 1 SOL to friend", "échange — 交換 ✓", "C:\\path"] {
+            assert!(matches!(
+                terminal_safe(plain),
+                std::borrow::Cow::Borrowed(_)
+            ));
+        }
+        let value = serde_json::json!({ "s": "x\u{1b}[2J\u{202e}y\u{7f}\u{85}", "n": 1 });
+        let pretty = serde_json::to_string_pretty(&value).unwrap();
+        let shown = json_for_terminal(pretty.clone());
+        assert!(
+            !shown.chars().any(|c| terminal_unsafe(c) && c != '\n'),
+            "{shown:?}"
+        );
+        assert!(
+            shown.contains("\\u001b") && shown.contains("\\u202e"),
+            "{shown}"
+        );
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&shown).unwrap(),
+            value,
+            "the same document"
+        );
+        assert_eq!(
+            json_for_terminal("{\n  \"a\": 1\n}".into()),
+            "{\n  \"a\": 1\n}"
+        );
+    }
 
     /// A6-13: the default check passes any 2xx; `--strict` also refuses a
     /// degraded node and a body without the flag.
@@ -3307,6 +3819,77 @@ mod tests {
         assert!(out.contains("allowed CPI"), "new CPI target: {out}");
         assert!(out.contains("risk class"), "risk class change: {out}");
         assert!(out.contains("assigns authority"), "declared changes: {out}");
+    }
+
+    /// Round 39 (R39-CB-12): the diff compared only an account's name,
+    /// signer and writable flags, so a version that dropped a slot's
+    /// expected address, changed its PDA seeds or role, made it optional,
+    /// or changed an alternative layout or a risk rule read "no
+    /// instruction-level changes".
+    #[test]
+    fn the_diff_surfaces_every_field_the_runtime_judges_an_account_by() {
+        type Edit = fn(&mut ProtocolManifest);
+        let edits: [(&str, Edit); 8] = [
+            ("expected address", |m| {
+                m.instructions[0].accounts[0].expected_address =
+                    vec!["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string()]
+            }),
+            ("pda seeds", |m| {
+                m.instructions[0].accounts[0].pda_seeds = vec!["vault".to_string()]
+            }),
+            ("role", |m| {
+                m.instructions[0].accounts[0].role = "pda".to_string()
+            }),
+            ("optional", |m| {
+                m.instructions[0].accounts[0].optional = true
+            }),
+            ("account layouts", |m| {
+                let alt = m.instructions[0].accounts.clone();
+                m.instructions[0].account_layouts = vec![alt]
+            }),
+            (
+                "account layouts [0] account #0 vault: expected address",
+                |m| {
+                    // Both sides have the alternative; only its slot differs
+                    // (the `before` side gets the same layout below).
+                    let mut alt = m.instructions[0].accounts.clone();
+                    alt[0].expected_address = vec!["{program_id}".to_string()];
+                    m.instructions[0].account_layouts = vec![alt]
+                },
+            ),
+            ("risk rules", |m| {
+                m.instructions[0].risk_rules = vec!["no_external_destination".to_string()]
+            }),
+            ("account #0", |m| {
+                // Several fields of one slot at once: still one line per slot.
+                let a = &mut m.instructions[0].accounts[0];
+                a.pda_seeds = vec!["vault".to_string()];
+                a.expected_address = vec!["{program_id}".to_string()];
+            }),
+        ];
+        for (what, edit) in edits {
+            let mut before = diff_manifest(DIFF_PROGRAM, "1.0");
+            if what.starts_with("account layouts [0]") {
+                before.instructions[0].account_layouts =
+                    vec![before.instructions[0].accounts.clone()];
+            }
+            let mut after = diff_manifest(DIFF_PROGRAM, "1.0");
+            edit(&mut after);
+            let out = manifest_diff(&before, &after).join("\n");
+            assert!(
+                !out.contains("no instruction-level changes"),
+                "a change of {what} read as no change: {out}"
+            );
+            assert!(out.contains(what), "{what} not named: {out}");
+            // The reverse direction (a constraint removed) is the one that
+            // weakens a verdict; it must show too.
+            let back = manifest_diff(&after, &before).join("\n");
+            assert!(back.contains(what), "{what} removal not named: {back}");
+        }
+        // Benign control: an identical manifest still diffs to nothing.
+        let a = diff_manifest(DIFF_PROGRAM, "1.0");
+        let out = manifest_diff(&a, &a.clone()).join("\n");
+        assert!(out.contains("no instruction-level changes"), "{out}");
     }
 
     #[test]
@@ -3531,8 +4114,11 @@ mod tests {
         .unwrap();
 
         // Persistence: reload and assert the append-only acceptance record and
-        // the Semantic Graph entry (tier DERIVED — OfficialManifest for a
-        // registered-reporter signature, P7).
+        // the Semantic Graph entry (tier DERIVED, P7). Re-pinned in Round 40
+        // (R39-CORE-IDENTITY-7): a registered reporter's signature on the
+        // program's FIRST version earned OfficialManifest; it is capped at
+        // HeuristicInferred until an upgrade is replayed against this
+        // version's fixtures, and the cap survives the state files.
         let engine = load_registry(&state).unwrap();
         assert_eq!(engine.records().len(), 1, "exactly one accepted record");
         assert_eq!(
@@ -3540,14 +4126,17 @@ mod tests {
             "AuditTest1111111111111111111111111111111111"
         );
         assert_eq!(engine.records()[0].source, "signed");
+        assert!(engine.records()[0].first_manifest_unvalidated);
         let store = load_graph(&graph).unwrap();
         let behavior = store
             .get("AuditTest1111111111111111111111111111111111")
             .expect("submission must be appended to the Semantic Graph");
         assert_eq!(
             behavior.trust_tier,
-            crate::confidence_engine::TrustTier::OfficialManifest
+            crate::confidence_engine::TrustTier::HeuristicInferred
         );
+        assert!(behavior.evidence.has_signed_manifest);
+        assert!(behavior.first_manifest_unvalidated);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

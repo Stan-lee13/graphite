@@ -151,6 +151,9 @@ pub enum SemanticGraphError {
     MutationAttempted,
     #[error("invalid behavior record: {reason}")]
     InvalidRecord { reason: String },
+    /// Round 40: the graph's imported evidence describes another cluster.
+    #[error("evidence cluster: {reason}")]
+    EvidenceCluster { reason: String },
 }
 
 /// Behavior record for a protocol or program.
@@ -178,6 +181,19 @@ pub struct Behavior {
     /// Human-readable reason for quarantine, set only when `quarantined`
     /// is true.
     pub quarantine_reason: Option<String>,
+    /// Round 40 (R39-CORE-IDENTITY-7): the registry evidence on this record
+    /// is a FIRST manifest's, or one no independent replay has validated
+    /// since — its fixtures were recorded under the very manifest they were
+    /// replayed against, so they agree with it by construction. The tier is
+    /// then capped at `HeuristicInferred` ([`compute_trust_tier_for`]) until
+    /// an upgrade passes the P10 gate against fixtures an earlier version
+    /// pinned (the registry clears it then), or measured volume reaches the
+    /// `BattleTested` threshold. Set only by the registry; every other
+    /// append carries it forward from the program's previous record, so an
+    /// operator's seed cannot clear it. Absent from records written before
+    /// Round 40, and from every record that is not so flagged.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub first_manifest_unvalidated: bool,
 }
 
 /// Evidence contributing to trust tier computation.
@@ -197,7 +213,10 @@ pub struct BehaviorEvidence {
     /// the `graphite evidence` CLI) or a snapshot restored. It is evidence an
     /// operator vouches for, not volume Graphite has observed, and the
     /// `BattleTested` tier it unlocks is an operator's assertion to the same
-    /// degree.
+    /// degree. Since Round 40 an operator can set it from a measurement
+    /// instead of a typed number: `graphite evidence import-census` raises it
+    /// to the committed census's successful-transaction count
+    /// (`census_import`), still an operator action, recorded on the trail.
     pub battle_tested_tx_count: u64,
     /// Simulation match count
     pub simulation_match_count: u64,
@@ -254,6 +273,33 @@ pub fn compute_trust_tier(evidence: &BehaviorEvidence) -> TrustTier {
 
     // Tier 1: Heuristic-inferred (some signal present but insufficient for higher tiers)
     TrustTier::HeuristicInferred
+}
+
+/// The trust tier of a record (Round 40, R39-CORE-IDENTITY-7): what
+/// [`compute_trust_tier`] computes from `evidence`, capped at
+/// `HeuristicInferred` while `first_manifest_unvalidated` holds.
+///
+/// A first manifest's registry evidence — a reviewer's signature, community
+/// attestations — vouches for a manifest whose replay proved nothing: there
+/// was no earlier behaviour to replay it against, and its own fixtures were
+/// recorded under it. Those signals count only as "some signal" until the
+/// manifest has been held to fixtures it did not write. The cap is lifted by
+/// evidence, never by assertion: an upgrade the P10 gate replayed against an
+/// earlier version's fixtures (the registry then records the evidence
+/// unflagged), or measured battle-tested volume at the `BattleTested`
+/// threshold (a census-backed record), which earns its tier as it always
+/// did. Operator-asserted signatures or attestations do not lift it.
+pub fn compute_trust_tier_for(
+    evidence: &BehaviorEvidence,
+    first_manifest_unvalidated: bool,
+) -> TrustTier {
+    let tier = compute_trust_tier(evidence);
+    if first_manifest_unvalidated && evidence.battle_tested_tx_count < thresholds::BATTLE_TESTED_TX
+    {
+        tier.min(TrustTier::HeuristicInferred)
+    } else {
+        tier
+    }
 }
 
 /// Semantic Graph store — append-only Behavior history PLUS the trusted
@@ -317,6 +363,14 @@ pub struct SemanticGraphStore {
     /// replaced, kept for audit (`RETIRED_EVIDENCE_KEPT` most recent).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     retired_evidence: Vec<RetiredEvidence>,
+    /// Round 40 (bootstrap): the genesis hash of the cluster the graph's
+    /// imported evidence was measured on (`graphite evidence import-census`:
+    /// mainnet-beta). Set by the import, never cleared: a Core that attaches
+    /// an RPC must confirm the RPC serves this cluster before it uses the
+    /// graph (`GraphiteCore::confirm_evidence_cluster`; the server refuses to
+    /// start otherwise). Omitted from the snapshot while unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    evidence_genesis: Option<String>,
     /// The baseline schema this store follows. Always written as
     /// `BASELINE_SCHEMA`; a snapshot without it was written before Round 30.
     #[serde(default, serialize_with = "write_baseline_schema")]
@@ -374,6 +428,8 @@ struct StoreSnapshot {
     #[serde(default)]
     retired_evidence: Vec<RetiredEvidence>,
     #[serde(default)]
+    evidence_genesis: Option<String>,
+    #[serde(default)]
     baseline_schema: u32,
 }
 
@@ -401,6 +457,7 @@ impl From<StoreSnapshot> for SemanticGraphStore {
             },
             evidence_since_slot: s.evidence_since_slot,
             retired_evidence: s.retired_evidence,
+            evidence_genesis: s.evidence_genesis,
             baseline_schema: BASELINE_SCHEMA,
         };
         // Round 30 (G-03): a mature baseline written before anchors existed
@@ -420,7 +477,7 @@ impl From<StoreSnapshot> for SemanticGraphStore {
             b.trust_tier = if b.quarantined {
                 TrustTier::Unknown
             } else {
-                compute_trust_tier(&b.evidence)
+                compute_trust_tier_for(&b.evidence, b.first_manifest_unvalidated)
             };
             store.push_behavior(b);
         }
@@ -477,6 +534,17 @@ impl SemanticGraphStore {
     /// asked for: `lift_quarantine()` is the deliberate counterpart, and it is
     /// an operator action rather than a consequence of publishing.
     pub fn append(&mut self, behavior: Behavior) -> Result<(), SemanticGraphError> {
+        self.append_record(behavior, true)
+    }
+
+    /// `append`, with the registry's own say over
+    /// [`Behavior::first_manifest_unvalidated`] when `carry_unvalidated` is
+    /// false (Round 40): every other writer carries the flag forward.
+    fn append_record(
+        &mut self,
+        behavior: Behavior,
+        carry_unvalidated: bool,
+    ) -> Result<(), SemanticGraphError> {
         // Validate record
         if behavior.program_id.is_empty() {
             return Err(SemanticGraphError::InvalidRecord {
@@ -490,6 +558,13 @@ impl SemanticGraphStore {
             .map(|b| b.quarantine_reason.clone());
 
         let mut behavior = behavior;
+        if carry_unvalidated {
+            // Round 40 (R39-CORE-IDENTITY-7): only an independent replay
+            // clears it, and only the registry runs one.
+            behavior.first_manifest_unvalidated |= self
+                .get(&behavior.program_id)
+                .is_some_and(|b| b.first_manifest_unvalidated);
+        }
         match active_quarantine {
             Some(reason) => {
                 // P7: quarantine is an input to tier computation, so a
@@ -501,7 +576,8 @@ impl SemanticGraphStore {
             None => {
                 // Compute trust tier from evidence (Constitution P7) — never
                 // trust whatever the caller put in `behavior.trust_tier`.
-                behavior.trust_tier = compute_trust_tier(&behavior.evidence);
+                behavior.trust_tier =
+                    compute_trust_tier_for(&behavior.evidence, behavior.first_manifest_unvalidated);
                 behavior.quarantined = false;
                 behavior.quarantine_reason = None;
             }
@@ -539,7 +615,7 @@ impl SemanticGraphStore {
         }
 
         self.push_behavior(Behavior {
-            trust_tier: compute_trust_tier(&latest.evidence),
+            trust_tier: compute_trust_tier_for(&latest.evidence, latest.first_manifest_unvalidated),
             quarantined: false,
             quarantine_reason: None,
             ..latest
@@ -591,6 +667,7 @@ impl SemanticGraphStore {
             evidence: BehaviorEvidence::default(),
             quarantined: false,
             quarantine_reason: None,
+            first_manifest_unvalidated: false,
         });
 
         let quarantined_record = Behavior {
@@ -680,7 +757,10 @@ impl SemanticGraphStore {
                 .simulation_match_count
                 .max(prev.evidence.simulation_match_count);
         }
-        self.append(behavior)
+        // Round 40 (R39-CORE-IDENTITY-7): the registry says whether its
+        // evidence has been validated by an independent replay; nothing is
+        // carried forward here.
+        self.append_record(behavior, false)
     }
 
     /// Get all Behavior records for a program ID (all versions, append-only
@@ -933,6 +1013,46 @@ impl SemanticGraphStore {
         self.evidence_since_slot.get(program_id).copied()
     }
 
+    /// Bind a program's evidence to `slot`: the earliest slot it describes
+    /// (Round 40, bootstrap). Only ever moves the binding EARLIER — an
+    /// earlier binding means more deployments count as newer than the
+    /// evidence, so the upgrade watch withdraws it in more cases, never
+    /// fewer. Used by the census import, whose measurement began at the
+    /// census window's oldest slot: with no binding, a first sighting of a
+    /// deployment newer than the census would keep the imported volume
+    /// ("cannot be dated against this deployment").
+    pub fn bind_evidence_to_slot(&mut self, program_id: &str, slot: u64) {
+        let since = self
+            .evidence_since_slot
+            .entry(program_id.to_string())
+            .or_insert(slot);
+        *since = (*since).min(slot);
+    }
+
+    /// Record that the graph holds evidence measured on the cluster whose
+    /// genesis hash is `genesis` (Round 40). Set once: evidence of a second
+    /// cluster in the same graph is refused, since one Core verifies one
+    /// cluster.
+    pub fn mark_evidence_genesis(&mut self, genesis: &str) -> Result<(), SemanticGraphError> {
+        match &self.evidence_genesis {
+            Some(g) if g != genesis => Err(SemanticGraphError::EvidenceCluster {
+                reason: format!(
+                    "the graph already holds evidence of the cluster whose genesis hash is {g}, not {genesis}"
+                ),
+            }),
+            Some(_) => Ok(()),
+            None => {
+                self.evidence_genesis = Some(genesis.to_string());
+                Ok(())
+            }
+        }
+    }
+
+    /// The genesis hash of the cluster imported evidence describes, if any.
+    pub fn evidence_genesis(&self) -> Option<&str> {
+        self.evidence_genesis.as_deref()
+    }
+
     /// Evidence retired because a program's code changed, oldest first.
     pub fn retired_evidence(&self) -> &[RetiredEvidence] {
         &self.retired_evidence
@@ -982,7 +1102,7 @@ impl SemanticGraphStore {
                 let trust_tier = if latest.quarantined {
                     TrustTier::Unknown
                 } else {
-                    compute_trust_tier(&reset)
+                    compute_trust_tier_for(&reset, latest.first_manifest_unvalidated)
                 };
                 self.push_behavior(Behavior {
                     evidence: reset,
@@ -1328,6 +1448,7 @@ mod tests {
             },
             quarantined: false,
             quarantine_reason: None,
+            first_manifest_unvalidated: false,
         };
 
         store.append(behavior1).unwrap();
@@ -1397,6 +1518,7 @@ mod tests {
                 },
                 quarantined: false,
                 quarantine_reason: None,
+                first_manifest_unvalidated: false,
             })
             .unwrap();
 
@@ -1415,6 +1537,7 @@ mod tests {
                 },
                 quarantined: false,
                 quarantine_reason: None,
+                first_manifest_unvalidated: false,
             })
             .unwrap();
 
@@ -1432,6 +1555,7 @@ mod tests {
             evidence,
             quarantined: false,
             quarantine_reason: None,
+            first_manifest_unvalidated: false,
         }
     }
 

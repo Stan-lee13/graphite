@@ -282,6 +282,36 @@ enum EvidenceAction {
         #[arg(long, default_value_t = 0.0)]
         mean_cpi_hops: f64,
     },
+    /// Seed HistoricalVolume from the committed, measured mainnet census
+    /// (Round 40)
+    ///
+    /// Reads protocols/battle_tested_evidence.json as compiled into this
+    /// build (or a --census file, which must be byte-identical to it). Only
+    /// records that clear every threshold, of a program with a loaded
+    /// manifest that exists and is executable, are imported; each import is
+    /// one operator_action row on the audit trail. The tier is recomputed
+    /// from the evidence (P7); no signature is asserted. Re-running imports
+    /// nothing the graph already holds.
+    ImportCensus {
+        /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+        /// A census file to check against the compiled-in copy
+        #[arg(long)]
+        census: Option<PathBuf>,
+        /// Import only this program (repeatable; default: every record)
+        #[arg(long = "program")]
+        programs: Vec<String>,
+        /// Print what would be imported, and the resulting tier and
+        /// confidence per program, without writing anything
+        #[arg(long)]
+        dry_run: bool,
+        /// The cluster this Core verifies: required, and only mainnet-beta
+        /// (the census measures mainnet-beta; the server refuses to start
+        /// when its RPC serves another cluster)
+        #[arg(long)]
+        cluster: Option<String>,
+    },
     /// Show what the graph currently holds for a program
     Show {
         /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
@@ -697,12 +727,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .map(PathBuf::from)
                 });
                 let signer_key_hex = match key_file {
-                    Some(path) => {
-                        let raw = std::fs::read_to_string(&path).map_err(|e| {
-                            format!("failed to read signer key file {}: {e}", path.display())
-                        })?;
-                        Some(raw.trim().to_string())
-                    }
+                    // Round 40 (R39-CB-14): refused when group or others
+                    // can read or write it, as the audit key file is.
+                    Some(path) => Some(graphite_core::cli::read_signer_key_file(&path)?),
                     None => {
                         if signer_key.is_some() {
                             eprintln!(
@@ -923,6 +950,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     },
                 })
             }
+            EvidenceAction::ImportCensus {
+                data_dir,
+                census,
+                programs,
+                dry_run,
+                cluster,
+            } => graphite_core::cli::run(graphite_core::cli::CliCommand::Evidence {
+                action: graphite_core::cli::EvidenceAction::ImportCensus {
+                    data_dir,
+                    census,
+                    programs,
+                    dry_run,
+                    cluster,
+                },
+            }),
             EvidenceAction::Show { data_dir, program } => {
                 graphite_core::cli::run(graphite_core::cli::CliCommand::Evidence {
                     action: graphite_core::cli::EvidenceAction::Show {

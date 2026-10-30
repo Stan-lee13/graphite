@@ -28,19 +28,44 @@ fuzz_target!(|data: &[u8]| {
         return;
     };
     let valid = validate_manifest(&manifest).is_ok();
-    if loaded {
-        assert!(
-            valid,
-            "the registry loaded a manifest that does not validate"
-        );
-    }
+    // Round 39 (core-identity): "exactly" — both directions. A fresh registry
+    // holds no seed, so nothing but validation can refuse a document.
+    assert_eq!(
+        loaded, valid,
+        "the registry and validate_manifest disagree about a document"
+    );
     if !valid {
         return;
     }
     for ix in &manifest.instructions {
         let _ = names_an_authority_change(&ix.name);
         let _ = names_a_delegation_grant(&ix.name);
-        let _ = discriminator_matches(&ix.discriminator, &ix.discriminator);
         let _ = discriminator_matches(&ix.discriminator, "");
+        if ix.discriminator.is_empty() {
+            // Only a one-instruction manifest may say nothing; it is then the
+            // instruction every call is.
+            assert_eq!(manifest.instructions.len(), 1);
+            assert!(std::ptr::eq(manifest.instruction_for("ab").unwrap(), ix));
+            continue;
+        }
+        // Round 39: no discriminator collision survives validation. An
+        // instruction's own selector, and any longer data starting with it,
+        // resolves to that instruction and to no other — the property the
+        // prefix-ambiguity rule exists for.
+        assert!(discriminator_matches(&ix.discriminator, &ix.discriminator));
+        for input in [
+            ix.discriminator.clone(),
+            format!("{}00ff", ix.discriminator),
+        ] {
+            let found = manifest
+                .instruction_for(&input)
+                .expect("an instruction's own selector resolves");
+            assert!(
+                std::ptr::eq(found, ix),
+                "selector {input} resolves to {:?}, not {:?}",
+                found.name,
+                ix.name
+            );
+        }
     }
 });

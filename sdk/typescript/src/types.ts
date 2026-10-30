@@ -272,7 +272,8 @@ export interface VerificationResult {
   approved: boolean;
   /**
    * What this verdict permits (Round 30). Only `executable_approved` permits
-   * signing. Absent from servers older than Round 30; `GraphiteClient.verify`
+   * signing. Absent from servers older than Round 30, whose verdicts
+   * `isExecutable` never calls executable (Round 39); `GraphiteClient.verify`
    * requires a known value when present, and `isExecutable` recomputes it.
    */
   decision?: ExecutionDecision;
@@ -583,20 +584,28 @@ export function computeExecutionDecision(result: DecisionInputs): ExecutionDecis
  * simulated and an approval carries `not_simulated`.
  *
  * Recomputes the Core's rule locally and requires the server to agree:
- * - a server that sent `decision` must say `executable_approved` with
+ * - the server must have sent `decision: "executable_approved"` with
  *   `executable: true`, AND the local recomputation must agree;
  * - a decision this SDK does not know is not executable;
- * - a response without `decision` (a server older than Round 30) is judged
- *   by the local recomputation alone, which is never looser than the
- *   server's rule.
+ * - a response without `decision` is not executable.
+ *
+ * Round 39 (R39-CLIENTS-1): a response without `decision` (a server older
+ * than Round 30) used to be judged by the local recomputation alone. The
+ * Core's own `is_executable` reads an absent decision as `blocked`, and the
+ * agent guard has refused one since Round 34; this SDK and the Go SDK called
+ * the same verdict executable. A server that predates the decision also
+ * predates every rule the Core added after Round 30 (`intent_parameters`,
+ * `program_deployments`, the sibling and creation rules), so recomputing
+ * Round 30's rule over its fields was looser than the Core, not "never
+ * looser". `computeExecutionDecision` still recomputes the rule for display.
  */
 export function isExecutable(result: DecisionInputs & Pick<VerificationResult, "decision" | "executable">): boolean {
-  const local = computeExecutionDecision(result);
-  if (result.decision === undefined && result.executable === undefined) {
-    return local === "executable_approved";
-  }
   if (!(EXECUTION_DECISIONS as readonly unknown[]).includes(result.decision)) return false;
-  return result.decision === "executable_approved" && result.executable === true && local === "executable_approved";
+  return (
+    result.decision === "executable_approved" &&
+    result.executable === true &&
+    computeExecutionDecision(result) === "executable_approved"
+  );
 }
 
 /**

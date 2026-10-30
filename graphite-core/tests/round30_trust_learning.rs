@@ -16,6 +16,9 @@
 //!   evidence the same way.
 #![cfg(feature = "rpc")]
 
+// Round 40 (bootstrap): every test below runs again with each Core it builds
+// census-imported (`round40_census_imported::*`), its profiles unchanged.
+mod round40_imported;
 use graphite_core::confidence_engine::TrustTier;
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
@@ -296,7 +299,7 @@ fn cluster(knobs: Shared) -> String {
 }
 
 fn core_at(endpoint: &str) -> GraphiteCore {
-    let mut core = GraphiteCore::new();
+    let mut core = round40_imported::core();
     core.attach_rpc_client(SolanaRpcClient::new(RpcConfig {
         endpoint: endpoint.to_string(),
         timeout: std::time::Duration::from_secs(5),
@@ -400,6 +403,7 @@ fn seed_reviewed(core: &mut GraphiteCore) {
         },
         quarantined: false,
         quarantine_reason: None,
+        first_manifest_unvalidated: false,
     })
     .unwrap();
 }
@@ -1074,5 +1078,174 @@ async fn loader_v4_redeployments_withdraw_evidence() {
         core.retired_evidence().len(),
         1,
         "an unreadable header changes nothing"
+    );
+}
+
+// Round 40 (bootstrap): the same tests after `graphite evidence import-census`
+// (tests/round40_imported/mod.rs); a learning suite's profiles are its own.
+imported_core_twins!(
+    // not twinned: a_verify_key_holder_cannot_raise_a_programs_evidence — its premise is a fresh program below Gaming (0.44); after the import the same honest request clears the built-in floor, so the property is restated for the imported state in round30_trust_learning.rs `round40_*`
+    // not twinned: concurrent_self_approvals_teach_nothing — its premise is a fresh program below Gaming (0.44); after the import the same honest request clears the built-in floor, so the property is restated for the imported state in round30_trust_learning.rs `round40_*`
+    a_verdict_clearing_the_built_in_floor_is_evidence,
+    no_refusal_class_trains_any_accumulator,
+    the_pipeline_judges_by_the_shape_once_mature,
+    a_shape_bootstrapped_at_the_program_edge_escapes_the_program_anchor,
+    // not twinned: an_upgrade_withdraws_the_programs_evidence — its premise is evidence that cannot be dated against the first deployment; imported evidence is dated (bound to the census window), see round40_census_import.rs `upgrades::*`
+    a_deployment_newer_than_the_evidence_at_first_sighting_withdraws_it,
+    a_simulation_of_replaced_code_is_not_recorded,
+    // not twinned: loader_v4_redeployments_withdraw_evidence — its premise is evidence that cannot be dated against the first deployment; imported evidence is dated (bound to the census window), see round40_census_import.rs `upgrades::*`
+);
+
+// ─── Round 40 (bootstrap): the same properties after the census import ─────
+
+/// A Core with the embedded census imported (System Program: 1,456 measured
+/// successful transactions; HistoricalVolume full, verdict 0.59 on its own).
+fn imported_core_at(endpoint: &str) -> GraphiteCore {
+    let mut core = core_at(endpoint);
+    graphite_core::census_import::import_embedded_into(&mut core).unwrap();
+    core
+}
+
+/// R30-B-1 after the import. The fresh-state test's premise (a fresh
+/// program sits below Gaming) no longer holds: an imported program's honest
+/// verdict clears the built-in floor on its own and is evidence by design.
+/// What the rule protects still holds: a request that does NOT clear the
+/// floor on its own — here forty transfers whose stated amount is below what
+/// the simulation moves, refused by L4 — teaches nothing, whichever profile
+/// the verify-key holder names, sequentially or thirty-two at once; and the
+/// next honest verdict is exactly where the import put it.
+#[tokio::test]
+async fn round40_after_the_import_requests_below_the_floor_still_teach_nothing() {
+    let endpoint = cluster(Arc::default());
+    let core = imported_core_at(&endpoint);
+    let profiles = [
+        permissive(),
+        official_floor(),
+        WalletProfile::Gaming,
+        WalletProfile::Treasury,
+    ];
+    for i in 0..40u64 {
+        let r = core
+            .verify_async(&describe(1_000 + i, profiles[(i % 4) as usize]))
+            .await
+            .unwrap();
+        assert_ne!(
+            layer(&r, "L4").status,
+            LayerStatus::Passed,
+            "the fixture must be refused by L4: {}",
+            r.summary
+        );
+    }
+    assert_eq!(
+        samples(&core),
+        0,
+        "a request below the floor trained the baseline"
+    );
+    assert_eq!(shadow(&core), 0);
+
+    let core = Arc::new(imported_core_at(&endpoint));
+    let mut tasks = Vec::new();
+    for i in 0..32u64 {
+        let core = Arc::clone(&core);
+        tasks.push(tokio::spawn(async move {
+            core.verify_async(&describe(5_000 + i, permissive()))
+                .await
+                .unwrap()
+        }));
+    }
+    for t in tasks {
+        let _ = t.await.unwrap();
+    }
+    assert_eq!(samples(&core), 0, "concurrent self-approvals trained it");
+    assert_eq!(shadow(&core), 0);
+
+    let honest = core
+        .verify_async(&describe(1_000_000, WalletProfile::Gaming))
+        .await
+        .unwrap();
+    assert!(honest.approved, "{}", honest.summary);
+    assert!(
+        (honest.confidence - 0.59).abs() < 1e-9,
+        "the refused requests moved the next honest verdict: {}",
+        honest.confidence
+    );
+}
+
+/// The same request asked again is one observation in the imported state
+/// too: six identical honest asks are one sample, and its confidence rises
+/// once (0.59 -> 0.6567, SimulationMatch 1/3), never by repetition.
+#[tokio::test]
+async fn round40_after_the_import_one_request_repeated_is_one_observation() {
+    let core = imported_core_at(&cluster(Arc::default()));
+    let mut seen = Vec::new();
+    for _ in 0..6 {
+        let r = core
+            .verify_async(&describe(2_000_000, WalletProfile::Gaming))
+            .await
+            .unwrap();
+        assert!(r.approved, "{}", r.summary);
+        seen.push(r.confidence);
+    }
+    assert_eq!(samples(&core), 1, "six asks, one observation: {seen:?}");
+    assert!((seen[0] - 0.59).abs() < 1e-9, "{seen:?}");
+    let once = 0.59 + 0.20 / 3.0;
+    assert!(
+        seen[1..].iter().all(|c| (c - once).abs() < 1e-9),
+        "{seen:?}"
+    );
+}
+
+/// Honest training in the imported state, then a compute outlier: eleven
+/// distinct honest transfers train the System Program's baseline (the anchor
+/// forms at ten), its confidence stops at the OfficialManifest ceiling 0.75
+/// with the tier unchanged, and a transfer whose simulation used ten times
+/// the trained compute is flagged by L3 and not executable.
+#[tokio::test]
+async fn round40_after_the_import_training_stops_at_the_ceiling_and_an_outlier_is_flagged() {
+    let knobs: Shared = Arc::default();
+    let core = imported_core_at(&cluster(Arc::clone(&knobs)));
+    let mut progression = Vec::new();
+    for i in 0..11u64 {
+        let r = core
+            .verify_async(&describe(2_000_000 + i, WalletProfile::Gaming))
+            .await
+            .unwrap();
+        assert!(r.approved, "{}", r.summary);
+        progression.push(r.confidence);
+    }
+    assert_eq!(samples(&core), 11, "{progression:?}");
+    assert!(
+        progression.iter().all(|c| *c <= 0.75 + 1e-9),
+        "{progression:?}"
+    );
+    assert!((progression[10] - 0.75).abs() < 1e-9, "{progression:?}");
+    let trained = core
+        .verify_async(&describe(2_100_000, WalletProfile::TradingBot))
+        .await
+        .unwrap();
+    assert!(
+        !trained.approved,
+        "TradingBot admitted it: {}",
+        trained.summary
+    );
+    assert_eq!(trained.trust_tier, "OfficialManifest");
+
+    knobs.lock().unwrap().units = 1_500;
+    let outlier = core
+        .verify_async(&describe(2_200_000, WalletProfile::Gaming))
+        .await
+        .unwrap();
+    assert_ne!(
+        outlier.decision,
+        graphite_core::verification::ExecutionDecision::ExecutableApproved,
+        "{}",
+        outlier.summary
+    );
+    let l3 = layer(&outlier, "L3");
+    assert!(l3.reason.contains("FLAGGED"), "{}", l3.reason);
+    assert_eq!(
+        samples(&core),
+        12,
+        "the flagged outlier is not a trusted sample"
     );
 }

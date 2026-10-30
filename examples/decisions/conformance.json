@@ -1,0 +1,3016 @@
+{
+  "version": 1,
+  "doc": [
+    "Round 39 (campaign 14): one cross-language conformance corpus. Each verdict vector is a real Core",
+    "verdict from this directory (`base`), changed by `raw_replace` (exact text replacements on the committed",
+    "file, each matching once) and then `edits` (set / delete / push at a JSON path). Every implementation",
+    "reads the result and must give the outcome `expect` names for it:",
+    "  rust  - the Core's own type and rule: serde_json into VerificationResult, then is_executable()",
+    "         (graphite-core/tests/round39_conformance_corpus.rs);",
+    "  ts    - validateVerificationResult, then isExecutable (sdk/typescript/src/conformance.test.ts);",
+    "  go    - DecodeVerificationResult, then IsExecutable (sdk/go/conformance_test.go);",
+    "  guard - the agent guard's ResidualPolicy (default, and accepting every acceptable code) on the",
+    "          TS-validated verdict (integrations/agent-guard/conformance.test.ts).",
+    "Outcomes: executable | not_executable | unreadable; for the guard signs | refuses. A client may be",
+    "STRICTER than the Core's rule (a `note` says why) and never looser: every test also asserts that",
+    "nothing a client calls executable is not executable to the Core's rule.",
+    "`content_hash` vectors pin the framed v2 instruction bind key; `transaction_digest` vectors pin",
+    "scope.transaction_sha256 (signature slots zeroed). `expect: null` means only that every",
+    "implementation computes the same value, and `differs_from` that it differs from the named vector."
+  ],
+  "verdicts": [
+    {
+      "name": "decision: executable_approved, as the Core wrote it",
+      "base": "executable_approved",
+      "why": "the one decision that permits signing",
+      "expect": {
+        "rust": "executable",
+        "ts": "executable",
+        "go": "executable",
+        "guard": "signs",
+        "guard_accepting_all": "signs"
+      }
+    },
+    {
+      "name": "decision: analysis_only, as the Core wrote it (no RPC)",
+      "base": "analysis_only",
+      "why": "an approval nothing simulated",
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "signs"
+      },
+      "note": "accepting not_simulated by name is the operator's documented waiver; the guard then signs an analysis_only verdict"
+    },
+    {
+      "name": "decision: inconclusive, as the Core wrote it",
+      "base": "inconclusive",
+      "why": "a refusal on missing evidence",
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "decision: blocked, as the Core wrote it",
+      "base": "blocked",
+      "why": "a refusal",
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "decision: an older word (\"approved\")",
+      "base": "executable_approved",
+      "why": "a decision no implementation knows is not one",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "approved"
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "decision: a new value (\"executable\")",
+      "base": "executable_approved",
+      "why": "a decision no implementation knows is not one",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "executable"
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "decision: another spelling (\"EXECUTABLE_APPROVED\")",
+      "base": "executable_approved",
+      "why": "a decision no implementation knows is not one",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "EXECUTABLE_APPROVED"
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "decision: null (null)",
+      "base": "executable_approved",
+      "why": "a decision no implementation knows is not one",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": null
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "decision: empty (\"\")",
+      "base": "executable_approved",
+      "why": "a decision no implementation knows is not one",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": ""
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "combination: executable_approved with executable false",
+      "base": "executable_approved",
+      "why": "decision and executable disagree",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "combination: analysis_only with executable true",
+      "base": "executable_approved",
+      "why": "decision and executable disagree",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "analysis_only"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "combination: blocked on an approval",
+      "base": "executable_approved",
+      "why": "a refusal's decision on an approval",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "blocked"
+        },
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "combination: inconclusive on an approval",
+      "base": "executable_approved",
+      "why": "a refusal's decision on an approval",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "inconclusive"
+        },
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "combination: executable_approved on a refusal",
+      "base": "blocked",
+      "why": "an approval's decision on a refusal",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "executable_approved"
+        },
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": true
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "combination: analysis_only on a refusal",
+      "base": "blocked",
+      "why": "an approval's decision on a refusal",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "analysis_only"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "combination: executable as the string \"true\"",
+      "base": "executable_approved",
+      "why": "a boolean field carrying a string",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": "true"
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "combination: approved as the number 1",
+      "base": "executable_approved",
+      "why": "a boolean field carrying a number",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "approved"
+          ],
+          "value": 1
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "missing: decision and executable (a server before Round 30)",
+      "base": "executable_approved",
+      "why": "R39-CLIENTS-1: the Core's own rule reads an absent decision as blocked; the SDKs judged it by recomputation alone",
+      "edits": [
+        {
+          "op": "delete",
+          "path": [
+            "decision"
+          ]
+        },
+        {
+          "op": "delete",
+          "path": [
+            "executable"
+          ]
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "before Round 39 the TS and Go SDKs answered executable here"
+    },
+    {
+      "name": "missing: decision only",
+      "base": "executable_approved",
+      "why": "executable without the decision it names",
+      "edits": [
+        {
+          "op": "delete",
+          "path": [
+            "decision"
+          ]
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "missing: executable only",
+      "base": "executable_approved",
+      "why": "decision without executable",
+      "edits": [
+        {
+          "op": "delete",
+          "path": [
+            "executable"
+          ]
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "missing: scope",
+      "base": "executable_approved",
+      "why": "nothing says what the verdict is bound to",
+      "edits": [
+        {
+          "op": "delete",
+          "path": [
+            "scope"
+          ]
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "missing: scope.unobserved_codes",
+      "base": "executable_approved",
+      "why": "residual prose without codes",
+      "edits": [
+        {
+          "op": "delete",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ]
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "missing: scope.unobserved_codes and scope.unobserved",
+      "base": "executable_approved",
+      "why": "a scope that claims nothing was left unobserved",
+      "edits": [
+        {
+          "op": "delete",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ]
+        },
+        {
+          "op": "set",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": []
+        }
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "client stricter: the Core never writes an artifact-bound scope without its two inherent residuals"
+    },
+    {
+      "name": "missing: scope.simulated",
+      "base": "executable_approved",
+      "why": "whether the bytes ran is unknown",
+      "edits": [
+        {
+          "op": "delete",
+          "path": [
+            "scope",
+            "simulated"
+          ]
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "missing: scope.transaction_sha256",
+      "base": "executable_approved",
+      "why": "a binding without its digest",
+      "edits": [
+        {
+          "op": "delete",
+          "path": [
+            "scope",
+            "transaction_sha256"
+          ]
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "missing: layers",
+      "base": "executable_approved",
+      "why": "no layer report",
+      "edits": [
+        {
+          "op": "delete",
+          "path": [
+            "layers"
+          ]
+        }
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "client stricter: the Core's type defaults an absent list to empty; the Core always writes eight layers"
+    },
+    {
+      "name": "missing: risk_verdict",
+      "base": "executable_approved",
+      "why": "no risk verdict",
+      "edits": [
+        {
+          "op": "delete",
+          "path": [
+            "risk_verdict"
+          ]
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "missing: policy_verdict",
+      "base": "executable_approved",
+      "why": "no policy verdict",
+      "edits": [
+        {
+          "op": "delete",
+          "path": [
+            "policy_verdict"
+          ]
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "missing: instruction_bind_key",
+      "base": "executable_approved",
+      "why": "the bind key's newer name is optional to read",
+      "edits": [
+        {
+          "op": "delete",
+          "path": [
+            "instruction_bind_key"
+          ]
+        }
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "executable",
+        "go": "executable",
+        "guard": "signs",
+        "guard_accepting_all": "signs"
+      }
+    },
+    {
+      "name": "missing: a resolved account's privilege_mismatch flag",
+      "base": "executable_approved",
+      "why": "an absent security signal is not 'no mismatch'",
+      "edits": [
+        {
+          "op": "delete",
+          "path": [
+            "resolved_accounts",
+            0,
+            "privilege_mismatch"
+          ]
+        }
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "client stricter: the Core's type defaults an absent flag to false; the Core always writes all three"
+    },
+    {
+      "name": "residual: not_simulated, the verdict still claiming executable",
+      "base": "executable_approved",
+      "why": "a non-inherent residual takes executable away",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: not_simulated"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "not_simulated"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: not_simulated, an honest analysis_only",
+      "base": "executable_approved",
+      "why": "the Core's own answer for a verdict carrying it",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: not_simulated"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "not_simulated"
+        },
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "analysis_only"
+        },
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "signs"
+      },
+      "note": "accepted by name, the operator's documented waiver"
+    },
+    {
+      "name": "residual: no_state_diff, the verdict still claiming executable",
+      "base": "executable_approved",
+      "why": "a non-inherent residual takes executable away",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: no_state_diff"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "no_state_diff"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: no_state_diff, an honest analysis_only",
+      "base": "executable_approved",
+      "why": "the Core's own answer for a verdict carrying it",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: no_state_diff"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "no_state_diff"
+        },
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "analysis_only"
+        },
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "signs"
+      },
+      "note": "accepted by name, the operator's documented waiver"
+    },
+    {
+      "name": "residual: simulation_failed, the verdict still claiming executable",
+      "base": "executable_approved",
+      "why": "a non-inherent residual takes executable away",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: simulation_failed"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "simulation_failed"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: simulation_failed, an honest analysis_only",
+      "base": "executable_approved",
+      "why": "the Core's own answer for a verdict carrying it",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: simulation_failed"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "simulation_failed"
+        },
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "analysis_only"
+        },
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "signs"
+      },
+      "note": "accepted by name, the operator's documented waiver"
+    },
+    {
+      "name": "residual: privileges_from_caller, the verdict still claiming executable",
+      "base": "executable_approved",
+      "why": "a non-inherent residual takes executable away",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: privileges_from_caller"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "privileges_from_caller"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: privileges_from_caller, an honest analysis_only",
+      "base": "executable_approved",
+      "why": "the Core's own answer for a verdict carrying it",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: privileges_from_caller"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "privileges_from_caller"
+        },
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "analysis_only"
+        },
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "signs"
+      },
+      "note": "accepted by name, the operator's documented waiver"
+    },
+    {
+      "name": "residual: privileges_absent, the verdict still claiming executable",
+      "base": "executable_approved",
+      "why": "a non-inherent residual takes executable away",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: privileges_absent"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "privileges_absent"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: privileges_absent, an honest analysis_only",
+      "base": "executable_approved",
+      "why": "the Core's own answer for a verdict carrying it",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: privileges_absent"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "privileges_absent"
+        },
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "analysis_only"
+        },
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "signs"
+      },
+      "note": "accepted by name, the operator's documented waiver"
+    },
+    {
+      "name": "residual: lookup_tables_unresolved, the verdict still claiming executable",
+      "base": "executable_approved",
+      "why": "a non-inherent residual takes executable away",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: lookup_tables_unresolved"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "lookup_tables_unresolved"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: lookup_tables_unresolved, an honest analysis_only",
+      "base": "executable_approved",
+      "why": "the Core's own answer for a verdict carrying it",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: lookup_tables_unresolved"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "lookup_tables_unresolved"
+        },
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "analysis_only"
+        },
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "signs"
+      },
+      "note": "accepted by name, the operator's documented waiver"
+    },
+    {
+      "name": "residual: artifact_unparsed, the verdict still claiming executable",
+      "base": "executable_approved",
+      "why": "a non-inherent residual takes executable away",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: artifact_unparsed"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "artifact_unparsed"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: artifact_unparsed, an honest analysis_only",
+      "base": "executable_approved",
+      "why": "the Core's own answer for a verdict carrying it",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: artifact_unparsed"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "artifact_unparsed"
+        },
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "analysis_only"
+        },
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "signs"
+      },
+      "note": "accepted by name, the operator's documented waiver"
+    },
+    {
+      "name": "residual: account_identity_unparsed, the verdict still claiming executable",
+      "base": "executable_approved",
+      "why": "a non-inherent residual takes executable away",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: account_identity_unparsed"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "account_identity_unparsed"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: account_identity_unparsed, an honest analysis_only",
+      "base": "executable_approved",
+      "why": "the Core's own answer for a verdict carrying it",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: account_identity_unparsed"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "account_identity_unparsed"
+        },
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "analysis_only"
+        },
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "signs"
+      },
+      "note": "accepted by name, the operator's documented waiver"
+    },
+    {
+      "name": "residual: instruction_not_located, the verdict still claiming executable",
+      "base": "executable_approved",
+      "why": "a non-inherent residual takes executable away",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: instruction_not_located"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "instruction_not_located"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: instruction_not_located, an honest analysis_only",
+      "base": "executable_approved",
+      "why": "the Core's own answer for a verdict carrying it",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: instruction_not_located"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "instruction_not_located"
+        },
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "analysis_only"
+        },
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "signs"
+      },
+      "note": "accepted by name, the operator's documented waiver"
+    },
+    {
+      "name": "residual: no_artifact, the verdict still claiming executable",
+      "base": "executable_approved",
+      "why": "a non-inherent residual takes executable away",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: no_artifact"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "no_artifact"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: no_artifact, an honest analysis_only",
+      "base": "executable_approved",
+      "why": "the Core's own answer for a verdict carrying it",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: no_artifact"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "no_artifact"
+        },
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "analysis_only"
+        },
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "signs"
+      },
+      "note": "accepted by name, the operator's documented waiver"
+    },
+    {
+      "name": "residual: other_instructions, the verdict still claiming executable",
+      "base": "executable_approved",
+      "why": "a non-inherent residual takes executable away",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: other_instructions"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "other_instructions"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: other_instructions, an honest analysis_only",
+      "base": "executable_approved",
+      "why": "the Core's own answer for a verdict carrying it",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: other_instructions"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "other_instructions"
+        },
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "analysis_only"
+        },
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "signs"
+      },
+      "note": "accepted by name, the operator's documented waiver"
+    },
+    {
+      "name": "residual: fee_payer_blockhash_signers, the verdict still claiming executable",
+      "base": "executable_approved",
+      "why": "a non-inherent residual takes executable away",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: fee_payer_blockhash_signers"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "fee_payer_blockhash_signers"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: fee_payer_blockhash_signers, an honest analysis_only",
+      "base": "executable_approved",
+      "why": "the Core's own answer for a verdict carrying it",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: fee_payer_blockhash_signers"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "fee_payer_blockhash_signers"
+        },
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "analysis_only"
+        },
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "signs"
+      },
+      "note": "accepted by name, the operator's documented waiver"
+    },
+    {
+      "name": "residual: no_real_effects, the verdict still claiming executable",
+      "base": "executable_approved",
+      "why": "a non-inherent residual takes executable away",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: no_real_effects"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "no_real_effects"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: no_real_effects, an honest analysis_only",
+      "base": "executable_approved",
+      "why": "the Core's own answer for a verdict carrying it",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: no_real_effects"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "no_real_effects"
+        },
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "analysis_only"
+        },
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "signs"
+      },
+      "note": "accepted by name, the operator's documented waiver"
+    },
+    {
+      "name": "residual: intent_parameters, the verdict still claiming executable",
+      "base": "executable_approved",
+      "why": "a non-inherent residual takes executable away",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: intent_parameters"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "intent_parameters"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: intent_parameters, an honest analysis_only",
+      "base": "executable_approved",
+      "why": "the Core's own answer for a verdict carrying it",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: intent_parameters"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "intent_parameters"
+        },
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "analysis_only"
+        },
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "never acceptable (Round 38, G2-5)"
+    },
+    {
+      "name": "residual: program_deployments, the verdict still claiming executable",
+      "base": "executable_approved",
+      "why": "a non-inherent residual takes executable away",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: program_deployments"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "program_deployments"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: program_deployments, an honest analysis_only",
+      "base": "executable_approved",
+      "why": "the Core's own answer for a verdict carrying it",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "conformance vector: program_deployments"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "program_deployments"
+        },
+        {
+          "op": "set",
+          "path": [
+            "decision"
+          ],
+          "value": "analysis_only"
+        },
+        {
+          "op": "set",
+          "path": [
+            "executable"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "signs"
+      },
+      "note": "accepted by name, the operator's documented waiver"
+    },
+    {
+      "name": "residual: unknown code \"new_residual\"",
+      "base": "executable_approved",
+      "why": "a code no implementation knows is a residual nobody accepted",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "x"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "new_residual"
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: unknown code \"Program_Semantics\"",
+      "base": "executable_approved",
+      "why": "a code no implementation knows is a residual nobody accepted",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "x"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "Program_Semantics"
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: unknown code \"PROGRAM_DEPLOYMENTS\"",
+      "base": "executable_approved",
+      "why": "a code no implementation knows is a residual nobody accepted",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "x"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "PROGRAM_DEPLOYMENTS"
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: unknown code \"\"",
+      "base": "executable_approved",
+      "why": "a code no implementation knows is a residual nobody accepted",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "x"
+        },
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": ""
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: prose without a code",
+      "base": "executable_approved",
+      "why": "codes no longer name every entry",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved"
+          ],
+          "value": "something the Core did not name"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: a code without its prose",
+      "base": "executable_approved",
+      "why": "codes no longer name every entry",
+      "edits": [
+        {
+          "op": "push",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": "program_semantics"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "residual: an inherent code twice",
+      "base": "executable_approved",
+      "why": "inherent residuals only, repeated",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "scope",
+            "unobserved_codes"
+          ],
+          "value": [
+            "program_semantics",
+            "program_semantics"
+          ]
+        }
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "executable",
+        "go": "executable",
+        "guard": "signs",
+        "guard_accepting_all": "signs"
+      }
+    },
+    {
+      "name": "residual: an analysis_only descriptive verdict",
+      "base": "analysis_only",
+      "why": "nothing was bound",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "scope"
+          ],
+          "value": {
+            "kind": "descriptive",
+            "unobserved": [
+              "no artifact"
+            ],
+            "unobserved_codes": [
+              "no_artifact"
+            ]
+          }
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "not_executable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "a descriptive verdict is refused by the guard however residuals are accepted"
+    },
+    {
+      "name": "binding: transaction_sha256 in upper case",
+      "base": "executable_approved",
+      "why": "not the digest's spelling",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "scope",
+            "transaction_sha256"
+          ],
+          "value": "E32950F70A7F63C5D34695964AC376FC53B6727806C26269639EE27B2BC3A886"
+        }
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "client stricter: the Core's type holds the digest as a string; it writes lower case only"
+    },
+    {
+      "name": "binding: transaction_sha256 of 63 characters",
+      "base": "executable_approved",
+      "why": "a truncated digest",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "scope",
+            "transaction_sha256"
+          ],
+          "value": "e32950f70a7f63c5d34695964ac376fc53b6727806c26269639ee27b2bc3a88"
+        }
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "client stricter, as above"
+    },
+    {
+      "name": "binding: an artifact-bound scope that was not simulated",
+      "base": "executable_approved",
+      "why": "simulated false takes executable away",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "scope",
+            "simulated"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "binding: an unknown scope kind",
+      "base": "executable_approved",
+      "why": "a scope no implementation knows",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "scope",
+            "kind"
+          ],
+          "value": "artifact_bound_v2"
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "binding: a descriptive scope carrying a digest",
+      "base": "analysis_only",
+      "why": "advertises a binding that does not exist",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "scope"
+          ],
+          "value": {
+            "kind": "descriptive",
+            "unobserved": [
+              "no artifact"
+            ],
+            "unobserved_codes": [
+              "no_artifact"
+            ],
+            "transaction_sha256": "e32950f70a7f63c5d34695964ac376fc53b6727806c26269639ee27b2bc3a886"
+          }
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "binding: instruction_bind_key differs from content_hash",
+      "base": "executable_approved",
+      "why": "two values for one key",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "instruction_bind_key"
+          ],
+          "value": "0000000000000000"
+        }
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "client stricter: the Core writes one value under both names"
+    },
+    {
+      "name": "binding: an unknown message_version",
+      "base": "executable_approved",
+      "why": "a frame no implementation knows",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "scope",
+            "message_version"
+          ],
+          "value": "v2"
+        }
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "client stricter: the Core's type holds the version as a string"
+    },
+    {
+      "name": "schema: a failed layer",
+      "base": "executable_approved",
+      "why": "a failed layer takes executable away",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "layers",
+            3,
+            "status"
+          ],
+          "value": "failed"
+        },
+        {
+          "op": "set",
+          "path": [
+            "layers",
+            3,
+            "passed"
+          ],
+          "value": false
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "schema: an unknown layer status",
+      "base": "executable_approved",
+      "why": "a status no implementation knows",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "layers",
+            2,
+            "status"
+          ],
+          "value": "skipped"
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "schema: a layer whose passed contradicts its status",
+      "base": "executable_approved",
+      "why": "passed is derived from status",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "layers",
+            2,
+            "passed"
+          ],
+          "value": true
+        }
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "client stricter: the Core derives passed from status when it builds a layer"
+    },
+    {
+      "name": "schema: risk status Unknown",
+      "base": "executable_approved",
+      "why": "a risk status no implementation knows",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "risk_verdict",
+            "status"
+          ],
+          "value": "Unknown"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "schema: policy Rejected on an approval",
+      "base": "executable_approved",
+      "why": "the verdict contradicts itself",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "policy_verdict"
+          ],
+          "value": "Rejected"
+        }
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "schema: an unknown trust tier",
+      "base": "executable_approved",
+      "why": "a tier no SDK knows",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "trust_tier"
+          ],
+          "value": "Sovereign"
+        }
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "client stricter: the Core's type holds the tier as a string"
+    },
+    {
+      "name": "schema: an unknown account identity",
+      "base": "executable_approved",
+      "why": "an identity no implementation knows",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "resolved_accounts",
+            0,
+            "identity"
+          ],
+          "value": "derived"
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "schema: a field this version does not know",
+      "base": "executable_approved",
+      "why": "forward compatibility: an added optional field is ignored",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "future_field"
+          ],
+          "value": {
+            "a": 1
+          }
+        }
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "executable",
+        "go": "executable",
+        "guard": "signs",
+        "guard_accepting_all": "signs"
+      }
+    },
+    {
+      "name": "schema: a program upgrade the operator did not quarantine",
+      "base": "executable_approved",
+      "why": "program_upgrades is reported, not decided on",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "program_upgrades"
+          ],
+          "value": [
+            {
+              "program_id": "11111111111111111111111111111111",
+              "previous_deploy_slot": 1,
+              "deploy_slot": 2,
+              "previous_upgrade_authority": null,
+              "upgrade_authority": null,
+              "quarantined": false
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "executable",
+        "go": "executable",
+        "guard": "signs",
+        "guard_accepting_all": "signs"
+      }
+    },
+    {
+      "name": "schema: confidence above 1",
+      "base": "executable_approved",
+      "why": "a confidence that is not one",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "confidence"
+          ],
+          "value": 1.5
+        }
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "client stricter: the Core's type holds an f64; its engine never writes one above 1"
+    },
+    {
+      "name": "integer: transaction_bytes 0",
+      "base": "executable_approved",
+      "why": "a binding of no bytes",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "scope",
+            "transaction_bytes"
+          ],
+          "value": 0
+        }
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "client stricter"
+    },
+    {
+      "name": "integer: transaction_bytes -1",
+      "base": "executable_approved",
+      "why": "a negative count",
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "scope",
+            "transaction_bytes"
+          ],
+          "value": -1
+        }
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "integer: transaction_bytes 2^53 + 1",
+      "base": "executable_approved",
+      "why": "past a JavaScript number's exact range",
+      "raw_replace": [
+        [
+          "\"transaction_bytes\": 215",
+          "\"transaction_bytes\": 9007199254740993"
+        ]
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "unreadable",
+        "go": "executable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "TS stricter: the value cannot be read exactly as a JavaScript number"
+    },
+    {
+      "name": "integer: transaction_bytes u64::MAX",
+      "base": "executable_approved",
+      "why": "the largest u64",
+      "raw_replace": [
+        [
+          "\"transaction_bytes\": 215",
+          "\"transaction_bytes\": 18446744073709551615"
+        ]
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "TS and Go stricter: past a JavaScript number's exact range and past Go's int"
+    },
+    {
+      "name": "integer: transaction_bytes u64::MAX + 1",
+      "base": "executable_approved",
+      "why": "past every integer type",
+      "raw_replace": [
+        [
+          "\"transaction_bytes\": 215",
+          "\"transaction_bytes\": 18446744073709551616"
+        ]
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "integer: transaction_bytes spelled 215.0",
+      "base": "executable_approved",
+      "why": "an integer spelled as a float",
+      "raw_replace": [
+        [
+          "\"transaction_bytes\": 215",
+          "\"transaction_bytes\": 215.0"
+        ]
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "R39-CLIENTS-3: before Round 39 TS read it as 215 (JSON.parse cannot tell 215.0 from 215) and called it executable"
+    },
+    {
+      "name": "integer: transaction_bytes spelled 2.15e2",
+      "base": "executable_approved",
+      "why": "an integer spelled with an exponent",
+      "raw_replace": [
+        [
+          "\"transaction_bytes\": 215",
+          "\"transaction_bytes\": 2.15e2"
+        ]
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "R39-CLIENTS-3, as above"
+    },
+    {
+      "name": "integer: a float field spelled 1.0 stays readable",
+      "base": "executable_approved",
+      "why": "1.0 is a float's own spelling",
+      "raw_replace": [
+        [
+          "\"confidence\": 0.43999999999999995,",
+          "\"confidence\": 4.3999999999999995e-1,"
+        ]
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "executable",
+        "go": "executable",
+        "guard": "signs",
+        "guard_accepting_all": "signs"
+      }
+    },
+    {
+      "name": "integer: priority_fee_lamports u64::MAX",
+      "base": "executable_approved",
+      "why": "the largest u64 a fee can be",
+      "raw_replace": [
+        [
+          "\"priority_fee_lamports\": 0",
+          "\"priority_fee_lamports\": 18446744073709551615"
+        ]
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "unreadable",
+        "go": "executable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "TS stricter: past a JavaScript number's exact range"
+    },
+    {
+      "name": "integer: compute_unit_limit u32::MAX",
+      "base": "executable_approved",
+      "why": "the largest u32",
+      "raw_replace": [
+        [
+          "\"compute_unit_limit\": null",
+          "\"compute_unit_limit\": 4294967295"
+        ]
+      ],
+      "expect": {
+        "rust": "executable",
+        "ts": "executable",
+        "go": "executable",
+        "guard": "signs",
+        "guard_accepting_all": "signs"
+      }
+    },
+    {
+      "name": "integer: compute_unit_limit 2^32",
+      "base": "executable_approved",
+      "why": "past a u32",
+      "raw_replace": [
+        [
+          "\"compute_unit_limit\": null",
+          "\"compute_unit_limit\": 4294967296"
+        ]
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "R39-CLIENTS-3: before Round 39 TS read any safe integer here; the Core and Go hold a u32"
+    },
+    {
+      "name": "integer: a breakdown value that is not finite",
+      "base": "executable_approved",
+      "why": "1e999 is Infinity to a float parser",
+      "raw_replace": [
+        [
+          "\"raw_value\": 0.7,",
+          "\"raw_value\": 1e999,"
+        ]
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "keys: approved twice, refusal first",
+      "base": "executable_approved",
+      "why": "two readers could keep different values",
+      "raw_replace": [
+        [
+          "\"approved\": true,",
+          "\"approved\": false, \"approved\": true,"
+        ]
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "keys: approved twice through an escape",
+      "base": "executable_approved",
+      "why": "\\u0061pproved is approved",
+      "raw_replace": [
+        [
+          "\"approved\": true,",
+          "\"\\u0061pproved\": false, \"approved\": true,"
+        ]
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "keys: an upper-case APPROVED beside a refusal",
+      "base": "blocked",
+      "why": "a case-insensitive decoder would read it as approved",
+      "raw_replace": [
+        [
+          "\"approved\": false,",
+          "\"approved\": false, \"APPROVED\": true,"
+        ]
+      ],
+      "expect": {
+        "rust": "not_executable",
+        "ts": "not_executable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      },
+      "note": "Go refuses the folded key outright; the others ignore an unknown key and read the refusal"
+    },
+    {
+      "name": "keys: decision twice",
+      "base": "executable_approved",
+      "why": "two decisions",
+      "raw_replace": [
+        [
+          "\"decision\": \"executable_approved\",",
+          "\"decision\": \"blocked\", \"decision\": \"executable_approved\","
+        ]
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    },
+    {
+      "name": "keys: an unobserved code twice in one scope object",
+      "base": "executable_approved",
+      "why": "two code lists",
+      "raw_replace": [
+        [
+          "\"unobserved_codes\": [",
+          "\"unobserved_codes\": [\"not_simulated\"], \"unobserved_codes\": ["
+        ]
+      ],
+      "expect": {
+        "rust": "unreadable",
+        "ts": "unreadable",
+        "go": "unreadable",
+        "guard": "refuses",
+        "guard_accepting_all": "refuses"
+      }
+    }
+  ],
+  "content_hash": [
+    {
+      "name": "framed v2: a System transfer, no data, no CPI (the reference vector)",
+      "program_id": "11111111111111111111111111111111",
+      "discriminator": "02000000",
+      "accounts": [
+        "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+        "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"
+      ],
+      "data": null,
+      "cpi_targets": [],
+      "expect": "48c65c638aceb5de"
+    },
+    {
+      "name": "framed v2: a native transfer of 1,000,000 lamports with its 4-byte discriminator",
+      "program_id": "11111111111111111111111111111111",
+      "discriminator": "02000000",
+      "accounts": [
+        "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+        "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"
+      ],
+      "data": [
+        2,
+        0,
+        0,
+        0,
+        64,
+        66,
+        15,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "expect": "6d302e018b2b91ce"
+    },
+    {
+      "name": "framed v2: absent data and empty data are the same key",
+      "program_id": "11111111111111111111111111111111",
+      "discriminator": "02000000",
+      "accounts": [
+        "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+        "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"
+      ],
+      "data": [],
+      "cpi_targets": [],
+      "expect": "48c65c638aceb5de"
+    },
+    {
+      "name": "framed v2: the boundary-shift pair, [A, B] with no data",
+      "program_id": "11111111111111111111111111111111",
+      "discriminator": "02000000",
+      "accounts": [
+        "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+        "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"
+      ],
+      "data": null,
+      "cpi_targets": [],
+      "expect": "48c65c638aceb5de",
+      "differs_from": "framed v2: the boundary-shift pair, [A] with data = bytes(B)"
+    },
+    {
+      "name": "framed v2: the boundary-shift pair, [A] with data = bytes(B)",
+      "program_id": "11111111111111111111111111111111",
+      "discriminator": "02000000",
+      "accounts": [
+        "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+      ],
+      "data": [
+        56,
+        113,
+        98,
+        72,
+        98,
+        119,
+        50,
+        66,
+        98,
+        98,
+        84,
+        72,
+        66,
+        87,
+        49,
+        115,
+        98,
+        101,
+        113,
+        97,
+        107,
+        89,
+        88,
+        86,
+        75,
+        82,
+        81,
+        77,
+        56,
+        78,
+        101,
+        55,
+        112,
+        76,
+        75,
+        55,
+        109,
+        54,
+        67,
+        86,
+        102,
+        101,
+        82
+      ],
+      "cpi_targets": [],
+      "expect": "63e47cb5e636ed1e"
+    },
+    {
+      "name": "framed v2: a CPI target is framed, not concatenated",
+      "program_id": "11111111111111111111111111111111",
+      "discriminator": "02000000",
+      "accounts": [
+        "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+        "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"
+      ],
+      "data": null,
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      ],
+      "expect": "57aa5194339d8edf"
+    },
+    {
+      "name": "framed v2: a data element that is not a byte is refused",
+      "program_id": "11111111111111111111111111111111",
+      "discriminator": "02000000",
+      "accounts": [
+        "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+        "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"
+      ],
+      "data": [
+        256
+      ],
+      "cpi_targets": [],
+      "expect": "error"
+    },
+    {
+      "name": "framed v2: the committed executable_approved verdict's own content_hash, from its transaction",
+      "program_id": "11111111111111111111111111111111",
+      "discriminator": "02000000",
+      "accounts": [
+        "GM4eCsQuaLNXApYz6YYUQVMxajTaJ7dB4TbroFGBaou9",
+        "8u8LCMQvMKrFxHbn326Ltcqv72HDPEC5FPMgPC3mXvxV"
+      ],
+      "data": [
+        2,
+        0,
+        0,
+        0,
+        128,
+        132,
+        30,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "expect": "19c98629dd935ddd"
+    }
+  ],
+  "transaction_digest": [
+    {
+      "name": "legacy: the bridge's committed unsigned artifact",
+      "hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100020479b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664274ed6b26805d2fe8d060529ee9a2f28763b6976d9c5fd1dee38ff36b3b7693900000000000000000000000000000000000000000000000000000000000000000306466fe5211732ffecadba72c39be7bc8ce5bbc5f7126b2c439b3a4000000000000000000000000000000000000000000000000000000000000000000000000303000502400d030003000903e803000000000000020200010c0200000080841e0000000000",
+      "expect": {
+        "rust": "c9a8ca018072273203dfae99ef91a6e03b0edd3ffc9153aba7bae814df269661",
+        "ts": "c9a8ca018072273203dfae99ef91a6e03b0edd3ffc9153aba7bae814df269661",
+        "go": "c9a8ca018072273203dfae99ef91a6e03b0edd3ffc9153aba7bae814df269661"
+      }
+    },
+    {
+      "name": "legacy: the same frame signed (slot filled)",
+      "hex": "01abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab0100020479b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664274ed6b26805d2fe8d060529ee9a2f28763b6976d9c5fd1dee38ff36b3b7693900000000000000000000000000000000000000000000000000000000000000000306466fe5211732ffecadba72c39be7bc8ce5bbc5f7126b2c439b3a4000000000000000000000000000000000000000000000000000000000000000000000000303000502400d030003000903e803000000000000020200010c0200000080841e0000000000",
+      "expect": {
+        "rust": "c9a8ca018072273203dfae99ef91a6e03b0edd3ffc9153aba7bae814df269661",
+        "ts": "c9a8ca018072273203dfae99ef91a6e03b0edd3ffc9153aba7bae814df269661",
+        "go": "c9a8ca018072273203dfae99ef91a6e03b0edd3ffc9153aba7bae814df269661"
+      }
+    },
+    {
+      "name": "legacy: one message byte changed",
+      "hex": "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100020479b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664274ed6b26805d2fe8d060529ee9a2f28763b6976d9c5fd1dee38ff36b3b7693900000000000000000000000000000000000000000000000000000000000000000306466fe5211732ffecadba72c39be7bc8ce5bbc5f7126b2c439b3a4000000000000000000000000000000000000000000000000000000000000000000000000303000502400d030003000903e803000000000000020200010c0200000080841e0000000001",
+      "expect": {
+        "rust": "ac67b918eada24d025f256325cebe3562d11936d3317e1b021ee1ec127230219",
+        "ts": "ac67b918eada24d025f256325cebe3562d11936d3317e1b021ee1ec127230219",
+        "go": "ac67b918eada24d025f256325cebe3562d11936d3317e1b021ee1ec127230219"
+      }
+    },
+    {
+      "name": "v1: the committed v1 frame, signed (trailing slot)",
+      "hex": "8101000107000000090909090909090909090909090909090909090909090909090909090909090901030101010101010101010101010101010101010101010101010101010101010101070707070707070707070707070707070707070707070707070707070707070700000000000000000000000000000000000000000000000000000000000000008813000000000000400d030002020c0000010200000040420f0000000000abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab",
+      "expect": {
+        "rust": "761b1f93c15a9758ff5885294853d3df69445aeb84a27392ad9a833eaeeb337b",
+        "ts": "761b1f93c15a9758ff5885294853d3df69445aeb84a27392ad9a833eaeeb337b",
+        "go": "761b1f93c15a9758ff5885294853d3df69445aeb84a27392ad9a833eaeeb337b"
+      }
+    },
+    {
+      "name": "v1: the same frame unsigned",
+      "hex": "8101000107000000090909090909090909090909090909090909090909090909090909090909090901030101010101010101010101010101010101010101010101010101010101010101070707070707070707070707070707070707070707070707070707070707070700000000000000000000000000000000000000000000000000000000000000008813000000000000400d030002020c0000010200000040420f000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "expect": {
+        "rust": "761b1f93c15a9758ff5885294853d3df69445aeb84a27392ad9a833eaeeb337b",
+        "ts": "761b1f93c15a9758ff5885294853d3df69445aeb84a27392ad9a833eaeeb337b",
+        "go": "761b1f93c15a9758ff5885294853d3df69445aeb84a27392ad9a833eaeeb337b"
+      }
+    },
+    {
+      "name": "v1: a config-mask bit the decoder does not know",
+      "hex": "8101000127000000090909090909090909090909090909090909090909090909090909090909090901030101010101010101010101010101010101010101010101010101010101010101070707070707070707070707070707070707070707070707070707070707070700000000000000000000000000000000000000000000000000000000000000008813000000000000400d030002020c0000010200000040420f0000000000abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab",
+      "expect": {
+        "rust": "error",
+        "ts": "0ff4d5edf543fce5bc55b2bee207f5249c53d1fe86522c6334a7f3fc59b786b6",
+        "go": "0ff4d5edf543fce5bc55b2bee207f5249c53d1fe86522c6334a7f3fc59b786b6"
+      },
+      "note": "the SDKs zero the trailing slots without parsing a v1 message; the Core refuses the frame, so it never approved one and no digest of it can match an approval"
+    },
+    {
+      "name": "v1: 13 required signatures",
+      "hex": "810d000107000000090909090909090909090909090909090909090909090909090909090909090901030101010101010101010101010101010101010101010101010101010101010101070707070707070707070707070707070707070707070707070707070707070700000000000000000000000000000000000000000000000000000000000000008813000000000000400d030002020c0000010200000040420f0000000000abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab",
+      "expect": {
+        "rust": "error",
+        "ts": "error",
+        "go": "error"
+      }
+    },
+    {
+      "name": "v1: over 4,096 bytes",
+      "hex": "8101000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "expect": {
+        "rust": "error",
+        "ts": "error",
+        "go": "error"
+      }
+    },
+    {
+      "name": "legacy: no signature at all",
+      "hex": "000100020479b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664274ed6b26805d2fe8d060529ee9a2f28763b6976d9c5fd1dee38ff36b3b7693900000000000000000000000000000000000000000000000000000000000000000306466fe5211732ffecadba72c39be7bc8ce5bbc5f7126b2c439b3a4000000000000000000000000000000000000000000000000000000000000000000000000303000502400d030003000903e803000000000000020200010c0200000080841e0000000000",
+      "expect": {
+        "rust": "d452e3e577ed3d37f992fc6bccd12fae7f8a501194b7a4ff3de4b7a3e8ef77f0",
+        "ts": "error",
+        "go": "error"
+      },
+      "note": "SDKs stricter: every transaction has a fee payer; the Core's pre-parse digest reads the empty array"
+    },
+    {
+      "name": "legacy: a signature count that is not minimally encoded",
+      "hex": "8000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100020479b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664274ed6b26805d2fe8d060529ee9a2f28763b6976d9c5fd1dee38ff36b3b7693900000000000000000000000000000000000000000000000000000000000000000306466fe5211732ffecadba72c39be7bc8ce5bbc5f7126b2c439b3a4000000000000000000000000000000000000000000000000000000000000000000000000303000502400d030003000903e803000000000000020200010c0200000080841e0000000000",
+      "expect": {
+        "rust": "error",
+        "ts": "error",
+        "go": "error"
+      }
+    },
+    {
+      "name": "legacy: two slots declared, one present",
+      "hex": "0200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "expect": {
+        "rust": "error",
+        "ts": "error",
+        "go": "error"
+      }
+    },
+    {
+      "name": "legacy: over 1,232 bytes",
+      "hex": "010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "expect": {
+        "rust": "error",
+        "ts": "error",
+        "go": "error"
+      }
+    },
+    {
+      "name": "empty",
+      "hex": "",
+      "expect": {
+        "rust": "error",
+        "ts": "error",
+        "go": "error"
+      }
+    }
+  ]
+}

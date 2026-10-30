@@ -45,6 +45,12 @@
 //! Deterministic per seed; the seed and the iteration count are printed so
 //! any run can be reproduced.
 //!
+//! Round 39 (core-identity): `--inputs DIR` (repeatable) also replays every
+//! file of a directory, so a coverage-guided corpus — the one
+//! `cargo fuzz run parse_transaction` grows under `graphite-core/fuzz/corpus/`
+//! — is judged against the runtime by the same three properties. Coverage
+//! guidance is over Graphite's parser, the side whose acceptances matter.
+//!
 //! Round 29 (audit 2026-10-20): the generator never produced a frame past
 //! the account-lock limit, the 256-account limit or the instruction-trace
 //! limit, so three of Graphite's refusals (`TooManyAccountLocks`,
@@ -984,6 +990,34 @@ fn run_corpus(path: &PathBuf, tally: &mut Tally) -> (usize, usize) {
     (entries.len(), mutations.len())
 }
 
+/// Every file of `dir` as one byte string (Round 39, core-identity): the way
+/// to put a COVERAGE-GUIDED corpus in front of the runtime. The generator
+/// below is seeded and structure-aware but blind to which of Graphite's
+/// branches it reached; `cargo fuzz run parse_transaction` grows a corpus
+/// that is guided by exactly that, and `--inputs <its corpus directory>`
+/// replays every frame of it through the same three properties. Files are
+/// read in name order so a run is reproducible; a directory that cannot be
+/// read stops the run rather than comparing nothing.
+fn run_input_dir(dir: &PathBuf, tally: &mut Tally) -> (usize, u64) {
+    let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("cannot read inputs {}: {e}", dir.display()))
+        .map(|entry| entry.expect("directory entry").path())
+        .filter(|p| p.is_file())
+        .collect();
+    paths.sort();
+    let mut accepted = 0u64;
+    for path in &paths {
+        let bytes = std::fs::read(path)
+            .unwrap_or_else(|e| panic!("cannot read input {}: {e}", path.display()));
+        let before = tally.both_accept;
+        tally.check(&format!("input {}", path.display()), &bytes);
+        if tally.both_accept > before {
+            accepted += 1;
+        }
+    }
+    (paths.len(), accepted)
+}
+
 // ─── The generator ────────────────────────────────────────────────────────────
 
 /// xorshift64*: small, fast, and reproducible from one seed.
@@ -1620,11 +1654,13 @@ fn main() {
     let mut seed: u64 = 0x5eed_2026_0916;
     let mut corpus = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../graphite-core/fixtures/artifacts/sak_bridge_corpus.json");
+    let mut input_dirs: Vec<PathBuf> = Vec::new();
     while let Some(a) = args.next() {
         match a.as_str() {
             "--iterations" => iterations = args.next().expect("count").parse().expect("u64"),
             "--seed" => seed = args.next().expect("seed").parse().expect("u64"),
             "--corpus" => corpus = PathBuf::from(args.next().expect("path")),
+            "--inputs" => input_dirs.push(PathBuf::from(args.next().expect("directory"))),
             other => panic!("unknown argument {other}"),
         }
     }
@@ -1673,6 +1709,13 @@ fn main() {
     println!(
         "limits: {limit_frames} frames either side of the instruction, lock and account limits"
     );
+    for dir in &input_dirs {
+        let (files, accepted) = run_input_dir(dir, &mut tally);
+        println!(
+            "inputs {}: {files} files, {accepted} well-formed by both",
+            dir.display()
+        );
+    }
 
     let mut rng = Rng(seed | 1);
     let mut generated_accepted = 0u64;

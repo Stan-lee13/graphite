@@ -18,7 +18,10 @@ What the adapter adds is the wallet a caller builds its own SAK agent on, for
   key. Now `getGatedWallet()` returns the wallet, and the caller builds its agent in its own
   code: `new SolanaAgentKit(agent.getGatedWallet(), rpcUrl, config)`. `openAiApiKey` is
   refused by name: the adapter holds no OpenAI key. A test pins that importing the adapter
-  loads no SAK and no Zod.
+  loads no SAK and no Zod. The development tree (where SAK is a dev dependency for those
+  tests) forces Zod 4.6.7, which SAK 2.x (`zod ^3`) is not written for: SAK's own
+  `createOpenAITools` throws in this tree (Round 39, R39-CLIENTS-2, `zod-override.test.ts`).
+  An agent you build installs SAK with its own Zod; this tree's override does not reach it.
 - **SAK never holds the key (Round 19, F-19-C2).** A `SolanaAgentKit` agent on
   `VerificationGatedWallet` (`gated-wallet.ts`) gets a public key whose every signing method
   (`signTransaction`, `signAllTransactions`, `sendTransaction`,

@@ -22,7 +22,19 @@
 //   - one Core's verdicts shown after switching to another;
 //   - a transaction-bound verdict whose digest is not on screen;
 //   - a call-graph label drawn outside its canvas;
-//   - focus escaping an open detail pane, or not returning when it closes.
+//   - focus escaping an open detail pane, or not returning when it closes;
+// and, since Round 39:
+//   - a deep link that says "Not in the graph" before the graph answered;
+//   - Escape in the command palette also closing the pane under it;
+//   - a /metrics 404 hiding everything /health said;
+//   - a /health field nobody sent drawn "Off", or failing appends "Writing";
+//   - the connection test blaming CORS for a /health that answered 500, and
+//     the sidebar calling that Core "unreachable";
+//   - a key pasted into the address field saved, or drawn on the page;
+//   - a refused copy that says nothing;
+//   - a malformed manifest crashing the Programs view;
+//   - the verdict tape's right edge labelled "now" under old verdicts;
+//   - the page wider than the phone (measured as the layout sees it).
 //
 // Usage (the console served by `npm run preview`, a Core on loopback whose
 // GRAPHITE_CORS_ORIGINS names the preview origin; seeded by seed.mjs):
@@ -121,6 +133,7 @@ function startProxy() {
     if (fault === "down") return req.socket.destroy();
     if (fault === "hang") return; // answers nothing; the console's deadline must end it
     if (fault === "slow") await new Promise((r) => setTimeout(r, 4000));
+    if (fault === "404") return send(404, "not found", "text/plain");
     let upstream;
     try {
       upstream = await fetch(`${coreBase}${path}`, { headers: key ? { Authorization: `Bearer ${key}` } : {} });
@@ -131,6 +144,8 @@ function startProxy() {
     const json = (upstream.headers.get("content-type") ?? "").includes("json");
     if (upstream.ok && json && fault === "hostile") body = hostile(url.pathname, body);
     if (upstream.ok && json && fault === "empty") body = empty(url.pathname, body);
+    // Round 39: a rule may rewrite the Core's JSON answer.
+    if (upstream.ok && json && typeof fault === "function") body = JSON.stringify(fault(JSON.parse(body)));
     send(upstream.status, body, upstream.headers.get("content-type") ?? "application/json");
   });
   return new Promise((resolve) =>
@@ -216,6 +231,13 @@ try {
         if (await page.getByText(/failed to draw/).count()) fail(where, "the error boundary caught a render failure");
         await runAxe(page, where);
       }
+      // Round 39 (R39-DASH-6): a Core that answers /health 500 is not
+      // "unreachable"; one that does not answer at all is.
+      if (opts === DESKTOP && (fault === "500" || fault === "down")) {
+        const label = await page.locator(".core-status-label").innerText();
+        const want = fault === "500" ? "Core answering with errors" : "Core unreachable";
+        if (label !== want) fail(`${fault}/sidebar`, `the sidebar says "${label}", not "${want}"`);
+      }
       await ctx.close();
     }
   }
@@ -279,6 +301,13 @@ try {
     const status = await page.locator(".figure", { hasText: "Status" }).first().innerText();
     if (/Operational/.test(status)) fail("stopped/system", `a Core that stopped answering is drawn "${status.replace(/\s+/g, " ")}"`);
     await runAxe(page, "stopped/system");
+    // Round 39: and when it is back (a restart), the console recovers on
+    // its own — the banner goes and the status is the Core's again.
+    proxy.set();
+    await page.waitForTimeout(7000);
+    if (await page.getByText(/Showing the last good data/).count()) fail("restarted/system", "the stale-data banner stayed after the Core came back");
+    const back = await page.locator(".figure", { hasText: "Status" }).first().innerText();
+    if (!/Operational|Degraded/.test(back)) fail("restarted/system", `the Core that came back is drawn "${back.replace(/\s+/g, " ")}"`);
     await ctx.close();
   }
 
@@ -397,6 +426,177 @@ try {
       }
       await ctx.close();
     }
+  }
+
+  // ---- Round 39 -----------------------------------------------------------
+  const JUP = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+  const detailText = async (page) => (await page.locator(".detail").innerText().catch(() => "")).replace(/\s+/g, " ");
+
+  // 11. R39-DASH-1: a deep link opened while the graph has not answered
+  //     says it is loading, not that the program is not in the graph.
+  proxy.set(["/api/graph", "hang"]);
+  {
+    const { ctx, page } = await open(proxy.base);
+    for (const view of ["programs", "graph"]) {
+      await go(page, `${view}/${JUP}`, 1500);
+      const d = await detailText(page);
+      if (/Not in the graph|Unknown program/.test(d)) fail(`deeplink-loading/${view}`, `the pane says "${d.slice(0, 80)}" before the graph answered`);
+    }
+    await ctx.close();
+  }
+  proxy.set();
+
+  // 12. R39-DASH-2: Escape in the palette closes the palette, not the pane
+  //     under it; a second Escape closes the pane.
+  {
+    const { ctx, page } = await open(coreBase);
+    await go(page, `programs/${JUP}`, 2000);
+    await page.keyboard.press("Control+k");
+    await page.waitForTimeout(300);
+    await runAxe(page, "palette-over-detail");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    const after = [await page.locator(".palette").count(), await page.locator(".detail").count()];
+    if (after[0] !== 0 || after[1] !== 1) fail("palette-over-detail", `after one Escape: palette ${after[0]}, pane ${after[1]} (want 0, 1)`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    if (await page.locator(".detail").count()) fail("palette-over-detail", "a second Escape did not close the pane");
+    await ctx.close();
+  }
+
+  // 13. R39-DASH-4: /metrics answered 404 (a proxy that does not route it):
+  //     System still says what /health said; the bypass signals are unknown.
+  proxy.set(["/metrics", "404"]);
+  {
+    const { ctx, page } = await open(proxy.base);
+    await go(page, "system", 2500);
+    const status = await page.locator(".figure", { hasText: "Status" }).first().innerText().catch(() => "");
+    if (!/Operational|Degraded/.test(status)) fail("metrics-404/system", `no /health status on screen: ${JSON.stringify((await mainText(page)).slice(0, 120))}`);
+    const meta = await page.locator("section", { has: page.locator("h2", { hasText: "Bypass signals" }) }).locator(".section-meta").innerText().catch(() => "");
+    if (!/unknown/i.test(meta)) fail("metrics-404/system", `bypass signals drawn "${meta.trim()}" with /metrics unread`);
+    await runAxe(page, "metrics-404/system");
+    await ctx.close();
+  }
+
+  // 14. R39-DASH-5: a /health without `audit` or `graph_persistence` is
+  //     "Not reported"; failing appends are not "Writing".
+  const figure = async (page, label) => (await page.locator(".figure", { hasText: label }).first().innerText()).replace(/\s+/g, " ");
+  proxy.set(["/health", (j) => (delete j.audit, delete j.graph_persistence, j)]);
+  {
+    const { ctx, page } = await open(proxy.base);
+    await go(page, "system", 2500);
+    for (const label of ["Audit trail", "Graph snapshots"]) {
+      const f = await figure(page, label);
+      if (!/Not reported/.test(f)) fail("health-partial/system", `"${f}" for a field /health did not send`);
+    }
+    proxy.set(["/health", (j) => ((j.audit.writes_failed = 3), (j.degraded = true), (j.degraded_reasons = ["audit_writes_failed"]), j)]);
+    // A reload, not a hash change: the same-document navigation would keep
+    // the last /health on screen until the next poll.
+    await page.reload();
+    await page.waitForTimeout(2500);
+    const f = await figure(page, "Audit trail");
+    if (!/Failing/.test(f)) fail("audit-failing/system", `"${f}" for a trail whose appends fail`);
+    await runAxe(page, "audit-failing/system");
+    await ctx.close();
+  }
+  proxy.set();
+
+  // 15. R39-DASH-6: the connection test does not blame CORS for an answer.
+  //     R39-DASH-7: a key pasted into the address is not saved or drawn.
+  {
+    const { ctx, page } = await open(coreBase);
+    await go(page, "connect", 800);
+    proxy.set(["/health", "500"]);
+    await page.fill("#core-base", proxy.base);
+    await page.getByRole("button", { name: "Test connection" }).click();
+    await page.locator(".report").waitFor();
+    const r = (await page.locator(".report").innerText()).replace(/\s+/g, " ");
+    if (/No answer|CORS/.test(r)) fail("connect/health-500", `the test of a Core that answered 500 says "${r}"`);
+    proxy.set();
+    await page.fill("#core-base", key || "e2e-not-an-address-0123456789abcdef");
+    const pasted = await page.inputValue("#core-base");
+    await page.getByRole("button", { name: "Save and use" }).click();
+    await page.waitForTimeout(300);
+    if ((await page.evaluate(() => localStorage.getItem("graphite.core"))) === pasted) fail("connect/key-as-address", "the value was saved as the Core address");
+    await runAxe(page, "connect/key-as-address");
+    await go(page, "overview", 1500);
+    const shown = await page.evaluate(() => document.body.innerText);
+    if (shown.includes(pasted)) fail("connect/key-as-address", "the pasted value is drawn on the page");
+    await ctx.close();
+  }
+
+  // 16. R39-DASH-8: a copy the browser refuses says so.
+  {
+    const { ctx, page } = await open(coreBase);
+    await ctx.addInitScript(() => Object.defineProperty(navigator, "clipboard", { value: { writeText: () => Promise.reject(new Error("denied")) } }));
+    await go(page, "programs", 2500);
+    const b = page.locator("td.id .copy").first();
+    await b.click();
+    await page.waitForTimeout(200);
+    if (!/Copy failed/.test(await b.innerText())) fail("copy-refused", `the button says "${(await b.innerText()).trim()}" after a refused copy`);
+    await ctx.close();
+  }
+
+  // 17. R39-DASH-12: a manifest without what the pane draws is unreadable,
+  //     not a crash.
+  proxy.set(["/manifests", (j) => (j.forEach((m) => m.instructions.forEach((ix) => delete ix.accounts)), j)]);
+  {
+    const { ctx, page } = await open(proxy.base);
+    await go(page, `programs/${JUP}`, 3000);
+    if (await page.getByText(/failed to draw/).count()) fail("manifest-malformed/programs", "the error boundary caught a render failure");
+    if (!/not readable/.test(await detailText(page))) fail("manifest-malformed/programs", "the pane does not say the manifest is unreadable");
+    await ctx.close();
+  }
+  proxy.set();
+
+  // 18. R39-DASH-3: under verdicts two days old the tape's right edge is not
+  //     "now".
+  {
+    const old = new Date(Date.now() - 2 * 86400e3).toISOString();
+    proxy.set(["/api/confidence-history", (j) => (j.series.forEach((p) => (p.timestamp = old)), j)]);
+    const { ctx, page } = await open(proxy.base);
+    await go(page, "overview", 2500);
+    const axis = (await page.locator(".tape-axis").innerText().catch(() => "")).replace(/\s+/g, " ");
+    if (/\bnow\b/.test(axis)) fail("tape-old", `the tape's axis reads "${axis}" under two-day-old verdicts`);
+    await ctx.close();
+    proxy.set();
+  }
+
+  // 19. R39-DASH-9: "Updated … ago" keeps counting while no poll lands (it
+  //     was computed when the last poll landed and never again).
+  //     R39-DASH-11: the Verifications filter is toggle buttons, not radios
+  //     that ignore the arrow keys.
+  {
+    const { ctx, page } = await open(proxy.base);
+    await go(page, "verifications", 2500);
+    if (await page.locator(".seg [role=radio]").count()) fail("filter", "the filter's buttons are radios without arrow-key support");
+    if ((await page.locator(".seg button[aria-pressed=true]").count()) !== 1) fail("filter", "exactly one filter is not marked pressed");
+    proxy.set(["/api/confidence-history", "hang"]);
+    const before = await page.locator(".freshness").first().innerText();
+    await page.waitForTimeout(12_000);
+    const after = await page.locator(".freshness").first().innerText().catch(() => "");
+    if (after === before) fail("freshness", `"${after}" twelve seconds later, with no poll landed`);
+    await ctx.close();
+    proxy.set();
+  }
+
+  // 20. Fresh, nothing configured: no address, no key, no visit before. The
+  //     console's own origin is asked; `vite preview` proxies it to the
+  //     Core on 7331 (vite.config.ts), which wants a key. The console says
+  //     so, and names no stored key it does not have.
+  {
+    const ctx = await browser.newContext({ ...DESKTOP, bypassCSP: true });
+    const page = await ctx.newPage();
+    page.on("pageerror", (e) => fail("fresh", `page error: ${e.message}`));
+    await page.goto(`${consoleUrl}#/overview`);
+    await page.waitForTimeout(3000);
+    const text = (await page.locator("body").innerText()).replace(/\s+/g, " ");
+    const where = page.url().replace(/^[^#]*/, "");
+    const ok = where === "#/connect" || /requires a key, and none is stored/.test(text);
+    if (!ok) fail("fresh", `a console with nothing configured shows ${where}: "${text.slice(0, 160)}"`);
+    if (/rejected the key stored/.test(text)) fail("fresh", "it blames a stored key it does not have");
+    await runAxe(page, "fresh");
+    await ctx.close();
   }
 } finally {
   await browser.close();

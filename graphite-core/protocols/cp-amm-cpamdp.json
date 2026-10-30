@@ -2759,7 +2759,12 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool, input_token_account, output_token_account, token_a_vault, token_b_vault, referral_token_account",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.input_token_account to the pool's vault",
+    "transfers tokens into or out of accounts.token_a_vault",
+    "transfers tokens into or out of accounts.token_b_vault",
+    "transfers the output tokens from the pool's vault to accounts.output_token_account",
+    "credits accounts.referral_token_account with the referral share when it is passed",
+    "debits accounts.input_token_account by the input tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -2876,7 +2881,12 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool, input_token_account, output_token_account, token_a_vault, token_b_vault, referral_token_account",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.input_token_account to the pool's vault",
+    "transfers tokens into or out of accounts.token_a_vault",
+    "transfers tokens into or out of accounts.token_b_vault",
+    "transfers the output tokens from the pool's vault to accounts.output_token_account",
+    "credits accounts.referral_token_account with the referral share when it is passed",
+    "debits accounts.input_token_account by the input tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

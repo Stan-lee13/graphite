@@ -1,5 +1,11 @@
 # Graphite — Solana Foundation grant proposal
 
+> **Superseded for the 2026-10 application** by [`grant/developer-tooling-proposal.md`](grant/developer-tooling-proposal.md)
+> (the Foundation's Developer Tooling template, $18,000) and
+> [`grant/application-form-answers.md`](grant/application-form-answers.md). This page is kept as the
+> project's longer narrative; its budget below is the earlier $120,000 request, which the Foundation
+> declined as above its budget.
+
 > **Revised 2026-10-25, after Round 38** (§4; the rest as revised after Round 34). Every figure about Graphite below is measured in this
 > repository and named with where it comes from. [`CURRENT.md`](CURRENT.md) is authoritative
 > for anything that has moved since. Refresh this page again before any submission.
@@ -7,7 +13,7 @@
 **Project:** Graphite — deterministic verification of a Solana transaction's bytes against what
 the agent says it is doing, before the agent's key signs it.
 **License:** MIT. The whole system is open source.
-**Requested funding:** $120,000, milestone-based, three milestones over about nine months.
+**Requested funding:** $18,000 in the current application (see the banner); the $120,000 plan in §5 is the earlier request.
 **Grant type:** open-source public good / security infrastructure.
 
 ---
@@ -25,7 +31,7 @@ What exists today, all in the repository:
 
 - **A Rust core** with an eight-layer pipeline, an HTTP server with an append-only audit trail,
   a CLI, and a manifest registry with signed submissions and a replay gate.
-- **137 protocol manifests covering 3,541 instructions.** Every program id is verified
+- **137 protocol manifests covering 3,518 instructions.** Every program id is verified
   executable on mainnet. 113 carry a `BattleTested` tier backed by a recorded mainnet
   measurement, which the loader checks and lowers when the evidence does not support it
   ([`protocol-coverage.md`](protocol-coverage.md)).
@@ -110,9 +116,12 @@ observe, and the guard refuses to sign over any such gap the operator has not ac
   the finding that changed it ([`round24-the-intent-is-the-class-2026-10-03.md`](round24-the-intent-is-the-class-2026-10-03.md)).
   The samples are fetched by slot list, with their SHA-256 recorded, so anyone can re-measure
   them ([`../tools/mainnet-sample/SAMPLES.md`](../tools/mainnet-sample/SAMPLES.md)).
-  Live replays on a real RPC approve nothing yet: on the Round 35 head, 0 of 200 replayed
-  transactions were approved in each of two runs, most failing simulation against later state,
-  so the approval path on live traffic is unmeasured.
+  On a real mainnet RPC (Round 40, 2026-10-29, after `graphite evidence import-census`), 27 of
+  28 new, never-signed honest transfers built from accounts that had just transferred were
+  approved for signing (21/21 System, 6/7 SPL Token; the refusal would have failed on chain)
+  ([report](evidence/live-mainnet/run-40839253280.md)). Replays of other people's transactions
+  mostly fail simulation against later state, so they do not measure the approval path; no
+  swap was measured.
 - **Real exploits.** 35 mainnet exploit transactions from the public SolPhishHunter dataset
   (arXiv:2505.04094), labelled outside Graphite, are all refused.
 

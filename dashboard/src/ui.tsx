@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Copy, Inbox, KeyRound, PlugZap, ServerCrash, X } from "lucide-react";
 import { ApiError } from "./api";
+import { createModalStack } from "./modal-stack";
 import { hrefFor } from "./router";
 import type { Polled } from "./usePolling";
 
@@ -92,35 +93,71 @@ export function CopyId({
   head?: number;
   tail?: number;
 }) {
-  const [copied, setCopied] = useState(false);
+  // Round 39 (R39-DASH-8): a copy the browser refused (no clipboard on an
+  // insecure origin, a denied permission) did nothing at all — the button
+  // looked like it had worked or was broken. It now says so, and selects
+  // the full value so it can be copied by hand.
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const text = useRef<HTMLSpanElement>(null);
   useEffect(() => () => clearTimeout(timer.current), []);
+  const settle = (next: "copied" | "failed") => {
+    clearTimeout(timer.current);
+    setState(next);
+    timer.current = setTimeout(() => setState("idle"), next === "copied" ? 1200 : 4000);
+  };
+  const failed = () => {
+    settle("failed");
+    // The visible text is shortened; the sr-only full value is selectable.
+    const full = text.current;
+    const sel = window.getSelection();
+    if (full && sel) {
+      const range = document.createRange();
+      range.selectNodeContents(full);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  };
+  const shown = state === "copied" ? "Copied" : state === "failed" ? "Copy failed" : short ? shortId(value, head, tail) : value;
   return (
+    <>
     <button
       type="button"
-      className={copied ? "copy copied" : "copy"}
-      title={copied ? "Copied" : `Copy ${value}`}
+      className={state === "copied" ? "copy copied" : state === "failed" ? "copy failed" : "copy"}
+      title={state === "copied" ? "Copied" : state === "failed" ? `The browser refused the copy. ${value}` : `Copy ${value}`}
       translate="no"
       onClick={() => {
-        void navigator.clipboard?.writeText(value).then(
-          () => {
-            setCopied(true);
-            timer.current = setTimeout(() => setCopied(false), 1200);
-          },
-          () => {
-            /* clipboard unavailable on an insecure origin; the title still
-               carries the full value, so nobody is stuck */
-          },
-        );
+        try {
+          const p = navigator.clipboard?.writeText(value);
+          if (!p) return failed();
+          p.then(() => settle("copied"), failed);
+        } catch {
+          failed();
+        }
       }}
     >
       {/* Round 32 (WCAG 2.5.3): the name starts with the visible text and
           then says what the button does with the whole value; an aria-label
           of "Copy <value>" did not contain the shortened text shown. */}
-      <span className="copy-text">{copied ? "Copied" : short ? shortId(value, head, tail) : value}</span>
-      {copied ? null : <span className="sr-only">, copy {value}</span>}
-      {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+      <span className="copy-text">{shown}</span>
+      {state !== "copied" && (
+        <>
+          <span className="sr-only">{state === "failed" ? ": the browser refused; the value is " : ", copy "}</span>
+          {/* Only the value, so a selection of it after a refused copy is
+              exactly what to paste. */}
+          <span className="sr-only" ref={text}>
+            {value}
+          </span>
+        </>
+      )}
+      {state === "copied" ? <Check aria-hidden="true" /> : state === "failed" ? <X aria-hidden="true" /> : <Copy aria-hidden="true" />}
     </button>
+    {/* Announced without moving focus; outside the button, whose children
+        are presentational. */}
+    <span className="sr-only" role="status">
+      {state === "copied" ? "Copied" : state === "failed" ? "Copy failed" : ""}
+    </span>
+    </>
   );
 }
 
@@ -180,7 +217,7 @@ export function Fault({ error, title }: { error: ApiError; title?: string }) {
   );
 }
 
-function FaultNote({ error }: { error: ApiError }) {
+export function FaultNote({ error }: { error: ApiError }) {
   if (error.kind === "unauthorized") {
     return (
       <div className="note fault" role="alert">
@@ -280,6 +317,11 @@ export function pollFault(...sources: Polled<unknown>[]): ApiError | null {
  * polls had silently stopped looked exactly like a live one.
  */
 export function Freshness({ sources }: { sources: Polled<unknown>[] }) {
+  // Round 39 (R39-DASH-9): the age was computed when a poll last landed and
+  // never again, so a tab left in the background (polls slowed six-fold,
+  // timers throttled further by the browser) read "Updated 2s ago" for a
+  // minute or more. It is recomputed on a clock now.
+  useNow(5000);
   const failing = sources.find((s) => s.error !== null);
   const times = sources.map((s) => s.updatedAt).filter((t): t is number => t !== null);
   const oldest = times.length === sources.length && times.length > 0 ? Math.min(...times) : null;
@@ -299,6 +341,15 @@ export function Freshness({ sources }: { sources: Polled<unknown>[] }) {
       Updated {relTime(oldest)}
     </p>
   );
+}
+
+/** Re-render every `ms`, so relative times stay true. */
+function useNow(ms: number): void {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), ms);
+    return () => clearInterval(t);
+  }, [ms]);
 }
 
 /** One figure. Figures sit in a hairline row, not in cards. */
@@ -407,6 +458,9 @@ export function Jump({ href, children }: { href: string; children: ReactNode }) 
   );
 }
 
+/** The one stack every modal surface registers with (modal-stack.ts). */
+const modals = createModalStack();
+
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -434,7 +488,11 @@ export function useModal(
     if (!open) return;
     const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     (initial?.current ?? ref.current)?.focus();
+    // Round 39 (R39-DASH-2): only the surface opened last answers a key.
+    const id = Symbol("modal");
+    const close = modals.open(id);
     const onKey = (e: KeyboardEvent) => {
+      if (!modals.isTop(id)) return;
       if (e.key === "Escape") {
         e.preventDefault();
         onCloseRef.current();
@@ -462,6 +520,7 @@ export function useModal(
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
+      close();
       if (before && before.isConnected) before.focus();
     };
     // `ref` and `initial` are stable refs; re-run only when it opens or closes.

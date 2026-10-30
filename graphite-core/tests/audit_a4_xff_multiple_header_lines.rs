@@ -55,6 +55,7 @@ fn start_server(extra_env: &[(&str, &str)]) -> SocketAddr {
         "GRAPHITE_WALLET_PROFILE",
         "GRAPHITE_ALLOW_PERMISSIVE_PROFILES",
         "GRAPHITE_TRUST_PROXY",
+        "GRAPHITE_TRUSTED_PROXIES",
         "GRAPHITE_RATE_LIMIT",
         "GRAPHITE_AUDIT_ROTATE_BYTES",
         "GRAPHITE_AUDIT_MAX_ARCHIVES",
@@ -119,6 +120,10 @@ fn a_second_forwarded_for_line_cannot_choose_the_rate_limit_bucket() {
     // this test is always refused.
     let addr = start_server(&[
         ("GRAPHITE_TRUST_PROXY", "1"),
+        // Round 40 (R39-CB-8): this test's client IS the proxy (loopback),
+        // so it is listed; tests/round40_trusted_proxies.rs covers a peer
+        // that is not.
+        ("GRAPHITE_TRUSTED_PROXIES", "127.0.0.1"),
         ("GRAPHITE_RATE_LIMIT", "0.1"),
     ]);
 

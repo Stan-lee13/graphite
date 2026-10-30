@@ -103,12 +103,13 @@ import {
   readFileSync,
   readSync,
   renameSync,
+  statSync,
   unlinkSync,
   writeSync,
 } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { userInfo } from "node:os";
-import { join, posix, win32 } from "node:path";
+import { dirname, join, posix, resolve, win32 } from "node:path";
 
 /** Opened with this, a path that is a symbolic link fails (ELOOP) instead of being followed. */
 const O_NOFOLLOW = fsConstants.O_NOFOLLOW ?? 0;
@@ -424,6 +425,60 @@ export function assertPrivateDirectory(dir: string, euid: number | undefined = p
 }
 
 /**
+ * Refuse a state file another user could rewrite (Round 39, R39-CLIENTS-6).
+ *
+ * The state file holds what the guard must not forget — the aggregate's
+ * reservations and the submissions that may still land — and its lock sits
+ * beside it. The wallet-lock directory has had to be private since Round 34;
+ * the state file's directory was never checked. In a directory another user
+ * can write, that user could rename the file away and plant one without the
+ * reservations or the unresolved submissions, which the next start replays:
+ * the window's allowance back in full, and a request whose earlier submission
+ * may still land built a second time. (The running guard keeps its own copy
+ * and notices a lock that moved; the restart is what trusts the file.) A temp
+ * directory is the same hazard from a cleaner.
+ *
+ * So: the directory must be this user's and writable by no one else, and an
+ * existing state file a regular file (not a symbolic link) of this user's that
+ * no one else can write. Read access is not refused. On Windows only the kinds
+ * are checked: Node cannot read an ACL (as for the lock directory, G2-6).
+ */
+export function assertPrivateStateLocation(path: string, euid: number | undefined = process.geteuid?.()): void {
+  const dir = dirname(resolve(path));
+  let st;
+  try {
+    st = statSync(dir);
+  } catch (e) {
+    throw new GuardStateError(`the state file's directory ${dir} could not be read: ${(e as Error).message}. REFUSING TO START.`);
+  }
+  if (!st.isDirectory()) throw new GuardStateError(`the state file's directory ${dir} is not a directory. REFUSING TO START.`);
+  const unix = process.platform !== "win32" && euid !== undefined;
+  if (unix && (st.uid !== euid || (st.mode & 0o022) !== 0)) {
+    throw new GuardStateError(
+      `the state file's directory ${dir} is ${st.uid !== euid ? `owned by uid ${st.uid}, not this user (uid ${euid})` : `writable by others (mode 0${(st.mode & 0o777).toString(8)})`}: ` +
+        "another user could replace the state file with one that forgets the reservations and the unresolved submissions. " +
+        "Keep it in a directory of this user's that only this user can write. REFUSING TO START.",
+    );
+  }
+  let file;
+  try {
+    file = lstatSync(path);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw new GuardStateError(`the state file ${path} could not be read: ${(e as Error).message}. REFUSING TO START.`);
+  }
+  if (file.isSymbolicLink() || !file.isFile()) {
+    throw new GuardStateError(`the state file ${path} is ${file.isSymbolicLink() ? "a symbolic link" : "not a regular file"}. REFUSING TO START.`);
+  }
+  if (unix && (file.uid !== euid || (file.mode & 0o022) !== 0)) {
+    throw new GuardStateError(
+      `the state file ${path} is ${file.uid !== euid ? `owned by uid ${file.uid}, not this user` : `writable by others (mode 0${(file.mode & 0o777).toString(8)})`}. ` +
+        "REFUSING TO START.",
+    );
+  }
+}
+
+/**
  * One guard per wallet on this host (Round 32): a lock named for the
  * wallet's public key in a directory every guard shares. See the header.
  */
@@ -608,6 +663,7 @@ export class GuardState {
    */
   static open(path: string, opts: { retainSince?: number } = {}): GuardState {
     if (path.trim() === "") throw new GuardStateError(`${GUARD_STATE_FILE_ENV} is empty. REFUSING TO START.`);
+    assertPrivateStateLocation(path);
     const state = new GuardState(path);
     state.#lock(`${path}.lock`);
     try {

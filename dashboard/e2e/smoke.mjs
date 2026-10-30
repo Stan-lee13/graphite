@@ -6,7 +6,9 @@
 // view at desktop and phone width in Chromium and fails on:
 //   - a Content-Security-Policy violation (including an invalid source),
 //   - an uncaught page error or a view's error boundary ("failed to draw"),
-//   - the page wider than the viewport,
+//   - the page wider than the viewport (Round 39: measured against the
+//     layout width, clientWidth — under mobile emulation innerWidth grows
+//     to fit the overflow, so the old measure never saw it on a phone),
 //   - any axe-core violation, when AXE_CORE_PATH names axe.min.js,
 //   - a green "executable" verdict the Core did not report as
 //     `executable_approved` (checked against /api/confidence-history).
@@ -41,10 +43,15 @@ const axe = process.env.AXE_CORE_PATH ? readFileSync(process.env.AXE_CORE_PATH, 
 const VIEWS = ["overview", "programs", "graph", "verifications", "blocked", "registry", "system", "connect"];
 // Round 36: tablet too. At 768–1099px the sidebar is an icon rail, its own
 // anatomy, and its Search button had no accessible name — never drawn here.
+// Round 39: the narrowest phone too (320 CSS px: an iPhone SE in a split
+// view, or a 1280 window at 400% zoom), and the tablet's narrow edge (768),
+// where both Verifications and Blocked scrolled sideways.
 const SIZES = {
   desktop: { viewport: { width: 1440, height: 900 } },
   tablet: { viewport: { width: 820, height: 1180 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
+  "tablet-narrow": { viewport: { width: 768, height: 1024 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
   phone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
+  "phone-small": { viewport: { width: 320, height: 640 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
 };
 const failures = [];
 const fail = (where, what) => failures.push(`${where}: ${what}`);
@@ -81,7 +88,11 @@ try {
         await page.goto(`${consoleUrl}#/${view}`);
         await page.waitForTimeout(1500);
         if (await page.getByText(/failed to draw/).count()) fail(where, "the view's error boundary caught a render failure");
-        const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+        // Round 39 (R39-DASH-13): clientWidth, the layout viewport. Under
+        // isMobile, innerWidth widens to the content (a 390 px phone with a
+        // 438 px page reports innerWidth 438), so `scrollWidth - innerWidth`
+        // was 0 on every phone and tablet walk however wide the page was.
+        const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
         if (over > 1) fail(where, `the page is ${over}px wider than the viewport`);
         if (bypassCSP) {
           await page.addScriptTag({ content: axe });

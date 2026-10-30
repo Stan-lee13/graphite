@@ -16,6 +16,10 @@ One run, each step reported:
                  (`graphite evidence seed` / `baseline`), exactly what an
                  operator does before a fresh Core approves anything: without
                  earned or seeded evidence every built-in profile refuses.
+                 Operator-asserted on purpose: the measured census
+                 (`import-census`) is mainnet-beta's, and since Round 40 a
+                 server whose data directory holds it refuses to start on any
+                 other cluster's RPC, so a devnet run cannot use it.
   4. core      — the Core, with the devnet RPC attached (executable mode).
   5. ai layer  — python-ai-layer/intent_parser.py --serve.
   6. guard     — integrations/agent-guard/devnet-test.ts: grounded request →

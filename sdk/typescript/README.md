@@ -55,10 +55,16 @@ verifyTransactionDigest(bytes, result); // the bytes you sign are the bytes it v
 (`computeExecutionDecision`) and requires the server to agree: an approval that is not
 artifact-bound and simulated, carries a residual beyond `program_semantics` and
 `inner_instructions`, or reports a failed layer is not executable whatever `decision` says;
-a `decision` this SDK does not know is not executable; a server older than Round 30 (no
-`decision`) is judged by the recomputation alone here — the agent guard, which signs,
-refuses such a response outright since Round 34. `verify` refuses a response whose
-`executable: true` its own fields contradict. An operator who has deliberately accepted a
+a `decision` this SDK does not know is not executable; and since Round 39 (R39-CLIENTS-1)
+a server older than Round 30 (no `decision`) is not executable either, as the Core's own
+rule reads an absent decision and as the agent guard has refused one since Round 34 (it
+was judged by the recomputation alone, which was looser than the Core: such a server
+predates every rule added since). Its verdict is still readable. `verify` refuses a
+response whose `executable: true` its own fields contradict, and an integer field spelled
+as a float (`215.0`, `2.15e2`) or past its type (a u32 limit over 4,294,967,295), as the
+Core's types and the Go SDK do (R39-CLIENTS-3). `examples/decisions/conformance.json` holds
+this SDK, the Go SDK, the Core's rule and the agent guard to one outcome per vector
+(`src/conformance.test.ts`). An operator who has deliberately accepted a
 residual (the agent guard's `ResidualPolicy`) makes that decision in their own code, by
 name, and logs it — `isExecutable` never does.
 

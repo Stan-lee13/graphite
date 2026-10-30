@@ -1867,7 +1867,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: signer, dex, user_token_0_account, user_token_1_account, recipient_token_0_account, recipient_token_1_account, token_0_reserve, token_1_reserve, token_0_vault, token_1_vault, dex_supply_position_token_0, dex_supply_position_token_1, dex_borrow_position_token_0, dex_borrow_position_token_1",
-    "credits the output token account with the received amount for the swap"
+    "when data.swap0to1 is true, transfers the input tokens from accounts.user_token_0_account to accounts.token_0_vault",
+    "when data.swap0to1 is true, transfers the output tokens from accounts.token_1_vault to accounts.user_token_1_account, or to accounts.recipient_token_1_account when it is passed",
+    "when data.swap0to1 is false, transfers the input tokens from accounts.user_token_1_account to accounts.token_1_vault",
+    "when data.swap0to1 is false, transfers the output tokens from accounts.token_0_vault to accounts.user_token_0_account, or to accounts.recipient_token_0_account when it is passed",
+    "when data.swap0to1 is true, debits accounts.user_token_0_account by the input tokens",
+    "when data.swap0to1 is false, debits accounts.user_token_1_account by the input tokens",
+    "when data.swap0to1 is true, credits accounts.user_token_1_account with the output tokens",
+    "when data.swap0to1 is false, credits accounts.user_token_0_account with the output tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -2065,7 +2072,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: signer, dex, user_token_0_account, user_token_1_account, recipient_token_0_account, recipient_token_1_account, token_0_reserve, token_1_reserve, token_0_vault, token_1_vault, dex_supply_position_token_0, dex_supply_position_token_1, dex_borrow_position_token_0, dex_borrow_position_token_1",
-    "credits the output token account with the received amount for the swap"
+    "when data.swap0to1 is true, transfers the input tokens from accounts.user_token_0_account to accounts.token_0_vault",
+    "when data.swap0to1 is true, transfers the output tokens from accounts.token_1_vault to accounts.user_token_1_account, or to accounts.recipient_token_1_account when it is passed",
+    "when data.swap0to1 is false, transfers the input tokens from accounts.user_token_1_account to accounts.token_1_vault",
+    "when data.swap0to1 is false, transfers the output tokens from accounts.token_0_vault to accounts.user_token_0_account, or to accounts.recipient_token_0_account when it is passed",
+    "when data.swap0to1 is true, debits accounts.user_token_0_account by the input tokens",
+    "when data.swap0to1 is false, debits accounts.user_token_1_account by the input tokens",
+    "when data.swap0to1 is true, credits accounts.user_token_1_account with the output tokens",
+    "when data.swap0to1 is false, credits accounts.user_token_0_account with the output tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

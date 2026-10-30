@@ -73,3 +73,37 @@ test("the shapes a broken Core or a proxy sends are refused, naming the field", 
 test("fields the console does not read pass through", () => {
   checkHistory({ series: [{ ...point, some_future_field: { x: 1 } }], count: 1, cursor: "abc" });
 });
+
+// Round 39 (R39-DASH-12): every list the program pane draws is checked, so a
+// malformed manifest is refused as unreadable rather than crashing the view.
+const instruction = {
+  name: "transfer",
+  discriminator: "02000000",
+  accounts: [{ name: "from", role: "signer", is_writable: true, is_signer: true, pda_seeds: [], expected_address: [] }],
+  expected_state_changes: ["debit from"],
+  allowed_cpis: [],
+  risk_rules: [],
+  variable_accounts: false,
+  risk_class: "value_transfer",
+};
+const manifest = (ix: unknown) => [{ protocol: { program_id: node.program_id }, instructions: [ix] }];
+
+test("R39-DASH-12: a manifest instruction without the lists the pane draws is malformed", () => {
+  assert.doesNotThrow(() => checkManifests(manifest(instruction)));
+  for (const field of ["accounts", "expected_state_changes", "allowed_cpis", "risk_rules", "name", "discriminator"]) {
+    const ix: Record<string, unknown> = { ...instruction };
+    delete ix[field];
+    assert.throws(() => checkManifests(manifest(ix)), (e: unknown) => e instanceof ShapeError && e.message.includes(field), field);
+  }
+  assert.throws(() => checkManifests(manifest({ ...instruction, risk_rules: [{ not: "text" }] })), ShapeError);
+  assert.throws(() => checkManifests(manifest({ ...instruction, accounts: [{ name: "from" }] })), /is_writable/);
+});
+
+test("R39-DASH-12: graph fields the pane draws as text or numbers are checked; health reasons are text", () => {
+  assert.doesNotThrow(() => checkGraph({ nodes: [node], edges: [] }));
+  assert.throws(() => checkGraph({ nodes: [{ ...node, cpi_targets: [7] }], edges: [] }), /cpi_targets\[0\]/);
+  assert.throws(() => checkGraph({ nodes: [{ ...node, community_verified_count: "many" }], edges: [] }), /community_verified_count/);
+  assert.throws(() => checkGraph({ nodes: [{ ...node, manifest_version: 1 }], edges: [] }), /manifest_version/);
+  assert.doesNotThrow(() => checkHealth({ status: "ok", version: "0.3.0", degraded: true, degraded_reasons: ["audit_writes_failed"] }));
+  assert.throws(() => checkHealth({ status: "ok", version: "0.3.0", degraded_reasons: [{ why: 1 }] }), /degraded_reasons\[0\]/);
+});

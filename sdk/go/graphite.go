@@ -714,21 +714,24 @@ func (r *VerificationResult) ComputeExecutionDecision() string {
 // IsExecutable reports whether this verdict permits signing — the ONE gate an
 // execution path should use (Round 30, G-01), not Approved.
 //
-// It recomputes the Core's rule and requires the server to agree: a server
-// that sent a decision must say executable_approved with executable true AND
-// the recomputation must agree; a decision this SDK does not know is not
-// executable; a verdict with neither field (a server older than Round 30) is
-// judged by the recomputation alone, which is never looser than the server.
+// It recomputes the Core's rule and requires the server to agree: the server
+// must have sent decision executable_approved with executable true AND the
+// recomputation must agree; a decision this SDK does not know is not
+// executable, and neither is a verdict without one.
+//
+// Round 39 (R39-CLIENTS-1): a verdict with neither field (a server older than
+// Round 30) used to be judged by the recomputation alone. The Core's own
+// is_executable reads an absent decision as blocked, and the agent guard has
+// refused one since Round 34; this SDK and the TypeScript SDK called the same
+// verdict executable. A server that predates the decision also predates every
+// rule the Core added after Round 30, so the recomputation was looser than
+// the Core. ComputeExecutionDecision still recomputes the rule for display.
 func (r *VerificationResult) IsExecutable() bool {
 	if r == nil {
 		return false
 	}
-	local := r.ComputeExecutionDecision()
-	if r.Decision == "" && r.Executable == nil {
-		return local == DecisionExecutableApproved
-	}
 	return r.Decision == DecisionExecutableApproved && r.Executable != nil && *r.Executable &&
-		local == DecisionExecutableApproved
+		r.ComputeExecutionDecision() == DecisionExecutableApproved
 }
 
 // BindKey is the key binding audit and lifecycle records to the described

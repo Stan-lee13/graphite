@@ -50,7 +50,14 @@ services:
       - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
-    networks: [edge, backend]
+    networks:
+      edge: {}
+      # A fixed address on the backend network (Round 40, R39-CB-8): the Core
+      # believes X-Forwarded-For only from GRAPHITE_TRUSTED_PROXIES, which
+      # names exactly this address. Outside the network's dynamic range, so
+      # no other container can be handed it.
+      backend:
+        ipv4_address: 10.73.31.2
     depends_on:
       graphite:
         condition: service_healthy
@@ -107,8 +114,13 @@ services:
       # Rotation checkpoints, outside the data volume; ship them off the host
       # (deploy/scripts/anchor-checkpoints.sh with ANCHOR_S3_URI).
       GRAPHITE_AUDIT_ANCHOR_DIR: /anchors
-      # Caddy is the one proxy hop in front.
+      # Caddy is the one proxy hop in front, and the only peer whose
+      # X-Forwarded-For is believed (Round 40, R39-CB-8): any other container
+      # on the backend network — the AI layer — is keyed by its own address,
+      # so it cannot choose a rate-limit bucket. Keep in step with Caddy's
+      # ipv4_address below.
       GRAPHITE_TRUST_PROXY: "1"
+      GRAPHITE_TRUSTED_PROXIES: "10.73.31.2"
       GRAPHITE_LOG_FORMAT: json
     secrets: [api_key, read_api_key, admin_api_key, audit_key]
     volumes:
@@ -182,8 +194,16 @@ secrets:
 networks:
   edge: {}
   # Core and AI layer: reachable from Caddy, not published. Not `internal`,
-  # because the Core calls its RPC providers.
-  backend: {}
+  # because the Core calls its RPC providers. A fixed subnet (Round 40,
+  # R39-CB-8) so Caddy's address is fixed: containers without a fixed address
+  # are given one from ip_range (.128-.255), never Caddy's .2. Change the
+  # subnet if it collides with one on this host, and Caddy's ipv4_address and
+  # GRAPHITE_TRUSTED_PROXIES with it.
+  backend:
+    ipam:
+      config:
+        - subnet: 10.73.31.0/24
+          ip_range: 10.73.31.128/25
 
 volumes:
   graphite-data:

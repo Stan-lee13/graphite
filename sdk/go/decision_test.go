@@ -138,7 +138,13 @@ func TestTheRuleTakesPermissionAwayFieldByField(t *testing.T) {
 	}
 }
 
-func TestAServerOlderThanRound30IsJudgedByTheRecomputation(t *testing.T) {
+// Re-pinned in Round 39 (R39-CLIENTS-1). This test was
+// TestAServerOlderThanRound30IsJudgedByTheRecomputation and asserted the
+// verdict below EXECUTABLE. The Core's own is_executable reads an absent
+// decision as blocked (serde default), the agent guard refuses it (Round 34),
+// and a server that old predates every rule added since — so the SDK was
+// looser than the Core. It still decodes; it is never executable.
+func TestAServerOlderThanRound30DecodesAndIsNeverExecutable(t *testing.T) {
 	m := fixtureMap(t, DecisionExecutableApproved)
 	delete(m, "decision")
 	delete(m, "executable")
@@ -147,8 +153,11 @@ func TestAServerOlderThanRound30IsJudgedByTheRecomputation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("an older server must still decode: %v", err)
 	}
-	if !r.IsExecutable() || r.BindKey() != r.ContentHash {
-		t.Fatal("recomputed: executable, keyed by content_hash")
+	if r.ComputeExecutionDecision() != DecisionExecutableApproved {
+		t.Fatal("control: its own fields would permit it")
+	}
+	if r.IsExecutable() || r.BindKey() != r.ContentHash {
+		t.Fatal("no decision was made: not executable, and keyed by content_hash")
 	}
 	m = fixtureMap(t, DecisionAnalysisOnly)
 	delete(m, "decision")

@@ -481,7 +481,51 @@ export class BoundTransaction {
           "verified. Signing must change only the signatures. ABORTING.",
       );
     }
+    await assertEverySignatureVerifies(raw, this.#message);
     return raw;
+  }
+}
+
+/**
+ * Round 39 (R39-CLIENTS-4): every signature slot of the signed bytes must
+ * verify over the approved message under the key the MESSAGE names for that
+ * slot — not the key a signer object says it has. `assertSignersMatchTheMessage`
+ * compares each signer's `publicKey` field, and kit signs with the signer's
+ * `keyPair.privateKey`: a signer (a wallet adapter, a key store) whose private
+ * half is not its public half's passed both and produced a transaction that no
+ * validator accepts, which the lifecycle then recorded as signed, sent, and
+ * kept as an outcome-unknown submission under an id that names nothing.
+ * Nothing moved, but the trail said "signed those exact bytes" about bytes
+ * nobody signed for. A slot that does not verify is refused here, before the
+ * bytes are returned to anything that could record or send them.
+ */
+async function assertEverySignatureVerifies(raw: Uint8Array, message: Uint8Array): Promise<void> {
+  const signers = requiredSigners(message);
+  let slots: Uint8Array;
+  if (raw[0] === V1_PREFIX) {
+    slots = raw.subarray(v1MessageEnd(raw));
+  } else {
+    const { count, offset } = readSignatureCount(raw);
+    slots = raw.subarray(offset - count * 64, offset);
+  }
+  if (slots.length !== signers.length * 64) {
+    throw new Error(
+      `[Graphite] the signed transaction carries ${slots.length / 64} signature slot(s) for ${signers.length} required ` +
+        "signer(s). ABORTING.",
+    );
+  }
+  const signed = Uint8Array.from(message);
+  for (let i = 0; i < signers.length; i++) {
+    const key = await globalThis.crypto.subtle.importKey("raw", Uint8Array.from(bs58.decode(signers[i])), { name: "Ed25519" }, false, [
+      "verify",
+    ]);
+    const ok = await globalThis.crypto.subtle.verify("Ed25519", key, Uint8Array.from(slots.subarray(i * 64, (i + 1) * 64)), signed);
+    if (!ok) {
+      throw new Error(
+        `[Graphite] the signature for ${signers[i]} does not verify over the approved message: the signer's key pair is ` +
+          "not that address's (its private half belongs to another key). Nothing was recorded or sent. ABORTING.",
+      );
+    }
   }
 }
 // Round 30: the one signing path cannot be replaced at runtime. Without this,

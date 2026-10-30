@@ -5,6 +5,48 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 
 ## [0.3.0-beta] — unreleased (the contract since v0.2.0-beta)
 
+Round 40 (2026-10-26) — every open Round 39 decision taken by the technical lead and implemented ([decisions](../docs/audit/TECHNICAL_LEAD_DECISIONS.md), [workstream reports](../docs/audit/parts-r40/)):
+
+- **Contract:** unchanged (`schemas/verification-result-v1.json`).
+- **Bootstrap (additive, operator-only):** `graphite evidence import-census --cluster mainnet-beta [--dry-run] [--program ID]... [--census FILE]` imports each program's successful-transaction count from the committed, measured census (`protocols/battle_tested_evidence.json`, hash-pinned to the compiled-in copy) as HistoricalVolume evidence. Only records that clear every census threshold, for a program with a loaded manifest that exists and is executable, are imported (114 of 137); the rest are listed with the reason. It never lowers existing evidence, recomputes the tier (P7, no signature asserted), skips a quarantined program or one whose observed deployment is newer than the census, writes one `operator_action` row per program, and is idempotent. A manifested program's verdict goes from 0.44 to 0.59 (Gaming only). No floor, ceiling, profile or tier rule changed. Library: `census_import`, `GraphiteCore::{standalone_standing, import_measured_evidence, observed_deployment, confirm_evidence_cluster, evidence_genesis}`, `SemanticGraphStore::bind_evidence_to_slot`, `SolanaRpcClient::get_genesis_hash`, `SemanticGraphError::EvidenceCluster`.
+- **Behaviour (stricter):**
+  - Census evidence is mainnet-beta's only: the import refuses any other `--cluster` and a census not measured on mainnet-beta; the data dir records the cluster's genesis hash; a server with `GRAPHITE_RPC_URL` set on such a data dir calls `getGenesisHash` at start and refuses to start unless it is mainnet-beta's (or when the RPC cannot answer).
+  - Manifests (P13, behaviour change): 60 swap/route declarations rewritten from the committed IDLs to name the user-side account they debit (records in `docs/audit-r40/declaration-rewrites.json`); honest Raydium CPMM `swap_base_input` and Orca `swap`/`swapV2` are now `executable_approved` under the defaults. **P14 tradeoff:** on venues `decode_swap` does not read, a skim beside the swap is no longer refused by L4; it is still never executable, because the swap stays unbound (`intent_parameters`), pinned by `round40_a_rewritten_pool_swap_with_a_skim_is_never_executable`.
+  - 23 manifest instructions in no committed IDL of their program removed (Meteora DLMM `swap_2` and 7 more, 15 Jupiter `*RouteCheck`/`*AccountCompressionRoute`/token-ledger variants): such bytes are now undescribed and refused. Registry: 3,541 → 3,518 instructions; regression corpus 13,013 → 12,967.
+  - The marketplace `update_offer` configure grant removed (it could never pass; grants 27 → 26).
+  - F-005: 7 of the 9 medium-confidence rewrites promoted to high, each with a recorded evidence record (the committed Marinade IDL; `solana-program/stake-pool` and `raydium-io/raydium-amm` at pinned commits) that `validate_corpora.py` re-checks.
+  - Label fixes in the ATA, Kamino and Solend manifests.
+- **Behaviour (stricter), boundary:**
+  - `GRAPHITE_TRUST_PROXY` ≥ 1 now requires `GRAPHITE_TRUSTED_PROXIES` (addresses / CIDR ranges): `X-Forwarded-For` is believed only from a listed peer; any other peer is keyed by its own address. **Existing proxied deployments refuse to start until it is set**; a malformed entry, `/0` or host bits set refuses to start. The per-peer connection cap behind a proxy exempts only a listed proxy. The production compose pins Caddy to `10.73.31.2` and trusts only it (R39-CB-8).
+  - The RPC and witness clients ignore `HTTP(S)_PROXY`/`ALL_PROXY` (R39-CB-13); RPC egress must be direct.
+  - `registry submit` refuses a signer key file group or others can read or write (R39-CB-14).
+  - CLI output escapes C0/C1, DEL, ESC, BIDI and zero-width characters (`explain`, `verify`, `execution`, `audit`, `protocol`) (R39-CB-15).
+  - Each plugin run has a 250 ms deadline (`PLUGIN_DEADLINE`); a run past it is treated as a crash (a blocking family refuses, `<name>:timed-out`); at most 16 abandoned runs per gate, beyond which a plugin is not started and the run refuses (`<name>:not-run`).
+  - A program's first registry manifest (or an upgrade with no earlier fixture in force) earns HeuristicInferred at most until a validated upgrade or BattleTested-level measured volume lifts it (`semantic_graph_store::compute_trust_tier_for`; R39-CORE-IDENTITY-7). Operator-asserted signatures or attestations do not lift it.
+- **Validation:** `validate_corpora.py` treats an instruction in no committed IDL as an error, requires the debit/credit words in a rewritten swap declaration, and accepts a promotion only with a checked evidence record.
+- **Crate:** `publish = false`.
+- **Live measurement (`tools/live-measure`, `live-mainnet.yml`):** the mainnet runner seeds only `graphite evidence import-census` (a labelled run imports the whole census) and no longer types L3 baselines (the typed System/SPL Token bands flagged honest nonce advances and token transfers); a constructed-honest-transfer pass verifies new, never-signed 1-lamport / 1-base-unit transfers between accounts that just transferred on mainnet; every signer-debit refusal is reported with the chain's fee and balances beside Graphite's figure. No Core fee defect: the Core credits Agave's `fee` (base plus priority); a tip beside an instruction whose manifest declares nothing is the documented fail-closed class.
+- **Inner-instruction oracle:** Agave's parser 4.3.2 → 4.4.0 (with `solana-message` 5.1.0), which removes `zstd-safe` 7.3.0 and its eight RUSTSEC-2026 unsound advisories; the oracle passes at CI's settings.
+- **CI:** per-binary Rust test floors (`.github/test-floors/`); a required `agent-guard-windows` job; actionlint 1.7.11 pinned and run; mutation shards of at most 20 mutants; `test-count.sh` reads cargo's coloured output.
+- **Tests:** `round40_census_import`, `round40_import_census_cli`, `round40_cluster_guard`, `round40_swap_declarations`, `round40_surface_conformance`; imported-state twins of the Round 38/39 attack suites and of nine learning/poisoning suites.
+
+Round 39 (2026-10-25) — the exhaustive production-readiness audit of `c087bfb` (internal; [findings](../docs/audit/PRODUCTION_READINESS_FINDINGS.md), [remediation log](../docs/audit/REMEDIATION_LOG.md)):
+
+- **Contract:** unchanged (`schemas/verification-result-v1.json` is the same; both SDKs now test their enums against it).
+- **Behaviour (stricter):**
+  - `intent_binding::keeps_value` (R39-CORE-DECISION-1): value beside a swap, a grant or a creation is kept only when it stays in the owner's keeping (the swapping wallet, the grant's owner, the fee payer, as L4's `lamports_kept_by` judges it), not when it reaches any signer or a token account whose owner field names one.
+  - `intent_binding::grant_keeps_value` (R39-CORE-DECISION-2): claim, close and configure grants obey the sibling rule, as withdrawals have since Round 38.
+  - `plugin_orchestrator` (R39-CORE-DECISION-3): the Simulation family is fail-closed; a panicking Simulation plugin refuses.
+  - `verification` (R39-CORE-IDENTITY-2): a v0 simulation that returns no readable `loadedAddresses` is set aside, as a contradicting one is.
+  - `manifest_registry` `gate_decision` (R39-CORE-IDENTITY-1): a pinned refusal the candidate approves blocks the upgrade; the registry's own fixtures must meet the rate without the submitter's.
+  - `manifest::validate_manifest` (R39-CORE-IDENTITY-4): every `expected_address` is `{program_id}` or a base58 key.
+  - Audit trail (R39-CB-1): writers and keyed readers refuse a trail whose newest record is another trail's under the same key ("the audit trail holds records of another trail under the same key").
+  - Server (R39-CB-2, -7): logging failures cannot panic the server; a quarantine lift cut off while its append waits is not applied.
+- **CLI:** `audit verify` of a directory with no trail exits 3, not 2 (R39-CB-6); `healthcheck --strict` follows no redirect and no environment proxy (R39-CB-3); `protocol diff` compares role, PDA seeds, expected address, optional, alternative layouts and risk rules (R39-CB-12).
+- **Metrics (additive):** `graphite_payload_too_large_total`, `graphite_request_timeouts_total`, `graphite_handler_panics_total` (R39-CB-4).
+- **Dependencies:** `anyhow` removed (unused); the fuzz lockfile is audited in CI.
+- **Tests:** `round39_decision_campaigns`, `round39_registry_gate_dilution`, `round39_lookup_table_campaign`, `round39_manifest_expected_address`, `round39_core_boundary`, `round39_conformance_corpus` (the shared corpus `examples/decisions/conformance.json`).
+
 Round 38 (2026-10-24) — the Round 37 re-audit of `8b3d8a4` answered: its P1s, P2s and P3s ([report](../docs/round38-the-round-37-re-audit-answered-2026-10-24.md)):
 
 - **Contract:** `scope.unobserved_codes` gains `program_deployments` (both scope kinds): the deployment of a manifested program the transaction invokes could not be read (the read failed, ran out of budget, or the account does not decode as its loader's), so whether its evidence describes the code now on chain is unknown (R37-16). Never inherent. The TS and Go SDKs know it; the guard refuses it by default.

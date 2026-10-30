@@ -212,7 +212,7 @@ fi
 
 if [ -n "$anchors" ]; then
   # The newest checkpoint is the one whose CONTENT has the highest seq (Round
-  # 39, T-9): a file name is not authenticated, and the checkpoint's own MAC
+  # 38, T-9): a file name is not authenticated, and the checkpoint's own MAC
   # is checked by `audit verify --checkpoint` below. Every checkpoint with that
   # seq is checked. A checkpoint file that cannot be read refuses the restore:
   # it could be the newest.

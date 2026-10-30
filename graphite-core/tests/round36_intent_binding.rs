@@ -1064,6 +1064,8 @@ fn a_withdrawal_minimum_is_held_to_what_was_simulated() {
         instructions: Ok(&[]),
         signers: &signers,
         program_id: RAYDIUM_CPMM,
+        // Round 39: what rides beside it is held to the grant's owner.
+        owner: Some(WALLET),
     };
     let bind_withdrawal =
         |i: &str, m: &[(&str, u64, String)], p, d| bind_withdrawal(i, m, p, d, &none);

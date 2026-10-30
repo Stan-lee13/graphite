@@ -1061,6 +1061,22 @@ pub fn validate_manifest(manifest: &ProtocolManifest) -> Result<(), ManifestErro
             // after `account_` and so never ran.
             for layout in ix.all_layouts() {
                 for (slot, a) in layout.iter().enumerate() {
+                    // Round 39 (core-identity, R39-CORE-IDENTITY-4): a pinned
+                    // address is the program's own id (`{program_id}`) or a
+                    // public key. Anything else — a typo, a truncated key, a
+                    // different sentinel — matched no account and refused
+                    // every call to the instruction, found only at the first
+                    // verification that reached it.
+                    if let Some(bad) = a
+                        .expected_address
+                        .iter()
+                        .find(|e| e.as_str() != "{program_id}" && Pubkey::from_base58(e).is_err())
+                    {
+                        return Err(ManifestError::Invalid(format!(
+                            "instruction '{}' account {slot} pins expected_address {bad:?}, which is neither \"{{program_id}}\" nor a base58 public key",
+                            ix.name
+                        )));
+                    }
                     if let Err(reason) =
                         crate::account_resolution::validate_seed_templates(&a.pda_seeds)
                     {

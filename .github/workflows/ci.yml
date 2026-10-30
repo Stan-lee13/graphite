@@ -144,7 +144,7 @@ jobs:
           # leg would compile the same thing twice.
           - leg: default
             flags: ""
-            floor: 2414
+            floor: 2607
             timeout: 90
           # `--lib` deliberately. Without a feature there is no async runtime
           # to drive the synchronous `verify()`, so it refuses with an error
@@ -160,11 +160,11 @@ jobs:
           # `cargo test --no-default-features` had 28 failures.
           - leg: lib
             flags: "--no-default-features --lib"
-            floor: 529
+            floor: 533
             timeout: 20
           - leg: cli
             flags: "--no-default-features --features cli"
-            floor: 1967
+            floor: 2011
             timeout: 45
     defaults:
       run:
@@ -215,14 +215,15 @@ jobs:
           # $FLAGS is split on purpose: "" adds nothing, the others add flags.
           # shellcheck disable=SC2086
           cargo test --locked --profile ci-test $FLAGS 2>&1 | tee "$RUNNER_TEMP/cargo-test-$LEG.log"
-          # The floor is a sum over every test binary (D2-8, Round 38): the
-          # count prints per binary too, but no per-binary floor is enforced
-          # yet. Its numbers must come from a run of each leg at a reviewed
-          # commit, and Round 38 had neither a Rust build nor the CI logs to
-          # read them from. Limitation, and the follow-up: write this table
-          # into .github/test-floors/rust-$LEG.txt and pass it as the 5th
-          # argument (test-count.sh then fails a binary that stops running).
-          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test-$LEG.log" "$FLOOR" ../.github/test-allowlists/rust-ignored.txt
+          # The floor is a sum over every test binary (D2-8, Round 38), so a
+          # security suite that lost its tests hid behind growth elsewhere.
+          # Round 40: each leg also passes its per-binary floors file
+          # (.github/test-floors/rust-$LEG.txt: the library's unit tests and
+          # every security suite, at the counts of a full run of the leg),
+          # and test-count.sh fails a listed binary that did not run or fell
+          # below its floor. ci-scripts.test.sh fails when a security suite
+          # is in no floors file.
+          bash ../.github/scripts/test-count.sh cargo "$RUNNER_TEMP/cargo-test-$LEG.log" "$FLOOR" ../.github/test-allowlists/rust-ignored.txt "../.github/test-floors/rust-$LEG.txt"
       # `corpus_persists_and_reloads_identically` (tests/regression_corpus.rs)
       # writes the regression corpus back into fixtures/corpus, which is
       # tracked. If the generator and the committed corpus disagree, the test
@@ -291,6 +292,12 @@ jobs:
       - name: Audit the inner-instruction oracle's dependencies
         working-directory: tools/inner-instruction-oracle
         run: cargo audit --deny warnings --ignore RUSTSEC-2025-0141
+      # Round 39: the fuzz harness's own lockfile (graphite-core/fuzz/Cargo.lock,
+      # 204 crates) is built and run by assurance.yml on every pull request,
+      # and was the one Cargo lockfile no job audited. No exception.
+      - name: Audit the fuzz harness's dependencies
+        working-directory: graphite-core/fuzz
+        run: cargo audit --deny warnings
       # The six npm lockfiles (A6-05): the agent guard (the signing path),
       # the AI SDK tools, the MCP server, the SAK adapter, the TypeScript SDK
       # and the dashboard. `npm audit` reads the lockfile and asks the
@@ -741,7 +748,7 @@ jobs:
           # The live-server tests skip without a server (the container job
           # runs them against one); nothing else may skip.
           npm test 2>&1 | tee "$RUNNER_TEMP/sdk-ts.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sdk-ts.log" 62 \
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sdk-ts.log" 68 \
             "$(grep -cE '^live\("' src/live-server.test.ts)"
           # The published package must actually build, and must not ship the
           # test file — dist/ is gitignored, so a broken build config would
@@ -760,7 +767,7 @@ jobs:
           # Every *.test.ts in the directory, so a test file cannot sit in
           # the repository looking like a gate without ever running.
           npm test 2>&1 | tee "$RUNNER_TEMP/agent-guard.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/agent-guard.log" 330
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/agent-guard.log" 343
           # The guard and the Rust Core are two implementations of one
           # agreement: the guard serializes a transaction and describes its
           # instructions, the Core reads both and decides whether they agree.
@@ -792,7 +799,7 @@ jobs:
           npm ci --ignore-scripts
           npm run typecheck
           npm test 2>&1 | tee "$RUNNER_TEMP/mcp-server.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/mcp-server.log" 10
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/mcp-server.log" 12
       - name: SAK adapter typecheck + tests
         working-directory: integrations/solana-agent-kit
         run: |
@@ -807,7 +814,59 @@ jobs:
           npm ci --ignore-scripts
           npm run typecheck
           npm test 2>&1 | tee "$RUNNER_TEMP/sak.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sak.log" 10
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sak.log" 11
+
+  # Round 40 (R39-CLIENTS-6, G2-6): the guard's Windows behaviour was
+  # "reasoned, not run". On Windows the guard checks the KINDS of its lock
+  # directory and state file (a link or the wrong kind refuses) but not their
+  # owner or access, which live in an ACL Node cannot read; the default lock
+  # directory is <profile>\AppData\Local\graphite-guard. This job runs the
+  # guard's typecheck and whole test suite there. The tests that need POSIX
+  # modes or uids skip with their reason through `posixOnly` (posix-only.ts),
+  # and this job allows exactly as many skips as there are uses of it, read
+  # from the sources; guard-round40.test.ts runs the Windows branches (a link
+  # or a file as the lock directory, a directory or a link as the state file,
+  # owner and access unchecked and said so). A pinned image, like every job
+  # here (A6-08), rather than the moving `windows-latest`.
+  agent-guard-windows:
+    name: Agent guard — Windows (typecheck, tests)
+    runs-on: windows-2025
+    # The guard's suite takes ~1 min on Linux; Windows file operations and a
+    # cold npm install are slower. 30 leaves room.
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: integrations/agent-guard
+        shell: bash
+    env:
+      NODE_OPTIONS: --test-reporter=tap
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.23.3"
+      - name: Agent guard typecheck and tests on Windows
+        run: |
+          set -euo pipefail
+          # .gitattributes checks every text file out LF on Windows too, so
+          # the corpora and fixtures the tests read are the bytes Linux reads.
+          npm ci --ignore-scripts
+          npm run typecheck
+          log="$(cygpath -u "$RUNNER_TEMP")/agent-guard-windows.log"
+          npm test 2>&1 | tee "$log"
+          # Exactly the tests marked POSIX-only may skip (each says why in
+          # the TAP output); any other skip, or a marked test that stopped
+          # existing while the count stayed, fails. 348 tests at Round 40,
+          # 3 of them POSIX-only.
+          posix_only="$(cat ./*.test.ts | grep -o '{ skip: posixOnly(' | wc -l)"
+          echo "POSIX-only tests skipped on Windows: $posix_only"
+          bash ../../.github/scripts/test-count.sh tap "$log" 345 "$posix_only"
+          skipped="$(sed -n -E 's/^# skipped ([0-9]+)$/\1/p' "$log" | tail -n 1)"
+          if [ "${skipped:-0}" != "$posix_only" ]; then
+            echo "::error::$skipped tests skipped on Windows, $posix_only are marked POSIX-only"; exit 1
+          fi
 
   go:
     name: Go SDK — fmt, vet, tests
@@ -854,7 +913,7 @@ jobs:
       - name: Tests
         run: |
           go test -count=1 -v ./... 2>&1 | tee "$RUNNER_TEMP/go-test.log"
-          bash ../../.github/scripts/test-count.sh go "$RUNNER_TEMP/go-test.log" 59
+          bash ../../.github/scripts/test-count.sh go "$RUNNER_TEMP/go-test.log" 66
 
   dashboard:
     name: Dashboard — typecheck, tests + production build
@@ -892,7 +951,7 @@ jobs:
           NODE_OPTIONS: --test-reporter=tap
         run: |
           npm test 2>&1 | tee "$RUNNER_TEMP/dashboard.log"
-          bash ../.github/scripts/test-count.sh tap "$RUNNER_TEMP/dashboard.log" 36
+          bash ../.github/scripts/test-count.sh tap "$RUNNER_TEMP/dashboard.log" 48
       - name: Build
         run: npm run build
       # Round 29 (audit 2026-10-20, D6): what the build ships. No source
@@ -941,7 +1000,7 @@ jobs:
       - name: Tests
         run: |
           pytest -q 2>&1 | tee "$RUNNER_TEMP/pytest-ai.log"
-          bash ../.github/scripts/test-count.sh pytest "$RUNNER_TEMP/pytest-ai.log" 50
+          bash ../.github/scripts/test-count.sh pytest "$RUNNER_TEMP/pytest-ai.log" 51
       # Round 29 (audit 2026-10-20, M1-M3): the sample fetcher and the
       # row-by-row verifier, against a stand-in endpoint (no network).
       - name: mainnet-sample tool tests
@@ -957,7 +1016,7 @@ jobs:
         working-directory: tools/live-measure
         run: |
           pytest -q -p no:cacheprovider test_live_measure.py 2>&1 | tee "$RUNNER_TEMP/pytest-live.log"
-          bash ../../.github/scripts/test-count.sh pytest "$RUNNER_TEMP/pytest-live.log" 57
+          bash ../../.github/scripts/test-count.sh pytest "$RUNNER_TEMP/pytest-live.log" 83
       # W23 (external review): the other lockfiles were audited and this one
       # was not. Every pin is exact and hashed, so no resolution is needed.
       - name: Advisory audit of the lockfile
@@ -1010,7 +1069,8 @@ jobs:
     name: Dashboard — browser smoke against a live Core
     runs-on: ubuntu-24.04
     # A release build of the Core (~5 min warm, longer cold), the console
-    # build, a Chromium download and 32 page walks. 45 leaves a cold cache room.
+    # build, a Chromium download, 80 smoke page walks (Round 39: five sizes)
+    # and the fault-state walks. 45 leaves a cold cache room.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1175,14 +1235,46 @@ jobs:
         run: python3 -I .github/scripts/dependency-holds.py check
       - name: Every published attestation command pins the signer
         run: python3 .github/scripts/check-attestation-commands.py
+      # Round 40 (R39-SUPPLY-CHAIN-6): no workflow ran actionlint, and the
+      # "actionlint clean" of earlier rounds was a local run of an unrecorded
+      # version (1.7.7 rejects release.yml's `artifact-metadata: write`;
+      # 1.7.11 is clean). The release binary at an exact version, verified
+      # against the pinned sha256 before it runs (.github/pinned-tools.json).
+      # Every workflow, every finding fails: no -ignore, no config file
+      # (ci-scripts.test.sh checks both). shellcheck is the runner image's
+      # (actionlint passes each inline `run:` block through it); pyflakes is
+      # off by name because no workflow has a `shell: python` step and an
+      # unpinned pyflakes would otherwise decide silently whether it ran.
+      - name: actionlint (pinned) over every workflow
+        env:
+          ACTIONLINT_VERSION: 1.7.11
+          ACTIONLINT_SHA256: 900919a84f2229bac68ca9cd4103ea297abc35e9689ebb842c6e34a3d1b01b0a
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/actionlint"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 --proto '=https' -o "$dir/actionlint.tar.gz" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "$ACTIONLINT_SHA256  $dir/actionlint.tar.gz" | sha256sum --check --strict -
+          tar -xzf "$dir/actionlint.tar.gz" -C "$dir" actionlint
+          "$dir/actionlint" -version
+          shellcheck --version
+          "$dir/actionlint" -shellcheck "$(command -v shellcheck)" -pyflakes ""
+          # The scripts' own tests below seed a fault into a copy of a
+          # workflow and check this binary reports it (not a no-op).
+          echo "ACTIONLINT=$dir/actionlint" >> "$GITHUB_ENV"
       - name: The CI scripts' own tests
         run: |
           bash .github/scripts/ci-scripts.test.sh 2>&1 | tee "$RUNNER_TEMP/ci-scripts.log"
           passed="$(sed -n 's/^ci-scripts tests: \([0-9]*\) passed, 0 failed$/\1/p' "$RUNNER_TEMP/ci-scripts.log")"
           # 33 at Round 36; 77 at Round 38 (D2-4, D2-6, D2-7, D2-8, D-8,
-          # R37-8 drift and guard, D2-3 publish structure).
-          if [ -z "$passed" ] || [ "$passed" -lt 77 ]; then
-            echo "::error::ci-scripts tests: ${passed:-no summary} passed, floor 77"; exit 1
+          # R37-8 drift and guard, D2-3 publish structure); 121 at Round 39
+          # (the live ruleset state of 2026-10-25, --require-bypass,
+          # main-review required, shellcheck of these scripts, and
+          # graphite-core/scripts/validate_corpora.py over the committed
+          # corpora with 13 seeded faults; the live-mainnet seed pin).
+          if [ -z "$passed" ] || [ "$passed" -lt 121 ]; then
+            echo "::error::ci-scripts tests: ${passed:-no summary} passed, floor 121"; exit 1
           fi
 
   # Round 30 (G-11): the one check the `main` ruleset requires
@@ -1195,7 +1287,7 @@ jobs:
   ci-gate:
     name: CI gate
     if: always()
-    needs: [rust-lint, rust-test, ci-scripts, msrv, supply-chain, runtime-oracle, inner-instruction-oracle, container, typescript, go, dashboard, dashboard-e2e, deploy, python]
+    needs: [rust-lint, rust-test, ci-scripts, msrv, supply-chain, runtime-oracle, inner-instruction-oracle, container, typescript, agent-guard-windows, go, dashboard, dashboard-e2e, deploy, python]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

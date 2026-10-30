@@ -965,3 +965,50 @@ a second rule of the same fix. Details:
 | B204 | G2-4 | not-sent classification and the expired reservation's return | the classifier, connect-refused and release tests (4a–4d each alone) | caught (5 fail; the landed control passes) |
 | B205 | G2-5 | `intent_parameters` acceptable | the G2-5 repro and the re-pinned F-003 test | caught |
 | B206 | G2-6 | the dashboard's 32 MiB response bound | `transport` "an answer over the size bound is refused" | caught |
+
+**Round 39 (B207–B244).** The exhaustive production-readiness audit of `c087bfb`. Each break
+reverted one fix in a copy outside the working tree with its own `CARGO_TARGET_DIR` (or, for the
+dashboard, ran the new tests against the `c087bfb` source and build), ran the fix's tests, and the
+copy was deleted. **All caught.** Details: [`../docs/audit/REMEDIATION_LOG.md`](../docs/audit/REMEDIATION_LOG.md) §2
+and each workstream's `docs/audit/parts/*.md` §2.
+
+| # | Finding / break | Fix reverted | Caught by | Result |
+|---|---|---|---|---|
+| B207 | core-decision B1 | `kept_by` → `signers_own` (R39-CORE-DECISION-1) | campaigns 1 and 3 | caught (3 fail; the Round 38 suites still pass) |
+| B208 | core-decision B2 | `grounded_owner_operation` forced false (-2) | campaign 2 | caught |
+| B209 | core-decision B3 | Simulation out of the fail-closed set (-3) | orchestrator unit test, campaign 12 | caught (2 fail) |
+| B210 | core-identity | registry loosening arm off (-1) | `a_large_registry_corpus_does_not_tolerate_one_loosened_refusal` | caught |
+| B211 | core-identity | registry-only rate arm off (-1) | `padding_does_not_dilute_the_registrys_own_fixtures` | caught |
+| B212 | core-identity | both arms off (pre-fix) | the padded attack test | caught |
+| B213 | core-identity | pre-fix `loadedAddresses` handling (-2) | `round39_lookup_table_campaign` omission test | caught (`executable_approved`) |
+| B214 | B-CB-1 | other-trail refusal in `resume_head` removed (R39-CB-1) | chain and server tests | caught |
+| B215 | B-CB-1b | other-trail refusal in the keyed open removed | chain tests | caught |
+| B216 | B-CB-2 | `log_internal_errors(false)` removed | binary test | caught |
+| B217 | B-CB-3 | healthcheck redirect policy removed | binary test | caught |
+| B218 | B-CB-4 | transport counter increment removed | `route_surface` test | caught |
+| B219 | B-CB-6 | no-trail exit 3 check removed | binary test | caught (exit 2) |
+| B220 | B-CB-7 | lift restore moved after the await | lift test (the benign lift still passes) | caught |
+| B221 | B-CB-12 | expected-address comparison in `protocol diff` off | diff test | caught |
+| B222 | clients B1 | TS `isExecutable` without `decision` (R39-CLIENTS-1) | SDK conformance | caught |
+| B223 | clients B1g | Go `IsExecutable` without `decision` | Go conformance | caught |
+| B224 | clients B2 | guard conformance against the old rule | guard conformance | caught |
+| B225 | clients B3 | TS integer check off (-3) | SDK validator tests | caught |
+| B226 | clients B3b | u32 bound off | SDK validator tests | caught |
+| B227 | clients B4 | guard signature verification off (-4) | `guard-round39.test.ts` | caught |
+| B228 | clients B5 | Python `\d` restored (-5) | pytest | caught |
+| B229 | clients B6 | state-directory check off (-6) | guard tests | caught |
+| B230 | clients B7 | swap repeat key from the route (-7) | guard tests | caught |
+| B231 | clients B8 | live-measure missing codes as none (-8) | pytest | caught |
+| B232 | clients B9 | AuditBind byte check off (-9) | guard tests | caught |
+| B233 | supply-chain B1 | Round 38 `ruleset-drift.py` | ci-scripts drift cases | caught (18 fail) |
+| B234 | supply-chain B2 | uncommitted ruleset back to a notice | ci-scripts | caught (11 fail) |
+| B235 | supply-chain B3 | `main-review.json` optional | ci-scripts | caught (1 fail) |
+| B236 | supply-chain B4 | `--require-bypass` ignored | ci-scripts | caught (2 fail) |
+| B237 | supply-chain B5 | the original `test-count.sh` line | shellcheck in the harness | caught |
+| B238 | supply-chain B6 | validator prefix check off | seeded prefix fault | caught |
+| B239 | supply-chain B7 | validator medium-rewrite check off | seeded fault | caught |
+| B240 | supply-chain B8 | live-mainnet seed `exit` removed | "a failed seeding is never reported as seeded" | caught |
+| B241 | supply-chain B9 | `SEEDED` from the step outcome | same | caught |
+| B242 | dashboard | new unit tests on the `c087bfb` source | vitest | caught (8 of 43 fail) |
+| B243 | dashboard | new `smoke.mjs` on the `c087bfb` build | Playwright | caught (12 fail) |
+| B244 | dashboard | new `states.mjs` on the `c087bfb` build | Playwright | caught (19 fail) |

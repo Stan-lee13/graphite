@@ -151,6 +151,8 @@ export interface ManifestAccount {
   is_signer: boolean;
   pda_seeds: unknown[];
   expected_address: string[];
+  /** The account may be omitted (Round 39: drawn as such). */
+  optional?: boolean;
 }
 
 export interface ManifestInstruction {
@@ -242,6 +244,15 @@ const store = createConnectionStore({
 });
 
 export const getConnection = (): Connection => store.get();
+
+/**
+ * Why the console would refuse to use `base`, or null. The Connect screen
+ * asks before saving (Round 39, R39-DASH-7): an address the console will
+ * never send to is not stored, so a key pasted into the address field is not
+ * kept in localStorage or drawn in the sidebar.
+ */
+export const baseProblem = (base: string): string | null =>
+  insecureBaseReason(normaliseBase(base), window.location.origin, BUILD_ORIGIN);
 export const setConnection = (next: Connection): void => store.set(next);
 export const forgetKey = (): void => store.forgetKey();
 export const onConnectionChange = (l: () => void): (() => void) => store.onChange(l);

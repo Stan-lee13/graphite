@@ -10,6 +10,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { Check, Eye, EyeOff, X } from "lucide-react";
 import {
   MIN_KEY_CHARS,
+  baseProblem,
   forgetKey,
   getConnection,
   normaliseBase,
@@ -17,10 +18,11 @@ import {
   testConnection,
   type ConnectionReport,
 } from "../api";
-import type { CoreState } from "../App";
+import { reachProblem } from "../status";
 import { PageHead, Section } from "../ui";
 
-export function ConnectView({ core }: { core: CoreState }) {
+/** `keyNotNeeded`: a key-guarded route answered this browser with no key. */
+export function ConnectView({ keyNotNeeded }: { keyNotNeeded: boolean }) {
   const current = getConnection();
   const [base, setBase] = useState(current.base);
   const [key, setKey] = useState(current.key);
@@ -29,6 +31,9 @@ export function ConnectView({ core }: { core: CoreState }) {
   const [testing, setTesting] = useState(false);
   const [report, setReport] = useState<(ConnectionReport & { tested: { base: string; key: string } }) | null>(null);
   const [saved, setSaved] = useState(false);
+  // Round 39 (R39-DASH-7): why the last "Save and use" was refused, for the
+  // address it was refused for.
+  const [refused, setRefused] = useState<{ base: string; why: string } | null>(null);
 
   const keyTooShort = key.trim().length > 0 && key.trim().length < MIN_KEY_CHARS;
   const dirty =
@@ -58,6 +63,16 @@ export function ConnectView({ core }: { core: CoreState }) {
 
   const save = (e: FormEvent) => {
     e.preventDefault();
+    // Round 39 (R39-DASH-7): an address the console will never send to is
+    // not saved. It went to localStorage as typed — a key pasted one field
+    // too high was kept on disk, whatever "Remember" said, and drawn in the
+    // sidebar and in every view's fault text.
+    const why = baseProblem(base);
+    if (why !== null) {
+      setRefused({ base, why });
+      return;
+    }
+    setRefused(null);
     setConnection({ base, key, remember });
     setSaved(true);
     setTimeout(() => setSaved(false), 1600);
@@ -84,11 +99,21 @@ export function ConnectView({ core }: { core: CoreState }) {
                 placeholder="http://127.0.0.1:7331"
                 autoComplete="off"
                 spellCheck={false}
+                aria-invalid={refused?.base === base || undefined}
+                aria-describedby="core-base-help"
                 onChange={(e) => setBase(e.target.value)}
               />
-              <p className="field-help">
-                The origin the Core listens on. Leave it empty to use the origin this console was served
-                from, which is what the development proxy expects.
+              <p className="field-help" id="core-base-help">
+                {refused?.base === base ? (
+                  <span className="field-error" role="alert">
+                    Not saved. {refused.why}
+                  </span>
+                ) : (
+                  <>
+                    The origin the Core listens on. Leave it empty to use the origin this console was served
+                    from, which is what the development proxy expects.
+                  </>
+                )}
               </p>
             </div>
 
@@ -100,7 +125,7 @@ export function ConnectView({ core }: { core: CoreState }) {
                   name="graphite-api-key"
                   type={show ? "text" : "password"}
                   value={key}
-                  placeholder={core === "ok" && !current.key ? "Not needed: this Core runs in dev mode" : "Paste the operator key…"}
+                  placeholder={keyNotNeeded ? "Not needed: this Core answered without a key" : "Paste the operator key…"}
                   autoComplete="off"
                   spellCheck={false}
                   aria-invalid={keyTooShort || undefined}
@@ -169,7 +194,16 @@ export function ConnectView({ core }: { core: CoreState }) {
               )}
             </div>
 
-            {shownReport && <Report report={shownReport} hasKey={key.trim().length > 0} />}
+            {/* Round 39: one live region that is always in the page. The
+                report used to mount with its own aria-live, and a region
+                that arrives with its content is often not announced. */}
+            <div aria-live="polite" className="report-live">
+              {testing ? (
+                <p className="field-help">Testing…</p>
+              ) : (
+                shownReport && <Report report={shownReport} hasKey={key.trim().length > 0} />
+              )}
+            </div>
           </Section>
         </form>
 
@@ -214,7 +248,7 @@ export function ConnectView({ core }: { core: CoreState }) {
 
 function Report({ report, hasKey }: { report: ConnectionReport; hasKey: boolean }) {
   return (
-    <ul className="report" aria-live="polite">
+    <ul className="report">
       <li className={report.reachable ? "ok" : "bad"}>
         {report.reachable ? <Check aria-hidden="true" /> : <X aria-hidden="true" />}
         <span>
@@ -223,15 +257,12 @@ function Report({ report, hasKey }: { report: ConnectionReport; hasKey: boolean 
               Core reached, version <span translate="no">{report.version}</span>
               {report.degraded ? ", reporting itself degraded" : ""}
             </>
-          ) : report.reachError?.kind === "insecure" || report.reachError?.kind === "malformed" ? (
-            // Round 19 (F-19-C6): refused before sending, not unreachable.
-            // Round 30: something answered, but it was not a Core.
-            <>{report.reachError.message}</>
           ) : (
-            <>
-              No answer from <code translate="no">/health</code>. Check the address; if the Core is up, add
-              this console's origin to <code translate="no">GRAPHITE_CORS_ORIGINS</code>.
-            </>
+            // Round 19 (F-19-C6): refused before sending, not unreachable.
+            // Round 30: something answered, but it was not a Core. Round 39
+            // (R39-DASH-6): a 500 or 429 is an answer too; only no answer at
+            // all gets the CORS advice (status.ts reachProblem).
+            <>{reachProblem(report.reachError?.kind, report.reachError?.message).text}</>
           )}
         </span>
       </li>

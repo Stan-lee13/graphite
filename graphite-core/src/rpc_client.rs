@@ -1838,9 +1838,19 @@ impl SolanaRpcClient {
         // including a plaintext one. A JSON-RPC endpoint that answers 3xx is
         // an endpoint that is not answering, and that is what it is reported
         // as (Round 12).
+        //
+        // No environment proxy either (Round 40, R39-CB-13). With
+        // `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` set, reqwest connected to
+        // the proxy and handed it the RPC host name: the connect-time guard
+        // (`GuardedResolver`) then judged only the proxy's address, and the
+        // proxy resolved the provider's name itself — a name pointing at a
+        // private, loopback or metadata address reached it unjudged. RPC
+        // egress is direct (docs/ops/install.md), so the guard always judges
+        // the endpoint the request actually goes to.
         let http_client = HttpClient::builder()
             .timeout(config.timeout)
             .redirect(reqwest::redirect::Policy::none())
+            .no_proxy()
             .dns_resolver(std::sync::Arc::new(GuardedResolver))
             .tls_certs_only(bundled_root_certificates())
             .build()
@@ -2283,6 +2293,22 @@ impl SolanaRpcClient {
         let body = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"getEpochInfo","params":[{"commitment":self.config.commitment}]});
         let result = self.post_rpc(body).await?;
         EpochInfo::from_value(&result)
+    }
+
+    /// The cluster's genesis hash (`getGenesisHash`; a plain base58 string in
+    /// `result`). Round 40: what names the cluster an RPC serves, so census
+    /// evidence measured on mainnet-beta is never used on another one.
+    pub async fn get_genesis_hash(&self) -> Result<String, RpcError> {
+        let body =
+            serde_json::json!({"jsonrpc":"2.0","id":1,"method":"getGenesisHash","params":[]});
+        let result = self.post_rpc(body).await?;
+        let hash = result
+            .as_str()
+            .ok_or_else(|| RpcError::InvalidResponse("missing genesis hash".to_string()))?;
+        crate::solana_types::Pubkey::from_base58(hash).map_err(|_| {
+            RpcError::InvalidResponse("the genesis hash is not a base58 32-byte hash".to_string())
+        })?;
+        Ok(hash.to_string())
     }
 
     /// Get the current slot

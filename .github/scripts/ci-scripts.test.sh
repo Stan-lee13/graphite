@@ -7,8 +7,13 @@
 # Round 36's mutation_floor.py (F-015). Round 38: pinned-tools consistency
 # (D2-6), dependency-holds.py (D2-7), the rulesets and ruleset-drift.py
 # (D2-4, R37-8), the release workflows (R37-8, D2-3), test-count.sh per test
-# binary (D2-8) and the Dockerfile's apt snapshot (D-8). Needs git and the
-# repository's full history (ci-scripts checks out with fetch-depth: 0).
+# binary (D2-8) and the Dockerfile's apt snapshot (D-8). Round 39: the live
+# ruleset state, shellcheck of these scripts and validate_corpora.py. Round 40:
+# actionlint pinned and run (with seeded faults, when $ACTIONLINT names the
+# pinned binary; the ci-scripts job sets it), the per-binary Rust floors
+# files, the guard's Windows job, publish = false and the mutation shards.
+# Needs git and the repository's full history (ci-scripts checks out with
+# fetch-depth: 0).
 # Needs bash and python3; no network. Exit 0 only when every case behaved.
 set -uo pipefail
 
@@ -317,7 +322,7 @@ mklive() { # mklive DIR [show-bypass]
 import json, os, sys
 src, env_file, out, show = sys.argv[1:5]
 listing = []
-for i, f in enumerate(sorted(x for x in os.listdir(src) if x.endswith(".json") and x != "main-review.json"), 1):
+for i, f in enumerate(sorted(x for x in os.listdir(src) if x.endswith(".json")), 1):
     r = json.load(open(os.path.join(src, f)))
     rid = 100 + i
     listing.append({"id": rid, "name": r["name"], "target": r["target"], "enforcement": r["enforcement"],
@@ -396,6 +401,91 @@ expect 1 "a release environment that also admits any branch fails" drift "$L"
 mklive "$L"
 printf '{"message":"Resource not accessible by integration"}' >"$L/rulesets.json"
 expect 2 "an API error instead of the ruleset list is an error, never a pass" drift "$L"
+
+echo "== ruleset-drift.py against the live state of 2026-10-25 (Round 39)"
+# testdata/ruleset-drift-live-2026-10-25 is GET rulesets and GET rulesets/25817024
+# as the owner's token read them on 2026-10-25: one branch ruleset, "Main-review",
+# no tag ruleset; 0 required approvals; RepositoryRole 2 and 5 and 24 GitHub Apps
+# with bypass_mode "always"; an extra copilot_code_review rule. Round 38's check
+# matched rulesets by name and only NOTED one without a committed file, so it
+# compared this ruleset with nothing.
+SNAP="$here/testdata/ruleset-drift-live-2026-10-25"
+L1="$T/live-snap"
+rm -rf "$L1" && cp -r "$SNAP" "$L1"
+expect 1 "today's live state fails" drift "$L1"
+snap_out="$(drift "$L1" 2>&1)"
+for needle in "live ruleset 'Main-review' (id 25817024) has no committed file" \
+              "named 'Main-review', committed 'main — integrity (Round 30, G-11)'" \
+              "live rule 'copilot_code_review' is not in the committed file" \
+              "pull_request.required_approving_review_count is 0, committed 1" \
+              "pull_request.require_extra_approval_for_unattributed_changes is true live" \
+              "bypass actor RepositoryRole 2 (always) is live and not committed" \
+              "bypass actor RepositoryRole 5 (always) is live and not committed" \
+              "committed bypass actor RepositoryRole 5 (pull_request) is missing" \
+              "release-tags.json (release tags — immutable (Round 30, G-11)): not applied" \
+              "release-tags-create.json (release tags — only an admin creates one (Round 34, R33-9)): not applied" \
+              "environment 'release' does not exist"; do
+  grep -qF -- "$needle" <<<"$snap_out" && ok "the live state's difference is named: $needle" || bad "not named: $needle"
+done
+n_apps="$(grep -cE "vs committed main\.json: bypass actor Integration [0-9]+ \(always\) is live and not committed" <<<"$snap_out")"
+[ "$n_apps" = 24 ] && ok "each of the 24 always-bypass GitHub Apps is named" || bad "$n_apps always-bypass apps named, wanted 24"
+# The same ruleset as GITHUB_TOKEN reads it: bypass_actors withheld, and the
+# workflow token itself cannot bypass.
+edit_live "$L1" 'r = j("ruleset-25817024.json"); r.pop("bypass_actors"); r["current_user_can_bypass"] = "never"; w("ruleset-25817024.json", r)'
+expect 1 "today's live state as GITHUB_TOKEN reads it (no bypass list) still fails" drift "$L1"
+grep -qF "has no committed file" <<<"$(drift "$L1" 2>&1)" && ok "and names the uncommitted ruleset" || bad "the uncommitted ruleset is not named under GITHUB_TOKEN"
+# The Round 38 hole itself: every committed ruleset applied exactly, and the
+# uncommitted Main-review beside them. Round 38: exit 0 (a notice).
+mklive "$L"
+cp "$SNAP/ruleset-25817024.json" "$L/"
+edit_live "$L" 'l = j("rulesets.json"); l.append(j("ruleset-25817024.json")); w("rulesets.json", l)'
+expect 1 "an uncommitted ruleset beside the committed ones fails (Round 38: a notice, exit 0)" drift "$L"
+# Main-review renamed to main.json's name, its extra rule and parameter
+# removed: only its 26 always-bypass actors still differ.
+mk_renamed() { # mk_renamed DIR [hide-bypass]
+  mklive "$1" show
+  python3 -I - "$1" "$SNAP/ruleset-25817024.json" "${2:-}" <<'PY' || bad "the renamed fixture could not be built"
+import json, os, sys
+d, snap, hide = sys.argv[1:4]
+live = json.load(open(snap))
+listing = json.load(open(os.path.join(d, "rulesets.json")))
+main = next(x for x in listing if x["name"].startswith("main — integrity"))
+live.update(id=main["id"], name=main["name"])
+live["rules"] = [r for r in live["rules"] if r["type"] != "copilot_code_review"]
+for r in live["rules"]:
+    if r["type"] == "pull_request":
+        r["parameters"].pop("require_extra_approval_for_unattributed_changes")
+live["current_user_can_bypass"] = "never"
+if hide:
+    for f in os.listdir(d):
+        if f.startswith("ruleset-"):
+            x = json.load(open(os.path.join(d, f)))
+            x.pop("bypass_actors", None)
+            json.dump(x, open(os.path.join(d, f), "w"))
+    live.pop("bypass_actors")
+json.dump(live, open(os.path.join(d, f"ruleset-{main['id']}.json"), "w"))
+PY
+}
+mk_renamed "$L"
+expect 1 "main.json applied with Main-review's 26 always-bypass actors (visible) fails" drift "$L"
+grep -qF "main.json (main — integrity (Round 30, G-11)): bypass actor Integration 8329 (always) is live and not committed" <<<"$(drift "$L" 2>&1)" \
+  && ok "and names the bypass actors" || bad "the bypass actors are not named"
+# What GITHUB_TOKEN cannot see stays a limit, said plainly: the weekly run
+# passes with the bypass lists NOT VERIFIED, and the owner's run fails.
+mk_renamed "$L" hide
+expect 0 "the same, bypass lists hidden (GITHUB_TOKEN): passes, but only as far as it can see" drift "$L"
+grep -qF "bypass list(s) NOT VERIFIED" <<<"$(drift "$L" 2>&1)" && ok "and says the bypass lists are NOT VERIFIED" || bad "an unverified bypass list was reported as a match"
+expect 1 "the same with --require-bypass (the owner's run) fails" "${D[@]}" --live "$L" --require-bypass
+mklive "$L"
+expect 1 "applied as committed, bypass lists hidden, --require-bypass: fails (cannot verify)" "${D[@]}" --live "$L" --require-bypass
+mklive "$L" show
+edit_live "$L" 'l = j("rulesets.json"); r = [x for x in l if x["name"].startswith("release tags — only")][0]; f = "ruleset-%d.json" % r["id"]; x = j(f); x["current_user_can_bypass"] = "always"; w(f, x)'
+expect 0 "applied as committed, read by an admin (visible lists; it may bypass tag creation): no drift" "${D[@]}" --live "$L" --require-bypass
+grep -qF "their bypass lists and the release environment match" <<<"$("${D[@]}" --live "$L" --require-bypass 2>&1)" \
+  && ok "and claims the bypass lists only when it read them" || bad "the full-match line is missing"
+mklive "$L"
+edit_live "$L" 'l = j("rulesets.json"); r = [x for x in l if x["name"].startswith("main — independent review")][0]; os.remove(os.path.join(d, "ruleset-%d.json" % r["id"])); w("rulesets.json", [x for x in l if x is not r])'
+expect 1 "main-review.json absent (0 required approvals) fails: it is required since Round 39" drift "$L"
 
 echo "== the release workflows (R37-8, D2-3)"
 expect 0 "release.yml: publish re-reads the tag the gate verified, before pushing and around the release" python3 -I - "$root/.github/workflows/release.yml" <<'PY'
@@ -479,6 +569,24 @@ if "ruleset-drift.py" not in text:
     sys.exit("does not run ruleset-drift.py")
 PY
 
+echo "== live-mainnet.yml: a failed seeding is never reported as seeded (Round 36; pinned Round 39)"
+expect 0 "the seed step fails on a failed seed, and the replay reads its exit code, not its outcome" python3 -I - "$root/.github/workflows/live-mainnet.yml" <<'PY'
+import re, sys, yaml
+steps = yaml.safe_load(open(sys.argv[1]))["jobs"]["measure"]["steps"]
+seed = next(s for s in steps if s.get("id") == "seed")
+replay = next(s for s in steps if s.get("id") == "replay")
+run = seed["run"]
+if 'echo "exit=$code" >> "$GITHUB_OUTPUT"' not in run:
+    sys.exit("the seed step no longer records its exit code")
+tail = run[run.index('echo "exit=$code"'):]
+if not re.search(r'if \[ "\$code" -ne 0 \]; then .*exit "\$code"; fi', tail):
+    sys.exit("the seed step no longer fails after recording a failed seed (its last command would be the echo)")
+if replay.get("env", {}).get("SEEDED") != "${{ steps.seed.outputs.exit == '0' }}":
+    sys.exit(f"SEEDED is {replay.get('env', {}).get('SEEDED')!r}, not the seed step's recorded exit code")
+if "steps.seed.outcome" in str(replay):
+    sys.exit("the replay reads the seed step's outcome, which an echo makes success")
+PY
+
 echo "== test-count.sh per test binary (D2-8)"
 TC=(bash "$here/test-count.sh")
 cat >"$T/cargo.log" <<'LOG'
@@ -501,11 +609,116 @@ sed 's/^test result: ok\. 3 passed/test result: ok. 0 passed/' "$T/cargo.log" >"
 sed -i 's/^test result: ok\. 40 passed/test result: ok. 43 passed/' "$T/cargo-beta0.log"
 expect 0 "the summed floor misses a binary that fell to 0 while another grew (the D2-8 hole)" "${TC[@]}" cargo "$T/cargo-beta0.log" 52 "$T/allow.txt"
 expect 1 "a per-binary floor catches it" "${TC[@]}" cargo "$T/cargo-beta0.log" 52 "$T/allow.txt" "$T/floors.txt"
+# Round 40: CI runs cargo with CARGO_TERM_COLOR=always; the coloured `Running`
+# lines lost every binary's name (the per-binary floors failed on PR CI 40216476078).
+sed -E $'s/^( *)Running /\\1\x1b[1m\x1b[92mRunning\x1b[0m /' "$T/cargo.log" >"$T/cargo-colour.log"
+grep -q $'\x1b' "$T/cargo-colour.log" && ok "the coloured log fixture carries ANSI escapes" || bad "the coloured log fixture has no escapes"
+expect 0 "a coloured cargo log still names each binary at its floor" "${TC[@]}" cargo "$T/cargo-colour.log" 52 "$T/allow.txt" "$T/floors.txt"
 grep -v 'tests/alpha.rs' "$T/cargo.log" | grep -v '^test result: ok\. 7 passed' >"$T/cargo-noalpha.log"
 expect 1 "a listed binary missing from the log fails" "${TC[@]}" cargo "$T/cargo-noalpha.log" 40 "$T/allow.txt" "$T/floors.txt"
 expect 1 "a floors file that does not exist fails" "${TC[@]}" cargo "$T/cargo.log" 52 "$T/allow.txt" "$T/no-floors.txt"
 printf '# nothing listed\n' >"$T/floors-empty.txt"
 expect 1 "a floors file that lists no binary fails (empty is not 'no floor')" "${TC[@]}" cargo "$T/cargo.log" 52 "$T/allow.txt" "$T/floors-empty.txt"
+# Round 39: the unlisted-ignored message (rewritten for shellcheck) still names each test.
+{ cat "$T/cargo.log"; printf 'test a::one ... ignored\ntest b::two ... ignored, slow\n'; } >"$T/cargo-ign.log"
+printf 'a::one  # listed\n' >"$T/allow-one.txt"
+out="$("${TC[@]}" cargo "$T/cargo-ign.log" 52 "$T/allow-one.txt" 2>&1)" && bad "an unlisted ignored test passed" || {
+  grep -q 'ignored tests not in .*: b::two' <<<"$out" && ! grep -q 'a::one' <<<"$out" \
+    && ok "an unlisted ignored test fails, named (the listed one is not)" || bad "unlisted-ignored message: $out"; }
+
+echo "== shellcheck: the CI scripts themselves (Round 39)"
+# deploy/tests/run.sh shellchecks deploy/; nothing checked .github/scripts
+# (actionlint reads only the workflows' inline run: blocks). shellcheck is on
+# the hosted runner image (the deploy job prints its version without installing it).
+if command -v shellcheck >/dev/null; then
+  expect 0 "shellcheck .github/scripts/*.sh" shellcheck -x "$here"/*.sh
+else
+  bad "shellcheck is not installed: the CI scripts were not checked (not a pass)"
+fi
+
+echo "== validate_corpora.py: the committed corpora (Round 39)"
+# The validator reads the repository's JSON with the right parser and checks
+# the manifests, the evidence, the IDLs, the corpus, the artifacts and the
+# medium-confidence rewrites. Its schema section needs `jsonschema`, which this
+# job does not install; the verification-result examples are held to the
+# schema by tests/verification_result_schema_contract.rs.
+VC=(python3 -I "$root/graphite-core/scripts/validate_corpora.py")
+expect 0 "the committed corpora validate (schemas skipped: no jsonschema here)" "${VC[@]}" --quiet --skip schemas
+VR="$T/vc"
+rm -rf "$VR" && mkdir -p "$VR/graphite-core/src" "$VR/docs"
+cp -r "$root/graphite-core/protocols" "$root/graphite-core/fixtures" "$root/graphite-core/scripts" "$VR/graphite-core/"
+cp "$root/graphite-core/src/manifest.rs" "$VR/graphite-core/src/"
+cp -r "$root/docs/audit-r36" "$root/docs/audit-r40" "$VR/docs/"
+cp -r "$root/schemas" "$root/examples" "$VR/"
+vc() { "${VC[@]}" --quiet --skip schemas --root "$VR"; }
+expect 0 "a copy of those files validates (no git: every *.json is read)" vc
+# vc_case DESCRIPTION FILE PYTHON: edit FILE (relative to the copy) with
+# PYTHON (d = the loaded JSON; the edited value is written back), expect a
+# failure, restore the file.
+vc_case() {
+  local d="$1" f="$2" code="$3"
+  cp "$VR/$f" "$T/vc-saved"
+  python3 -I - "$VR/$f" "$code" <<'PY' || bad "the fixture edit failed: $code"
+import json, sys
+p, code = sys.argv[1], sys.argv[2]
+d = json.load(open(p))
+exec(code)
+json.dump(d, open(p, "w"), indent=1)
+PY
+  expect 1 "$d" vc
+  cp "$T/vc-saved" "$VR/$f"
+}
+P_="graphite-core/protocols"
+vc_case "two instructions whose discriminators prefix each other fail" "$P_/spl-token.json" \
+  'd["instructions"][1]["discriminator"] = d["instructions"][0]["discriminator"] + "00"'
+vc_case "an allowed CPI that is not a base58 32-byte key fails" "$P_/jupiter-v6.json" \
+  'd["instructions"][0]["allowed_cpis"].append("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5D0")'
+vc_case "a PDA seed reading an account the layout does not have fails" "$P_/jupiter-dca.json" \
+  'i = [x for x in d["instructions"] if x["name"] == "openDca"][0]; i["accounts"][0]["pda_seeds"][1] = "{account_99}"'
+vc_case "a second manifest for one program id fails" "$P_/memo-program.json" \
+  'd["protocol"]["program_id"] = "11111111111111111111111111111111"'
+vc_case "a declared BattleTested tier without a record that meets it fails" "$P_/legacy-memo-program.json" \
+  'd["trust_tier"] = "BattleTested"'
+vc_case "an evidence decode rate that is not its counts fails" "$P_/battle_tested_evidence.json" \
+  'r = [x for x in d["programs"] if x["manifest"] == "zeta-zetaxs.json"][0]; r["decode"]["decode_rate"] = 0.95'
+vc_case "a corpus row relabelled real in the meta manifest fails" "graphite-core/fixtures/corpus/meta/corpus_manifest.json" \
+  'x = [x for x in d if x["provenance"] == "synthetic-attack"][0]; x["provenance"] = "real-mainnet-tx"'
+vc_case "a medium-confidence rewrite promoted to high with no evidence record fails" "docs/audit-r36/declaration-rewrites.json" \
+  'x = [x for x in d["rewrites"] if x["instruction"] == "WithdrawSol"][0]; x["confidence"] = "high"'
+# Round 40 (F-005): a promotion is accepted only with an evidence record the
+# validator re-checks.
+vc_case "a promotion whose evidence record is removed fails" "docs/audit-r36/declaration-rewrites.json" \
+  'x = [x for x in d["rewrites"] if x["instruction"] == "liquidUnstake"][0]; del x["promotion"]'
+vc_case "a promotion whose upstream account roles differ from the layout fails" "docs/audit-r36/declaration-rewrites.json" \
+  'x = [x for x in d["rewrites"] if x["instruction"] == "SwapBaseIn"][0]; x["promotion"]["evidence"]["accounts"][15][1] = ""'
+vc_case "a promotion not pinned to a full commit SHA fails" "docs/audit-r36/declaration-rewrites.json" \
+  'x = [x for x in d["rewrites"] if x["instruction"] == "WithdrawStake"][0]; x["promotion"]["evidence"]["commit"] = "main"'
+vc_case "a promotion with no sign-off fails" "docs/audit-r36/declaration-rewrites.json" \
+  'x = [x for x in d["rewrites"] if x["instruction"] == "SwapBaseOut"][0]; x["promotion"]["signed_off"] = ""'
+# Round 40 (R39-CORE-DECISION-4, R39-SUPPLY-CHAIN-11): the swap rewrites,
+# the rows left unchanged and the removed instructions.
+vc_case "a Round 40 rewrite citing an IDL instruction that is not there fails" "docs/audit-r40/declaration-rewrites.json" \
+  'x = [x for x in d["rewrites"] if x["instruction"] == "swap_base_input"][0]; x["idl_instruction"] = "swap_base_input_v9"'
+vc_case "a Round 40 rewrite no longer in its manifest fails" "docs/audit-r40/declaration-rewrites.json" \
+  'x = d["rewrites"][0]; x["new_lines"][-1] = "transfers everything from accounts.input_token_account"'
+vc_case "a Round 40 medium row relabelled high fails" "docs/audit-r40/declaration-rewrites.json" \
+  'x = [x for x in d["rewrites"] if x["confidence"] == "medium"][0]; x["confidence"] = "high"'
+vc_case "a declaration listed as left unchanged that changed fails" "docs/audit-r40/declaration-rewrites.json" \
+  'k = sorted(d["left_unchanged"])[0]; d["left_unchanged"][k]["lines"] = ["transfers tokens"]'
+vc_case "an instruction no committed IDL has, re-added, fails" "$P_/meteora-dlmm.json" \
+  'x = dict(d["instructions"][0]); x["name"] = "swap_2"; x["discriminator"] = "df7e2d55564d1fc2"; d["instructions"].append(x)'
+vc_case "a rewrite no longer in its manifest fails" "docs/audit-r36/declaration-rewrites.json" \
+  'd["rewrites"][0]["new_lines"].append("transfers everything to accounts.attacker")'
+vc_case "a mainnet sample row whose version label is not its bytes fails" "graphite-core/fixtures/mainnet/sample-2026-09-23-last-2-blocks.json" \
+  'r = [x for x in d["rows"] if x["version"] == "legacy"][0]; r["version"] = "0"'
+vc_case "an artifact relabelled (its provenance words gone) fails" "graphite-core/fixtures/artifacts/mainnet_v0_alt.json" \
+  'd["_"] = "Mainnet-like transactions."'
+vc_case "a corpus entry filed under another program fails" "graphite-core/fixtures/corpus/11111111111111111111111111111111.json" \
+  'd[0]["program_id"] = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"'
+printf '{"a": 1, "a": 2}\n' >"$VR/graphite-core/fixtures/artifacts/dup-key.json"
+expect 1 "a JSON file with a duplicate key fails" vc
+rm -f "$VR/graphite-core/fixtures/artifacts/dup-key.json"
+expect 0 "and the copy validates again once each edit is undone" vc
 
 echo "== Dockerfile: the apt layer is pinned (D-8)"
 expect 0 "the runtime image's apt sources are one dated snapshot, recorded in pinned-tools.json" python3 -I - "$root/Dockerfile" "$root/.github/pinned-tools.json" <<'PY'
@@ -527,6 +740,172 @@ tools = {t["name"]: t for t in json.load(open(sys.argv[2]))["tools"]}
 t = tools.get("debian snapshot (runtime image apt layer)") or sys.exit("pinned-tools.json does not list the snapshot")
 if t["version"] != next(iter(stamps)):
     sys.exit(f"pinned-tools.json says {t['version']}, the Dockerfile {stamps}")
+PY
+
+echo "== actionlint, pinned and run (Round 40, R39-SUPPLY-CHAIN-6)"
+expect 0 "the ci-scripts job runs the pinned actionlint, checksum first, over every workflow, nothing ignored" python3 -I - "$root/.github/workflows/ci.yml" "$root/.github/pinned-tools.json" "$root" <<'PY'
+import json, os, sys, yaml
+steps = yaml.safe_load(open(sys.argv[1]))["jobs"]["ci-scripts"]["steps"]
+tool = next(t for t in json.load(open(sys.argv[2]))["tools"] if t["name"] == "actionlint")
+step = next((s for s in steps if "actionlint" in s.get("name", "")), None) or sys.exit("no actionlint step in ci-scripts")
+env, run = step.get("env", {}), step["run"]
+if str(env.get("ACTIONLINT_VERSION")) != tool["version"]:
+    sys.exit(f"ACTIONLINT_VERSION {env.get('ACTIONLINT_VERSION')!r}, pinned-tools.json {tool['version']!r}")
+want = next(p["text"].split(": ", 1)[1] for p in tool["pinned_in"] if p["text"].startswith("ACTIONLINT_SHA256: "))
+if env.get("ACTIONLINT_SHA256") != want:
+    sys.exit("ACTIONLINT_SHA256 is not the pinned checksum")
+check, use = run.find("sha256sum --check"), run.find('"$dir/actionlint" -shellcheck')
+if check < 0 or use < 0 or check > run.find("tar -xzf") or check > use:
+    sys.exit("the archive is not checked against the pinned sha256 before it is unpacked and run")
+if "_linux_amd64.tar.gz" not in run or "releases/download/v${ACTIONLINT_VERSION}/" not in run:
+    sys.exit("not the release binary of the pinned version")
+if "-ignore" in run or "-config-file" in run:
+    sys.exit("actionlint is told to ignore something")
+for name in ("actionlint.yaml", "actionlint.yml"):
+    if os.path.exists(os.path.join(sys.argv[3], ".github", name)):
+        sys.exit(f".github/{name} exists: a config can silence findings; review it here first")
+names = [s.get("name", "") for s in steps]
+if names.index(step["name"]) > names.index("The CI scripts' own tests"):
+    sys.exit("actionlint must run before the scripts' tests (they use the binary it verified)")
+PY
+al_pinned="$(python3 -I -c 'import json,sys; print(next(t["version"] for t in json.load(open(sys.argv[1]))["tools"] if t["name"] == "actionlint"))' "$root/.github/pinned-tools.json")"
+AL="${ACTIONLINT:-}"
+if [ -n "$AL" ] && [ -x "$AL" ]; then
+  al_version="$("$AL" -version 2>/dev/null | head -n 1)"
+  [ "$al_version" = "$al_pinned" ] && ok "actionlint at \$ACTIONLINT is the pinned $al_pinned" || bad "actionlint at \$ACTIONLINT is ${al_version:-unreadable}, pinned $al_pinned"
+  if command -v shellcheck >/dev/null; then SC="$(command -v shellcheck)"; else SC=""; fi
+  expect 0 "actionlint finds nothing in the committed workflows" "$AL" -shellcheck "$SC" -pyflakes "" "$root"/.github/workflows/*.yml
+  mkdir -p "$T/al/.github/workflows"
+  cp "$root/.github/workflows/ci.yml" "$T/al/.github/workflows/ci.yml"
+  sed -i 's/^    needs: \[rust-lint, /    needs: [no-such-job, rust-lint, /' "$T/al/.github/workflows/ci.yml"
+  expect 1 "a seeded fault (ci-gate needing a job that does not exist) is reported: the check is not a no-op" "$AL" -shellcheck "" -pyflakes "" "$T/al/.github/workflows/ci.yml"
+  printf 'name: seeded\non: push\njobs:\n  a:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo $UNQUOTED_VAR\n' >"$T/al/.github/workflows/seeded.yml"
+  if [ -n "$SC" ]; then
+    expect 1 "a seeded shellcheck finding inside a run: block is reported" "$AL" -shellcheck "$SC" -pyflakes "" "$T/al/.github/workflows/seeded.yml"
+    expect 0 "and the same workflow with the variable quoted is clean (control)" bash -c 'sed -i "s/echo \$UNQUOTED_VAR/echo \"\$UNQUOTED_VAR\"/" "$2" && "$1" -shellcheck "$3" -pyflakes "" "$2"' _ "$AL" "$T/al/.github/workflows/seeded.yml" "$SC"
+  else
+    bad "shellcheck is not installed: actionlint's run:-block check was not exercised (not a pass)"
+  fi
+elif [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+  bad "ACTIONLINT is not set: the ci-scripts job's actionlint step did not run first (not a pass)"
+else
+  echo "  SKIP (not counted, not a pass): no ACTIONLINT; set ACTIONLINT to actionlint $al_pinned to run these cases"
+fi
+
+echo "== per-binary Rust test floors (Round 40, D2-8)"
+expect 0 "every rust-test leg passes its committed floors file, and each file lists every security suite" python3 -I - "$root" <<'PY'
+import fnmatch, os, re, sys, yaml
+root = sys.argv[1]
+job = yaml.safe_load(open(os.path.join(root, ".github/workflows/ci.yml")))["jobs"]["rust-test"]
+run = next(s["run"] for s in job["steps"] if s.get("name", "").startswith("Tests"))
+if not re.search(r'test-count\.sh cargo "\$RUNNER_TEMP/cargo-test-\$LEG\.log" "\$FLOOR" \.\./\.github/test-allowlists/rust-ignored\.txt "\.\./\.github/test-floors/rust-\$LEG\.txt"', run):
+    sys.exit("the test step does not pass .github/test-floors/rust-$LEG.txt as test-count.sh's 5th argument")
+tests = sorted(f for f in os.listdir(os.path.join(root, "graphite-core/tests")) if f.endswith(".rs"))
+patterns = ["round3*.rs", "round4*.rs", "ai_layer_isolation.rs", "docs_*.rs", "*exploit*.rs", "*attack*.rs", "mainnet_conformance.rs", "regression_corpus.rs"]
+security = {f"tests/{f}" for f in tests if any(fnmatch.fnmatch(f, p) for p in patterns)}
+if len(security) < 35:
+    sys.exit(f"only {len(security)} security suites matched: the patterns no longer find them")
+for leg in [l["leg"] for l in job["strategy"]["matrix"]["include"]]:
+    path = os.path.join(root, f".github/test-floors/rust-{leg}.txt")
+    if not os.path.isfile(path):
+        sys.exit(f"{path} is missing")
+    listed, excused = {}, {}
+    for n, line in enumerate(open(path), 1):
+        m = re.match(r"#\s*not in this leg:\s*(\S+)\s+\((.+)\)\s*$", line)
+        if m:
+            excused[m.group(1)] = m.group(2)
+            continue
+        body = line.split("#", 1)[0].strip()
+        if not body:
+            continue
+        m = re.fullmatch(r"(\d+) (.+)", body)
+        if not m:
+            sys.exit(f"{path}:{n}: not '<floor> <binary>': {line!r}")
+        if int(m.group(1)) < 1:
+            sys.exit(f"{path}:{n}: a floor of 0 holds nothing")
+        listed[m.group(2)] = int(m.group(1))
+    if "unittests src/lib.rs" not in listed:
+        sys.exit(f"{path}: the library's unit tests are not floored")
+    for b in list(listed) + list(excused):
+        if b.startswith("tests/") and not os.path.isfile(os.path.join(root, "graphite-core", b)):
+            sys.exit(f"{path}: {b} does not exist")
+    if leg == "lib":
+        continue  # `--lib`: only the library's unit tests run in this leg
+    missing = sorted(security - set(listed) - set(excused))
+    if missing:
+        sys.exit(f"{path}: security suites with no floor and no reason: {missing}")
+    if leg == "default" and excused:
+        sys.exit(f"{path}: the default leg is every feature; nothing is excused there: {sorted(excused)}")
+PY
+
+echo "== agent guard on Windows (Round 40, R39-CLIENTS-6)"
+expect 0 "agent-guard-windows runs the guard's typecheck and tests on a pinned Windows image and allows only the POSIX-only skips" python3 -I - "$root/.github/workflows/ci.yml" <<'PY'
+import re, sys, yaml
+jobs = yaml.safe_load(open(sys.argv[1]))["jobs"]
+job = jobs.get("agent-guard-windows") or sys.exit("no agent-guard-windows job")
+if not str(job["runs-on"]).startswith("windows-") or job["runs-on"] == "windows-latest":
+    sys.exit(f"runs-on {job['runs-on']!r}: a pinned Windows image (A6-08)")
+if job["defaults"]["run"]["working-directory"] != "integrations/agent-guard":
+    sys.exit("not the guard's directory")
+for s in job["steps"]:
+    if "uses" in s and not re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", s["uses"]):
+        sys.exit(f"{s['uses']}: not pinned to a commit")
+run = "\n".join(s.get("run", "") for s in job["steps"])
+for needle in ("npm ci --ignore-scripts", "npm run typecheck", "npm test", "test-count.sh tap", "{ skip: posixOnly(", 'test-count.sh tap "$log" 345 "$posix_only"'):
+    if needle not in run:
+        sys.exit(f"the job lost {needle!r}")
+if "agent-guard-windows" not in jobs["ci-gate"]["needs"]:
+    sys.exit("ci-gate does not need it")
+PY
+
+echo "== graphite-core is not published to crates.io (Round 40, checklist 10c)"
+expect 0 "Cargo.toml says publish = false and no workflow runs cargo publish" python3 -I - "$root" <<'PY'
+import glob, os, sys, tomllib
+root = sys.argv[1]
+pkg = tomllib.load(open(os.path.join(root, "graphite-core/Cargo.toml"), "rb"))["package"]
+if pkg.get("publish") is not False:
+    sys.exit(f"package.publish is {pkg.get('publish')!r}, not false")
+for wf in glob.glob(os.path.join(root, ".github/workflows/*.yml")):
+    if "cargo publish" in open(wf).read():
+        sys.exit(f"{wf} runs cargo publish")
+PY
+
+echo "== the mutation job's shards fit its step (Round 40, F-015)"
+expect 0 "every mutated file's shards are 0..N-1 once each, planned before the build, sliced the same way, floors unchanged" python3 -I - "$root/.github/workflows/assurance.yml" <<'PY'
+import collections, re, sys, yaml
+job = yaml.safe_load(open(sys.argv[1]))["jobs"]["mutants"]
+shards = collections.defaultdict(list)
+for e in job["strategy"]["matrix"]["include"]:
+    k, n = map(int, e["shard"].split("/"))
+    shards[e["file"]].append((k, n))
+want = {"src/risk_engine.rs", "src/simulation_integrity.rs", "src/tx_artifact.rs", "src/state_diff.rs"}
+if set(shards) != want:
+    sys.exit(f"mutated files {sorted(shards)}")
+for f, ks in shards.items():
+    ns = {n for _, n in ks}
+    if len(ns) != 1 or sorted(k for k, _ in ks) != list(range(ns.pop())):
+        sys.exit(f"{f}: shards {sorted(ks)} are not 0..N-1 of one N, each once")
+if len(job["strategy"]["matrix"]["include"]) > 256:
+    sys.exit("more than GitHub's 256 jobs per matrix")
+steps = {s.get("name"): s for s in job["steps"]}
+plan, mutate = steps.get("Plan (the shard fits the step)"), steps.get("Mutate")
+if not plan or not mutate:
+    sys.exit("the Plan or Mutate step is gone")
+names = [s.get("name") for s in job["steps"]]
+if names.index(plan["name"]) > names.index("Mutate"):
+    sys.exit("the plan must come before the mutation")
+if "--sharding slice" not in plan["run"] or "--sharding slice" not in mutate["run"] or "--list" not in plan["run"]:
+    sys.exit("the Plan and Mutate steps must slice the file the same way")
+if int(plan["env"]["MAX_PER_SHARD"]) > 24 or 'exit 1' not in plan["run"]:
+    sys.exit("the per-shard cap is gone or above 24")
+if int(mutate.get("timeout-minutes", 0)) != 330 or "--in-place" not in mutate["run"] or "--timeout 300" not in mutate["run"]:
+    sys.exit("the Mutate step's limits changed")
+select = steps["Select the suites and floor for this file"]["run"]
+floors = dict(re.findall(r"(src/\w+\.rs)\)\s*\n\s*floor=([0-9.]+)", select))
+if floors != {"src/risk_engine.rs": "0.90", "src/simulation_integrity.rs": "0.60", "src/tx_artifact.rs": "0.60", "src/state_diff.rs": "0.60"}:
+    sys.exit(f"the floors moved: {floors}")
+if "scripts/mutation_floor.py mutants.out/outcomes.json" not in steps["Enforce the mutation-score floor"]["run"]:
+    sys.exit("the floor step no longer runs mutation_floor.py")
 PY
 
 echo

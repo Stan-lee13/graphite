@@ -79,6 +79,7 @@ fn core() -> GraphiteCore {
         evidence: battle_tested_evidence(),
         quarantined: false,
         quarantine_reason: None,
+        first_manifest_unvalidated: false,
     })
     .expect("behavior seed");
     core

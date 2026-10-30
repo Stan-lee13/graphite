@@ -12,22 +12,15 @@ and `gh` authenticated as a repository admin.
 
 ## Repository (owner)
 
-- [ ] **1. Branch protection and immutable tags — STOP-SHIP.**
-  Artifact: `.github/rulesets/main.json`, `release-tags.json` (runbook: [branch-protection.md](branch-protection.md)).
-  ```sh
-  gh api -X POST repos/Stan-lee13/graphite/rulesets --input .github/rulesets/main.json
-  gh api -X POST repos/Stan-lee13/graphite/rulesets --input .github/rulesets/release-tags.json
-  gh api repos/Stan-lee13/graphite/rulesets --jq '.[] | [.name, .enforcement] | @tsv'   # both "active"
-  ```
-  Or Settings → Rules → Rulesets → New ruleset → Import a ruleset (one file at a time).
-  Check: `git push origin main` from a clone is rejected; a PR with a red job shows `CI gate` failing.
+- [ ] **1. Branch protection and immutable tags — STOP-SHIP.** Exactly the four committed rulesets
+  and nothing else: **R1** below (runbook: [branch-protection.md](branch-protection.md)). Live on
+  2026-10-25 (Round 39): one uncommitted ruleset, `Main-review` (id 25817024), with 0 required
+  approvals, RepositoryRole 2 and 5 and 24 GitHub Apps that may bypass it `always`, and an extra
+  `copilot_code_review` rule; no tag ruleset. That is not this item done.
   Then delete or protect the stale branches (K-14): `git ls-remote --heads origin`, and for each one
   not in use, `git push origin --delete <branch>`.
-  When a second maintainer exists: `gh api -X POST repos/Stan-lee13/graphite/rulesets --input .github/rulesets/main-review.json`.
-  (Round 38, D2-4: it lets the admin role bypass it through a pull request only, so importing it with
-  one maintainer no longer blocks every merge; each such merge is logged as a bypass. Delete that
-  `bypass_actors` entry once two maintainers review each other.)
-- [ ] **2. Private vulnerability reporting.**
+- [ ] **2. Private vulnerability reporting.** Off on 2026-10-25 (`GET …/private-vulnerability-reporting`
+  = `{"enabled": false}`).
   `gh api -X PUT repos/Stan-lee13/graphite/private-vulnerability-reporting`
   (or Settings → Security → Code security → Private vulnerability reporting → Enable).
   Then, in one PR: point the contact link in `.github/ISSUE_TEMPLATE/config.yml` at
@@ -79,24 +72,35 @@ that is not in `.github/revoked_signers`. But a tag on an unmerged branch runs t
 the workflow, which can drop the gate, and a tag on a `main` commit older than the gate (`99948c6`, on
 `main` at 0.3.0-beta) runs a copy that never had one. `.github/workflows/release-guard.yml` runs from
 `main` on every `Release` run and cancels one that fails those checks, but it is a second line: it
-does not see a workflow under another name, cannot revoke an attestation, and an admin can disable
-it. Only repository settings close this, and only an admin can apply them. **Until R1 and R2 are
+does not see a workflow under another name, checks only runs started by a tag push (a branch's own
+`release.yml` changed to publish on a manual run is not checked; its attestations name a branch,
+not `refs/tags/v…`, so the `--source-ref` in 10e refuses them), cannot revoke an attestation, and an
+admin can disable it. Only repository settings close this, and only an admin can apply them. **Until R1 and R2 are
 done, anyone with write access can still publish a release with genuine provenance.**
 
 Exactly what to apply, in order:
 
-- [ ] **R1. Three rulesets** — `main.json` (main: no force-push or deletion, every change by pull
-  request, the `CI gate` check from app 15368), `release-tags.json` (`v*` tags immutable for
-  everyone, admins included) and `release-tags-create.json` (only a repository admin creates a `v*`
-  tag):
+- [ ] **R1. Four rulesets, under their committed names, and no other** (Round 39) — `main.json`
+  (main: no force-push or deletion, every change by pull request, the `CI gate` check from app
+  15368, no bypass), `main-review.json` (one approving code-owner review of the last push; the
+  admin role may bypass it through a pull request only, so one maintainer can merge and each such
+  merge is logged), `release-tags.json` (`v*` tags immutable for everyone, admins included) and
+  `release-tags-create.json` (only a repository admin creates a `v*` tag). Then delete the
+  uncommitted `Main-review`, whose 26 `always` bypass actors (the admin and maintain roles and 24
+  GitHub Apps) can each skip every rule on `main`:
   ```sh
-  gh api -X POST repos/Stan-lee13/graphite/rulesets --input .github/rulesets/main.json
-  gh api -X POST repos/Stan-lee13/graphite/rulesets --input .github/rulesets/release-tags.json
-  gh api -X POST repos/Stan-lee13/graphite/rulesets --input .github/rulesets/release-tags-create.json
-  gh api repos/Stan-lee13/graphite/rulesets --jq '.[] | [.name, .enforcement] | @tsv'   # three, all "active"
+  for f in main main-review release-tags release-tags-create; do
+    gh api -X POST repos/Stan-lee13/graphite/rulesets --input ".github/rulesets/$f.json"
+  done
+  gh api repos/Stan-lee13/graphite/rulesets --jq '.[] | [.id, .name, .enforcement] | @tsv'   # the four, "active"
+  gh api -X DELETE repos/Stan-lee13/graphite/rulesets/25817024                              # Main-review
   ```
-  Check: a collaborator with write (not admin) access runs `git push origin <commit>:refs/tags/v9.9.9-test`
-  and is rejected.
+  Or Settings → Rules → Rulesets → New ruleset ▾ → Import a ruleset, one file at a time, keeping
+  each imported name exactly; then Main-review → Delete ruleset. A rule you want beyond the files
+  (Copilot review, approval of unattributed changes) goes into a committed file by pull request
+  first. Check: a collaborator with write (not admin) access runs
+  `git push origin <commit>:refs/tags/v9.9.9-test` and is rejected; `git push origin main` is
+  rejected for everyone.
 - [ ] **R2. A protected `release` environment** (`.github/environments/release.json`): you as required
   reviewer, and a single deployment policy, the tag pattern `v*`:
   ```sh
@@ -134,13 +138,17 @@ Exactly what to apply, in order:
 - [ ] **R4. Check the gate refuses.** After R1–R3: an unsigned annotated tag, a signed tag on a commit
   that is not on `main`, or one on a commit older than `ad3f7ad` must stop at the `Release gate` job or
   be cancelled by `Release guard` (and R1 already rejects the push of such a tag from a non-admin).
-- [ ] **R5. Read the drift check** (Round 38). Actions → Ruleset drift → Run workflow. It is red until
-  R1 and R2 are done, and green only while the three rulesets and the environment match the
-  committed files; it runs every Monday after that. It uses GITHUB_TOKEN, which cannot read who may
-  bypass a ruleset, so check that once by hand:
-  `gh api repos/Stan-lee13/graphite/rulesets/<id> --jq .bypass_actors` for each of the three:
-  `[]` for `main.json` and `release-tags.json`, the admin role (`actor_id` 5, `always`) only for
-  `release-tags-create.json`.
+- [ ] **R5. Read the drift check** (Round 38; Round 39). Actions → Ruleset drift → Run workflow. It
+  is red until R1 and R2 are done (on 2026-10-25 it would name 71 differences: the four committed
+  rulesets absent, `Main-review` uncommitted with each of its differences, the environment absent),
+  and green only while exactly the four rulesets and the environment match the committed files; it
+  runs every Monday after that. It uses GITHUB_TOKEN, which cannot read who may bypass a ruleset, so
+  its green says "bypass lists NOT VERIFIED". Verify them once yourself, as admin, with the same
+  script and `--require-bypass` ([branch-protection.md](branch-protection.md) §3 has the commands):
+  it must exit 0 and print "the live rulesets, their bypass lists and the release environment
+  match the committed files". The bypass lists it requires: `[]` for `main.json` and
+  `release-tags.json`; the admin role (`actor_id` 5) `pull_request` for `main-review.json`; the
+  admin role `always` for `release-tags-create.json`; no `Integration` anywhere.
 
 ## Release (owner)
 
@@ -148,9 +156,10 @@ Exactly what to apply, in order:
 - [ ] **10b. Rehearse.** Actions → Release → Run workflow (on `main`). Every build, the two-build
   reproducibility comparison, both SBOMs, the image smoke test and SHA256SUMS run; nothing is pushed,
   attested or released. Read the `reproducible` job: it fails if the two builds differ.
-- [ ] **10c. Decide whether the crate goes to crates.io.** `graphite-core/Cargo.toml` has no `publish`
-  key today, so `cargo publish` would be allowed; add `publish = false` if it should not be. The
-  release workflow never publishes to crates.io either way.
+- [x] **10c. The crate does not go to crates.io — decided (Round 40).** `graphite-core/Cargo.toml`
+  sets `publish = false`, so `cargo publish` refuses. A release is the signed tag's image, binaries
+  and SBOMs from `.github/workflows/release.yml`, which never runs `cargo publish`. Publishing to
+  crates.io later is a new decision: remove the key in a reviewed change that says why.
 - [ ] **10d. Tag.** The tag must be `v` + the crate's version, SSH-signed by a key in
   `.github/allowed_signers` (R3), on a commit of `main` whose `CI gate` passed in its push run:
   ```sh
@@ -245,14 +254,16 @@ Pick one form: `deploy/compose/docker-compose.prod.yml` or `deploy/systemd/` (bo
 - [ ] **12. MMM `updatePool`** stays ungranted until its IDL is in the repository.
 - [ ] **13. Sign off the 9 medium-confidence declaration rewrites — STOP-SHIP (Round 36, F-005).**
   Round 36 rewrote 35 declarations from their IDLs (`docs/audit-r36/declaration-rewrites.json`); 26
-  are `"confidence": "high"`, and 9 are `"confidence": "medium"` because the repository holds no IDL
-  file for them: SPL Stake Pool `WithdrawSol`, `WithdrawSolWithSlippage`, `WithdrawStake`,
+  are `"confidence": "high"`, and 9 are `"confidence": "medium"` — eight because the repository holds
+  no IDL file for them, and Marinade's because its committed IDL (`graphite-core/scripts/idls/marinade.json`)
+  carries no docs, so the roles rest on account names: SPL Stake Pool `WithdrawSol`, `WithdrawSolWithSlippage`, `WithdrawStake`,
   `WithdrawStakeWithSlippage`; Marinade `liquidUnstake`; Raydium AMM v4 `SwapBaseIn`, `SwapBaseOut`,
   `SwapBaseInV2`, `SwapBaseOutV2`. Read each row's `old_lines`, `new_lines`, `idl_source` and
   `justification` against the program's own interface, and record the sign-off (or the correction)
   in a pull request that changes the row's `confidence`.
   ```sh
   jq -r '.rewrites[] | select(.confidence=="medium") | "\(.manifest) \(.instruction)"' docs/audit-r36/declaration-rewrites.json
+  python3 -I graphite-core/scripts/validate_corpora.py   # lists the nine; fails if one changes without review
   ```
 
 ## Running it

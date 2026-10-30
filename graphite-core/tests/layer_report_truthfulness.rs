@@ -151,6 +151,7 @@ fn an_approval_inside_the_stale_windows_gap_is_recorded_consistently() {
         },
         quarantined: false,
         quarantine_reason: None,
+        first_manifest_unvalidated: false,
     })
     .expect("seed");
 

@@ -121,13 +121,20 @@ test("the rule takes permission away field by field", () => {
   }
 });
 
-test("a server older than Round 30 is judged by the recomputation alone", () => {
+// Re-pinned in Round 39 (R39-CLIENTS-1). This test said "a server older than
+// Round 30 is judged by the recomputation alone" and asserted the verdict
+// below EXECUTABLE. The Core's own `is_executable` reads an absent decision
+// as `blocked` (serde default), the agent guard refuses it (Round 34), and a
+// server that old predates every rule added since — so the SDK was looser
+// than the Core. It is still readable; it is never executable.
+test("a server older than Round 30 is readable, and never executable", () => {
   const old = clone(fixture("executable_approved"));
   delete old.decision;
   delete old.executable;
   delete old.instruction_bind_key;
   assert.equal(validateVerificationResult(old), null, "an older server still validates");
-  assert.equal(isExecutable(old), true, "recomputed: executable");
+  assert.equal(computeExecutionDecision(old), "executable_approved", "control: its own fields would permit it");
+  assert.equal(isExecutable(old), false, "but no decision was made: not executable");
   const oldUnsimulated = clone(fixture("analysis_only"));
   delete oldUnsimulated.decision;
   delete oldUnsimulated.executable;

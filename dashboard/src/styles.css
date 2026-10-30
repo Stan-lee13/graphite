@@ -170,6 +170,9 @@ svg {
   position: absolute;
   width: 1px;
   height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
@@ -425,7 +428,8 @@ kbd {
   box-shadow: 0 0 0 3px var(--warn-wash);
 }
 .dot.unauthorized,
-.dot.down {
+.dot.down,
+.dot.erroring {
   background: var(--block);
   box-shadow: 0 0 0 3px var(--block-wash);
 }
@@ -1040,6 +1044,12 @@ kbd {
 }
 .section-flush {
   overflow-x: auto;
+  /* Round 39 (R39-DASH-10): the containing block of the screen-reader text
+     in its rows. Without it each absolutely positioned .sr-only resolved
+     against the page, sat at its static position far right in a table
+     scrolled sideways, and made the whole page scroll sideways at tablet
+     width (Verifications +58 px, Blocked +35 px at 768). */
+  position: relative;
 }
 .section-note {
   padding: 10px 16px 14px;
@@ -1059,6 +1069,9 @@ kbd {
 }
 .app.phone .section-head {
   padding: 12px 14px;
+  /* Round 39 (R39-DASH-10): the Verifications filter is wider than a
+     320 px phone's head row beside its title; it wraps under it. */
+  flex-wrap: wrap;
 }
 .app.phone .section-body {
   padding: 14px;
@@ -1354,6 +1367,7 @@ a.row-main:hover .row-title {
 }
 
 .copy {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1391,6 +1405,12 @@ a.row-main:hover .row-title {
 }
 .copy.copied svg {
   color: var(--pass);
+}
+/* Round 39 (R39-DASH-8): the browser refused the copy. */
+.copy.failed,
+.copy.failed svg {
+  color: var(--warn);
+  opacity: 1;
 }
 .app.phone .copy svg {
   opacity: 0.6;
@@ -1943,7 +1963,10 @@ a.row-main:hover .row-title {
 }
 .app.phone .connect,
 .app.tablet .connect {
-  grid-template-columns: 1fr;
+  /* Round 39 (R39-DASH-10): minmax(0, …), not 1fr, whose minimum is the
+     widest unbreakable line — the <pre> of GRAPHITE_CORS_ORIGINS — so the
+     form and the aside were 420 px wide on a 320–390 px phone. */
+  grid-template-columns: minmax(0, 1fr);
 }
 .connect-aside {
   display: flex;
@@ -1991,8 +2014,11 @@ pre {
   box-shadow: var(--ring);
   font-size: 12.5px;
   color: var(--fg-2);
-  overflow-x: auto;
-  white-space: pre;
+  /* Round 39 (R39-DASH-10): wrapped, not scrolled. Once the Connection
+     screen fit a phone, the GRAPHITE_CORS_ORIGINS line scrolled inside a
+     box a keyboard cannot reach (axe scrollable-region-focusable). */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .prose {
   font-size: 13.5px;

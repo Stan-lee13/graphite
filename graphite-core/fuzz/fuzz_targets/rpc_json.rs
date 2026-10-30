@@ -22,9 +22,31 @@ fuzz_target!(|data: &[u8]| {
         return;
     };
 
-    let _ = simulation_result_from_value_for_test(&value);
-    if let Some(inner) = value.get("value") {
-        let _ = simulation_result_from_value_for_test(inner);
+    for candidate in std::iter::once(&value).chain(value.get("value")) {
+        let Ok(sim) = simulation_result_from_value_for_test(candidate) else {
+            continue;
+        };
+        // Round 39 (core-identity): `loadedAddresses` is a SEQUENCE the
+        // account indexes read through, so an accepted one is exactly the
+        // provider's two lists, in order, every entry a string — and a list
+        // with any unreadable entry leaves the whole member unknown, never a
+        // shorter list (Round 29, R3).
+        let strings = |v: Option<&serde_json::Value>| -> Option<Vec<String>> {
+            v?.as_array()?
+                .iter()
+                .map(|x| x.as_str().map(str::to_string))
+                .collect()
+        };
+        let member = candidate.get("loadedAddresses").filter(|l| !l.is_null());
+        let expected =
+            member.and_then(|l| Some((strings(l.get("writable"))?, strings(l.get("readonly"))?)));
+        assert_eq!(
+            sim.loaded_addresses
+                .as_ref()
+                .map(|l| (l.writable.clone(), l.readonly.clone())),
+            expected,
+            "loadedAddresses was not read as exactly the provider's lists"
+        );
     }
 
     if let Ok(Some(account)) = account_from_value_for_test("Acct", &value) {

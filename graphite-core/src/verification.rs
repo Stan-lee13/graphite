@@ -5630,23 +5630,139 @@ impl GraphiteCore {
         program_id: &str,
         manifest: Option<&crate::manifest::ProtocolManifest>,
     ) -> TrustTier {
-        match manifest {
-            Some(m) => {
-                // P7: cap self-asserted tiers.
-                let manifest_tier =
-                    TrustTier::from_manifest_str(&m.trust_tier).min(TrustTier::OfficialManifest);
-                match self.graph().get(program_id) {
-                    Some(b) if b.quarantined => TrustTier::Unknown,
-                    Some(b) => b.trust_tier.max(manifest_tier),
-                    None => manifest_tier,
-                }
-            }
-            None => self
-                .graph()
-                .get(program_id)
-                .map(|b| b.trust_tier)
-                .unwrap_or(TrustTier::Unknown),
+        let graph = self.graph();
+        verdict_program_tier(manifest, graph.get(program_id))
+    }
+
+    /// Round 40 (bootstrap): what a verdict on `program_id` ALONE would carry
+    /// — the tier [`Self::program_trust_tier`] gives it and the confidence
+    /// `build_signals` and the tier ceiling give a described instruction
+    /// whose L5 passed, with no penalty and no sibling — when its latest
+    /// graph record is `record` (the record in force when `None`).
+    ///
+    /// For `graphite evidence import-census --dry-run` and its report: what
+    /// an import would change, computed by the verdict path's own functions,
+    /// never a separate estimate. A real verdict can only be lower (a
+    /// sibling's lower tier, an L2/L4/L5 penalty, an unknown instruction).
+    pub fn standalone_standing(
+        &self,
+        program_id: &str,
+        record: Option<&Behavior>,
+    ) -> (TrustTier, f64) {
+        let manifest = self.registry.get(program_id);
+        let graph = self.graph();
+        let record = record.or_else(|| graph.get(program_id));
+        let tier = verdict_program_tier(manifest, record);
+        let evidence = GraphSignalEvidence {
+            simulation_matches: graph
+                .get_simulation_baseline(program_id)
+                .map(|b| b.sample_count)
+                .unwrap_or(0),
+            historical_volume: record
+                .map(|b| b.evidence.battle_tested_tx_count)
+                .unwrap_or(0),
+            community_verified: record
+                .map(|b| b.evidence.community_verified_count)
+                .unwrap_or(0),
+        };
+        drop(graph);
+        let intent = ProposedIntent {
+            intent_type: "standalone".to_string(),
+            raw_natural_language: String::new(),
+            confidence_of_parse: 1.0,
+            extracted_parameters: None,
+        };
+        let signals = build_signals(
+            &evidence,
+            manifest.is_some(),
+            tier,
+            &intent,
+            LayerStatus::Passed,
+        );
+        let confidence = compute_confidence(&signals, tier)
+            .map(|c| apply_unknown_protocol_ceiling(tier, c.confidence))
+            .unwrap_or(0.0);
+        (tier, confidence)
+    }
+
+    /// Round 40 (bootstrap): append a census-measured evidence record and
+    /// bind the program's evidence to the earliest slot the census observed
+    /// (`SemanticGraphStore::bind_evidence_to_slot`), so the upgrade watch
+    /// withdraws it when the program's deployment turns out newer than the
+    /// measurement. Returns whether the change reached disk; it is in force
+    /// in memory either way. Operator-only (the `graphite evidence
+    /// import-census` command); nothing on the HTTP surface calls it.
+    ///
+    /// `cluster_genesis` is the genesis hash of the cluster the evidence was
+    /// measured on; the graph records it (`mark_evidence_genesis`) and a Core
+    /// that attaches an RPC must confirm it (`confirm_evidence_cluster`).
+    pub fn import_measured_evidence(
+        &mut self,
+        behavior: Behavior,
+        measured_from_slot: u64,
+        cluster_genesis: &str,
+    ) -> Result<Result<(), String>, VerificationError> {
+        {
+            let mut graph = self.graph();
+            // Marked first: evidence of a second cluster is refused before
+            // anything is appended.
+            graph.mark_evidence_genesis(cluster_genesis)?;
+            let program_id = behavior.program_id.clone();
+            graph.append(behavior)?;
+            graph.bind_evidence_to_slot(&program_id, measured_from_slot);
         }
+        Ok(self.persist_state())
+    }
+
+    /// The genesis hash of the cluster the graph's imported evidence was
+    /// measured on (Round 40), if the graph holds any.
+    pub fn evidence_genesis(&self) -> Option<String> {
+        self.graph().evidence_genesis().map(str::to_string)
+    }
+
+    /// Round 40 (bootstrap): refuse a graph whose imported evidence was
+    /// measured on another cluster than the attached RPC serves.
+    ///
+    /// `Ok` when the graph holds no imported evidence, when no RPC is
+    /// attached (nothing is simulated, so no verdict is executable), or when
+    /// the RPC's `getGenesisHash` is the cluster the evidence was measured
+    /// on. `Err` — with the reason — when the RPC serves another cluster or
+    /// cannot say which it serves: a mainnet census describes mainnet code,
+    /// and the same program id on devnet, testnet or a local validator can be
+    /// anything. The server calls this at start and refuses to start on an
+    /// `Err` (an internal-integrity stop, not a refusal of one transaction).
+    #[cfg(feature = "rpc")]
+    pub async fn confirm_evidence_cluster(&self) -> Result<(), String> {
+        let Some(expected) = self.evidence_genesis() else {
+            return Ok(());
+        };
+        let Some(rpc) = self.rpc_client.as_ref() else {
+            return Ok(());
+        };
+        let served = rpc.get_genesis_hash().await.map_err(|e| {
+            format!(
+                "this data directory holds census evidence measured on the cluster whose genesis hash is {expected} \
+                 (mainnet-beta), and the attached RPC could not say which cluster it serves (getGenesisHash: {e}); \
+                 refusing to use that evidence unconfirmed"
+            )
+        })?;
+        if served != expected {
+            return Err(format!(
+                "this data directory holds census evidence measured on the cluster whose genesis hash is {expected} \
+                 (mainnet-beta), but the attached RPC serves the cluster whose genesis hash is {served}; that evidence \
+                 describes code on another cluster. Point GRAPHITE_RPC_URL at mainnet-beta, or use a data directory \
+                 without imported census evidence"
+            ));
+        }
+        Ok(())
+    }
+
+    /// The deployment Graphite last observed for a program (roadmap R-M1).
+    pub fn observed_deployment(
+        &self,
+        program_id: &str,
+    ) -> Option<crate::semantic_graph_store::ObservedDeployment> {
+        self.graph().observed_deployment(program_id).cloned()
     }
 
     /// Manifest-derived risk-assessment context for ONE instruction, keyed by
@@ -7087,6 +7203,16 @@ impl GraphiteCore {
         // Round 38 (R37-1): every grounded withdrawal has what rides beside
         // it held (`intent_binding::withdrawal_keeps_value`), minimum or not.
         let mut grounded_withdrawal = false;
+        // Round 39 (R39-CORE-DECISION-2): and so does every other grounded
+        // owner operation a grant gives (a claim, a close, an owner's
+        // configuration) — Round 38 held withdrawals only. A granted burn is
+        // bound by `intent_binding::bind` itself (every other movement beside
+        // it is a mismatch), so it is not listed.
+        let mut grounded_owner_operation = false;
+        // Round 39 (R39-CORE-DECISION-1): whose operation it is — the grant's
+        // owner role, a required signer — which is what "the owner's own"
+        // means beside it, rather than "any signer".
+        let mut grant_owner: Option<String> = None;
         let declared_intent =
             crate::risk_engine::canonical_intent(&input.proposed_intent.intent_type);
         let (expected_account_count, variable_accounts, manifest_risk_class) = match manifest {
@@ -7108,6 +7234,18 @@ impl GraphiteCore {
                             crate::intent_grants::GrantOutcome::Grounded(class) => {
                                 grounded_withdrawal =
                                     class == crate::intent_grants::WITHDRAW_TO_OWNER;
+                                grounded_owner_operation = matches!(
+                                    class,
+                                    crate::intent_grants::CLAIM_TO_OWNER
+                                        | crate::intent_grants::CLOSE_TO_OWNER
+                                        | crate::intent_grants::OWNER_CONFIGURE
+                                );
+                                grant_owner = crate::intent_grants::owner_key(
+                                    &input.program_id,
+                                    i,
+                                    &declared_intent,
+                                    &input.account_addresses,
+                                );
                                 withdrawal_minimums = crate::intent_grants::withdrawal_minimums(
                                     &input.program_id,
                                     i,
@@ -8183,6 +8321,26 @@ impl GraphiteCore {
                                     loaded.len()
                                 ))
                             }
+                            // Round 39 (core-identity, R39-CORE-IDENTITY-2):
+                            // a simulation that does not say which accounts it
+                            // loaded — the member absent, `null`, or a list
+                            // with an unreadable entry — confirms nothing about
+                            // Graphite's own resolution, and every index past
+                            // the static keys in its report is unplaceable:
+                            // the transaction's privileges and account list
+                            // were built from the static keys alone, so a
+                            // writable account loaded through a table read as
+                            // read-only to the rules judging what a transfer
+                            // hook may be handed. It was approved
+                            // (`executable_approved`); it is now set aside
+                            // like a contradicting list.
+                            (Some(message), None) if message.has_lookup_accounts() => Some(
+                                format!(
+                                    "the RPC's simulation reports no readable loadedAddresses for a message that reaches {} account(s) through {} address lookup table(s), so the accounts it executed against were never confirmed to be the ones Graphite resolved",
+                                    message.alt_account_count(),
+                                    message.alt_table_count()
+                                ),
+                            ),
                             _ => None,
                         };
                         if let Some(why) = &mismatched_lookups {
@@ -9650,6 +9808,7 @@ impl GraphiteCore {
             instructions: instructions.as_deref().map_err(|e| e.as_str()),
             signers: &signers,
             program_id: &input.program_id,
+            owner: grant_owner.as_deref(),
         };
         let bind_request = || {
             crate::intent_binding::bind(&crate::intent_binding::BindingInput {
@@ -9679,6 +9838,19 @@ impl GraphiteCore {
                 match crate::intent_binding::withdrawal_keeps_value(
                     &instruction_name,
                     minimums.as_deref().unwrap_or(&[]),
+                    binding_diff,
+                    &beside,
+                ) {
+                    Err(b) => b,
+                    Ok(()) => bind_request(),
+                }
+            }
+            // Round 39 (R39-CORE-DECISION-2): a granted claim, close or owner
+            // configuration, held like a withdrawal.
+            _ if grounded_owner_operation => {
+                match crate::intent_binding::grant_keeps_value(
+                    &instruction_name,
+                    &[],
                     binding_diff,
                     &beside,
                 ) {
@@ -10648,6 +10820,29 @@ impl GraphiteCore {
     }
 }
 
+/// One program's verdict tier from its manifest and its latest graph record
+/// (the body of `GraphiteCore::program_trust_tier`, see there; a free
+/// function since Round 40 so `standalone_standing` reads the same rule with
+/// a record that is not yet appended).
+fn verdict_program_tier(
+    manifest: Option<&crate::manifest::ProtocolManifest>,
+    record: Option<&Behavior>,
+) -> TrustTier {
+    match manifest {
+        Some(m) => {
+            // P7: cap self-asserted tiers.
+            let manifest_tier =
+                TrustTier::from_manifest_str(&m.trust_tier).min(TrustTier::OfficialManifest);
+            match record {
+                Some(b) if b.quarantined => TrustTier::Unknown,
+                Some(b) => b.trust_tier.max(manifest_tier),
+                None => manifest_tier,
+            }
+        }
+        None => record.map(|b| b.trust_tier).unwrap_or(TrustTier::Unknown),
+    }
+}
+
 fn summarize_risk(verdict: &RiskVerdict) -> RiskVerdictSummary {
     match verdict {
         RiskVerdict::Passed => RiskVerdictSummary {
@@ -11255,6 +11450,7 @@ mod tests {
             },
             quarantined: false,
             quarantine_reason: None,
+            first_manifest_unvalidated: false,
         })
         .unwrap();
         core.seed_simulation_baseline(

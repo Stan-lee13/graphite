@@ -27,7 +27,7 @@ on:
         default: "https://api.devnet.solana.com"
         type: string
       seed_evidence:
-        description: "Seed operator evidence for the System program first (a fresh Core approves nothing without it)"
+        description: "Seed operator evidence for the System program first (a fresh Core approves nothing without it; the measured census is mainnet-beta only)"
         default: true
         type: boolean
       airdrop_lamports:

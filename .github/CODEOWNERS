@@ -1,7 +1,8 @@
 # Code owners (Round 30, G-11). Read by GitHub only when the `main` ruleset
-# requires code-owner review (.github/rulesets/main-review.json, to be enabled
-# once a second maintainer exists; with one maintainer a required review is a
-# deadlock, since an author cannot approve their own pull request).
+# requires code-owner review (.github/rulesets/main-review.json), which the
+# drift check requires since Round 39 and the owner applies (docs/ops/branch-protection.md); with one maintainer the admin
+# role bypasses it through a pull request only (an author cannot approve their
+# own pull request), and each such merge is logged as a bypass.
 #
 # The default owner covers everything. The paths below are listed explicitly
 # so a reviewer added later can be scoped to them, and so the security-bearing

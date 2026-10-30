@@ -9572,7 +9572,10 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: constituentInTokenAccount, constituentOutTokenAccount, userInTokenAccount, userOutTokenAccount, inConstituent, outConstituent",
-    "credits the output token account with the received amount for the swap"
+    "transfers the input tokens from accounts.userInTokenAccount to accounts.constituentInTokenAccount",
+    "transfers the output tokens from accounts.constituentOutTokenAccount to accounts.userOutTokenAccount",
+    "debits accounts.userInTokenAccount by the input tokens",
+    "credits accounts.userOutTokenAccount with the output tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

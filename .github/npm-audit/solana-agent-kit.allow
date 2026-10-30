@@ -24,6 +24,14 @@
 # tests that prove SAK's own signing helpers are refused run it. The
 # development tree's Zod is forced to 4.6.7 (`overrides`), past
 # GHSA-mrhx-c7xc-m3w5 (every Zod below 4.6.6); that advisory is NOT listed.
+# Round 39 (R39-CLIENTS-2): unlike the overrides above, this one is NOT inside
+# the same major line for SAK, which declares `zod ^3.24.1` and reads Zod 3
+# internals: SAK's `createOpenAITools` throws under it
+# (integrations/solana-agent-kit/zod-override.test.ts pins that). No patched
+# Zod 3 exists; nothing shipped loads SAK, and the tests that do never reach
+# its tool adapters. `@openai/zod` (declared `npm:zod@^3.25.40`) is forced to
+# the same 4.6.7; the OpenAI agents SDK imports only its `zod/v3` path, which
+# Zod 4 still ships, so that one is compatible.
 #
 # What remains has no fix that can be applied from here:
 GHSA-3gc7-fjrx-p6mg@bigint-buffer  review-by:2027-01-20  # high  bigint-buffer <=1.1.5 (no patched release exists): solana-agent-kit 2.0.10 -> @solana/spl-token 0.4.15 -> @solana/buffer-layout-utils 0.3.0 -> bigint-buffer 1.1.5 (npm ls, 2026-10-02). The overflow is in the package's NATIVE addon (toBigIntLE). Every install of this tree runs with --ignore-scripts, so the addon is never built and bigint-buffer runs its pure-JS fallback. Since R-P8 phase 3 (2026-10-02) only this adapter package depends on solana-agent-kit: the guard that signs (integrations/agent-guard) and every other integration do not carry this advisory.

@@ -141,9 +141,36 @@ export function assertNoDuplicateKeys(text: string): void {
   }
 }
 
-/** `JSON.parse`, refusing a document with a duplicate key in any object (Round 34, G-6). */
+/**
+ * Numbers `parseJsonStrict` read from a fraction or an exponent (`215.0`,
+ * `2.15e2`), by the object that holds them and their key (Round 39,
+ * R39-CLIENTS-3). `JSON.parse` turns both into 215, so a count spelled as a
+ * float read as the integer; serde (the Core) and Go refuse that spelling for
+ * an integer field. The integer checks below consult this, so this SDK reads
+ * the integer fields of an answer exactly as the Core's types do.
+ */
+const SPELLED_AS_FLOAT = new WeakMap<object, Set<string>>();
+
+/** Whether `holder[key]` was read from a fraction or an exponent. */
+function spelledAsFloat(holder: Record<string, unknown>, key: string): boolean {
+  return SPELLED_AS_FLOAT.get(holder)?.has(key) ?? false;
+}
+
+/**
+ * `JSON.parse`, refusing a document with a duplicate key in any object (Round
+ * 34, G-6), and recording which numbers were spelled with a fraction or an
+ * exponent (Round 39, R39-CLIENTS-3; the reviver's `context.source`, Node 22).
+ */
 export function parseJsonStrict(text: string): unknown {
-  const value: unknown = JSON.parse(text);
+  const value: unknown = JSON.parse(text, function (this: unknown, key: string, v: unknown, context?: { source?: string }) {
+    if (typeof v === "number" && typeof context?.source === "string" && /[.eE]/.test(context.source)) {
+      const holder = this as object;
+      let keys = SPELLED_AS_FLOAT.get(holder);
+      if (keys === undefined) SPELLED_AS_FLOAT.set(holder, (keys = new Set()));
+      keys.add(key);
+    }
+    return v;
+  } as (this: unknown, key: string, value: unknown) => unknown);
   assertNoDuplicateKeys(text);
   return value;
 }
@@ -235,6 +262,19 @@ function isCount(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0;
 }
 
+/** The largest u32: the Core's type for the compute-budget limits and the heap size. */
+const U32_MAX = 0xffff_ffff;
+
+/**
+ * `holder[key]` is a non-negative integer of at most `max`, spelled as one
+ * (Round 39, R39-CLIENTS-3: `215.0` and `2.15e2` are refused, as serde and Go
+ * refuse them for an integer field).
+ */
+function countAt(holder: Record<string, unknown>, key: string, max: number = Number.MAX_SAFE_INTEGER): boolean {
+  const v = holder[key];
+  return isCount(v) && v <= max && !spelledAsFloat(holder, key);
+}
+
 function isNullable<T>(value: unknown, test: (v: unknown) => v is T): boolean {
   return value === null || test(value);
 }
@@ -255,16 +295,16 @@ function computeBudgetViolation(value: unknown): string | null {
   if (value.source !== "v1_header" && value.source !== "compute_budget_instructions") {
     return "`scope.compute_budget.source` must be \"v1_header\" or \"compute_budget_instructions\"";
   }
-  if (!isCount(value.effective_compute_unit_limit) || !isCount(value.priority_fee_lamports)) {
+  if (!countAt(value, "effective_compute_unit_limit", U32_MAX) || !countAt(value, "priority_fee_lamports")) {
     return "`scope.compute_budget` must carry non-negative integer `effective_compute_unit_limit` and `priority_fee_lamports`";
   }
-  for (const k of [
-    "compute_unit_limit",
-    "compute_unit_price_micro_lamports",
-    "heap_bytes",
-    "loaded_accounts_data_size_limit",
-  ]) {
-    if (value[k] !== undefined && !isNullable(value[k], isCount)) {
+  for (const [k, max] of [
+    ["compute_unit_limit", U32_MAX],
+    ["compute_unit_price_micro_lamports", Number.MAX_SAFE_INTEGER],
+    ["heap_bytes", U32_MAX],
+    ["loaded_accounts_data_size_limit", U32_MAX],
+  ] as const) {
+    if (value[k] !== undefined && value[k] !== null && !countAt(value, k, max)) {
       return `\`scope.compute_budget.${k}\` must be a non-negative integer or null`;
     }
   }
@@ -308,7 +348,7 @@ function scopeViolation(scope: unknown): string | null {
   if (typeof s.transaction_sha256 !== "string" || !LOWER_HEX_64.test(s.transaction_sha256)) {
     return "`scope.transaction_sha256` must be 64 lowercase hex characters";
   }
-  if (!Number.isSafeInteger(s.transaction_bytes) || (s.transaction_bytes as number) < 1) {
+  if (!countAt(s, "transaction_bytes") || (s.transaction_bytes as number) < 1) {
     return "`scope.transaction_bytes` must be a positive integer";
   }
   if (typeof s.simulated !== "boolean") return "`scope.simulated` must be a boolean";
@@ -332,7 +372,7 @@ function transactionViolation(value: unknown): string | null {
     "compute_budget_units",
     "data_len",
   ]) {
-    if (!isCount(value[k])) return `\`transaction.${k}\` must be a non-negative integer`;
+    if (!countAt(value, k)) return `\`transaction.${k}\` must be a non-negative integer`;
   }
   if (
     !Array.isArray(value.accounts) ||
@@ -379,8 +419,8 @@ function programUpgradeViolation(value: unknown): string | null {
   if (
     !isObject(value) ||
     !isString(value.program_id) ||
-    !isCount(value.previous_deploy_slot) ||
-    !isCount(value.deploy_slot) ||
+    !countAt(value, "previous_deploy_slot") ||
+    !countAt(value, "deploy_slot") ||
     !isNullable(value.previous_upgrade_authority, isString) ||
     !isNullable(value.upgrade_authority, isString) ||
     !isBoolean(value.quarantined)
@@ -513,8 +553,9 @@ export function validateVerificationResult(value: unknown): string | null {
 
 /**
  * Round 30 (G-01): `decision`, `executable` and `instruction_bind_key`.
- * Optional, so a server older than Round 30 still validates (and is then
- * judged by `isExecutable`'s local recomputation alone); when present they
+ * Optional, so a server older than Round 30 still validates — and since
+ * Round 39 (R39-CLIENTS-1) `isExecutable` never calls its verdict
+ * executable, as the Core's own rule does not; when present they
  * must be known, consistent with each other and with `approved`, and a
  * server that claims `executable` must agree with the rule recomputed from
  * the verdict's own fields. A server that is stricter than the rule (says
@@ -597,7 +638,7 @@ export function validateLifecycleEventReceipt(value: unknown, sent?: LifecycleEv
   if (value.sequence_anomalies !== undefined && !isStringArray(value.sequence_anomalies)) {
     return "`sequence_anomalies` must be an array of strings";
   }
-  if (value.prior_events_on_record !== undefined && !isCount(value.prior_events_on_record)) {
+  if (value.prior_events_on_record !== undefined && !countAt(value, "prior_events_on_record")) {
     return "`prior_events_on_record` must be a non-negative integer";
   }
   if (sent !== undefined) {
@@ -679,7 +720,7 @@ export function validateExecutionCheckResult(value: unknown, sent?: ExecutionChe
     return "`inclusion_assurance` must be one of " + INCLUSION_ASSURANCES.join(", ");
   }
   const rv = value.recorded_verdicts;
-  if (rv !== undefined && rv !== null && !(isObject(rv) && isCount(rv.approved) && isCount(rv.refused))) {
+  if (rv !== undefined && rv !== null && !(isObject(rv) && countAt(rv, "approved") && countAt(rv, "refused"))) {
     return "`recorded_verdicts` must be { approved, refused } counts or null";
   }
   if (!isBoolean(value.audit_recorded)) return "`audit_recorded` must be a boolean";

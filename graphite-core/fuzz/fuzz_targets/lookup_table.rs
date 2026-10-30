@@ -44,6 +44,35 @@ fuzz_target!(|data: &[u8]| {
     let readonly_indexes: usize = m.lookups.iter().map(|l| l.readonly_indexes.len()).sum();
     assert_eq!(resolved.writable.len(), writable_indexes);
     assert_eq!(resolved.readonly.len(), readonly_indexes);
+    // Round 39 (core-identity): identities, not only counts. Each resolved
+    // address is the table's entry at the index the message names, in the
+    // runtime's order — all writable lookups in message order, then all
+    // readonly — and an accepted resolution that read any table read one that
+    // decodes. (A message with no lookups reads none and resolves to nothing.)
+    if m.lookups.is_empty() {
+        assert!(resolved.is_empty());
+    } else {
+        let entries = tx::decode_lookup_table("Table", table)
+            .expect("a resolution was accepted from a table that does not decode");
+        let pick = |indexes: &[u8]| -> Vec<String> {
+            indexes
+                .iter()
+                .map(|&i| entries[i as usize].clone())
+                .collect()
+        };
+        let expected_writable: Vec<String> = m
+            .lookups
+            .iter()
+            .flat_map(|l| pick(&l.writable_indexes))
+            .collect();
+        let expected_readonly: Vec<String> = m
+            .lookups
+            .iter()
+            .flat_map(|l| pick(&l.readonly_indexes))
+            .collect();
+        assert_eq!(resolved.writable, expected_writable);
+        assert_eq!(resolved.readonly, expected_readonly);
+    }
 
     if let Some(all) = tx::runtime_account_list(&m, Some(&resolved)) {
         assert_eq!(all.len(), m.static_keys.len() + m.alt_account_count());

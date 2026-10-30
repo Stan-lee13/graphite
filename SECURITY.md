@@ -21,13 +21,14 @@ still undone is [docs/CURRENT.md](docs/CURRENT.md). The dated sections below
 record what was found and fixed, when; they are not edited afterwards. In one
 line: **CONDITIONAL — security-hardened alpha.** No known way to turn a blocked
 verdict into an executed transaction under the stated threat model; no
-independent third party has yet tried; `main` has no branch protection (the
-rulesets that would add it are prepared in `.github/rulesets/`, not applied).
+independent third party has yet tried; `main` is not protected as committed (the
+rulesets in `.github/rulesets/` are not applied; the live `Main-review` ruleset lets 26
+actors bypass it, Round 39).
 The verdict since Round 36: release blocked on those owner and external items;
 the code is conditionally ready for an independent audit, with the owner gates
 open (`docs/ops/production-checklist.md`). Only `executable: true` permits
 signing. Rounds 31–32 did everything code and CI can do toward production
-(below), and Rounds 34–38 answered three internal audits; the release blockers
+(below), and Rounds 34–39 answered four internal audits; the release blockers
 are unchanged and are the owner's and an auditor's.
 
 ## Security Architecture
@@ -227,6 +228,79 @@ a new digest; a resubmitted one is idempotent on-chain); RPC entry-count misalig
 applies to decompressed chunks — 65 KB inflating to 64 MiB is refused at 32 MiB in 35 ms);
 the rate limiter at its million-bucket bound (452 ns per check, measured); `audit_trail_id`
 spoofing (a fabricated id resolves to nothing and is never rescued by a coarser key).
+
+## The Open Decisions, Decided (2026-10-26; Round 40)
+
+Internal engineering work. Each decision, its options and the principles it touches:
+`docs/audit/TECHNICAL_LEAD_DECISIONS.md`; detail in `docs/audit/parts-r40/`.
+
+- **Bootstrap from the measured census (G4, confidence gaming).** `graphite evidence import-census`
+  is CLI-only, hash-pinned to the compiled-in census, lifts only HistoricalVolume, never lowers
+  evidence and is mainnet-beta's only (enforced at import and at server start). After it, a
+  manifested program reaches the Gaming floor, so the Round 39 P0-class precondition is met under
+  the defaults: every Round 38/39 attack was re-run in that state and after training an imported
+  program's baseline, and all are refused; a deliberate break of the R39-1 fix makes the imported
+  runs fail. **Residuals:** anyone holding the verify key can shape an imported program's first
+  baseline. It buys nothing on the built-in profiles (training tops out at 0.75, the OfficialManifest
+  ceiling), but it would open a custom profile with a floor between 0.59 and 0.75, and a skewed
+  baseline can make L3 flag honest traffic (recoverable with `graphite evidence promote-shadow`).
+  A library embedder that attaches its own RPC must call `confirm_evidence_cluster` itself.
+- **Swap declarations rewritten from IDLs.** 60 declarations now name the user-side account they
+  debit; every rewritten venue was attacked (a sibling skim, a second owner account debited, both
+  sides debited, the output to a stranger) in all three configurations and is refused. On venues
+  `decode_swap` does not read, L4 no longer refuses a skim beside the swap; the swap stays unbound
+  and therefore never executable (P14 note in the CHANGELOG).
+- **Phantom instructions removed.** 23 manifest instructions no committed IDL has; such bytes are
+  now undescribed and refused.
+- **CI checks that were "reasoned":** the agent guard now runs on Windows in CI; per-binary floors
+  stop a security suite from losing tests behind growth elsewhere; actionlint is pinned and run.
+
+## The Exhaustive Production-Readiness Audit of `c087bfb` (2026-10-25; Round 39)
+
+Internal engineering work by the maintainer and AI agents, not an independent audit and not a
+certification. Findings, evidence and owner gates: `docs/audit/PRODUCTION_READINESS_FINDINGS.md`,
+`docs/audit/INVARIANT_EVIDENCE_MATRIX.md`, `docs/audit/RESIDUAL_RISK_AND_OWNER_GATES.md`.
+
+- **Value beside a swap, a grant or a creation went to "a signer" (R39-CORE-DECISION-1, P0-class).**
+  30 SOL beside a granted Stake Withdraw, sent to a co-signer, into a `CreateAccount` for the
+  attacker's program or into a token account the attacker can close, was `executable_approved`
+  under the defaults and under every waiver. The sibling rule now holds value to the owner's keeping
+  (the swapping wallet, the grant's owner, the fee payer) as L4 judges it.
+- **Claim, close and configure grants were outside the sibling rule (R39-CORE-DECISION-2, P0-class).**
+  A transfer riding beside a Meteora DLMM `claim_fee` or a Raydium CLMM `close_position` was
+  `executable_approved`; those grants now obey the same rule.
+- **Precondition of both:** the verdict needs confidence above the profile's floor. A fresh instance
+  scores 0.44, below every built-in profile; in production that takes a program with an L3 baseline
+  or an operator profile at 0.44 or lower. Every other gate passed both attacks.
+- **Another trail's record at the end took the trail over (R39-CB-1, P1).** A record of another
+  trail under the same key, appended at the end, became the trail's pin: a restarted server resumed
+  onto it and the L8 lookup answered with the foreign approval. Writers and keyed readers now refuse
+  such a trail; the server does not start. An unkeyed trail still cannot tell trails apart, and a
+  trail cut at the front still starts (R39-CB-11; `audit verify` and checkpoints report both).
+- **The registry's P10 gate could be diluted (R39-CORE-IDENTITY-1, P2).** Padding fixtures let a
+  loosening upgrade signed by a registered reviewer approve a refusal the previous version pinned.
+  A pinned refusal the candidate approves now blocks outright.
+- **A v0 simulation without `loadedAddresses` was trusted (R39-CORE-IDENTITY-2, P2).** It is now set
+  aside like a contradicting one.
+- Also fixed: a crashing Simulation plugin keeps its veto (R39-CORE-DECISION-3); both SDKs call a
+  verdict without `decision` not executable (R39-CLIENTS-1); the guard verifies every signature
+  after signing and refuses a state directory others can write; `healthcheck --strict` follows no
+  redirect; logging cannot crash the server; transport refusals are counted; `protocol diff` shows
+  every field the runtime judges by; the ruleset drift check compares the live rulesets in full.
+- **Open, owner:** the live rulesets and `release` environment (R39-SUPPLY-CHAIN-1).
+- **Fixed in Round 40:** `X-Forwarded-For` is believed only from `GRAPHITE_TRUSTED_PROXIES` (a hop
+  count without it refuses to start; the production compose trusts only Caddy's fixed address), and
+  the RPC/witness client ignores `HTTP(S)_PROXY`/`ALL_PROXY` (RPC egress is direct) (R39-CB-8,
+  R39-CB-13). `registry submit` refuses a group/other-accessible signer key file (R39-CB-14); CLI
+  output escapes control and BIDI characters (R39-CB-15); each plugin run has a 250 ms deadline,
+  and a run past it refuses like a crash. A version whose replay validated nothing independent — a
+  program's first registry manifest, or an upgrade with no earlier fixture in force — earns
+  HeuristicInferred at most, in the record, the manifest in force and the graph; an upgrade the gate
+  replays against fixtures an earlier version pinned, or measured volume at the BattleTested
+  threshold, lifts it, and operator-asserted signatures or attestations do not
+  (R39-CORE-IDENTITY-7). Remaining: a compromised proxy can still choose rate-limit buckets; the
+  plugin deadline is per plugin, not per request; registry states written before Round 40 keep
+  uncapped first manifests.
 
 ## The Round 33 Deep Audit, Remediated (2026-10-23; Round 34)
 

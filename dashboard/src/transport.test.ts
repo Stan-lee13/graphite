@@ -139,7 +139,13 @@ test("an empty base on a page with no origin names the real problem", () => {
   const why = insecureBaseReason("", "null") ?? "";
   assert.doesNotMatch(why, /"" is not a URL/);
   assert.match(why, /no web origin/);
-  assert.match(insecureBaseReason("nope", LOCAL_PAGE) ?? "", /"nope" is not a URL/);
+  // Re-pinned in Round 39 (R39-DASH-7): this asserted the typed value was
+  // echoed ("nope" is not a URL). It no longer is — the value in the
+  // address field by mistake is most often the key — so the refusal names
+  // the field instead.
+  const nope = insecureBaseReason("nope", LOCAL_PAGE) ?? "";
+  assert.match(nope, /The Core address is not a URL/);
+  assert.doesNotMatch(nope, /nope/);
 });
 
 // Round 38 (G2-6): the body was read with `resp.text()`, whatever its size,
@@ -189,5 +195,44 @@ test("an answer over the size bound is refused, whether its length is declared o
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  }
+});
+
+// Round 39 (R39-DASH-7): the address is where the Core lives, never how to
+// unlock it, and no refusal repeats what was typed — what lands in the
+// address field by mistake is most often the key itself.
+const KEY = "e2e-0123456789abcdef0123456789abcdef0123";
+
+test("R39-DASH-7: an address with credentials, a query or a fragment is refused", () => {
+  for (const base of [
+    `https://operator:${KEY}@graphite.example`,
+    `https://${KEY}@graphite.example`,
+    `https://graphite.example/?key=${KEY}`,
+    `https://graphite.example/#${KEY}`,
+    "https://graphite.example?",
+  ]) {
+    const why = insecureBaseReason(base, LOCAL_PAGE);
+    assert.notEqual(why, null, base);
+    assert.ok(!why!.includes(KEY), `the refusal repeats the key: ${why}`);
+  }
+  // Benign controls: an origin, and an origin with a path (a Core behind a
+  // reverse proxy under /graphite), are still accepted.
+  assert.equal(insecureBaseReason("https://graphite.example", LOCAL_PAGE), null);
+  assert.equal(insecureBaseReason("https://graphite.example/graphite", LOCAL_PAGE), null);
+});
+
+test("R39-DASH-7: a value that is not a URL is refused without being repeated", () => {
+  const why = insecureBaseReason(KEY, LOCAL_PAGE);
+  assert.match(why ?? "", /not a URL/);
+  assert.ok(!why!.includes(KEY), why!);
+});
+
+test("R39-DASH-7: the sidebar's address shows host and path, never user-info, query or fragment", () => {
+  assert.equal(transport.displayBase(""), "this origin");
+  assert.equal(transport.displayBase("http://127.0.0.1:7331"), "127.0.0.1:7331");
+  assert.equal(transport.displayBase("https://graphite.example/graphite"), "graphite.example/graphite");
+  for (const base of [KEY, `https://u:${KEY}@h.example`, `https://h.example/?k=${KEY}`, `https://h.example/#${KEY}`, `javascript:${KEY}`]) {
+    const shown = transport.displayBase(base);
+    assert.ok(!shown.includes(KEY), `${base} shown as ${shown}`);
   }
 });

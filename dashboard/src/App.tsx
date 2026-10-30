@@ -15,6 +15,8 @@ import {
 import { api, getConnection, onConnectionChange, storageGet, storageSet, type Health } from "./api";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { refusalTotals } from "./figures";
+import { coreLabel, coreState, type CoreState } from "./status";
+import { displayBase } from "./transport";
 import { hrefFor, navigate, useRoute, type View } from "./router";
 import { useLayout, usePolling } from "./usePolling";
 import { CommandPalette } from "./CommandPalette";
@@ -87,7 +89,7 @@ export const TITLE: Record<View, string> = {
   connect: "Connection",
 };
 
-export type CoreState = "ok" | "degraded" | "unauthorized" | "down" | "connecting";
+export type { CoreState } from "./status";
 
 const SAW_CONNECT = "graphite.sawConnect";
 /** In-memory twin of the sessionStorage flag, for when storage is blocked. */
@@ -110,15 +112,17 @@ export function App() {
   // which the Core caps at 200; it is the whole-trail refusal total now.
   const blockedCount = blocked.data ? refusalTotals(blocked.data).refused : 0;
 
-  const core: CoreState = health.error
-    ? "down"
-    : !health.data
-      ? "connecting"
-      : blocked.error?.kind === "unauthorized"
-        ? "unauthorized"
-        : health.data.degraded
-          ? "degraded"
-          : "ok";
+  // Round 39 (R39-DASH-6): a /health that answered 500 or 429 is not an
+  // unreachable Core; status.ts says which.
+  const core: CoreState = coreState({
+    healthError: health.error?.kind ?? null,
+    health: health.data,
+    keyedError: blocked.error?.kind ?? null,
+  });
+  // Round 39: the key field said "Not needed: this Core runs in dev mode"
+  // whenever /health answered, before any key-guarded route had. Only a
+  // key-guarded answer to an empty key shows that.
+  const keyNotNeeded = !conn.key && blocked.data !== null;
 
   // First run with nothing configured and nothing answering: go straight to
   // the connection screen rather than to seven empty panels. Round 29 (D5):
@@ -126,7 +130,10 @@ export function App() {
   // wrapped accessors degrade to "redirect once per page load".
   useEffect(() => {
     const session = () => window.sessionStorage;
-    if (core === "down" && !conn.base && route.view !== "connect" && !storageGet(session, SAW_CONNECT) && !sawConnect) {
+    // A static host answering /health with its own 404 or 502 is as much
+    // "nothing configured" as no answer at all.
+    const noCore = core === "down" || core === "erroring";
+    if (noCore && !conn.base && route.view !== "connect" && !storageGet(session, SAW_CONNECT) && !sawConnect) {
       sawConnect = true;
       storageSet(session, SAW_CONNECT, "1");
       navigate("connect");
@@ -168,9 +175,9 @@ export function App() {
       case "system":
         return <SystemView />;
       case "connect":
-        return <ConnectView core={core} />;
+        return <ConnectView keyNotNeeded={keyNotNeeded} />;
     }
-  }, [route.view, route.program, core]);
+  }, [route.view, route.program, keyNotNeeded]);
 
   const status = <CoreStatus core={core} health={health.data} base={conn.base} />;
 
@@ -291,6 +298,11 @@ export function App() {
                   {t.id === "blocked" && blockedCount > 0 && <span className="tab-dot" aria-hidden="true" />}
                 </span>
                 <span>{t.label}</span>
+                {/* Round 39: the dot was the only sign of refusals on a
+                    phone, and it is hidden from assistive technology. */}
+                {t.id === "blocked" && blockedCount > 0 && (
+                  <span className="sr-only">, {blockedCount.toLocaleString()} refused on the whole trail</span>
+                )}
               </a>
             ))}
             <button
@@ -364,30 +376,16 @@ function StatusDot({ core }: { core: CoreState }) {
   return <i className={`dot ${core}`} aria-label={coreLabel(core)} role="img" />;
 }
 
-export function coreLabel(core: CoreState): string {
-  switch (core) {
-    case "ok":
-      return "Core operational";
-    case "degraded":
-      return "Core degraded";
-    case "unauthorized":
-      return "Key rejected";
-    case "down":
-      return "Core unreachable";
-    case "connecting":
-      return "Connecting…";
-  }
-}
-
 /** The connection, as a small card that is also the way to the Connect screen. */
 function CoreStatus({ core, health, base }: { core: CoreState; health: Health | null; base: string }) {
-  const where = base ? base.replace(/^https?:\/\//, "") : "this origin";
+  // Round 39 (R39-DASH-7): host and path only, never the raw stored value.
+  const where = displayBase(base);
   const sub =
     core === "ok" || core === "degraded"
       ? `v${health?.version ?? "?"}, ${where}${health?.audit?.enabled === false ? ", no audit log" : ""}`
       : core === "unauthorized"
         ? "the key in this browser is wrong"
-        : core === "down"
+        : core === "down" || core === "erroring"
           ? where
           : "…";
   return (

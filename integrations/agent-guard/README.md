@@ -229,7 +229,17 @@ submitted — and nothing is signed under a residual the operator has not accept
   more. A decision this guard does not know, `blocked` or `inconclusive` on an approval,
   an `executable` that contradicts the decision, and (since Round 34) a response without
   `decision` — a Core older than Round 30, which was judged by the residual codes alone —
-  are refused.
+  are refused. Since Round 39 the SDKs' `isExecutable` / `IsExecutable` refuse that last
+  case too (R39-CLIENTS-1), and `examples/decisions/conformance.json` holds the Core, both
+  SDKs and this guard to one answer per vector (`conformance.test.ts`).
+- **Every signature is checked before the bytes go anywhere (Round 39, R39-CLIENTS-4).**
+  The signer-set check compares each signer's `publicKey` with the message; kit signs with
+  the signer's `keyPair.privateKey`. A signer whose private half belongs to another key (a
+  wallet adapter or key store that is wrong or hostile) passed the one and was used by the
+  other, and the lifecycle recorded and sent a transaction no validator accepts. Each
+  signature slot of the signed bytes must now verify over the approved message under the
+  address the message names for it, or `signApproved` refuses and nothing is recorded or
+  sent.
 - **An ambiguous submission is not retried blind (Round 29, L2; Round 30; Round 38).** The
   transaction id is computed from the signed bytes before sending, and since Round 30 the
   submission is recorded as unresolved BEFORE the bytes are handed to the RPC and resolved
@@ -290,6 +300,11 @@ submitted — and nothing is signed under a residual the operator has not accept
     a native addon, and the guard loads none. The default sits in the user's own profile,
     whose ACL admits the user, SYSTEM and the Administrators only; a `GRAPHITE_GUARD_LOCK_DIR`
     named on Windows must be kept private by the operator. The startup log says so.
+    Round 40: CI runs this package's typecheck and tests on Windows (`agent-guard-windows`
+    in `.github/workflows/ci.yml`). `guard-round40.test.ts` holds what Windows does check — a
+    link or a file as the lock directory, a directory or a link as the state file — and that
+    owner and access are not; the tests that need POSIX modes or uids skip there with their
+    reason (`posix-only.ts`), and the job allows exactly that many skips.
   - *Held, not just taken (Round 34).* Node cannot hold an flock/fcntl/LockFileEx lock
     without a native addon, so the lock is a file holding the owner's pid and a random
     token. The guard remembers its inode and re-reads it before every reservation, before
@@ -308,6 +323,19 @@ submitted — and nothing is signed under a residual the operator has not accept
     operator's to arrange. The state file's own lock (`<state file>.lock`) is taken and
     re-checked the same way, and every file the lock and state code create is opened
     O_EXCL|O_NOFOLLOW under a random name.
+  - *The state file's directory (Round 39, R39-CLIENTS-6).* It was never checked. In a
+    directory another user can write, that user could swap the file for one without the
+    reservations and the unresolved submissions, and the next start replayed it: the
+    allowance back in full and a request whose submission may still land built again. The
+    directory must now be the guard's user's and writable by no one else (0700 or 0755, not
+    group- or world-writable, `/tmp` included), and an existing state file a regular file,
+    not a symbolic link, that only the user can write; otherwise the guard refuses to start.
+    On Windows only the kinds are checked, as for the lock directory.
+  - *A crash (Round 39).* A guard SIGKILLed after the submission was recorded as unresolved
+    and before it was settled leaves its locks naming a dead pid and its state file intact:
+    the next guard for the wallet takes the locks, still counts the dead guard's
+    reservation, and refuses the same request until the RPC says that submission cannot
+    land (`guard-round39.test.ts`).
 - **A closed guard spends nothing (Round 34).** `close()` releases both locks and marks
   the guard closed; `executeTransfer` and `executeSwap` then refuse with `GuardClosed`
   before anything is asked, and an execution already running (a confirmation still open)

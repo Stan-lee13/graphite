@@ -24,6 +24,9 @@
 //! Losing evidence is acceptable and expected — an unavailable check reports
 //! that it is unavailable. Every case below is about the other three.
 
+// Round 40 (bootstrap): every test below runs again with each Core it builds
+// census-imported (`round40_census_imported::*`), its profiles unchanged.
+mod round40_imported;
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
 use graphite_core::semantic_graph_store::BehaviorEvidence;
@@ -101,7 +104,7 @@ impl HostileRpc {
 }
 
 fn core_against(rpc: &HostileRpc) -> GraphiteCore {
-    let mut core = GraphiteCore::new();
+    let mut core = round40_imported::core();
     core.attach_rpc_client(SolanaRpcClient::new(RpcConfig {
         endpoint: rpc.endpoint.clone(),
         timeout: std::time::Duration::from_secs(5),
@@ -758,7 +761,7 @@ async fn an_unreachable_rpc_never_yields_a_passing_state_check() {
         });
         addr
     };
-    let mut core = GraphiteCore::new();
+    let mut core = round40_imported::core();
     core.attach_rpc_client(SolanaRpcClient::new(RpcConfig {
         endpoint: format!("http://{dead}"),
         timeout: std::time::Duration::from_secs(2),
@@ -917,3 +920,24 @@ async fn a_well_formed_account_still_parses() {
     assert_eq!(acc.lamports, 1_234_567);
     assert_eq!(acc.owner, SYSTEM_PROGRAM);
 }
+
+// Round 40 (bootstrap): the same tests after `graphite evidence import-census`
+// (tests/round40_imported/mod.rs); a learning suite's profiles are its own.
+imported_core_twins!(
+    a_flawless_simulation_cannot_overturn_a_static_rejection,
+    the_verdict_does_not_depend_on_the_rpc_being_present,
+    a_fabricated_fee_cannot_balance_a_fabricated_diff,
+    a_fabricated_fee_cannot_exempt_a_drain_from_the_outflow_check,
+    an_impossible_compute_figure_cannot_enter_the_baseline,
+    a_plausible_compute_figure_still_grows_the_baseline,
+    // not twinned: an_oversized_response_body_is_refused_rather_than_buffered — builds no Core through the imported constructor (RPC parsing only)
+    // not twinned: a_hostile_jsonrpc_error_is_bounded_before_it_reaches_a_verdict — builds no Core through the imported constructor (RPC parsing only)
+    a_truncated_post_state_does_not_become_a_fabricated_closure,
+    an_errored_simulation_never_produces_a_diff,
+    non_integer_balances_do_not_pass_as_a_complete_observation,
+    an_unreachable_rpc_never_yields_a_passing_state_check,
+    the_pipeline_really_does_consult_the_rpc,
+    // not twinned: an_account_with_unreadable_lamports_is_refused_not_defaulted_to_zero — builds no Core through the imported constructor (RPC parsing only)
+    // not twinned: an_account_with_an_unreadable_owner_is_not_reported_as_system_owned — builds no Core through the imported constructor (RPC parsing only)
+    // not twinned: a_well_formed_account_still_parses — builds no Core through the imported constructor (RPC parsing only)
+);

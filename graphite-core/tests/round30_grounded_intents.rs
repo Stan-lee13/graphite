@@ -427,6 +427,66 @@ fn a_burn_is_of_the_signers_own_tokens() {
     assert_eq!(r.risk_verdict.status, "Blocked", "{}", risk(&r));
 }
 
+/// Round 40 (R39-CORE-DECISION-5): the marketplace `update_offer` configure
+/// grant is removed. Its manifest declares no debit, so an honest update that
+/// moves the buyer's USDC was refused by L4 and the grant could never pass;
+/// the committed IDL names the buyer's USDC account but not that USDC moves,
+/// so no debit can be declared. Without the grant the instruction is its
+/// manifest's class (`authority`), which a `configure` intent does not
+/// declare: the owner's own update is refused at L5 like the stranger's.
+#[test]
+fn an_owner_updating_its_own_offer_is_no_longer_granted() {
+    let usdc = MINT_Y.to_string();
+    let d = def(MARKETPLACE, "update_offer");
+    let pre = accounts_for(
+        MARKETPLACE,
+        &d,
+        &[("buyer", OWNER.to_string()), ("usdc_mint", usdc.clone())],
+    );
+    let escrow_slot = d
+        .accounts
+        .iter()
+        .position(|a| a.name == "buyer_user_escrow_account")
+        .unwrap();
+    let escrow = pre[escrow_slot].clone();
+    let build = |buyer_usdc: String| {
+        accounts_for(
+            MARKETPLACE,
+            &d,
+            &[
+                ("buyer", OWNER.to_string()),
+                ("usdc_mint", usdc.clone()),
+                ("buyer_usdc_account", buyer_usdc),
+                ("buyer_user_escrow_token_account", ata(&escrow, MINT_Y)),
+            ],
+        )
+    };
+    for (what, buyer_usdc) in [
+        ("own update_offer", ata(OWNER, MINT_Y)),
+        ("update_offer to stranger", ata(STRANGER, MINT_Y)),
+    ] {
+        let r = verify(&request(MARKETPLACE, &d, build(buyer_usdc), "configure"));
+        let (status, reason) = l5(&r);
+        assert!(!r.approved, "{what}: approved");
+        assert_eq!(status, LayerStatus::Failed, "{what}: L5 {reason}");
+        assert!(
+            reason.contains("cannot declare update_offer"),
+            "{what}: L5 {reason}"
+        );
+        assert_eq!(r.risk_verdict.status, "Blocked", "{what}: {}", risk(&r));
+    }
+    assert!(
+        graphite_core::intent_grants::GRANTS
+            .iter()
+            .all(|g| g.instruction != "update_offer"),
+        "the update_offer grant is back"
+    );
+}
+
+/// The Round 30 test, kept to the cases that do not depend on the removed
+/// grant: without the configure intent `update_offer` is an authority-tagged
+/// instruction no intent declares, and MMM `updatePool` is refused under
+/// `configure`.
 #[test]
 fn an_owner_updating_its_own_offer_is_configuration_and_nothing_else_is() {
     let usdc = MINT_Y.to_string();
@@ -456,26 +516,8 @@ fn an_owner_updating_its_own_offer_is_configuration_and_nothing_else_is() {
             ],
         )
     };
-    assert_granted(
-        &verify(&request(
-            MARKETPLACE,
-            &d,
-            build(ata(OWNER, MINT_Y)),
-            "configure",
-        )),
-        "update_offer",
-    );
-    // Its USDC leg to a stranger: not the owner's own operation.
-    assert_refused(
-        &verify(&request(
-            MARKETPLACE,
-            &d,
-            build(ata(STRANGER, MINT_Y)),
-            "configure",
-        )),
-        "update_offer to stranger",
-        "`buyer_usdc_account`",
-    );
+    // Round 40: the configure grant is removed; the granted and the
+    // stranger cases are `an_owner_updating_its_own_offer_is_no_longer_granted`.
     // Without the configure intent it is what it was: an authority-tagged
     // instruction no intent declares.
     let r = verify(&request(

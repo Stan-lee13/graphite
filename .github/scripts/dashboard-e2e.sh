@@ -11,8 +11,9 @@
 #      refuse to go on unless the trail holds them;
 #   3. serve the built console (dashboard/dist, `vite preview`, which sends
 #      the production security headers);
-#   4. walk every view at desktop and phone width in Chromium, axe included
-#      (dashboard/e2e/smoke.mjs).
+#   4. walk every view at desktop, tablet and phone widths in Chromium, axe
+#      included (dashboard/e2e/smoke.mjs; Round 39: 1440, 820, 768, 390 and
+#      320 CSS px).
 #
 # Usage: .github/scripts/dashboard-e2e.sh <path-to-graphite-binary>
 # Expects: dashboard/node_modules and dashboard/dist (npm ci && npm run
@@ -104,7 +105,10 @@ grep -q "clean, axe included$" "$work/smoke.log"
 
 # 5. (Round 36) the same console when the Core does not answer well: 401,
 #    500, not JSON, down, a /metrics a proxy answers, a Core that stops
-#    mid-session, hostile strings, a change of Core, the connection test
-#    (dashboard/e2e/states.mjs puts its own fault proxy in front of the Core).
+#    mid-session, hostile strings, a change of Core, the connection test;
+#    since Round 39 also a /metrics 404, a /health missing fields, a
+#    malformed manifest, deep links before the graph answered, the palette
+#    over a detail pane and a refused copy (dashboard/e2e/states.mjs puts its
+#    own fault proxy in front of the Core).
 AXE_CORE_PATH="$axe" node "$root/dashboard/e2e/states.mjs" "$preview/" "$core" "$key" | tee "$work/states.log"
 grep -q "clean, axe included$" "$work/states.log"

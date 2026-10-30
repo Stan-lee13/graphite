@@ -190,6 +190,7 @@ pub fn try_seeded_core(
         evidence: earned_evidence(),
         quarantined: false,
         quarantine_reason: None,
+        first_manifest_unvalidated: false,
     })?;
     Ok(core)
 }

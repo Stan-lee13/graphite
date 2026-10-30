@@ -87,8 +87,12 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: market, baseAccount, quoteAccount, baseVault, quoteVault",
-    "moves user funds between token accounts",
-    "credits the output token account with the received amount for the swap"
+    "on a bid, transfers the input tokens from accounts.quoteAccount to accounts.quoteVault and the output tokens from accounts.baseVault to accounts.baseAccount",
+    "on an ask, transfers the input tokens from accounts.baseAccount to accounts.baseVault and the output tokens from accounts.quoteVault to accounts.quoteAccount",
+    "on a bid, debits accounts.quoteAccount by the input tokens",
+    "on an ask, debits accounts.baseAccount by the input tokens",
+    "on a bid, credits accounts.baseAccount with the output tokens",
+    "on an ask, credits accounts.quoteAccount with the output tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"

@@ -594,7 +594,13 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool, poolXAccount, poolYAccount, swapperXAccount, swapperYAccount, swapper, referrerXAccount, referrerYAccount, referrer",
-    "credits the output token account with the received amount for the swap"
+    "when data.xToY is true, transfers the input tokens from accounts.swapperXAccount to accounts.poolXAccount",
+    "when data.xToY is true, transfers the output tokens from accounts.poolYAccount to accounts.swapperYAccount",
+    "when data.xToY is false, transfers the input tokens from accounts.swapperYAccount to accounts.poolYAccount",
+    "when data.xToY is false, transfers the output tokens from accounts.poolXAccount to accounts.swapperXAccount",
+    "credits accounts.referrerXAccount or accounts.referrerYAccount with the referrer's share",
+    "when data.xToY is true, debits accounts.swapperXAccount by the input tokens",
+    "when data.xToY is false, debits accounts.swapperYAccount by the input tokens"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

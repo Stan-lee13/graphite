@@ -21,13 +21,16 @@
 //!    here; a plugin holds no handle to other plugins.
 //! 5. **Fault tolerance, fail-closed.** A panicking plugin is isolated with
 //!    `catch_unwind`, so it can never wedge the pipeline or fabricate a
-//!    pass. What its panic MEANS depends on what its verdict could have
+//!    pass. Since Round 40 each run has a deadline ([`PLUGIN_DEADLINE`]) on
+//!    a thread of its own, and a run past it is a panicking run. What its panic MEANS depends on what its verdict could have
 //!    done: a Risk or Verifier plugin — one that can block — becomes a
 //!    block attributed to the plugin by name (Round 17, F-16-07: reducing
 //!    it to a note was the fail-open direction, an input that crashed the
 //!    plugin lost its block), and so does a Policy plugin, whose Block is a
-//!    veto; a Simulation plugin, whose verdicts are report-only, becomes an
-//!    error note.
+//!    veto, and (Round 39) a Simulation plugin, whose Block fails L3 and so
+//!    refuses the verdict (F11). Protocol and Analytics plugins return no
+//!    verdict: a panic loses their knowledge or their observation, never a
+//!    block.
 //!
 //! # Plugin review gate
 //!
@@ -42,7 +45,285 @@ use crate::verification::{LayerStatus, PipelineLayerResult, ProposedIntent, Risk
 use std::collections::BTreeMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
+use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
+
+/// How long one plugin run may take (Round 40; core-decision P3 "No
+/// per-plugin timeout").
+///
+/// Plugins ran synchronously on the request's worker, so a slow one held the
+/// verdict for as long as it took — bounded only by the server's 10 s
+/// request timeout, which answers no verdict at all. Each run now has this
+/// deadline. A plugin past it is treated exactly as a plugin that panicked
+/// (R39-CORE-DECISION-3): a family whose verdict can block refuses, any
+/// other family's run is a Note; a protocol plugin's knowledge is lost and
+/// the program is judged as declaring no effects; an analytics observer is
+/// logged. Every shipped plugin answers in microseconds; 250 ms leaves room
+/// for a loaded host without letting one plugin spend a request's budget.
+/// A constant, not a setting: the deadline is part of what a plugin is
+/// reviewed against.
+pub const PLUGIN_DEADLINE: Duration = Duration::from_millis(250);
+
+/// How many plugin runs past their deadline may still be running (Round 40).
+///
+/// A run past its deadline cannot be stopped — a thread cannot be killed,
+/// and the Core may not spawn a process (`tests/ai_layer_isolation.rs`) — so
+/// it is left to finish on its own thread and counted here until it does.
+/// At the bound, no further plugin is started: its run is refused as one
+/// that could not reach a verdict. So a plugin that hangs on every input
+/// costs at most this many threads, plus the runs started concurrently with
+/// the check that reached the bound, and then every request that would run
+/// it is refused, never approved without it. Analytics observers have a
+/// gate of their own (`ANALYTICS_GATE`).
+pub const MAX_OVERRUN_PLUGIN_RUNS: usize = 16;
+
+/// Why a plugin run produced no verdict.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PluginFailure {
+    /// It panicked (caught on its thread).
+    Panicked,
+    /// It was still running at [`PLUGIN_DEADLINE`].
+    TimedOut,
+    /// It was not started: [`MAX_OVERRUN_PLUGIN_RUNS`] runs are still
+    /// running past their deadline, or no thread could be spawned.
+    Saturated,
+}
+
+impl PluginFailure {
+    /// The suffix of the pattern a blocking plugin's failure is recorded
+    /// under (`<name>:panicked` since Round 17).
+    fn tag(self) -> &'static str {
+        match self {
+            PluginFailure::Panicked => "panicked",
+            PluginFailure::TimedOut => "timed-out",
+            PluginFailure::Saturated => "not-run",
+        }
+    }
+
+    fn what(self) -> String {
+        match self {
+            PluginFailure::Panicked => "panicked".to_string(),
+            PluginFailure::TimedOut => format!(
+                "did not answer within its {} ms deadline",
+                PLUGIN_DEADLINE.as_millis()
+            ),
+            PluginFailure::Saturated => format!(
+                "was not run: {MAX_OVERRUN_PLUGIN_RUNS} plugin runs are still running past their deadline"
+            ),
+        }
+    }
+
+    fn log_phrase(self) -> String {
+        format!("{} ", self.what())
+    }
+}
+
+/// The count of runs past their deadline that a gate allows.
+struct OverrunGate {
+    overrunning: AtomicUsize,
+    max: usize,
+}
+
+impl OverrunGate {
+    const fn new(max: usize) -> Self {
+        Self {
+            overrunning: AtomicUsize::new(0),
+            max,
+        }
+    }
+}
+
+/// The gate of verdict and protocol plugins.
+static VERDICT_GATE: OverrunGate = OverrunGate::new(MAX_OVERRUN_PLUGIN_RUNS);
+/// The gate of analytics observers, so a slow event sink never stops a
+/// verdict plugin from running.
+static ANALYTICS_GATE: OverrunGate = OverrunGate::new(MAX_OVERRUN_PLUGIN_RUNS);
+
+const RUN_RUNNING: u8 = 0;
+const RUN_DONE: u8 = 1;
+const RUN_ABANDONED: u8 = 2;
+
+/// Run `work` on a thread of its own and wait for it until `deadline`
+/// (Round 40). A panic is caught on that thread. Past the deadline the run
+/// is abandoned — it finishes, unobserved, and leaves the gate's count when
+/// it does — and the caller has its answer: `TimedOut`.
+fn run_bounded<T: Send + 'static>(
+    gate: &'static OverrunGate,
+    deadline: Duration,
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, PluginFailure> {
+    if gate.overrunning.load(Ordering::SeqCst) >= gate.max {
+        return Err(PluginFailure::Saturated);
+    }
+    let state = Arc::new(AtomicU8::new(RUN_RUNNING));
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+    let on_thread = Arc::clone(&state);
+    let spawned = std::thread::Builder::new()
+        .name("graphite-plugin".to_string())
+        .spawn(move || {
+            let outcome = catch_unwind(AssertUnwindSafe(work));
+            let _ = tx.send(outcome);
+            if on_thread
+                .compare_exchange(RUN_RUNNING, RUN_DONE, Ordering::SeqCst, Ordering::SeqCst)
+                .is_err()
+            {
+                // Abandoned at the deadline: no longer overrunning.
+                gate.overrunning.fetch_sub(1, Ordering::SeqCst);
+            }
+        });
+    if spawned.is_err() {
+        return Err(PluginFailure::Saturated);
+    }
+    match rx.recv_timeout(deadline) {
+        Ok(Ok(v)) => Ok(v),
+        Ok(Err(_)) => Err(PluginFailure::Panicked),
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            // Counted before it is marked abandoned, so the thread's
+            // decrement can never come first.
+            gate.overrunning.fetch_add(1, Ordering::SeqCst);
+            if state
+                .compare_exchange(
+                    RUN_RUNNING,
+                    RUN_ABANDONED,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                )
+                .is_ok()
+            {
+                return Err(PluginFailure::TimedOut);
+            }
+            // It finished between the deadline and the mark: it sent first.
+            gate.overrunning.fetch_sub(1, Ordering::SeqCst);
+            match rx.try_recv() {
+                Ok(Ok(v)) => Ok(v),
+                _ => Err(PluginFailure::Panicked),
+            }
+        }
+        // The thread ended without sending: only a panic does that.
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(PluginFailure::Panicked),
+    }
+}
+
+/// The verdict of a run that reached none.
+///
+/// Round 17 (F-16-07): a panic in a plugin whose verdict can BLOCK is
+/// fail-closed. Reducing it to a Note meant an input that crashed a Risk or
+/// Verifier plugin lost that plugin's block and the layer passed on the
+/// core's verdict alone — the one direction a security plugin must not fail
+/// in. A Policy plugin's Block is a veto, so it is in the same set.
+///
+/// Round 39 (R39-CORE-DECISION-3): so is a Simulation plugin's. Since F11
+/// its Block fails L3 and refuses the verdict, but a panic was still reduced
+/// to a Note on the grounds that its verdicts were report-only — so an input
+/// that crashed it lost its veto, and an honest-looking swap it would have
+/// refused was `executable_approved`. Every family whose verdict can block
+/// now blocks when it cannot reach one; only Protocol and Analytics plugins,
+/// which have no verdict, would take the Note.
+///
+/// Round 40: a run past its deadline, or one not started because too many
+/// overran, is the same case — a plugin that cannot reach a verdict — and
+/// goes the same way.
+fn failed_plugin_verdict(
+    family: PluginFamily,
+    name: &str,
+    layer: LayerId,
+    failure: PluginFailure,
+) -> PluginVerdict {
+    let what = failure.what();
+    if matches!(
+        family,
+        PluginFamily::Risk
+            | PluginFamily::Verifier
+            | PluginFamily::Policy
+            | PluginFamily::Simulation
+    ) {
+        tracing::error!(
+            "plugin '{name}' {what} in layer {} — a blocking plugin that cannot run is a block (fail-closed)",
+            layer.as_str()
+        );
+        let reason = match failure {
+            PluginFailure::Panicked => format!(
+                "plugin '{name}' panicked while assessing this request; a security plugin that cannot reach a verdict refuses rather than abstains (P12 fail-closed)"
+            ),
+            _ => format!(
+                "plugin '{name}' {what} while assessing this request; a security plugin that cannot reach a verdict refuses rather than abstains (P12 fail-closed)"
+            ),
+        };
+        PluginVerdict::Block {
+            pattern: format!("{name}:{}", failure.tag()),
+            reason,
+        }
+    } else {
+        tracing::error!(
+            "plugin '{name}' {what} in layer {} — verdict isolated, core verdict preserved",
+            layer.as_str()
+        );
+        PluginVerdict::Note(match failure {
+            PluginFailure::Panicked => {
+                format!("plugin '{name}' panicked and was isolated (no verdict applied)")
+            }
+            _ => format!("plugin '{name}' {what} and was isolated (no verdict applied)"),
+        })
+    }
+}
+
+/// An owned copy of a [`PluginContext`] (Round 40): what a plugin's thread
+/// borrows from, so a run past its deadline never outlives the request's
+/// data.
+struct OwnedPluginContext {
+    program_id: String,
+    protocol_name: String,
+    instruction_discriminator: String,
+    instruction_name: String,
+    proposed_intent: ProposedIntent,
+    account_addresses: Vec<String>,
+    cpi_targets: Vec<String>,
+    expected_state_changes: Vec<String>,
+    allowed_cpis: Vec<String>,
+    manifest_found: bool,
+    compute_units: u64,
+    account_writes: u32,
+    cpi_hops: u32,
+}
+
+impl OwnedPluginContext {
+    fn of(ctx: &PluginContext) -> Self {
+        Self {
+            program_id: ctx.program_id.to_string(),
+            protocol_name: ctx.protocol_name.to_string(),
+            instruction_discriminator: ctx.instruction_discriminator.to_string(),
+            instruction_name: ctx.instruction_name.to_string(),
+            proposed_intent: ctx.proposed_intent.clone(),
+            account_addresses: ctx.account_addresses.to_vec(),
+            cpi_targets: ctx.cpi_targets.to_vec(),
+            expected_state_changes: ctx.expected_state_changes.to_vec(),
+            allowed_cpis: ctx.allowed_cpis.to_vec(),
+            manifest_found: ctx.manifest_found,
+            compute_units: ctx.compute_units,
+            account_writes: ctx.account_writes,
+            cpi_hops: ctx.cpi_hops,
+        }
+    }
+
+    fn view(&self) -> PluginContext<'_> {
+        PluginContext {
+            program_id: &self.program_id,
+            protocol_name: &self.protocol_name,
+            instruction_discriminator: &self.instruction_discriminator,
+            instruction_name: &self.instruction_name,
+            proposed_intent: &self.proposed_intent,
+            account_addresses: &self.account_addresses,
+            cpi_targets: &self.cpi_targets,
+            expected_state_changes: &self.expected_state_changes,
+            allowed_cpis: &self.allowed_cpis,
+            manifest_found: self.manifest_found,
+            compute_units: self.compute_units,
+            account_writes: self.account_writes,
+            cpi_hops: self.cpi_hops,
+        }
+    }
+}
 
 /// A verification layer of the fixed 8-layer pipeline.
 ///
@@ -582,46 +863,20 @@ impl PluginOrchestrator {
             return Vec::new();
         };
         let mut out = Vec::new();
+        // One owned copy of the context for every plugin of the family: a
+        // plugin runs on its own thread, which may outlive this call
+        // (Round 40, `run_bounded`).
+        let mut owned: Option<Arc<OwnedPluginContext>> = None;
         for kind in kinds.iter().filter(|k| k.family() == family) {
             let name = kind.manifest().name.clone();
-            let verdict = match catch_unwind(AssertUnwindSafe(|| kind.run(ctx))) {
+            let shared =
+                Arc::clone(owned.get_or_insert_with(|| Arc::new(OwnedPluginContext::of(ctx))));
+            let plugin = kind.clone();
+            let verdict = match run_bounded(&VERDICT_GATE, PLUGIN_DEADLINE, move || {
+                plugin.run(&shared.view())
+            }) {
                 Ok(v) => v,
-                // Round 17 (F-16-07): a panic in a plugin whose verdict can
-                // BLOCK is fail-closed. Reducing it to a Note meant an input
-                // that crashed a Risk or Verifier plugin lost that plugin's
-                // block and the layer passed on the core's verdict alone —
-                // the one direction a security plugin must not fail in. A
-                // Policy plugin's Block is a veto, so it is in the same set.
-                // A panic still cannot fabricate a PASS: Simulation-family
-                // plugins, whose verdicts are report-only, keep the Note so a
-                // crashing advisory plugin does not wedge traffic.
-                Err(_)
-                    if matches!(
-                        family,
-                        PluginFamily::Risk | PluginFamily::Verifier | PluginFamily::Policy
-                    ) =>
-                {
-                    tracing::error!(
-                        "plugin '{name}' panicked in layer {} — a blocking plugin that cannot run is a block (fail-closed)",
-                        layer.as_str()
-                    );
-                    PluginVerdict::Block {
-                        pattern: format!("{name}:panicked"),
-                        reason: format!(
-                            "plugin '{name}' panicked while assessing this request; a security plugin that cannot reach a verdict refuses rather than abstains (P12 fail-closed)"
-                        ),
-                    }
-                }
-                Err(_) => {
-                    tracing::error!(
-                        "plugin '{name}' panicked in layer {} — verdict isolated, core verdict preserved",
-                        layer.as_str()
-                    );
-                    PluginVerdict::Note(format!(
-                        "plugin '{}' panicked and was isolated (no verdict applied)",
-                        name
-                    ))
-                }
+                Err(failure) => failed_plugin_verdict(family, &name, layer, failure),
             };
             out.push(PluginRun {
                 plugin_name: name,
@@ -650,8 +905,8 @@ impl PluginOrchestrator {
         fold_runs_into_result(result, runs)
     }
 
-    /// Simulation-family verdicts for L3 (Note/Block report-only — never a
-    /// pass; P5).
+    /// Simulation-family verdicts for L3 (Note or Block, never a pass; P5).
+    /// A Block fails L3, which refuses the verdict (F11); a panic is a Block.
     pub fn simulation_verdicts(&self, ctx: &PluginContext) -> Vec<PluginRun> {
         self.run_family(
             LayerId::L3SimulationVerification,
@@ -721,25 +976,33 @@ impl PluginOrchestrator {
                 // request: no verdict, no audit row. Its knowledge is lost
                 // instead, and the program is judged as declaring no effects
                 // — the strict reading — rather than with no rules at all.
-                let outcome = catch_unwind(AssertUnwindSafe(|| {
-                    if p.protocol_id() == program_id {
+                // Round 40: so is one that overruns its deadline, or that
+                // cannot be run because too many overran.
+                let p = Arc::clone(p);
+                let (program, discriminator) = (
+                    program_id.to_string(),
+                    instruction_discriminator.to_string(),
+                );
+                let outcome = run_bounded(&VERDICT_GATE, PLUGIN_DEADLINE, move || {
+                    if p.protocol_id() == program {
                         Some((
-                            p.semantic_rules(instruction_discriminator),
-                            p.allowed_cpis(instruction_discriminator),
+                            p.semantic_rules(&discriminator),
+                            p.allowed_cpis(&discriminator),
                         ))
                     } else {
                         None
                     }
-                }));
+                });
                 match outcome {
                     Ok(Some((r, c))) => {
                         rules.extend(r);
                         cpis.extend(c);
                     }
                     Ok(None) => {}
-                    Err(_) => {
+                    Err(failure) => {
                         tracing::error!(
-                            "protocol plugin panicked while describing {program_id}; judging it as declaring no effects"
+                            "protocol plugin {}while describing {program_id}; judging it as declaring no effects",
+                            failure.log_phrase()
                         );
                         rules.push(crate::state_diff::UNDESCRIBED_INSTRUCTION_EFFECTS.to_string());
                     }
@@ -754,12 +1017,28 @@ impl PluginOrchestrator {
     /// logged and never affect the result (observability must not break
     /// verification). Panics inside observers are isolated AND logged — a
     /// crashing observer must not vanish silently.
+    ///
+    /// Round 40: each observer runs under the plugin deadline, on a gate of
+    /// its own — a slow sink (the event logger's file) delays the response
+    /// by at most the deadline, and observers that overran can never take
+    /// the verdict plugins' places. One that overruns, or cannot run, is
+    /// logged; the result is unaffected either way.
     pub fn run_analytics(&self, result: &crate::verification::VerificationResult) {
+        if self.analytics.is_empty() {
+            return;
+        }
+        let shared = Arc::new(result.clone());
         for p in &self.analytics {
             let name = p.manifest().name.clone();
-            let outcome = catch_unwind(AssertUnwindSafe(|| p.on_verification(result)));
-            if outcome.is_err() {
-                tracing::error!("analytics plugin '{name}' panicked — isolated, result unaffected");
+            let (p, r) = (Arc::clone(p), Arc::clone(&shared));
+            let outcome = run_bounded(&ANALYTICS_GATE, PLUGIN_DEADLINE, move || {
+                p.on_verification(&r)
+            });
+            if let Err(failure) = outcome {
+                tracing::error!(
+                    "analytics plugin '{name}' {}— isolated, result unaffected",
+                    failure.log_phrase()
+                );
             }
         }
     }
@@ -1068,8 +1347,8 @@ mod tests {
     /// previous assertion — "core verdict survives, panic is a note" — was
     /// the fail-open direction: an input that crashed a Verifier or Risk
     /// plugin lost that plugin's block. The pipeline is not wedged (the
-    /// panic is caught), the block is attributed to the plugin by name, and
-    /// advisory families keep the Note.
+    /// panic is caught), and the block is attributed to the plugin by name.
+    /// Round 39: every family that can block, Simulation included.
     #[test]
     fn test_panicking_blocking_plugin_fails_closed() {
         let mut orch = PluginOrchestrator::new();
@@ -1081,8 +1360,13 @@ mod tests {
         let folded = orch.fold_verifier(LayerId::L2InstructionVerification, base, &ctx());
         assert_eq!(folded.status, LayerStatus::Failed);
         assert!(!folded.passed);
+        // Round 40: a crash is reported as `panicked`, or as `timed-out`
+        // when unwinding (and the panic hook's backtrace, with
+        // RUST_BACKTRACE set, on a loaded machine) outlasts the 250 ms
+        // deadline. Both refuse; the label is diagnostic, the refusal and the
+        // plugin's name are what this test holds.
         assert!(
-            folded.reason.contains("panic:panicked"),
+            folded.reason.contains("panic:panicked") || folded.reason.contains("panic:timed-out"),
             "{}",
             folded.reason
         );
@@ -1106,13 +1390,19 @@ mod tests {
         assert!(outcome.blocked);
         assert_eq!(outcome.findings.len(), 1);
         assert!(
-            outcome.findings[0].pattern.ends_with(":panicked"),
+            outcome.findings[0].pattern.ends_with("panic-risk:panicked")
+                || outcome.findings[0]
+                    .pattern
+                    .ends_with("panic-risk:timed-out"),
             "{}",
             outcome.findings[0].pattern
         );
         assert!(outcome.findings[0].reason.contains("panic"));
-        // An ADVISORY family (Simulation) keeps the Note: a crashing advisory
-        // plugin must not wedge traffic, and its verdict never blocked anyway.
+        // Re-pinned in Round 39 (R39-CORE-DECISION-3): this asserted that a
+        // panicking Simulation plugin keeps a Note, "its verdict never
+        // blocked anyway". Since F11 its Block fails L3 and refuses the
+        // verdict, so the Note lost a veto; a crash is now a Block, like the
+        // other families that can block.
         struct PanicSim {
             m: PluginManifest,
         }
@@ -1130,7 +1420,11 @@ mod tests {
         })));
         let runs = orch3.simulation_verdicts(&ctx());
         assert_eq!(runs.len(), 1);
-        assert!(matches!(runs[0].verdict, PluginVerdict::Note(_)));
+        assert!(
+            matches!(&runs[0].verdict, PluginVerdict::Block { pattern, .. } if pattern == "panic-sim:panicked" || pattern == "panic-sim:timed-out"),
+            "{:?}",
+            runs[0].verdict
+        );
     }
 
     #[test]
@@ -1364,5 +1658,141 @@ mod tests {
         assert_eq!(s.0, "11111111111111111111111111111111");
         assert_eq!(s.1, "02000000");
         assert_eq!(s.2, "Transfer");
+    }
+
+    /// Round 40: a plugin past its deadline is a plugin that cannot reach a
+    /// verdict — the R39-CORE-DECISION-3 path. A family that can block
+    /// refuses, naming the plugin and why; any other family's run is a Note.
+    /// (No verdict family is non-blocking since Round 39, so the Note is
+    /// reached only through this function; Protocol and Analytics plugins
+    /// have their own fallbacks, `protocol_rules` and `run_analytics`.)
+    #[test]
+    fn a_plugin_that_cannot_reach_a_verdict_blocks_or_notes_by_family() {
+        let layer = LayerId::L7RiskVerification;
+        for family in [
+            PluginFamily::Risk,
+            PluginFamily::Verifier,
+            PluginFamily::Policy,
+            PluginFamily::Simulation,
+        ] {
+            for (failure, tag) in [
+                (PluginFailure::Panicked, "panicked"),
+                (PluginFailure::TimedOut, "timed-out"),
+                (PluginFailure::Saturated, "not-run"),
+            ] {
+                match failed_plugin_verdict(family, "p", layer, failure) {
+                    PluginVerdict::Block { pattern, reason } => {
+                        assert_eq!(pattern, format!("p:{tag}"));
+                        assert!(reason.contains("refuses rather than abstains"), "{reason}");
+                    }
+                    v => panic!("{family:?} {failure:?}: {v:?}"),
+                }
+            }
+        }
+        for family in [PluginFamily::Protocol, PluginFamily::Analytics] {
+            match failed_plugin_verdict(family, "p", layer, PluginFailure::TimedOut) {
+                PluginVerdict::Note(n) => {
+                    assert!(
+                        n.contains("250 ms deadline") && n.contains("isolated"),
+                        "{n}"
+                    )
+                }
+                v => panic!("{family:?}: {v:?}"),
+            }
+        }
+    }
+
+    /// Round 40: a slow Risk plugin is refused at the deadline, not after it
+    /// finishes; a fast one is untouched.
+    #[test]
+    fn a_risk_plugin_past_its_deadline_is_a_block_at_the_deadline() {
+        struct Slow {
+            m: PluginManifest,
+            sleep: Duration,
+        }
+        impl RiskPlugin for Slow {
+            fn manifest(&self) -> &PluginManifest {
+                &self.m
+            }
+            fn assess_risk(&self, _ctx: &PluginContext) -> PluginVerdict {
+                std::thread::sleep(self.sleep);
+                PluginVerdict::NoFinding
+            }
+        }
+        let mut orch = PluginOrchestrator::new();
+        orch.register_plugin(PluginKind::Risk(Arc::new(Slow {
+            m: manifest("hang", LayerId::L7RiskVerification),
+            sleep: Duration::from_secs(3),
+        })));
+        let started = std::time::Instant::now();
+        let outcome = orch.risk_outcome(&ctx());
+        let took = started.elapsed();
+        assert!(outcome.blocked);
+        assert!(
+            outcome.findings[0].pattern.ends_with("hang:timed-out"),
+            "{}",
+            outcome.findings[0].pattern
+        );
+        assert!(
+            took >= PLUGIN_DEADLINE && took < Duration::from_secs(2),
+            "answered after {took:?}"
+        );
+        let mut fast = PluginOrchestrator::new();
+        fast.register_plugin(PluginKind::Risk(Arc::new(Slow {
+            m: manifest("quick", LayerId::L7RiskVerification),
+            sleep: Duration::from_millis(1),
+        })));
+        assert_eq!(fast.risk_outcome(&ctx()), RiskPluginOutcome::default());
+    }
+
+    /// Round 40: runs past their deadline are bounded. At the bound nothing
+    /// more is started (`Saturated`), and each abandoned run leaves the
+    /// count when it finishes, so the gate reopens. A gate of its own: the
+    /// shared one serves the other tests running beside this one.
+    #[test]
+    fn abandoned_runs_are_bounded_and_released() {
+        static GATE: OverrunGate = OverrunGate::new(2);
+        let (release, held) = std::sync::mpsc::channel::<()>();
+        let held = Arc::new(std::sync::Mutex::new(held));
+        let hang = || {
+            let held = Arc::clone(&held);
+            move || {
+                let _ = held.lock().unwrap().recv();
+            }
+        };
+        let deadline = Duration::from_millis(20);
+        assert_eq!(
+            run_bounded(&GATE, deadline, hang()),
+            Err(PluginFailure::TimedOut)
+        );
+        assert_eq!(
+            run_bounded(&GATE, deadline, hang()),
+            Err(PluginFailure::TimedOut)
+        );
+        assert_eq!(GATE.overrunning.load(Ordering::SeqCst), 2);
+        // At the bound: refused without being started.
+        let started = Arc::new(AtomicUsize::new(0));
+        let s = Arc::clone(&started);
+        assert_eq!(
+            run_bounded(&GATE, deadline, move || s.fetch_add(1, Ordering::SeqCst)),
+            Err(PluginFailure::Saturated)
+        );
+        assert_eq!(started.load(Ordering::SeqCst), 0, "not started");
+        // Released, both finish and leave the count.
+        release.send(()).unwrap();
+        release.send(()).unwrap();
+        let until = std::time::Instant::now() + Duration::from_secs(10);
+        while GATE.overrunning.load(Ordering::SeqCst) != 0 {
+            assert!(std::time::Instant::now() < until, "the gate never reopened");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(run_bounded(&GATE, deadline, || 7), Ok(7));
+        // A panic is caught on the plugin's thread (the panic hook may take
+        // longer than 20 ms to print it, so this one gets longer).
+        assert_eq!(
+            run_bounded(&GATE, Duration::from_secs(5), || -> u8 { panic!("boom") }),
+            Err(PluginFailure::Panicked)
+        );
+        assert_eq!(GATE.overrunning.load(Ordering::SeqCst), 0);
     }
 }

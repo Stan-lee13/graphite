@@ -147,6 +147,9 @@ fn a_near_miss_of_a_core_name_refuses_to_start() {
         ("GRAPHITE_L8_HIGH_ASSURANCES", "GRAPHITE_L8_HIGH_ASSURANCE"),
         ("graphite_api_key", "GRAPHITE_API_KEY"),
         ("GRAPHITE_WALLET_PROFLE", "GRAPHITE_WALLET_PROFILE"),
+        // Round 40 (R39-CB-8).
+        ("GRAPHITE_TRUSTED_PROXIE", "GRAPHITE_TRUSTED_PROXIES"),
+        ("GRAPHITE_TRUSTED_PROXYS", "GRAPHITE_TRUSTED_PROXIES"),
     ] {
         let err = check_env_names([typo]).expect_err(typo);
         assert!(
@@ -187,6 +190,11 @@ fn a_misspelled_protective_switch_refuses_to_start_however_far_off() {
         "GRAPHITE_HIGH_ASSURANCE",
         "GRAPHITE_AUDIT_KEY",
         "GRAPHITE_WITNESS_URL",
+        // Round 40 (R39-CB-8): the proxy list's misspellings refuse however
+        // far off; `GRAPHITE_TRUST_PROXY` with no list refuses too
+        // (tests/audit_2026_10_20_startup_refusals.rs).
+        "GRAPHITE_TRUSTED_PROXY_LIST",
+        "GRAPHITE_PROXIES",
     ] {
         let err = check_env_names([typo]).expect_err(typo);
         assert!(

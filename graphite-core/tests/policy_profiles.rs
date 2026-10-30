@@ -85,6 +85,7 @@ fn seed_system(core: &mut GraphiteCore, evidence: BehaviorEvidence) {
         evidence,
         quarantined: false,
         quarantine_reason: None,
+        first_manifest_unvalidated: false,
     })
     .expect("behavior seed");
 }
