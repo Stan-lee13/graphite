@@ -58,3 +58,5 @@
 2 tests/round40_first_manifest_cap.rs
 # not in this leg: tests/round40_trusted_proxies.rs (cfg(feature = "server"))
 # not in this leg: tests/round40_rpc_no_proxy.rs (cfg(feature = "rpc"))
+# Round 41 (L3): honest Compute Budget variation; the pipeline tests are cfg(feature = "rpc")
+8 tests/round41_l3_honest_compute_variation.rs

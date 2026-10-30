@@ -61,3 +61,6 @@
 2 tests/round40_signer_key_mode.rs
 2 tests/round40_terminal_escapes.rs
 2 tests/round40_first_manifest_cap.rs
+# Round 41 (L3): honest Compute Budget variation is not SimulationSpoofing;
+# the attack controls (gross divergence, drift past the anchor) through the pipeline
+10 tests/round41_l3_honest_compute_variation.rs

@@ -8959,7 +8959,7 @@ impl GraphiteCore {
                             program_id: input.program_id.clone(),
                             simulation_usage: usage.clone(),
                             baseline: baseline.clone(),
-                            divergence_threshold: 2.0,
+                            divergence_threshold: crate::simulation_integrity::DIVERGENCE_THRESHOLD,
                         },
                     ) {
                         Ok(result) => result,
