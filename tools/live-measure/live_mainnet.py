@@ -1443,13 +1443,14 @@ def honest_markdown(h):
             "",
             "Every one that was not `executable_approved`, and why:",
             "",
-            "| row | kind | sender → recipient | decision | risk · policy · confidence | L3 | L3/L4 reasons | findings | L4 |",
-            "|---:|---|---|---|---|---|---|---|---|",
+            "| row | kind | sender → recipient | decision | risk · policy · confidence | unobserved | L3 | L3/L4 reasons | findings | L4 |",
+            "|---:|---|---|---|---|---|---|---|---|---|",
         ]
         for r in rest:
             out.append(
                 f"| {r['row']} | {r.get('kind')} | `{short(r.get('sender'))}` → `{short(r.get('recipient'))}` | "
                 f"`{r.get('decision') or r.get('http')}` | {r.get('risk')} · {r.get('policy')} · {r.get('confidence')} | "
+                f"{_cell(', '.join(r.get('unobserved_codes') or []))} | "
                 f"{_cell(r.get('l3') or '')} | {_cell('; '.join(r.get('reasons') or []))} | "
                 f"{_cell('; '.join(r.get('finding_reasons') or []))[:600]} | {_cell(r.get('l4_reason') or r.get('refusal') or '')} |"
             )
@@ -1501,15 +1502,16 @@ def swaps_markdown(s):
             "",
             "Every one that was not `executable_approved`, and why:",
             "",
-            "| row | venue | wallet · in → out (amount) | quote · minimum | decision | risk · policy · confidence | L3 | "
-            "L3/L4 reasons | findings | L4 |",
-            "|---:|---|---|---|---|---|---|---|---|---|",
+            "| row | venue | wallet · in → out (amount) | quote · minimum | decision | risk · policy · confidence | "
+            "unobserved | L3 | L3/L4 reasons | findings | L4 |",
+            "|---:|---|---|---|---|---|---|---|---|---|---|",
         ]
         for r in rest:
             out.append(
                 f"| {r['row']} | {r.get('venue')} | `{short(r.get('sender'))}` · {short(r.get('asset_in'))} → "
                 f"{short(r.get('asset_out'))} ({r.get('amount')}) | {r.get('quoted')} · {r.get('minimum')} | "
                 f"`{r.get('decision') or r.get('http')}` | {r.get('risk')} · {r.get('policy')} · {r.get('confidence')} | "
+                f"{_cell(', '.join(r.get('unobserved_codes') or []))} | "
                 f"{_cell(r.get('l3') or '')} | {_cell('; '.join(r.get('reasons') or []))} | "
                 f"{_cell('; '.join(r.get('finding_reasons') or []))[:600]} | {_cell(r.get('l4_reason') or r.get('refusal') or '')} |"
             )

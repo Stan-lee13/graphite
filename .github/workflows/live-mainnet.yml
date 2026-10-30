@@ -48,8 +48,8 @@ on:
         default: "4"
         type: string
       pace_seconds:
-        description: "Pause between /verify calls (each one makes several RPC calls)"
-        default: "1.0"
+        description: "Pause between /verify calls (each one makes several RPC calls; Round 41: 2.0, after run 41140520173 hit the public RPC's rate limit on 13 of 38 honest transfers)"
+        default: "2.0"
         type: string
       l8_checks:
         description: "Executed transactions to reconcile through /verify/execution"
@@ -226,7 +226,7 @@ jobs:
         id: replay
         if: steps.fetch.outputs.skip == 'false'
         env:
-          PACE: ${{ inputs.pace_seconds || '1.0' }}
+          PACE: ${{ inputs.pace_seconds || '2.0' }}
           L8: ${{ inputs.l8_checks || '10' }}
           HARNESS_EXIT: ${{ steps.harness.outputs.exit }}
           FRESH: ${{ inputs.fresh_transactions || '40' }}
