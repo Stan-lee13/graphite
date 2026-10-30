@@ -50,7 +50,11 @@ jobs:
         with:
           python-version: "3.13"
 
+      # The script writes the census after every program it measures, so a
+      # step stopped at its limit still leaves every finished record; the
+      # steps below print and upload whatever was measured.
       - name: Measure
+        timeout-minutes: 200
         env:
           IDS: ${{ inputs.program_ids || '' }}
         run: |
@@ -61,6 +65,7 @@ jobs:
           python3 graphite-core/scripts/battle_tested_census.py --merge "${ids[@]}" 2>&1 | tee "$RUNNER_TEMP/census.log"
 
       - name: What changed
+        if: always()
         run: |
           set -euo pipefail
           python3 -I - "$RUNNER_TEMP/before.json" graphite-core/protocols/battle_tested_evidence.json <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
@@ -83,6 +88,7 @@ jobs:
           sha256sum graphite-core/protocols/battle_tested_evidence.json
 
       - name: The measured file (gzip, base64), for a reader without artifact access
+        if: always()
         run: |
           set -euo pipefail
           echo "CENSUS-GZIP-BASE64-BEGIN"
