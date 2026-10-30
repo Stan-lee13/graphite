@@ -1757,6 +1757,53 @@ fn wrapped_for_declared_debit(
     out
 }
 
+/// Whether the closure of `d` is a signer wallet unwrapping its own SOL
+/// (Round 41, D-22): a top-level `CloseAccount` of `d` — SPL Token or
+/// Token-2022, the program that owned `d`, data exactly the one-byte tag 9,
+/// exactly three accounts (the account, the destination, a single owner) —
+/// whose destination and authority are the SAME signer, that signer is a
+/// wallet (System-owned, no data, before the transaction), and `d` is that
+/// wallet's own wrapped SOL (`wsol_kept_by`: an SPL Token account of the
+/// native mint, owned by the wallet, not frozen, no delegate or close
+/// authority anyone else holds).
+///
+/// Jupiter's default for SOL output pays wSOL into the wallet's wSOL
+/// account and closes it to the wallet; the route's declaration names no
+/// closure, so the wallet's own unwrap was `UndeclaredAccountClosure`.
+/// Every lamport of it lands in the wallet that signed the close. A close
+/// to anyone else, of any other account, of a non-native account, or by an
+/// authority that is not the receiving wallet, is judged as before; what
+/// the wallet does with the SOL afterwards is judged as any wallet loss.
+fn unwrapped_by_its_wallet(
+    diff: &StateDiff,
+    d: &AccountDelta,
+    signers: &std::collections::HashSet<&str>,
+) -> bool {
+    let (Some(ixs), Some(before)) = (diff.top_level_instructions.as_ref(), d.before.as_ref())
+    else {
+        return false;
+    };
+    let is_wallet = |who: &str| {
+        signers.contains(who)
+            && diff.deltas.iter().any(|w| {
+                w.pubkey == who
+                    && w.before
+                        .as_ref()
+                        .is_some_and(|s| s.owner == SYSTEM_PROGRAM && s.data_len == 0)
+            })
+    };
+    ixs.iter().any(|ix| {
+        (ix.program_id == SPL_TOKEN_PROGRAM || ix.program_id == SPL_TOKEN_2022_PROGRAM)
+            && ix.program_id == before.owner
+            && ix.data.as_slice() == [9]
+            && ix.accounts.len() == 3
+            && ix.accounts[0] == d.pubkey
+            && ix.accounts[1] == ix.accounts[2]
+            && is_wallet(&ix.accounts[1])
+            && wsol_kept_by(diff, ixs, &d.pubkey, &ix.accounts[1], signers)
+    })
+}
+
 /// A complete pre/post picture of a transaction's effect on account state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
@@ -4394,8 +4441,11 @@ pub fn check_state_diff_with(input: &StateDiffCheck<'_>, relax: L4Relaxations) -
             }
         }
 
-        // Closure.
-        if d.was_closed() && !declares("close") {
+        // Closure. Round 41 (D-22): a signer wallet's own wSOL account,
+        // closed by that wallet to that wallet by a top-level `CloseAccount`,
+        // is the wallet unwrapping its own SOL (`unwrapped_by_its_wallet`).
+        if d.was_closed() && !declares("close") && !unwrapped_by_its_wallet(input.diff, d, &signers)
+        {
             findings.push(StateDiffFinding::critical(
                 "UndeclaredAccountClosure",
                 acct,

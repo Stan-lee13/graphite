@@ -160,12 +160,12 @@ submitted — and nothing is signed under a residual the operator has not accept
 - **A swap is held to its own minimum (Round 29, H2/H4).** The Core does not read a
   route's minimum output; the guard does. A swap is built only from an exact-in
   instruction whose data `swap-instructions.ts` decodes, every byte, from the IDLs
-  committed under `graphite-core/scripts`: Jupiter v6 `route` / `shared_accounts_route`
-  (platform fee 0), Orca Whirlpools `swap` / `swapV2`, Raydium CPMM `swap_base_input`,
+  committed under `graphite-core/scripts`: Jupiter v6 `route` / `shared_accounts_route` /
+  `route_v2` / `shared_accounts_route_v2` (platform fee 0, and for v2 positive-slippage fee
+  0; the deployed program's IDL in `scripts/out/onchain_idls/`, Round 41), Orca Whirlpools `swap` / `swapV2`, Raydium CPMM `swap_base_input`,
   Raydium CLMM `swap` / `swap_v2`, Raydium AMM v4 `SwapBaseIn`, Meteora DLMM `swap` /
   `swap2` — `SWAP_PROGRAM_IDS` is exactly these programs (it used to be 46, DCA, limit
-  orders, perps, a bridge and lockers among them). Exact-out forms are refused by name;
-  Jupiter `route_v2` is refused because no committed IDL carries its deployed layout. The
+  orders, perps, a bridge and lockers among them). Exact-out forms are refused by name. The
   route may spend no more than the request names; its minimum must be above zero, at most
   what the simulation delivered, and within the allowed slippage of it (the request's
   "with n% slippage", else `GRAPHITE_SWAP_MAX_SLIPPAGE_BPS`, default 100, never above

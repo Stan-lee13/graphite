@@ -1008,8 +1008,9 @@ async fn a_swap_beside_a_memo_is_executable() {
 /// Round 41 (D-20): the wrap half is no longer refused — L4 reads the wrap
 /// from the bytes and counts it as the route's declared debit, up to the
 /// route's `in_amount` (`round41_live_false_refusals`); the own wrap here is
-/// now `executable_approved`. The unwrap's `UndeclaredAccountClosure`
-/// remains.
+/// now `executable_approved`. Round 41 (D-22): so is the own unwrap — the
+/// wallet's own wSOL account closed by the wallet to the wallet is not an
+/// undeclared closure.
 #[tokio::test]
 async fn the_owners_own_wrap_and_unwrap_are_bound() {
     for (tag, (c, ixs), request) in [

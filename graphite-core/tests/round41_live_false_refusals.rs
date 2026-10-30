@@ -40,7 +40,7 @@ use graphite_core::state_diff::L4Relaxations;
 use graphite_core::tx_pattern_analysis::TransactionInstruction;
 use graphite_core::verification::{
     ExecutionDecision, ExtractedParameters, GraphiteCore, LayerStatus, ObservationPolicy,
-    ProposedIntent, VerificationInput, VerificationResult,
+    ProposedIntent, UnobservedCode, VerificationInput, VerificationResult,
 };
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -1454,4 +1454,649 @@ async fn round41_an_undeclared_token2022_cpi_is_still_authority_hijack() {
         unnamed.is_empty(),
         "refused, but no longer as AuthorityHijack: {unnamed:#?}"
     );
+}
+
+// ─── D-22: a token -> SOL swap that unwraps to the wallet ──────────────────
+
+/// What the swap into SOL pays, in lamports (1 SOL).
+const SOL_OUT: u64 = SOL;
+/// What it spends: 1 MINT_X (6 decimals).
+const X_IN: u64 = 1_000_000;
+
+/// The shapes the token -> SOL swap is built in.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Unwrap {
+    /// Jupiter's default for SOL output: the route pays wSOL into the
+    /// wallet's existing wSOL ATA (empty before), and the wallet's own
+    /// `CloseAccount` sends it, with the rent, to the wallet.
+    Honest,
+    /// The same, the wSOL ATA created by `CreateIdempotent` in the same
+    /// transaction (it exists only inside it).
+    HonestCreated,
+    /// The wSOL ATA closed to the attacker.
+    CloseToStranger,
+    /// Beside the honest unwrap, the wallet's NON-native token account
+    /// (holding 5 MINT_X) closed to the wallet: its tokens vanish.
+    CloseNonNative,
+    /// Beside the honest unwrap, the attacker's wSOL account closed to the
+    /// wallet, the wallet signing.
+    CloseOthersWsol,
+    /// The wallet's wSOL ATA carries the attacker as close authority, and
+    /// the attacker (co-signing) closes it to the wallet.
+    AuthorityNotWallet,
+    /// The honest unwrap, and the unwrapped SOL sent on to the attacker.
+    ThenSkim(u64),
+}
+
+/// A 165-byte SPL Token account with `close` as its close authority.
+fn token_account_closable(mint: &str, owner: &str, amount: u64, close: &str) -> Vec<u8> {
+    let mut d = token_account(mint, owner, amount);
+    d[129..133].copy_from_slice(&1u32.to_le_bytes());
+    d[133..165].copy_from_slice(pk(close).as_bytes());
+    d
+}
+
+/// A Jupiter v6 `route` of `X_IN` MINT_X for `SOL_OUT` lamports of SOL
+/// (quoted at `SOL_OUT`, 50 bps), in the `shape` given. Returns the cluster,
+/// the instructions and the index of the route.
+fn unwrap_swap(shape: Unwrap) -> (Cluster, Vec<Ix>, usize) {
+    let mut c = Cluster::default();
+    base_programs(&mut c);
+    let d = def(JUPITER, "route");
+    let src = ata(OWNER, MINT_X);
+    let wsol = ata(OWNER, NATIVE_MINT);
+    let theirs = ata(ATTACKER, NATIVE_MINT);
+    let keys = accounts_for(
+        JUPITER,
+        &d,
+        &[
+            ("token_program", TOKEN.to_string()),
+            ("user_transfer_authority", OWNER.to_string()),
+            ("user_source_token_account", src.clone()),
+            ("user_destination_token_account", wsol.clone()),
+            ("destination_token_account", JUPITER.to_string()),
+            ("destination_mint", NATIVE_MINT.to_string()),
+            ("platform_fee_account", JUPITER.to_string()),
+            ("program", JUPITER.to_string()),
+        ],
+    );
+    let mut data = hex_to_bytes(&d.discriminator);
+    data.extend_from_slice(&1u32.to_le_bytes());
+    data.extend_from_slice(&[7, 100, 0, 1]);
+    data.extend_from_slice(&X_IN.to_le_bytes());
+    data.extend_from_slice(&SOL_OUT.to_le_bytes());
+    data.extend_from_slice(&50u16.to_le_bytes());
+    data.push(0);
+    let pool = key(90);
+    let (in_vault, out_vault) = (key(91), key(92));
+    let mut accounts: Vec<(String, bool, bool)> = d
+        .accounts
+        .iter()
+        .zip(&keys)
+        .map(|(a, k)| (k.clone(), a.is_signer, a.is_writable))
+        .collect();
+    accounts.push((in_vault.clone(), false, true));
+    accounts.push((out_vault.clone(), false, true));
+    let route = Ix {
+        program: JUPITER.to_string(),
+        accounts,
+        data,
+    };
+    for (a, k) in d.accounts.iter().zip(&keys) {
+        if ![OWNER, JUPITER, TOKEN, NATIVE_MINT].contains(&k.as_str())
+            && *k != src
+            && *k != wsol
+            && !a.is_signer
+        {
+            c.set(k, acct(5 * SOL, JUPITER, vec![1u8; 64]));
+        }
+    }
+    c.set(NATIVE_MINT, acct(1_461_600, TOKEN, mint(0, 9)));
+    c.set(MINT_X, acct(1_461_600, TOKEN, mint(10u64.pow(15), 6)));
+    let reserve = 10u64.pow(12);
+    c.set(
+        &in_vault,
+        acct(RENT, TOKEN, token_account(MINT_X, &pool, reserve)),
+    );
+    c.after(
+        &in_vault,
+        acct(RENT, TOKEN, token_account(MINT_X, &pool, reserve + X_IN)),
+    );
+    c.set(
+        &out_vault,
+        acct(
+            RENT + reserve,
+            TOKEN,
+            token_account(NATIVE_MINT, &pool, reserve),
+        ),
+    );
+    c.after(
+        &out_vault,
+        acct(
+            RENT + reserve - SOL_OUT,
+            TOKEN,
+            token_account(NATIVE_MINT, &pool, reserve - SOL_OUT),
+        ),
+    );
+    c.set(
+        &src,
+        acct(RENT, TOKEN, token_account(MINT_X, OWNER, 10 * X_IN)),
+    );
+    c.after(
+        &src,
+        acct(RENT, TOKEN, token_account(MINT_X, OWNER, 9 * X_IN)),
+    );
+    c.set(ATTACKER, acct(SOL, SYSTEM, vec![]));
+
+    // The wallet's lamports: the fee out, and whatever the close brings in.
+    let mut owner_in: i128 = -i128::from(FEE);
+    let mut attacker_in = 0u64;
+    let mut ixs = vec![ix(COMPUTE_BUDGET, &[], compute_limit())];
+    if shape == Unwrap::HonestCreated {
+        ixs.push(create_idempotent(OWNER, &wsol, OWNER, NATIVE_MINT, TOKEN));
+        owner_in -= i128::from(RENT);
+        let mut init = vec![18u8];
+        init.extend_from_slice(pk(OWNER).as_bytes());
+        for (program, accounts, data) in [
+            (TOKEN, vec![NATIVE_MINT.to_string()], vec![21u8]),
+            (
+                SYSTEM,
+                vec![OWNER.to_string(), wsol.clone()],
+                system_create(RENT, 165, TOKEN),
+            ),
+            (TOKEN, vec![wsol.clone()], vec![22u8]),
+            (TOKEN, vec![wsol.clone(), NATIVE_MINT.to_string()], init),
+        ] {
+            c.inner.push(Inner {
+                top: 1,
+                program: program.to_string(),
+                accounts,
+                data,
+            });
+        }
+    } else if shape == Unwrap::AuthorityNotWallet {
+        c.set(
+            &wsol,
+            acct(
+                RENT,
+                TOKEN,
+                token_account_closable(NATIVE_MINT, OWNER, 0, ATTACKER),
+            ),
+        );
+    } else {
+        c.set(
+            &wsol,
+            acct(RENT, TOKEN, token_account(NATIVE_MINT, OWNER, 0)),
+        );
+    }
+    let route_at = ixs.len();
+    ixs.push(route);
+    c.inner.push(Inner {
+        top: route_at,
+        program: TOKEN.to_string(),
+        accounts: vec![src.clone(), in_vault.clone(), OWNER.to_string()],
+        data: {
+            let mut d = vec![3u8];
+            d.extend_from_slice(&X_IN.to_le_bytes());
+            d
+        },
+    });
+    c.inner.push(Inner {
+        top: route_at,
+        program: TOKEN.to_string(),
+        accounts: vec![out_vault.clone(), wsol.clone(), JUPITER.to_string()],
+        data: {
+            let mut d = vec![3u8];
+            d.extend_from_slice(&SOL_OUT.to_le_bytes());
+            d
+        },
+    });
+    // The unwrap: everything in the wSOL account, its rent and the output.
+    let unwrapped = RENT + SOL_OUT;
+    match shape {
+        Unwrap::CloseToStranger => {
+            ixs.push(close_account(&wsol, ATTACKER, OWNER));
+            attacker_in += unwrapped;
+        }
+        Unwrap::AuthorityNotWallet => {
+            ixs.push(ix(
+                TOKEN,
+                &[
+                    (&wsol, false, true),
+                    (OWNER, false, true),
+                    (ATTACKER, true, false),
+                ],
+                vec![9u8],
+            ));
+            owner_in += i128::from(unwrapped);
+        }
+        _ => {
+            ixs.push(close_account(&wsol, OWNER, OWNER));
+            owner_in += i128::from(unwrapped);
+        }
+    }
+    c.closed(&wsol);
+    match shape {
+        Unwrap::CloseNonNative => {
+            let other = key(61);
+            c.set(
+                &other,
+                acct(RENT, TOKEN, token_account(MINT_X, OWNER, 5 * X_IN)),
+            );
+            c.closed(&other);
+            ixs.push(close_account(&other, OWNER, OWNER));
+            owner_in += i128::from(RENT);
+        }
+        Unwrap::CloseOthersWsol => {
+            c.set(
+                &theirs,
+                acct(RENT + SOL, TOKEN, token_account(NATIVE_MINT, ATTACKER, SOL)),
+            );
+            c.closed(&theirs);
+            ixs.push(close_account(&theirs, OWNER, OWNER));
+            owner_in += i128::from(RENT + SOL);
+        }
+        Unwrap::ThenSkim(x) => {
+            ixs.push(ix(
+                SYSTEM,
+                &[(OWNER, true, true), (ATTACKER, false, true)],
+                system_transfer(x),
+            ));
+            owner_in -= i128::from(x);
+            attacker_in += x;
+        }
+        _ => {}
+    }
+    c.set(OWNER, acct(10 * SOL, SYSTEM, vec![]));
+    c.after(
+        OWNER,
+        acct((i128::from(10 * SOL) + owner_in) as u64, SYSTEM, vec![]),
+    );
+    if attacker_in > 0 {
+        c.after(ATTACKER, acct(SOL + attacker_in, SYSTEM, vec![]));
+    }
+    (c, ixs, route_at)
+}
+
+/// 1 MINT_X for SOL at 100 bps.
+fn unwrap_request() -> Option<ExtractedParameters> {
+    Some(ExtractedParameters {
+        amount: Some("1".to_string()),
+        input_token: Some(MINT_X.to_string()),
+        output_token: Some("SOL".to_string()),
+        slippage_bps: Some(100),
+        ..Default::default()
+    })
+}
+
+async fn unwrap_verdict(shape: Unwrap, w: Waivers) -> VerificationResult {
+    let (c, ixs, route) = unwrap_swap(shape);
+    verify(c, &ixs, route, "swap", unwrap_request(), w).await
+}
+
+/// D-22 reproduction: a swap into SOL whose output the wallet unwraps to
+/// itself — its own wSOL account, closed by itself to itself — is
+/// executable, under the defaults and under every waiver, whether the wSOL
+/// account existed before or was created in the same transaction.
+#[tokio::test]
+async fn round41_an_honest_swap_into_sol_that_unwraps_is_executable() {
+    for w in CONFIGS {
+        for shape in [Unwrap::Honest, Unwrap::HonestCreated] {
+            let r = unwrap_verdict(shape, w).await;
+            assert!(
+                !names(&r, "UndeclaredAccountClosure"),
+                "{shape:?} {w:?}: the wallet's own unwrap is an undeclared closure: {}",
+                l4(&r)
+            );
+            assert_executable(&format!("{shape:?}, {w:?}"), &r);
+        }
+    }
+}
+
+/// D-22 attack controls: an unwrap that sends the SOL elsewhere, a close of
+/// anything but the wallet's own wSOL by the wallet to the wallet, and the
+/// unwrapped SOL moved on — never executable.
+#[tokio::test]
+async fn round41_an_unwrap_that_is_not_the_wallets_own_is_never_executable() {
+    let cases = [
+        ("wSOL closed to a stranger", Unwrap::CloseToStranger),
+        (
+            "a non-native account with a balance closed",
+            Unwrap::CloseNonNative,
+        ),
+        (
+            "someone else's wSOL closed to the wallet",
+            Unwrap::CloseOthersWsol,
+        ),
+        (
+            "closed by an authority that is not the wallet",
+            Unwrap::AuthorityNotWallet,
+        ),
+        (
+            "the unwrapped SOL sent on to a stranger",
+            Unwrap::ThenSkim(SOL / 2),
+        ),
+    ];
+    let mut out = Outcomes::default();
+    for w in ATTACK_CONFIGS {
+        for (tag, shape) in cases {
+            let r = unwrap_verdict(shape, w).await;
+            out.refused(&format!("{tag}, {w:?}"), &r);
+        }
+    }
+    out.assert_none_executable();
+}
+
+/// D-22: L4 itself still refuses every closure that is not the wallet's own
+/// wSOL unwrapped by the wallet to the wallet — under every waiver, since no
+/// relaxation covers an undeclared closure.
+#[tokio::test]
+async fn round41_l4_still_refuses_a_closure_that_is_not_the_wallets_own_unwrap() {
+    for w in ATTACK_CONFIGS {
+        for (tag, shape) in [
+            ("close to a stranger", Unwrap::CloseToStranger),
+            ("non-native close", Unwrap::CloseNonNative),
+            ("someone else's wSOL", Unwrap::CloseOthersWsol),
+            ("authority not the wallet", Unwrap::AuthorityNotWallet),
+        ] {
+            let r = unwrap_verdict(shape, w).await;
+            record(tag, &r);
+            assert!(
+                names(&r, "UndeclaredAccountClosure"),
+                "{tag} {w:?}: L4 no longer refuses the closure: {}",
+                l4(&r)
+            );
+        }
+    }
+}
+
+// ─── D-23: Jupiter v6 route_v2 / shared_accounts_route_v2 ──────────────────
+
+/// The swap's input mint (SPL Token, 6 decimals).
+const MINT_Y: &str = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+
+/// Which Jupiter route instruction carries the swap.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Route {
+    V1,
+    V2,
+    SharedV2,
+}
+
+/// What the route's data says and what rides beside it.
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct RouteOpts {
+    slippage_bps: u16,
+    platform_fee_bps: u16,
+    positive_slippage_bps: u16,
+    /// A `TransferChecked` of this much of the output to the attacker.
+    skim: Option<u64>,
+}
+
+const HONEST_ROUTE: RouteOpts = RouteOpts {
+    slippage_bps: 50,
+    platform_fee_bps: 0,
+    positive_slippage_bps: 0,
+    skim: None,
+};
+
+/// `X_IN` (1 MINT_Y) for `OUT` (100 MINT_X), quoted at `OUT`, through the
+/// Jupiter route instruction `route`. Returns the cluster, the instructions
+/// and the index of the route.
+fn jupiter_route(route: Route, o: RouteOpts) -> (Cluster, Vec<Ix>, usize) {
+    let mut c = Cluster::default();
+    base_programs(&mut c);
+    let (src, dst) = (ata(OWNER, MINT_Y), ata(OWNER, MINT_X));
+    let (name, set): (&str, Vec<(&str, String)>) = match route {
+        Route::V1 => (
+            "route",
+            vec![
+                ("token_program", TOKEN.to_string()),
+                ("user_transfer_authority", OWNER.to_string()),
+                ("user_source_token_account", src.clone()),
+                ("user_destination_token_account", dst.clone()),
+                ("destination_token_account", JUPITER.to_string()),
+                ("destination_mint", MINT_X.to_string()),
+                ("platform_fee_account", JUPITER.to_string()),
+                ("program", JUPITER.to_string()),
+            ],
+        ),
+        Route::V2 => (
+            "route_v2",
+            vec![
+                ("user_transfer_authority", OWNER.to_string()),
+                ("user_source_token_account", src.clone()),
+                ("user_destination_token_account", dst.clone()),
+                ("source_mint", MINT_Y.to_string()),
+                ("destination_mint", MINT_X.to_string()),
+                ("source_token_program", TOKEN.to_string()),
+                ("destination_token_program", TOKEN.to_string()),
+                ("destination_token_account", JUPITER.to_string()),
+                ("program", JUPITER.to_string()),
+            ],
+        ),
+        Route::SharedV2 => (
+            "shared_accounts_route_v2",
+            vec![
+                ("user_transfer_authority", OWNER.to_string()),
+                ("source_token_account", src.clone()),
+                ("destination_token_account", dst.clone()),
+                ("source_mint", MINT_Y.to_string()),
+                ("destination_mint", MINT_X.to_string()),
+                ("source_token_program", TOKEN.to_string()),
+                ("destination_token_program", TOKEN.to_string()),
+                ("program", JUPITER.to_string()),
+            ],
+        ),
+    };
+    let d = def(JUPITER, name);
+    let keys = accounts_for(JUPITER, &d, &set);
+    let mut data = hex_to_bytes(&d.discriminator);
+    let plan_v2 = [1u8, 0, 0, 0, 26, 0x10, 0x27, 0, 1];
+    match route {
+        Route::V1 => {
+            data.extend_from_slice(&1u32.to_le_bytes());
+            data.extend_from_slice(&[26, 100, 0, 1]);
+            data.extend_from_slice(&X_IN.to_le_bytes());
+            data.extend_from_slice(&OUT.to_le_bytes());
+            data.extend_from_slice(&o.slippage_bps.to_le_bytes());
+            data.push(u8::try_from(o.platform_fee_bps).expect("v1's platform fee is a u8"));
+        }
+        Route::V2 | Route::SharedV2 => {
+            if route == Route::SharedV2 {
+                data.push(3);
+            }
+            data.extend_from_slice(&X_IN.to_le_bytes());
+            data.extend_from_slice(&OUT.to_le_bytes());
+            data.extend_from_slice(&o.slippage_bps.to_le_bytes());
+            data.extend_from_slice(&o.platform_fee_bps.to_le_bytes());
+            data.extend_from_slice(&o.positive_slippage_bps.to_le_bytes());
+            data.extend_from_slice(&plan_v2);
+        }
+    }
+    let pool = key(90);
+    let (in_vault, out_vault) = (key(91), key(92));
+    let mut accounts: Vec<(String, bool, bool)> = d
+        .accounts
+        .iter()
+        .zip(&keys)
+        .map(|(a, k)| (k.clone(), a.is_signer, a.is_writable))
+        .collect();
+    accounts.push((in_vault.clone(), false, true));
+    accounts.push((out_vault.clone(), false, true));
+    for (a, k) in d.accounts.iter().zip(&keys) {
+        if ![OWNER, JUPITER, TOKEN, MINT_X, MINT_Y].contains(&k.as_str())
+            && *k != src
+            && *k != dst
+            && !a.is_signer
+        {
+            c.set(k, acct(5 * SOL, JUPITER, vec![1u8; 64]));
+        }
+    }
+    c.set(MINT_X, acct(1_461_600, TOKEN, mint(10u64.pow(15), 6)));
+    c.set(MINT_Y, acct(1_461_600, TOKEN, mint(10u64.pow(15), 6)));
+    let reserve = 10u64.pow(12);
+    c.set(
+        &in_vault,
+        acct(RENT, TOKEN, token_account(MINT_Y, &pool, reserve)),
+    );
+    c.after(
+        &in_vault,
+        acct(RENT, TOKEN, token_account(MINT_Y, &pool, reserve + X_IN)),
+    );
+    c.set(
+        &out_vault,
+        acct(RENT, TOKEN, token_account(MINT_X, &pool, reserve)),
+    );
+    c.after(
+        &out_vault,
+        acct(RENT, TOKEN, token_account(MINT_X, &pool, reserve - OUT)),
+    );
+    c.set(
+        &src,
+        acct(RENT, TOKEN, token_account(MINT_Y, OWNER, 10 * X_IN)),
+    );
+    c.after(
+        &src,
+        acct(RENT, TOKEN, token_account(MINT_Y, OWNER, 9 * X_IN)),
+    );
+    c.set(&dst, acct(RENT, TOKEN, token_account(MINT_X, OWNER, 0)));
+    c.set(OWNER, acct(10 * SOL, SYSTEM, vec![]));
+    c.after(OWNER, acct(10 * SOL - FEE, SYSTEM, vec![]));
+    let mut ixs = vec![ix(COMPUTE_BUDGET, &[], compute_limit())];
+    let route_at = ixs.len();
+    ixs.push(Ix {
+        program: JUPITER.to_string(),
+        accounts,
+        data,
+    });
+    for (from, to, auth, amount) in [
+        (&src, &in_vault, OWNER, X_IN),
+        (&out_vault, &dst, JUPITER, OUT),
+    ] {
+        let mut d = vec![3u8];
+        d.extend_from_slice(&amount.to_le_bytes());
+        c.inner.push(Inner {
+            top: route_at,
+            program: TOKEN.to_string(),
+            accounts: vec![from.clone(), to.clone(), auth.to_string()],
+            data: d,
+        });
+    }
+    let mut kept = OUT;
+    if let Some(x) = o.skim {
+        let theirs = ata(ATTACKER, MINT_X);
+        c.set(
+            &theirs,
+            acct(RENT, TOKEN, token_account(MINT_X, ATTACKER, 0)),
+        );
+        c.after(
+            &theirs,
+            acct(RENT, TOKEN, token_account(MINT_X, ATTACKER, x)),
+        );
+        kept -= x;
+        ixs.push(ix(
+            TOKEN,
+            &[
+                (&dst, false, true),
+                (MINT_X, false, false),
+                (&theirs, false, true),
+                (OWNER, true, false),
+            ],
+            transfer_checked(x, 6),
+        ));
+    }
+    c.after(&dst, acct(RENT, TOKEN, token_account(MINT_X, OWNER, kept)));
+    (c, ixs, route_at)
+}
+
+/// 1 MINT_Y (or `amount`) for MINT_X at 100 bps.
+fn route_request(amount: &str) -> Option<ExtractedParameters> {
+    Some(ExtractedParameters {
+        amount: Some(amount.to_string()),
+        input_token: Some(MINT_Y.to_string()),
+        output_token: Some(MINT_X.to_string()),
+        slippage_bps: Some(100),
+        ..Default::default()
+    })
+}
+
+async fn route_verdict(route: Route, o: RouteOpts, amount: &str, w: Waivers) -> VerificationResult {
+    let (c, ixs, at) = jupiter_route(route, o);
+    verify(c, &ixs, at, "swap", route_request(amount), w).await
+}
+
+/// D-23 parity: the same honest swap through Jupiter v1 `route`, `route_v2`
+/// and `shared_accounts_route_v2` is executable, under the defaults and
+/// under every waiver; the v2 routes are bound by the binding, not unbound.
+#[tokio::test]
+async fn round41_an_honest_jupiter_route_v2_is_executable_as_v1_is() {
+    for w in CONFIGS {
+        for route in [Route::V1, Route::V2, Route::SharedV2] {
+            let r = route_verdict(route, HONEST_ROUTE, "1", w).await;
+            assert!(
+                !r.scope
+                    .unobserved_codes()
+                    .contains(&UnobservedCode::IntentParameters),
+                "{route:?} {w:?}: the route is not bound to the request"
+            );
+            assert_executable(&format!("honest {route:?}, {w:?}"), &r);
+        }
+    }
+}
+
+/// D-23 attack controls: what refuses a v1 route refuses a v2 route —
+/// a skim of the output beside it, a route spending more than the request,
+/// a minimum further below the simulated output than the request allows, a
+/// platform fee; and a positive-slippage fee the Core cannot bound.
+#[tokio::test]
+async fn round41_a_jupiter_route_v2_attack_is_never_executable() {
+    let cases = [
+        (
+            "output skim beside it",
+            RouteOpts {
+                skim: Some(10_000_000),
+                ..HONEST_ROUTE
+            },
+            "1",
+        ),
+        ("spends more than the request", HONEST_ROUTE, "0.5"),
+        (
+            "minimum 300 bps below the quote, request 100",
+            RouteOpts {
+                slippage_bps: 300,
+                ..HONEST_ROUTE
+            },
+            "1",
+        ),
+        (
+            "platform fee",
+            RouteOpts {
+                platform_fee_bps: 10,
+                ..HONEST_ROUTE
+            },
+            "1",
+        ),
+        (
+            "positive slippage fee",
+            RouteOpts {
+                positive_slippage_bps: 10,
+                ..HONEST_ROUTE
+            },
+            "1",
+        ),
+    ];
+    let mut out = Outcomes::default();
+    for w in ATTACK_CONFIGS {
+        for route in [Route::V1, Route::V2, Route::SharedV2] {
+            for (tag, o, amount) in cases {
+                if route == Route::V1 && o.positive_slippage_bps != 0 {
+                    continue; // v1 has no such field
+                }
+                let r = route_verdict(route, o, amount, w).await;
+                out.refused(&format!("{route:?}, {tag}, {w:?}"), &r);
+            }
+        }
+    }
+    out.assert_none_executable();
 }

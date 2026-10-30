@@ -62,3 +62,5 @@
 # not in this leg: tests/round41_live_false_refusals.rs (cfg(feature = "rpc"))
 # Round 41 (L3): honest Compute Budget variation; the pipeline tests are cfg(feature = "rpc")
 8 tests/round41_l3_honest_compute_variation.rs
+# Round 41 (D-23): Jupiter route_v2 / shared_accounts_route_v2 decoded from the deployed IDL
+3 tests/round41_jupiter_route_v2.rs
