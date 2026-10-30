@@ -60,3 +60,5 @@
 # not in this leg: tests/round40_rpc_no_proxy.rs (cfg(feature = "rpc"))
 # Round 41 (live false refusals)
 # not in this leg: tests/round41_live_false_refusals.rs (cfg(feature = "rpc"))
+# Round 41 (L3): honest Compute Budget variation; the pipeline tests are cfg(feature = "rpc")
+8 tests/round41_l3_honest_compute_variation.rs

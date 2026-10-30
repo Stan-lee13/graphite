@@ -5,6 +5,14 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 
 ## Round 41
 
+Round 41 (2026-10-30) — L3 refused honest System transfers on mainnet (live run 41120603876; [decision D-19](../docs/audit/TECHNICAL_LEAD_DECISIONS.md)):
+
+- **Contract:** unchanged.
+- **Behaviour (false refusal removed):** L3's compute spread has an absolute floor of one Compute Budget instruction, 150 CU (`simulation_integrity::MIN_COMPUTE_UNITS_SPREAD`). The shape key leaves the Compute Budget program out, but the figure judged is the whole transaction's compute, which pays 150 CU per Compute Budget instruction; with a floor of 25% of the centre (or 1), a baseline learned from limit+price transfers (450 CU) refused a bare transfer (150 CU) as `SimulationSpoofing` at −2.67σ, and one learned from bare transfers refused a limit+price transfer at 8σ. The floor applies to the mean/std and median/MAD statistics, the winsorizing clamp and the anchor (an anchor persisted by an older build is judged with it too); it changes nothing for a centre above 600 CU or for writes and hops. **P14 tradeoff:** at a program centred below 600 CU, a simulation within 300 CU of the centre is not flagged; three or more Compute Budget instructions beyond a uniform history still are.
+- **Still refused:** a tenfold figure, a figure one unit past the band, and a drift past the anchored band, at every honest centre and through the pipeline.
+- **Library (additive):** `simulation_integrity::{DIVERGENCE_THRESHOLD, COMPUTE_BUDGET_INSTRUCTION_UNITS, MIN_COMPUTE_UNITS_SPREAD}`; the pipeline's threshold reads `DIVERGENCE_THRESHOLD` (2.0, unchanged).
+- **Tests:** `round41_l3_honest_compute_variation` (10; 8 without `rpc`), floored in both test legs.
+
 Round 41 (2026-10-30) — false refusals the live mainnet runner found (run 41120603876) and the unwrap Round 38 left, fixed without excusing any value leaving to someone else ([decisions D-20, D-21, D-22](../docs/audit/TECHNICAL_LEAD_DECISIONS.md)):
 
 - **Contract:** unchanged (`schemas/verification-result-v1.json`).

@@ -64,3 +64,6 @@
 # Round 41 (live false refusals): the wrapped-SOL swap (D-20) and the ATA
 # program's Token-2022 CPI (D-21), with their attack controls
 9 tests/round41_live_false_refusals.rs
+# Round 41 (L3): honest Compute Budget variation is not SimulationSpoofing;
+# the attack controls (gross divergence, drift past the anchor) through the pipeline
+10 tests/round41_l3_honest_compute_variation.rs

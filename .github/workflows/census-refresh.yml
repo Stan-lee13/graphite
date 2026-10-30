@@ -1,0 +1,101 @@
+name: Census refresh
+
+# Round 41: re-measure graphite-core/protocols/battle_tested_evidence.json on
+# mainnet, read-only, with the committed script (battle_tested_census.py).
+#
+# Why: `graphite evidence import-census` binds each program's evidence to the
+# census window, and the Core withdraws it when it observes a deployment newer
+# than that window (Round 30, G-04). The live run 41120603876 showed Jupiter
+# v6's imported evidence withdrawn that way, so its honest swaps sat at
+# confidence 0.44 under Gaming's 0.55. A frequently upgraded program needs a
+# census measured after its last upgrade. This job measures; it changes
+# nothing: the new file is printed (gzip, base64, between markers) and
+# uploaded, and a person commits it by pull request, where every test that
+# reads the census runs against it.
+#
+# Run it: label a pull request `census-refresh`, or dispatch it on main.
+# No keys, no signing, no writes to chain; public RPC, the script's own pacing.
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      program_ids:
+        description: "Space-separated program ids to re-measure (empty: every seed manifest)"
+        default: ""
+        type: string
+
+concurrency:
+  group: census-refresh-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  measure:
+    name: Re-measure the battle-tested census (read-only)
+    if: github.event_name != 'pull_request' || github.event.label.name == 'census-refresh'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Measure
+        env:
+          IDS: ${{ inputs.program_ids || '' }}
+        run: |
+          set -euo pipefail
+          census=graphite-core/protocols/battle_tested_evidence.json
+          cp "$census" "$RUNNER_TEMP/before.json"
+          read -r -a ids <<<"$IDS"
+          python3 graphite-core/scripts/battle_tested_census.py --merge "${ids[@]}" 2>&1 | tee "$RUNNER_TEMP/census.log"
+
+      - name: What changed
+        run: |
+          set -euo pipefail
+          python3 -I - "$RUNNER_TEMP/before.json" graphite-core/protocols/battle_tested_evidence.json <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, sys
+          before = {r["program_id"]: r for r in json.load(open(sys.argv[1]))["programs"]}
+          after = {r["program_id"]: r for r in json.load(open(sys.argv[2]))["programs"]}
+          print("## Census refresh\n")
+          print(f"{sum(r['meets_battle_tested'] for r in after.values())} of {len(after)} records meet the bar "
+                f"(before: {sum(r['meets_battle_tested'] for r in before.values())} of {len(before)})\n")
+          print("| program | name | meets the bar (before → after) | successful txs | decode rate | oldest slot |")
+          print("|---|---|---|---:|---:|---:|")
+          for pid in sorted(after):
+              a, b = after[pid], before.get(pid, {})
+              if a.get("measured_at_unix") == b.get("measured_at_unix"):
+                  continue
+              print(f"| `{pid}` | {a['name']} | {b.get('meets_battle_tested')} → {a['meets_battle_tested']} | "
+                    f"{a['volume']['successful_transactions_counted']} | {a['decode'].get('decode_rate')} | "
+                    f"{a['volume'].get('oldest_slot')} |")
+          PY
+          sha256sum graphite-core/protocols/battle_tested_evidence.json
+
+      - name: The measured file (gzip, base64), for a reader without artifact access
+        run: |
+          set -euo pipefail
+          echo "CENSUS-GZIP-BASE64-BEGIN"
+          gzip -9 -n -c graphite-core/protocols/battle_tested_evidence.json | base64 -w 0
+          echo
+          echo "CENSUS-GZIP-BASE64-END"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: census-refresh
+          path: |
+            graphite-core/protocols/battle_tested_evidence.json
+            ${{ runner.temp }}/census.log
+          retention-days: 30
+          if-no-files-found: warn
