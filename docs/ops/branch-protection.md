@@ -1,6 +1,14 @@
 # Owner steps: make CI a gate and the release tags immutable (G-11, R37-8)
 
-**Live state, read on 2026-10-25 (Round 39) — NOT what the committed files say.**
+**Applied on 2026-10-30.** The four committed rulesets are live under their committed names
+(ids 26233545, 26233612, 26233668, 26233707), all `active`, and `Main-review` is deleted. Read back
+the same day without admin rights: `ruleset-drift.py` reports each of the four as matching. GitHub's import
+turned on `require_extra_approval_for_unattributed_changes` in both `main` rulesets, so that
+parameter is now in `main.json` and `main-review.json`. Still to check as admin: the bypass
+lists and the `release` environment (§3). Private vulnerability reporting: enabled
+(`{"enabled": true}`).
+
+**The state before, read on 2026-10-25 (Round 39) — kept as the record of what §1 replaced.**
 `GET repos/Stan-lee13/graphite/rulesets` (read with the owner's token) lists one ruleset:
 
 | | live `Main-review` (id 25817024) | committed |
