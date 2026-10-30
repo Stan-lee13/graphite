@@ -396,14 +396,13 @@ def patch_blockhash(frame, new_hash):
 
 
 def instruction_data_spans(frame):
-    """(start, end) of each top-level instruction's data in a legacy or v0
-    frame, read by the same walk `message` makes. ValueError for a v1 frame
-    (its payloads sit after a header table; not needed by this pass) or a
-    frame that does not parse."""
+    """(start, end) of each top-level instruction's data in a legacy, v0 or
+    v1 frame, read by the same walk `message` makes. ValueError for a frame
+    that does not parse."""
     frame = bytes(frame)
     message(frame)  # parses to its last byte, or raises
     if frame[0] == V1_PREFIX:
-        raise ValueError("a v1 frame: its instruction data is not patched by this pass")
+        return _v1_data_spans(frame)
     r = Reader(frame)
     r.take(64 * r.compact("signature count"), "signatures")
     if r.u8("message header or version prefix") & 0x80 == 0:
@@ -418,6 +417,31 @@ def instruction_data_spans(frame):
         n = r.compact("data length")
         spans.append((r.pos, r.pos + n))
         r.take(n, "instruction data")
+    return spans
+
+
+def _v1_data_spans(frame):
+    """The same for a v1 frame: the instruction headers (program, account
+    count, data length) come first, then each instruction's accounts and data
+    in order, then the signatures (the walk `_message_v1` makes)."""
+    r = Reader(frame)
+    r.u8("version prefix")
+    r.take(3, "header")
+    mask = r.u32("config mask")
+    r.take(32, "lifetime specifier")
+    nix = r.u8("instruction count")
+    r.take(32 * r.u8("account address count"), "account addresses")
+    if mask & V1_MASK_PRIORITY_FEE:
+        r.take(8, "priority fee")
+    for bit in (V1_MASK_COMPUTE_UNIT_LIMIT, V1_MASK_LOADED_ACCOUNTS_DATA_SIZE, V1_MASK_HEAP_SIZE):
+        if mask & bit:
+            r.take(4, "config value")
+    headers = [(r.u8("program index"), r.u8("account count"), r.u16("data length")) for _ in range(nix)]
+    spans = []
+    for _, naccounts, ndata in headers:
+        r.take(naccounts, "account indexes")
+        spans.append((r.pos, r.pos + ndata))
+        r.take(ndata, "instruction data")
     return spans
 
 

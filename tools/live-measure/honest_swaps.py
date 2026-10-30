@@ -212,8 +212,6 @@ def swap_candidate(src):
     if found[0] is None:
         return None, found[1]
     name, kind = found
-    if msg.version == "1":
-        return None, "v1 frame (not in this pass)"
     if msg.durable_nonce:
         return None, "durable nonce"
     if msg.num_required_signatures != 1:
