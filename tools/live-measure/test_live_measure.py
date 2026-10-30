@@ -1452,3 +1452,50 @@ def test_a_refused_swap_names_its_original_transaction_and_accounts():
     assert r["swap_accounts"][0] == (WALLET, True, True) and r["swap_accounts"][2] == (W_USDC, False, True)
     md = "\n".join(lm.swaps_markdown(report["swaps"]))
     assert f"- row 3 (`{solrpc.b58encode(bytes(64))}`): 0:`{WALLET[:8]}`sw" in md
+
+
+def v1_frame(keys, instructions, *, priority_fee=None, cu_limit=None):
+    """A v1 frame (SIMD-0385 layout, as wire._message_v1 reads it): one
+    signer, the rest read-only unsigned past the writable ones; `instructions`
+    are (program index, account indexes, data)."""
+    mask = (wire.V1_MASK_PRIORITY_FEE if priority_fee is not None else 0) | (wire.V1_MASK_COMPUTE_UNIT_LIMIT if cu_limit is not None else 0)
+    out = bytearray([wire.V1_PREFIX, 1, 0, 1]) + mask.to_bytes(4, "little") + bytes([7]) * 32
+    out += bytes([len(instructions), len(keys)]) + b"".join(solrpc.b58decode(k) for k in keys)
+    if priority_fee is not None:
+        out += priority_fee.to_bytes(8, "little")
+    if cu_limit is not None:
+        out += cu_limit.to_bytes(4, "little")
+    for p, accts, data in instructions:
+        out += bytes([p, len(accts)]) + len(data).to_bytes(2, "little")
+    for p, accts, data in instructions:
+        out += bytes(accts) + data
+    return bytes(out) + bytes(64)
+
+
+def test_a_v1_frame_has_its_swap_data_patched_in_place():
+    """Round 41: run 41137247587 set aside 10 of 40 swaps as v1 frames; the
+    patch reads v1's header table to find each instruction's data."""
+    data = CPMM_SELECTOR + (2_000_000).to_bytes(8, "little") + (7).to_bytes(8, "little")
+    keys = [WALLET, POOL, W_USDC, W_BONK, VAULT_IN, VAULT_OUT, hs.RAYDIUM_CPMM]
+    frame = v1_frame(keys, [(6, [0, 1, 2, 3, 4, 5], data), (6, [0], b"\x01\x02")], priority_fee=5000, cu_limit=200_000)
+    before = wire.message(frame)
+    assert before.version == "1" and [ix.data for ix in before.instructions] == [data, b"\x01\x02"]
+    spans = wire.instruction_data_spans(frame)
+    assert [frame[a:b] for a, b in spans] == [data, b"\x01\x02"]
+    new = hs.with_minimum("in_min8", data, 1000, 50)
+    after = wire.message(wire.patch_instruction_data(frame, 0, new))
+    assert [ix.data for ix in after.instructions] == [new, b"\x01\x02"]
+    assert after.static_keys == before.static_keys and after.v1_config == before.v1_config
+    assert after.blockhash == before.blockhash
+    with pytest.raises(ValueError, match="carries a signature"):
+        wire.patch_instruction_data(frame[:-64] + bytes([1]) * 64, 0, new)
+    # A v1 swap is a candidate now (it was set aside as "v1 frame").
+    pre = [{"account_index": 2, "mint": USDC, "owner": WALLET, "amount": "5000000", "decimals": 6},
+           {"account_index": 3, "mint": BONK, "owner": WALLET, "amount": "0", "decimals": 6}]
+    post = [{"account_index": 2, "mint": USDC, "owner": WALLET, "amount": "3000000", "decimals": 6},
+            {"account_index": 3, "mint": BONK, "owner": WALLET, "amount": "900", "decimals": 6}]
+    row = {"row": 1, "slot": 1, "b64": base64.b64encode(v1_frame(keys, [(6, [0, 1, 2, 3, 4, 5], data)])).decode(),
+           "err": None, "fee": 5000, "pre_balances": [10**9] + [0] * 6, "post_balances": [10**9 - 5000] + [0] * 6,
+           "pre_token_balances": pre, "post_token_balances": post}
+    c, why = hs.swap_candidate(row)
+    assert why is None and c["version"] == "1" and c["asset_in"] == USDC and c["asset_out"] == BONK

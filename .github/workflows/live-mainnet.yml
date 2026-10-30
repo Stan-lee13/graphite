@@ -44,8 +44,8 @@ on:
         default: "200"
         type: string
       blocks:
-        description: "Recent blocks to sample (at least; more are fetched, up to 8, until the sample holds 1,000 transactions: the conformance harness needs 500+ verdicts)"
-        default: "2"
+        description: "Recent blocks to sample (at least; more are fetched, up to 8, until the sample holds 1,000 transactions: the conformance harness needs 500+ verdicts; Round 41: 4, so the honest-swap pass has more swaps to draw from)"
+        default: "4"
         type: string
       pace_seconds:
         description: "Pause between /verify calls (each one makes several RPC calls)"
@@ -134,7 +134,7 @@ jobs:
       - name: Fetch recent finalized blocks
         id: fetch
         env:
-          BLOCKS: ${{ inputs.blocks || '2' }}
+          BLOCKS: ${{ inputs.blocks || '4' }}
         run: |
           set +e
           python3 tools/live-measure/live_mainnet.py fetch --rpc "$LIVE_RPC_URL" --blocks "$BLOCKS" --out "$RUNNER_TEMP/sample.json"
