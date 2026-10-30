@@ -192,6 +192,7 @@ fn an_implausible_fee_is_refused_wherever_the_diff_came_from() {
         token2022_mints: Default::default(),
         transaction_accounts: None,
         transaction_privileges: None,
+        top_level_instructions: None,
     };
     let report = check(&diff);
     let codes: Vec<&str> = report.findings.iter().map(|f| f.code.as_str()).collect();
@@ -230,6 +231,7 @@ fn the_fee_ceiling_is_where_it_says_it_is() {
         token2022_mints: Default::default(),
         transaction_accounts: None,
         transaction_privileges: None,
+        top_level_instructions: None,
     };
     let ok = check(&at_ceiling);
     assert!(
@@ -258,6 +260,7 @@ fn the_fee_ceiling_is_where_it_says_it_is() {
         token2022_mints: Default::default(),
         transaction_accounts: None,
         transaction_privileges: None,
+        top_level_instructions: None,
     };
     let bad = check(&over);
     assert!(

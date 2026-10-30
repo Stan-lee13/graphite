@@ -266,6 +266,7 @@ fn build_rpc_state_diff(
         token2022_mints: Default::default(),
         transaction_accounts: None,
         transaction_privileges: None,
+        top_level_instructions: None,
     }
 }
 
@@ -851,6 +852,57 @@ fn observed_cpi_callees(
     out.sort();
     out.dedup();
     Some(out)
+}
+
+/// Every callee the simulator reported, with the top-level instruction it ran
+/// under (Round 41, D-21): `(top-level index, program)`, repeats kept. Read
+/// from the response's own grouping (`innerInstructions[].index`), in the
+/// form the RPC sent it, else from the compiled form. `None` — never a
+/// shorter list — when neither was readable, a program cannot be placed in
+/// the account list, or a group names a top-level instruction the message
+/// does not have.
+#[cfg(feature = "rpc")]
+fn callees_by_top_level(
+    message: Option<&crate::tx_artifact::ArtifactMessage>,
+    sim: &crate::rpc_client::SimulationResult,
+) -> Option<Vec<(usize, String)>> {
+    use crate::rpc_client::InnerAccountRef;
+    let message = message?;
+    if !message.lookups.is_empty() && sim.loaded_addresses.is_none() {
+        return None;
+    }
+    let mut keys: Vec<&str> = message.static_keys.iter().map(String::as_str).collect();
+    if let Some(l) = sim.loaded_addresses.as_ref() {
+        keys.extend(l.writable.iter().map(String::as_str));
+        keys.extend(l.readonly.iter().map(String::as_str));
+    }
+    let placed = |top: u8, program: Option<String>| -> Option<(usize, String)> {
+        let top = usize::from(top);
+        (top < message.instructions.len()).then_some(())?;
+        Some((top, program?))
+    };
+    match (sim.inner_reported.as_ref(), sim.inner_instructions.as_ref()) {
+        (Some(reported), _) => reported
+            .iter()
+            .map(|ix| {
+                let program = match &ix.program {
+                    InnerAccountRef::Index(i) => keys.get(usize::from(*i)).map(|k| k.to_string()),
+                    InnerAccountRef::Address(a) => Some(a.clone()),
+                };
+                placed(ix.top_level_index, program)
+            })
+            .collect(),
+        (None, Some(inner)) => inner
+            .iter()
+            .map(|ix| {
+                let program = keys
+                    .get(usize::from(ix.program_id_index))
+                    .map(|k| k.to_string());
+                placed(ix.top_level_index, program)
+            })
+            .collect(),
+        (None, None) => None,
+    }
 }
 
 /// Every Token-2022 instruction the simulator executed, in execution order,
@@ -8033,6 +8085,10 @@ impl GraphiteCore {
         // or an index the account list cannot place — unknown, never empty.
         #[cfg_attr(not(feature = "rpc"), allow(unused_mut, unused_variables))]
         let mut observed_cpi_programs: Option<Vec<String>> = None;
+        // The same callees with the top-level instruction each ran under
+        // (Round 41, D-21). `None` when that could not be read.
+        #[cfg_attr(not(feature = "rpc"), allow(unused_mut, unused_variables))]
+        let mut observed_cpi_callers: Option<Vec<(usize, String)>> = None;
         // The primary instruction's CPI tree as the simulator executed it
         // (Round 19, F-19-22). `None` without a clean simulation, a located
         // instruction, or a readable inner-instruction report.
@@ -8367,6 +8423,8 @@ impl GraphiteCore {
                                 sim_res.loaded_addresses.as_ref(),
                                 sim_res.inner_program_indexes.as_deref(),
                             );
+                            observed_cpi_callers =
+                                callees_by_top_level(artifact_message.as_ref(), &sim_res);
                             observed_cpi_tree = match (
                                 artifact_message.as_ref(),
                                 located_index,
@@ -8845,6 +8903,31 @@ impl GraphiteCore {
                                                 sim_res.loaded_addresses.as_ref(),
                                             )
                                         });
+                                    // Round 41 (D-20): the top-level
+                                    // instructions, every account resolved
+                                    // — all of them or none.
+                                    diff.top_level_instructions =
+                                        artifact_message.as_ref().and_then(|m| {
+                                            m.instructions
+                                                .iter()
+                                                .map(|ix| {
+                                                    crate::tx_artifact::resolve_instruction_accounts(
+                                                        m,
+                                                        ix,
+                                                        resolved_lookups
+                                                            .as_ref()
+                                                            .and_then(|r| r.as_ref().ok()),
+                                                    )
+                                                    .map(|accounts| {
+                                                        crate::state_diff::TopLevelInstruction {
+                                                            program_id: ix.program_id.clone(),
+                                                            accounts,
+                                                            data: ix.data.clone(),
+                                                        }
+                                                    })
+                                                })
+                                                .collect::<Option<Vec<_>>>()
+                                        });
                                     if let Some(message) = artifact_message.as_ref() {
                                         diff.token2022_executed = token2022_executed(
                                             message,
@@ -9095,6 +9178,53 @@ impl GraphiteCore {
                     }
                     None => true,
                 });
+                // Round 41 (D-21): a callee the simulator saw ONLY under other
+                // top-level instructions, each of whose own manifest
+                // instruction declares it in `allowed_cpis`, is that
+                // instruction's call, not the located one's. The set was
+                // judged against the PRIMARY's root and allowed CPIs: an
+                // honest 1-lamport System transfer beside an ATA
+                // `CreateIdempotent` for a Token-2022 mint was refused as
+                // `AuthorityHijack` ("token program from untrusted root
+                // '11111111'") for the ATA program's own declared Token-2022
+                // CPI (live mainnet run 41120603876). Each such sibling's
+                // executed calls are still judged as its own below (W14). A
+                // callee seen under the primary, under a sibling whose
+                // instruction does not declare it, under an unmanifested
+                // program, or whose caller could not be read, is judged here
+                // exactly as before.
+                if let (Some(callers), Some(message), Some(primary)) = (
+                    observed_cpi_callers.as_ref(),
+                    artifact_message.as_ref(),
+                    located_index,
+                ) {
+                    let declared_by = |top: usize, callee: &str| {
+                        top != primary
+                            && message.instructions.get(top).is_some_and(|ix| {
+                                self.registry
+                                    .get(&ix.program_id)
+                                    .and_then(|m| m.instruction_for(&hex::encode(&ix.data)))
+                                    .is_some_and(|d| d.allowed_cpis.iter().any(|c| c == callee))
+                            })
+                    };
+                    undeclared.retain(|p| {
+                        let under: Vec<usize> = callers
+                            .iter()
+                            .filter(|(_, c)| c == p)
+                            .map(|(top, _)| *top)
+                            .collect();
+                        let theirs = !under.is_empty() && under.iter().all(|t| declared_by(*t, p));
+                        if theirs {
+                            let mut at = under.clone();
+                            at.sort();
+                            at.dedup();
+                            risk_warnings.push(format!(
+                                "observed CPI {p}: made only under top-level instruction(s) {at:?}, whose own manifest instruction declares it — judged as theirs, not the located instruction's"
+                            ));
+                        }
+                        !theirs
+                    });
+                }
                 if undeclared.is_empty() {
                     (risk_summary, risk_warnings)
                 } else {
@@ -9630,6 +9760,22 @@ impl GraphiteCore {
                 )
             }) {
                 diff_declared.push(crate::state_diff::lamport_amount_line(&from, lamports));
+            }
+            // Round 41 (D-20): what the located instruction spends, read from
+            // the BYTES (the located instruction of the artifact, never the
+            // request's description), where it is an exact-in swap the Core
+            // decodes. It bounds the wrapped SOL L4 may count as the swap's
+            // declared debit rather than the wallet's loss.
+            if let Some(spend) = primary_instruction_index
+                .and_then(|i| artifact_message.as_ref()?.instructions.get(i))
+                .and_then(
+                    |ix| match crate::intent_binding::decode_swap(&ix.program_id, &ix.data) {
+                        Some(Ok(decoded)) => Some(decoded.amount_in),
+                        _ => None,
+                    },
+                )
+            {
+                diff_declared.push(crate::state_diff::swap_spend_line(spend));
             }
         }
         let diff_declared = &diff_declared;

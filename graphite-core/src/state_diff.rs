@@ -1614,6 +1614,149 @@ fn signer_lamport_losses(
     losses
 }
 
+/// Whether `account` is a wrapped-SOL account `wallet` keeps (Round 41,
+/// D-20): every side of it the diff observed is an SPL Token account of the
+/// native mint that `lamports_kept_by` gives to `wallet` (owned by it, not
+/// frozen, no delegate or close authority another holds). An account the
+/// diff observed as absent both before and after the transaction — one that
+/// exists only inside it — qualifies only as `wallet`'s associated wSOL
+/// account, created by an associated-token-account instruction of this
+/// transaction for `wallet` and the native mint under SPL Token: the
+/// address alone fixes whose it is. An account the diff did not observe at
+/// all never qualifies.
+fn wsol_kept_by(
+    diff: &StateDiff,
+    ixs: &[TopLevelInstruction],
+    account: &str,
+    wallet: &str,
+    signers: &std::collections::HashSet<&str>,
+) -> bool {
+    let Some(d) = diff.deltas.iter().find(|d| d.pubkey == account) else {
+        return false;
+    };
+    let sides: Vec<&AccountSnapshot> = [d.before.as_ref(), d.after.as_ref()]
+        .into_iter()
+        .flatten()
+        .collect();
+    if !sides.is_empty() {
+        return sides.iter().all(|s| {
+            s.owner == SPL_TOKEN_PROGRAM
+                && s.token
+                    .as_ref()
+                    .is_some_and(|t| t.mint == crate::intent_binding::NATIVE_MINT)
+                && lamports_kept_by(s, signers).as_deref() == Some(wallet)
+        });
+    }
+    is_transient_own_wsol(account, wallet, ixs)
+}
+
+/// Whether `account` is `wallet`'s associated wrapped-SOL account under SPL
+/// Token and a top-level associated-token-account `Create` or
+/// `CreateIdempotent` of `ixs` creates it for `wallet` and the native mint
+/// (Round 41, D-20). Asked only of an account the simulation observed absent
+/// both before and after the transaction: the address fixes whose it is —
+/// the associated token program creates it owned by `wallet`, with no
+/// delegate and no close authority — and it holds nothing at the end. L4
+/// (`wsol_kept_by`) and the intent binding (`kept_by`) share it.
+pub(crate) fn is_transient_own_wsol(
+    account: &str,
+    wallet: &str,
+    ixs: &[TopLevelInstruction],
+) -> bool {
+    use crate::intent_binding::{is_ata_under, ATA_PROGRAM, NATIVE_MINT};
+    let named = |ix: &TopLevelInstruction, i: usize, who: &str| {
+        ix.accounts.get(i).map(String::as_str) == Some(who)
+    };
+    is_ata_under(account, wallet, NATIVE_MINT, SPL_TOKEN_PROGRAM)
+        && ixs.iter().any(|ix| {
+            ix.program_id == ATA_PROGRAM
+                && matches!(ix.data.as_slice(), [] | [0] | [1])
+                && named(ix, 1, account)
+                && named(ix, 2, wallet)
+                && named(ix, 3, NATIVE_MINT)
+                && named(ix, 5, SPL_TOKEN_PROGRAM)
+        })
+}
+
+/// What each signer's wallet put into its own wrapped-SOL account for the
+/// located swap to spend (Round 41, D-20), in lamports.
+///
+/// A SOL -> token swap spends wrapped SOL. The ordinary wallet shape wraps
+/// it inside the transaction: the wallet's wSOL associated token account is
+/// created, a System `Transfer` of the swap's `in_amount` funds it,
+/// `SyncNative`, the route debits it, and `CloseAccount` returns the rent.
+/// The diff then shows only the wallet's loss of `in_amount` — the wSOL
+/// account exists only inside the transaction, or ends where it began — and
+/// `signer_lamport_losses` read it as the wallet's lamports leaving outside
+/// the declared debit (`SignerLamportsOutsideDeclaredDebit`, live mainnet
+/// run 41120603876). The lamports did not leave the signer: they became the
+/// signer's wSOL, and left THAT account by the route's declared debit.
+///
+/// Credited here, from the transaction's own bytes, only what all of this
+/// establishes:
+///
+/// - a top-level System `Transfer` (exact layout) from a signer's wallet
+///   into an account the located instruction's declaration debits BY NAME;
+/// - that account is the wallet's own wrapped SOL (`wsol_kept_by`);
+/// - less what stayed in it (its net gain, which `signer_lamport_losses`
+///   already credits as kept);
+/// - and in all at most what the located instruction's data says it spends
+///   (`DeclaredEffects::declared_spend`, the decoded `in_amount`). Lamports
+///   wrapped beyond it and moved on, the rent of a wSOL account closed to
+///   someone else, a transfer into a wSOL account another holds or one the
+///   route does not debit: none is credited, and each is still a loss.
+///
+/// With no stated amount, or no resolved instructions, nothing is credited.
+fn wrapped_for_declared_debit(
+    diff: &StateDiff,
+    declared: &DeclaredEffects,
+    signers: &std::collections::HashSet<&str>,
+    wallets: &std::collections::BTreeSet<&str>,
+    names_of: &std::collections::HashMap<&str, Vec<&str>>,
+) -> std::collections::BTreeMap<String, i128> {
+    use std::collections::BTreeMap;
+    let mut out: BTreeMap<String, i128> = BTreeMap::new();
+    let (Some(spend), Some(ixs)) = (
+        declared.declared_spend,
+        diff.top_level_instructions.as_ref(),
+    ) else {
+        return out;
+    };
+    // Per wSOL account: the wallet that keeps it and what it wrapped there.
+    let mut wrapped: BTreeMap<&str, (&str, i128)> = BTreeMap::new();
+    for ix in ixs {
+        if ix.program_id != SYSTEM_PROGRAM || ix.data.len() != 12 || ix.data[..4] != [2, 0, 0, 0] {
+            continue;
+        }
+        let (Some(from), Some(to)) = (ix.accounts.first(), ix.accounts.get(1)) else {
+            continue;
+        };
+        if from == to || !wallets.contains(from.as_str()) {
+            continue;
+        }
+        let names = names_of.get(to.as_str()).map(Vec::as_slice).unwrap_or(&[]);
+        if !declared.covers_by_name("debit", names) || !wsol_kept_by(diff, ixs, to, from, signers) {
+            continue;
+        }
+        let mut lamports = [0u8; 8];
+        lamports.copy_from_slice(&ix.data[4..12]);
+        let entry = wrapped.entry(to.as_str()).or_insert((from.as_str(), 0));
+        entry.1 += i128::from(u64::from_le_bytes(lamports));
+    }
+    let mut left = i128::from(spend);
+    for (account, (wallet, lamports)) in wrapped {
+        let stayed = diff
+            .deltas
+            .iter()
+            .find(|d| d.pubkey == account)
+            .map_or(0, |d| d.lamport_delta().max(0));
+        let spent = (lamports - stayed).max(0).min(left);
+        left -= spent;
+        *out.entry(wallet.to_string()).or_default() += spent;
+    }
+    out
+}
+
 /// A complete pre/post picture of a transaction's effect on account state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
@@ -1731,6 +1874,15 @@ pub struct StateDiff {
     /// whatever its code does. Never deserialized.
     #[serde(skip)]
     pub transaction_privileges: Option<TransactionPrivileges>,
+    /// The transaction's top-level instructions, every account resolved,
+    /// when Graphite built this diff from the bytes and could resolve all of
+    /// them (Round 41, D-20). A pre/post diff says where value ended up, not
+    /// how it moved between the accounts inside the transaction; these say
+    /// which of a signer's lamports went into its own wrapped-SOL account
+    /// for the located swap to spend. Never deserialized: a request cannot
+    /// tell L4 what the transaction contains.
+    #[serde(skip)]
+    pub top_level_instructions: Option<Vec<TopLevelInstruction>>,
 }
 
 /// The privileges a transaction's bytes give its accounts (Round 22). An
@@ -1740,6 +1892,15 @@ pub struct StateDiff {
 pub struct TransactionPrivileges {
     pub signers: std::collections::BTreeSet<String>,
     pub writable: std::collections::BTreeSet<String>,
+}
+
+/// One top-level instruction of the transaction, every account resolved to
+/// an address (Round 41, D-20).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TopLevelInstruction {
+    pub program_id: String,
+    pub accounts: Vec<String>,
+    pub data: Vec<u8>,
 }
 
 /// True when the diff carries a Token-2022 transfer-fee extension anywhere,
@@ -1856,6 +2017,11 @@ pub struct DeclaredEffects {
     /// account, in lamports, where its layout states it
     /// ([`lamport_amount_line`], Round 34, R33-15): (address, lamports).
     pub lamport_amounts: Vec<(String, u64)>,
+    /// What the located instruction's data says it spends, at most, out of
+    /// the account its declaration debits, where Graphite decodes it
+    /// ([`swap_spend_line`], Round 41, D-20): a decoded swap's `in_amount`.
+    /// `None` when no line stated it, or lines stated two different amounts.
+    pub declared_spend: Option<u64>,
 }
 
 /// The prefix of the line the pipeline adds naming the located
@@ -1877,6 +2043,19 @@ pub const LAMPORT_AMOUNT_LINE_PREFIX: &str =
 /// out of `address`.
 pub fn lamport_amount_line(address: &str, lamports: u64) -> String {
     format!("{LAMPORT_AMOUNT_LINE_PREFIX}{address}: {lamports}")
+}
+
+/// The prefix of the line the pipeline adds stating what the located
+/// instruction's data spends, at most, from the account its declaration
+/// debits (Round 41, D-20): a decoded swap's `in_amount`. Reserved like the
+/// class line.
+pub const SWAP_SPEND_LINE_PREFIX: &str = "graphite: the located instruction's data spends at most ";
+
+/// The line stating that the located instruction's data spends at most
+/// `amount` (base units of its input; lamports for wrapped SOL) from the
+/// account its declaration debits.
+pub fn swap_spend_line(amount: u64) -> String {
+    format!("{SWAP_SPEND_LINE_PREFIX}{amount} from the account it declares it debits")
 }
 
 /// What a System instruction's data says it moves out of its first account,
@@ -2031,6 +2210,7 @@ impl DeclaredEffects {
                 l.starts_with(SECURITY_CLASS_LINE_PREFIX)
                     || l.starts_with(INSTRUCTION_PROGRAM_LINE_PREFIX)
                     || l.starts_with(LAMPORT_AMOUNT_LINE_PREFIX)
+                    || l.starts_with(SWAP_SPEND_LINE_PREFIX)
             });
         let class_lines: Vec<&String> = pipeline_lines
             .iter()
@@ -2054,6 +2234,20 @@ impl DeclaredEffects {
                 Some((address.trim().to_string(), amount.trim().parse().ok()?))
             })
             .collect();
+        // Round 41 (D-20): one amount, or none. A line that does not parse,
+        // or two that disagree, state nothing.
+        let mut spends = pipeline_lines
+            .iter()
+            .filter_map(|l| l.strip_prefix(SWAP_SPEND_LINE_PREFIX))
+            .map(|rest| {
+                rest.split_whitespace()
+                    .next()
+                    .and_then(|n| n.parse::<u64>().ok())
+            });
+        let declared_spend = match spends.next().flatten() {
+            Some(n) if spends.all(|o| o == Some(n)) => Some(n),
+            _ => None,
+        };
         let mut classes = class_lines.iter().map(|l| {
             l[SECURITY_CLASS_LINE_PREFIX.len()..]
                 .trim()
@@ -2070,6 +2264,7 @@ impl DeclaredEffects {
             security_class,
             instruction_program,
             lamport_amounts,
+            declared_spend,
             ..Self::default()
         };
         let expected_state_changes = prose;
@@ -4533,7 +4728,7 @@ pub fn check_state_diff_with(input: &StateDiffCheck<'_>, relax: L4Relaxations) -
             || owner == SPL_TOKEN_2022_PROGRAM
             || declared.instruction_program.as_deref() == Some(owner)
     };
-    let losses = signer_lamport_losses(
+    let mut losses = signer_lamport_losses(
         &changed,
         &signers,
         input.fee_payer,
@@ -4547,6 +4742,16 @@ pub fn check_state_diff_with(input: &StateDiffCheck<'_>, relax: L4Relaxations) -
                 && d.after.as_ref().is_some_and(|a| reviewed_creator(&a.owner))
         },
     );
+    // Round 41 (D-20): what a wallet wrapped into its own wSOL account for
+    // the located swap to spend is that account's declared debit, not the
+    // wallet's loss. Never more than the wallet's unexplained loss.
+    for (wallet, credit) in
+        wrapped_for_declared_debit(input.diff, &declared, &signers, &signer_wallets, &names_of)
+    {
+        if let Some(loss) = losses.get_mut(&wallet) {
+            loss.unexplained -= credit.min(loss.unexplained.max(0));
+        }
+    }
     let names_of_signer = |s: &str| -> Vec<&str> { names_of.get(s).cloned().unwrap_or_default() };
     // W19 and its Round 34 sibling: a signer's wallet whose loss no debit
     // line NAMING it declares. Under a declaration whose only debit lines
@@ -5042,6 +5247,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -5078,6 +5284,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(
@@ -5119,6 +5326,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -5147,6 +5355,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -5182,6 +5391,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
@@ -5213,6 +5423,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -5259,6 +5470,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
@@ -5294,6 +5506,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         // The declaration is scoped to `accounts.account_or_mint` (A2-01), so
         // the account must hold that slot, as SetAuthority's resolved account
@@ -5335,6 +5548,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -5370,6 +5584,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -5402,6 +5617,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
@@ -5438,6 +5654,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
@@ -5469,6 +5686,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(
@@ -5510,6 +5728,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -5546,6 +5765,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -5581,6 +5801,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -5611,6 +5832,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -5643,6 +5865,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -5674,6 +5897,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true)];
         // "Update the metadata URI" promises no value movement at all.
@@ -5804,6 +6028,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(
@@ -5837,6 +6062,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(
@@ -5871,6 +6097,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -5912,6 +6139,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &[]);
@@ -5945,6 +6173,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &[]);
@@ -5974,6 +6203,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(BOB, false)];
         let declared = ["credit destination".to_string()];
@@ -6024,6 +6254,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -6064,6 +6295,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(
@@ -6120,6 +6352,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["frobnicate the widget".to_string()]);
@@ -6165,6 +6398,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(BOB, true)];
         // `before: None` means owner_change() cannot fire — there is no prior
@@ -6204,6 +6438,7 @@ mod tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -7174,6 +7409,7 @@ mod w19_authority_tests {
             token2022_mints: Default::default(),
             transaction_accounts: None,
             transaction_privileges: None,
+            top_level_instructions: None,
         };
         let declared: Vec<String> = DECLARED.iter().map(|s| s.to_string()).collect();
         check_state_diff(&StateDiffCheck {
