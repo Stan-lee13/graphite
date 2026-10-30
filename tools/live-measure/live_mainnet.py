@@ -1009,6 +1009,12 @@ def honest_pass(report, sample_rows, n, core, key, post_fn, blockhash_fn, sleep,
         row.update(kind=t["kind"], original_kind=t.get("original_kind", t["kind"]), sender=t["sender"], recipient=t["recipient"], asset=t["asset"],
                    amount=body["proposed_intent"]["extracted_parameters"]["amount"], budget=t["budget_source"],
                    original_version=t["version"], transaction_bytes=len(frame))
+        # Round 41: what the constructed transaction contains, for a reader
+        # judging a refusal (run 41140520173 row 263: a signer debit beyond
+        # the fee on an honest SPL transfer, not diagnosable from the table).
+        msg = wire.message(frame)
+        keys = wire.account_keys(msg)
+        row["instructions"] = [describe_instruction(keys, ix) for ix in msg.instructions]
         h["rows"].append(row)
 
 
@@ -1454,6 +1460,10 @@ def honest_markdown(h):
                 f"{_cell(r.get('l3') or '')} | {_cell('; '.join(r.get('reasons') or []))} | "
                 f"{_cell('; '.join(r.get('finding_reasons') or []))[:600]} | {_cell(r.get('l4_reason') or r.get('refusal') or '')} |"
             )
+        out += ["", "What each of them contains, and what the Core read of its fee:", ""]
+        for r in rest:
+            out.append(f"- row {r['row']}: {'; '.join(r.get('instructions') or [])} · compute budget as read: "
+                       f"{_cell(json.dumps(r.get('compute_budget'), sort_keys=True) if r.get('compute_budget') else '-')}")
     out.append("")
     return out
 

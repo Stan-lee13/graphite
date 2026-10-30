@@ -1069,6 +1069,9 @@ def test_the_honest_pass_runs_first_and_reports_every_refusal():
     line = next(l for l in md.splitlines() if l.startswith("| 1 | SPL Token TransferChecked"))
     assert "`blocked`" in line and "InstructionError{0, Custom(1)}" in line
     assert md.index("## Honest transfers") < md.index("## Decisions (the replay")
+    # Round 41: a refused honest transfer lists what it contains.
+    detail = next(l for l in md.splitlines() if l.startswith("- row 1: "))
+    assert "SetComputeUnit" in detail or "[0c]" in detail
 
 
 def test_without_a_fresh_blockhash_nothing_is_built():
