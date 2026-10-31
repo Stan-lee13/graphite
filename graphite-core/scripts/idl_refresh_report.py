@@ -7,6 +7,8 @@
                         reads a Jupiter route's steps by these, by position)
   txs PROGRAM SIG...    each executed transaction's top-level instructions to
                         PROGRAM, with their data in hex, from the public RPC
+  deployments INDEX ID... each program's last deployment slot and upgrade
+                        authority, from fetch_onchain_idls.py's idl_index.json
 
 Nothing is signed or sent; the RPC is the one fetch_onchain_idls.py reads.
 """
@@ -90,9 +92,24 @@ def txs(program, sigs):
             print(f"  ix {n}: {len(data)} bytes {data.hex()}")
 
 
+def deployments(index_path, ids):
+    """Each program's identity as fetch_onchain_idls.py read it: its last
+    deployment slot and upgrade authority."""
+    index = {p["program_id"]: p for p in json.loads(Path(index_path).read_text(encoding="utf-8"))["programs"]}
+    for pid in ids:
+        p = index.get(pid)
+        if p is None:
+            print(f"{pid}: not read")
+            continue
+        print(f"{pid}: last deployed at slot {p.get('last_deployed_slot')}, upgrade authority "
+              f"{p.get('upgrade_authority') or ('none (immutable)' if p.get('immutable') else 'not read')}")
+
+
 def main():
     if len(sys.argv) == 4 and sys.argv[1] == "compare":
         compare(sys.argv[2], sys.argv[3])
+    elif len(sys.argv) >= 3 and sys.argv[1] == "deployments":
+        deployments(sys.argv[2], sys.argv[3:])
     elif len(sys.argv) >= 3 and sys.argv[1] == "txs":
         txs(sys.argv[2], sys.argv[3:])
     else:

@@ -1526,3 +1526,15 @@ def test_a_v1_frame_has_its_swap_data_patched_in_place():
            "pre_token_balances": pre, "post_token_balances": post}
     c, why = hs.swap_candidate(row)
     assert why is None and c["version"] == "1" and c["asset_in"] == USDC and c["asset_out"] == BONK
+
+
+def test_a_verdicts_evidence_notes_are_read_from_its_summary_whole():
+    """Round 41: a refusal on confidence says why the confidence was what it
+    was. A note may itself hold "; " (a withdrawal's reason does)."""
+    withdrawn = ("ProgramEvidenceWithdrawn: CPMM was deployed at slot 9, after the observations its evidence was "
+                 "built from began (slot 5) and before Graphite first read its deployment; that evidence described "
+                 "code that no longer runs and was withdrawn")
+    summary = f"BLOCKED | confidence=0.44 | warnings: CPI target 'x' is unlisted; {withdrawn}; ProgramDeploymentEnrolled: first read of Y"
+    assert lm.evidence_notes({"summary": summary}) == [withdrawn, "ProgramDeploymentEnrolled: first read of Y"]
+    assert lm.evidence_notes({"summary": "APPROVED | confidence=0.59"}) == []
+    assert lm.evidence_notes({}) == []

@@ -472,6 +472,20 @@ def failure_reasons(result):
     return out
 
 
+EVIDENCE_NOTES = ("ProgramEvidenceWithdrawn", "ProgramDeploymentEnrolled", "ProgramUpgraded", "ProgramRetracted")
+
+
+def evidence_notes(result):
+    """The verdict's warnings about the evidence its programs stand on, read
+    from the summary (`… | warnings: a; b`), each up to 400 characters."""
+    summary = str(result.get("summary") or "")
+    if " | warnings: " not in summary:
+        return []
+    # A note may hold "; " itself; a new note starts with its `Name:`.
+    warnings = re.split(r"; (?=[A-Z][A-Za-z]+: )", summary.split(" | warnings: ", 1)[1])
+    return [w[:400] for w in warnings if w.startswith(EVIDENCE_NOTES)]
+
+
 def finding_patterns(result):
     return sorted({str(f.get("pattern", "")) for f in (result.get("risk_verdict") or {}).get("findings") or [] if isinstance(f, dict)})
 
@@ -589,6 +603,11 @@ def verify_one(report, entry, body_in, core, key, post_fn, tag=""):
                 # to its request, e.g. a route step the Core cannot read).
                 "unobserved": [str(u)[:400] for u in ((result.get("scope") or {}).get("unobserved") or [])
                                if isinstance(u, str) and ("request" in u or "intent" in u or "bound" in u)],
+                # Round 41: the verdict's notes on the evidence it stood on (a
+                # withdrawal after a redeployment, a first read of a
+                # deployment), from the summary's warnings, so a refusal on
+                # confidence says why the confidence was what it was.
+                "evidence_notes": evidence_notes(result),
                 # Round 40 (measure): what the Core read of the fee the bytes
                 # ask for, and the standing it gave the verdict.
                 "compute_budget": (result.get("scope") or {}).get("compute_budget"),
@@ -1540,6 +1559,8 @@ def swaps_markdown(s):
                 out.append(f"  - {_cell(f)}")
             for u in r.get("unobserved") or []:
                 out.append(f"  - unbound: {_cell(u)}")
+            for n in r.get("evidence_notes") or []:
+                out.append(f"  - evidence: {_cell(n)}")
     out.append("")
     return out
 
