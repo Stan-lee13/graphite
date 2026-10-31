@@ -5,6 +5,8 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 
 ## Round 41
 
+Round 41 (2026-10-31) — measured live (run 41155961160 on 752d5c4, report in `docs/evidence/live-mainnet/run-41155961160.md`): 36 of 36 honest transfers and 2 of 2 re-quoted honest Jupiter v6 swaps `executable_approved`, the first honest swaps approved on mainnet state (a small sample). The runner's honest-swap pass (`tools/live-measure/honest_swaps.py`, `--swaps`) rebuilds executed direct swaps unsigned with the minimum output re-quoted by simulation; its transfers are pre-simulated so a transfer the chain would reject is not counted as a refusal. Still refused, recorded: four honest SOL → Token-2022 Jupiter routes through Pump AMM (run 41154452231, route unbound). CI's Rust floors are raised to 2,638 / 534 / 2,023 and the CI-scripts floor to 136.
+
 Round 41 (2026-10-31) — the census re-measured for the six swap venues the Core decodes (Jupiter v6, Orca Whirlpools, Raydium CPMM, CLMM and AMM v4, Meteora DLMM), by the new read-only `census-refresh` workflow (run 41154691186), because the Core withdraws census evidence on a deployment newer than the census window (Round 30) and live runs showed Jupiter's withdrawn (confidence 0.44 under Gaming's 0.55):
 
 - **Data:** `protocols/battle_tested_evidence.json` sha256 `973e4d58…07138b` → `daa97cac…ccece4`; the six records re-measured (each still meets the bar; Jupiter v6 decode 0.934), every other record unchanged (`--merge`); 114 of 137 records still meet the bar.

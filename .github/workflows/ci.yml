@@ -144,7 +144,7 @@ jobs:
           # leg would compile the same thing twice.
           - leg: default
             flags: ""
-            floor: 2607
+            floor: 2638
             timeout: 90
           # `--lib` deliberately. Without a feature there is no async runtime
           # to drive the synchronous `verify()`, so it refuses with an error
@@ -160,11 +160,11 @@ jobs:
           # `cargo test --no-default-features` had 28 failures.
           - leg: lib
             flags: "--no-default-features --lib"
-            floor: 533
+            floor: 534
             timeout: 20
           - leg: cli
             flags: "--no-default-features --features cli"
-            floor: 2011
+            floor: 2023
             timeout: 45
     defaults:
       run:
@@ -201,7 +201,7 @@ jobs:
         # Round 30: the log is read back, so the gate is "at least the floor
         # passed and none failed", not just "cargo exited 0" — which it also
         # does when no test binary ran at all. The floors are the counts at
-        # Round 36 (2,363 / 513 / 1,942; 2,331 / 509 / 1,933 at Round 35); a change that deletes tests below one
+        # Round 41 (2,638 / 534 / 2,023; 2,363 / 513 / 1,942 at Round 36); a change that deletes tests below one
         # lowers it in the same reviewed diff. The log lives outside the tree
         # so the clean-tree check below still sees only what the tests wrote.
         env:
@@ -1272,9 +1272,11 @@ jobs:
           # (the live ruleset state of 2026-10-25, --require-bypass,
           # main-review required, shellcheck of these scripts, and
           # graphite-core/scripts/validate_corpora.py over the committed
-          # corpora with 13 seeded faults; the live-mainnet seed pin).
-          if [ -z "$passed" ] || [ "$passed" -lt 121 ]; then
-            echo "::error::ci-scripts tests: ${passed:-no summary} passed, floor 121"; exit 1
+          # corpora with 13 seeded faults; the live-mainnet seed pin); 136 at
+          # Round 41 (the rulesets' unattributed-changes approval, the
+          # security-advisory link).
+          if [ -z "$passed" ] || [ "$passed" -lt 136 ]; then
+            echo "::error::ci-scripts tests: ${passed:-no summary} passed, floor 136"; exit 1
           fi
 
   # Round 30 (G-11): the one check the `main` ruleset requires

@@ -112,6 +112,9 @@ An independent security audit is not in this budget; it is pursued separately.
 >   were approved for signing (21/21 System, 6/7 SPL Token); the one refusal was a transfer that
 >   would have failed on chain. 200 replayed mainnet transactions: 0 server errors, p50 latency
 >   208 ms. Report: `docs/evidence/live-mainnet/run-40839253280.md` in the repository.
+> - **Live, on mainnet (2026-10-31):** 36 of 36 honest transfers and 2 of 2 honest Jupiter v6
+>   swaps (real swaps rebuilt unsigned, minimum output re-quoted) were approved for signing — a
+>   small swap sample. Report: `docs/evidence/live-mainnet/run-41155961160.md`.
 >
 > Adoption is what Milestones 1 and 3 and the adoption metrics pay for.
 

@@ -120,8 +120,10 @@ observe, and the guard refuses to sign over any such gap the operator has not ac
   28 new, never-signed honest transfers built from accounts that had just transferred were
   approved for signing (21/21 System, 6/7 SPL Token; the refusal would have failed on chain)
   ([report](evidence/live-mainnet/run-40839253280.md)). Replays of other people's transactions
-  mostly fail simulation against later state, so they do not measure the approval path; no
-  swap was measured.
+  mostly fail simulation against later state, so they do not measure the approval path.
+  Round 41 (2026-10-31): 36 of 36 honest transfers and 2 of 2 re-quoted honest Jupiter v6
+  swaps were approved for signing ([report](evidence/live-mainnet/run-41155961160.md); a small
+  swap sample).
 - **Real exploits.** 35 mainnet exploit transactions from the public SolPhishHunter dataset
   (arXiv:2505.04094), labelled outside Graphite, are all refused.
 
