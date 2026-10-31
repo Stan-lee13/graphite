@@ -298,9 +298,16 @@ def swap_candidate(src):
     except ValueError:
         signature = None
     accounts = [(keys[a], *wire.privileges(msg, a, len(lw))) for a in sw.accounts]
+    # Every top-level instruction, for a reader judging a refusal: the
+    # program, the first data bytes, the accounts (`s` signer, `w` writable).
+    shape = []
+    for ix in msg.instructions:
+        accts = ",".join(keys[a][:8] + ("s" if wire.privileges(msg, a, len(lw))[0] else "")
+                         + ("w" if wire.privileges(msg, a, len(lw))[1] else "") for a in ix.accounts)
+        shape.append(f"{keys[ix.program_index][:8]}[{bytes(ix.data[:4]).hex()}]({accts})")
     return {
         "row": src.get("row"), "slot": src.get("slot"), "sender": sender, "program": program, "venue": name,
-        "signature": signature, "accounts": accounts,
+        "signature": signature, "accounts": accounts, "shape": shape,
         "layout": kind, "index": at, "data": bytes(sw.data), "asset_in": asset_in, "asset_out": asset_out,
         "decimals_in": dec_in, "amount_in": a_in, "watch": watch, "fee": fee, "version": msg.version,
     }, None

@@ -1455,6 +1455,7 @@ def test_a_refused_swap_names_its_original_transaction_and_accounts():
     assert r["swap_accounts"][0] == (WALLET, True, True) and r["swap_accounts"][2] == (W_USDC, False, True)
     md = "\n".join(lm.swaps_markdown(report["swaps"]))
     assert f"- row 3 (`{solrpc.b58encode(bytes(64))}`): 0:`{WALLET[:8]}`sw" in md
+    assert f"the transaction's instructions: {hs.COMPUTE_BUDGET_PROGRAM[:8]}[02400d03]() · {hs.RAYDIUM_CPMM[:8]}[8fbe5ada]({WALLET[:8]}sw," in md
 
 
 def v1_frame(keys, instructions, *, priority_fee=None, cu_limit=None):
