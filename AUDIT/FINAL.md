@@ -1,4 +1,57 @@
-# AUDIT FINAL — verdict (2026-10-25, after Round 38)
+# AUDIT FINAL — verdict (2026-10-31, after Round 41)
+
+## Verdict (Round 41)
+
+**Code: ready for the independent audit. Release: blocked only on items outside the code** —
+
+1. **G-4, the independent third-party audit.** None has been done. Every round, Round 41 included,
+   is internal engineering work plus external AI reviews checked against the code. This page is
+   not an audit report and not a certification.
+2. **G-5, a deployment with its own RPC endpoint.** Graphite is not hosted anywhere. A Core needs
+   an operator, a host, TLS, and a mainnet RPC of the operator's choosing (the Core trusts that
+   RPC's simulation for effects it cannot read from the bytes: RESIDUAL_RISK §3).
+3. **Two owner actions on GitHub**, each minutes of work and impossible from the repository:
+   - **G-2, the release signing key** (checklist R3–R4): `.github/allowed_signers` is empty, so
+     every release tag is refused by design until the owner adds their public key;
+   - **G-1, the admin read** of the ruleset bypass lists and the `release` environment (R5): the
+     rulesets are live and match the committed files; only an admin can read their bypass lists.
+
+**What is closed, with its evidence** (2026-10-31):
+
+- **Every finding** of every round is fixed with a regression test that fails with the fix
+  reverted, recorded as a decision (`docs/audit/TECHNICAL_LEAD_DECISIONS.md`, D-1 … D-30), or
+  recorded as a bounded, fail-closed limitation with its measured cost (`RESIDUAL_RISK` §3).
+  Round 41 checked four external AI reviews claim by claim (`docs/audit/ROUND41_EXTERNAL_REVIEW_TRIAGE.md`):
+  30 claims, 4 real defects (D-28 … D-30 and the MCP wording), all fixed; none found an approval of
+  bytes that do something other than the request under an honest RPC.
+- **The whole suite passes**, locally and in CI on the PR #61 head: Rust (default 2,639, lib 534,
+  cli 2,025), clippy `-D warnings`, the agent guard (353, Linux and Windows), MCP server, SDKs (TS,
+  Go on 1.26 and 1.27), dashboard (unit, build, browser smoke with axe), Python, deploy kit
+  (Caddy + Core loopback), release-gate and CI-script self-tests (52, 138), both differential
+  oracles, the fuzzers and the line-coverage floor.
+- **The approval path is measured on live mainnet**, never signing or sending: five runs on
+  2026-10-31 approved 147 of 148 constructed honest transfers (36 + 22 + 26 + 35 + 28) and 12 of 13
+  constructed honest swaps (2 + 1 + 4 + 5 + 0) on Jupiter v6 (route, route_v2,
+  shared_accounts_route, and routes through Pump AMM) and Orca Whirlpools. The two refusals are
+  recorded with their causes: an honest transfer of a new multi-program shape flagged by L3's
+  program fallback, and a Raydium CPMM swap held because CPMM was redeployed after its census —
+  re-measured the same morning; no CPMM swap has been re-measured live since. Reports:
+  `docs/evidence/live-mainnet/`.
+- **Release integrity rehearsed**: `release.yml` run 41190904785 built the binary twice and the two
+  builds are byte-identical; both SBOMs, the image smoke test and the image-ships-build-a check
+  passed; nothing was published.
+- **Production checklist**: items 1, 2, 4, 5, 6, 8, 10b, 10c closed with their records; item 7 (measured
+  mutation-score floors) is being measured by Assurance on the PR head.
+
+**What this verdict does not say.** It does not say Graphite is production ready or audited. It
+says the code-side work an auditor would ask for is done and evidenced, and that what remains is
+the audit itself, a real deployment, and two owner actions. Round 33 and Round 37 each found an
+end-to-end approval bypass that earlier internal rounds had passed; that remains the strongest
+argument for the independent audit.
+
+---
+
+# Earlier verdict (2026-10-25, after Round 38), kept as the record of that round
 
 **Scope:** the whole repository, audited in six areas at `3327fcf` ([`00-map.md`](00-map.md)) and
 fixed in Round 23. An external review of the result followed (R1–R26 with W1–W26); its items were

@@ -10,7 +10,11 @@ regression test and a deliberate break, or kept fail-closed pending an owner dec
 **Release remains blocked by:** G-1 (live rulesets and `release` environment), G-2 (a release
 signing key), G-3 (private vulnerability reporting), G-4 (an independent third-party audit) and G-5
 (a deployment run and checked by an operator) — §1. Since 2026-10-30: G-3 is closed and G-1's rulesets are applied (its bypass lists
-and the `release` environment await the admin read).
+and the `release` environment await the admin read). **As of Round 41 (2026-10-31)** the code-side
+work is done and evidenced (`../../AUDIT/FINAL.md`, "Verdict (Round 41)"): what remains is G-4 (the
+independent audit), G-5 (a hosted deployment with its own RPC), and two owner actions — G-2's
+signing key and G-1's admin read. The owner reports the `release` environment created (2026-10-30);
+only the admin read can confirm its settings.
 
 ## 1. Release gates (owner or external)
 
