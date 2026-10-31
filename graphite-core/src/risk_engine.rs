@@ -1803,6 +1803,30 @@ mod tests {
         assert_eq!(short_id("ééééééééé"), "éééééééé");
     }
 
+    /// Round 41 (Assurance run 41195462495, risk_engine shard 10/12): the
+    /// `close` arm of `program_supports_intent` had no test of its own, so
+    /// flipping either token-program comparison, or joining them with `&&`,
+    /// survived. A close intent is served by exactly the two token programs
+    /// and Jupiter DCA; any other program is a mismatch (fail-closed).
+    #[test]
+    fn close_is_served_by_the_token_programs_and_jupiter_dca_only() {
+        for program in [
+            TOKEN_PROGRAM_ID,
+            TOKEN_2022_PROGRAM_ID,
+            "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M",
+        ] {
+            assert!(program_supports_intent(program, "close"), "{program}");
+        }
+        for program in [
+            "11111111111111111111111111111111",
+            "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+            "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+            WALLET_A,
+        ] {
+            assert!(!program_supports_intent(program, "close"), "{program}");
+        }
+    }
+
     fn input(program: &str, disc: &str, accounts: &[&str], intent: &str) -> RiskAssessmentInput {
         RiskAssessmentInput {
             program_id: program.to_string(),
