@@ -878,6 +878,50 @@ pub fn update_baseline(
 
 #[cfg(test)]
 mod tests {
+    /// Round 41 (Assurance run 41195462495, simulation_integrity shard 8/10):
+    /// no test read the running mean and spread `update_baseline` keeps, so
+    /// 13 mutants of the account-writes Welford update survived. During the
+    /// bootstrap (fewer than MIN_SAMPLES) every observation is learned as
+    /// observed, so each signal's mean and standard deviation must be the
+    /// population mean and standard deviation of what was fed in.
+    #[test]
+    fn the_running_mean_and_spread_are_the_samples_own() {
+        let observations: [(u64, u32, u32); 5] = [
+            (1_000, 1, 0),
+            (2_000, 2, 1),
+            (3_000, 3, 2),
+            (4_000, 4, 3),
+            (6_000, 6, 5),
+        ];
+        assert!((observations.len() as u64) < MIN_SAMPLES);
+        let mut baseline = ComputeBaseline::default();
+        for &(cu, aw, ch) in &observations {
+            update_baseline(&mut baseline, cu, aw, ch);
+        }
+        let stats = |xs: Vec<f64>| {
+            let n = xs.len() as f64;
+            let mean = xs.iter().sum::<f64>() / n;
+            let var = xs.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>() / n;
+            (mean, var.sqrt())
+        };
+        let close = |a: f64, b: f64, what: &str| {
+            assert!(
+                (a - b).abs() < 1e-9 * b.abs().max(1.0),
+                "{what}: {a} != {b}"
+            );
+        };
+        let (m, s) = stats(observations.iter().map(|o| o.0 as f64).collect());
+        close(baseline.mean_compute_units, m, "compute units mean");
+        close(baseline.std_compute_units, s, "compute units std");
+        let (m, s) = stats(observations.iter().map(|o| f64::from(o.1)).collect());
+        close(baseline.mean_account_writes, m, "account writes mean");
+        close(baseline.std_account_writes, s, "account writes std");
+        let (m, s) = stats(observations.iter().map(|o| f64::from(o.2)).collect());
+        close(baseline.mean_cpi_hops, m, "CPI hops mean");
+        close(baseline.std_cpi_hops, s, "CPI hops std");
+        assert_eq!(baseline.sample_count, observations.len() as u64);
+    }
+
     /// Round 19 (F-19-21): a history of MIN_SAMPLES observed zero-hop
     /// executions judges a simulation that suddenly makes three CPI hops.
     #[test]
