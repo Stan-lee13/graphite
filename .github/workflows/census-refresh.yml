@@ -57,11 +57,18 @@ jobs:
         timeout-minutes: 200
         env:
           IDS: ${{ inputs.program_ids || '' }}
+          EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
           census=graphite-core/protocols/battle_tested_evidence.json
           cp "$census" "$RUNNER_TEMP/before.json"
           read -r -a ids <<<"$IDS"
+          # A pull request's run measures the committed list (Round 41: the
+          # first run measured 105 of 137 programs in its four hours).
+          if [ "${#ids[@]}" -eq 0 ] && [ "$EVENT" = "pull_request" ]; then
+            mapfile -t ids < <(grep -Ev '^[[:space:]]*(#|$)' .github/census-refresh-programs.txt)
+          fi
+          echo "measuring: ${ids[*]:-every seed manifest}"
           python3 graphite-core/scripts/battle_tested_census.py --merge "${ids[@]}" 2>&1 | tee "$RUNNER_TEMP/census.log"
 
       - name: What changed
