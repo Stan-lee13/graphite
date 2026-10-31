@@ -158,7 +158,7 @@ Exactly what to apply, in order:
 ## Release (owner)
 
 - [ ] **10a. A `release` environment** — R2 above. `.github/workflows/release.yml`'s publish job runs in it.
-- [ ] **10b. Rehearse.** Actions → Release → Run workflow (on `main`). Every build, the two-build
+- [x] **10b. Rehearse.** **Done 2026-10-31**: run 41190904785 (dispatch on the PR #61 head `1e89824`, whose `release.yml` is `main`'s): both builds, "The two builds are identical", both SBOMs, the image smoke test and "the archived image ships build a's binary, byte for byte" passed; publish skipped. Re-run on `main` after PR #61 merges, before tagging. Actions → Release → Run workflow (on `main`). Every build, the two-build
   reproducibility comparison, both SBOMs, the image smoke test and SHA256SUMS run; nothing is pushed,
   attested or released. Read the `reproducible` job: it fails if the two builds differ.
 - [x] **10c. The crate does not go to crates.io — decided (Round 40).** `graphite-core/Cargo.toml`
