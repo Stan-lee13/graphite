@@ -1,5 +1,9 @@
 # Graphite — Developer Tooling Grant Proposal
 
+> **Superseded on 2026-10-31.** The Foundation's form no longer takes a proposal document. The
+> current answers and milestones are in [`application-form-answers.md`](application-form-answers.md);
+> this file is kept as background and its figures are as of 2026-10-26.
+
 Solana Foundation, Developer Tooling. Draft of 2026-10-26, prepared from the repository at the head
 of PR #55. Every figure below is taken from a file in the repository, named next to it, and can
 be reproduced from that file or command (Constitution P16). Items marked **[OWNER]** are yours to
@@ -263,8 +267,15 @@ These come from `docs/CURRENT.md` and `docs/audit/RESIDUAL_RISK_AND_OWNER_GATES.
     the simulator showed would fail on chain. In the same run, 200 recent mainnet transactions
     replayed through `/verify` gave 0 server errors and p50 / p99 latency of 208 / 430 ms; none of
     those replays was executable (most fail simulation against later state, and 155 call programs
-    the census does not cover), which is why the replay is not an approval rate. No swap was
-    measured: building an honest one needs a route the runner would have to invent.
+    the census does not cover), which is why the replay is not an approval rate.
+  - **Measured live again (2026-10-31, PR #61 run 41155961160; report committed as
+    `docs/evidence/live-mainnet/run-41155961160.md`):** after the false refusals Round 41's own
+    live runs found were fixed (decisions D-19 to D-26) and the six swap venues' census was
+    re-measured, **36 of 36** honest transfers and **2 of 2** honest Jupiter v6 swaps were
+    `executable_approved`. Each swap was an executed mainnet swap rebuilt unsigned (same wallet,
+    route and amount, a fresh blockhash) with its minimum output re-quoted by simulation. Two
+    swaps is a small sample; an earlier run's four Jupiter routes through Pump AMM are still
+    refused with the route unbound, which Milestone 2's venue work addresses.
 - **Real exploits.** 35 mainnet exploit transactions from the public SolPhishHunter dataset
   (arXiv:2505.04094), labelled outside Graphite, are all refused.
 - **Real traffic.**

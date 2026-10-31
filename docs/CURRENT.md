@@ -118,7 +118,7 @@ Verdict trust tier:              the MINIMUM over every top-level program the tr
                                  unmanifested sibling makes it Unknown, refused on every built-in profile (Round 29).
                                  The evidence signals stay the primary's
 Grounded intents:                `withdraw`, `claim`, `burn` and `configure` (and `close` widened) since Round 30, each
-                                 for named instructions only (src/intent_grants.rs, 27 grants; Round 34 added the staking
+                                 for named instructions only (src/intent_grants.rs, 26 grants; Round 34 added the staking
                                  withdrawals — Stake Withdraw, Stake Pool WithdrawSol/WithdrawStake and their slippage
                                  forms, Marinade liquidUnstake — each only when the value goes to the instruction's
                                  own signing key; a `stake` intent declares no withdrawal, R33-1) and only when the
@@ -800,7 +800,20 @@ transaction under the stated threat model, and no external party has yet tried.
   `docs/evidence/live-mainnet/run-40839253280.md`): 27 of 28 constructed honest transfers
   were `executable_approved`; of the replayed transactions, the signer-debit refusals
   printed with the chain's fee are tips or transfers beside instructions whose manifest
-  declares nothing (Graphite's fee equals the chain's in every row). Opt-out:
+  declares nothing (Graphite's fee equals the chain's in every row). Round 41 (run
+  41155961160 on 752d5c4, after decisions D-19 to D-26 and the census re-measured for the
+  six swap venues; report in `docs/evidence/live-mainnet/run-41155961160.md`): 36 of 36
+  constructed honest transfers and 2 of 2 re-quoted honest Jupiter v6 swaps were
+  `executable_approved` — the first honest swaps approved live, a small sample. The run
+  before (41154452231) refused four honest SOL → Token-2022 Jupiter routes through Pump AMM
+  with the route left unbound (`intent_parameters`): their step uses Jupiter `Swap` variant 193
+  (`PumpSwapBuyV4`), past the IDL committed on 2026-09-23, and D-27 reads routes with the deployed
+  IDL's 204 variants (the four routes' real bytes decode, `round41_jupiter_route_v2`). Run
+  41158600693 on that fix: 22 of 22 transfers and 1 of 1 Jupiter swap `executable_approved`; no
+  Pump AMM route was in its sample, so that shape is not yet re-measured live. Run
+  41183860317 on 9fbd344 (after the external-review fixes D-28 to D-30): 26 of 26 transfers and
+  4 of 4 Jupiter swaps (`route`, `route_v2`, `shared_accounts_route`) `executable_approved`; no
+  verdict carried `no_state_diff`, so D-29's effect-free rule refused no honest transaction. Opt-out:
   `GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS=1` (value classes only).
 - **What binds an amount.** L4 binds a System `Transfer`/`CreateAccount`'s stated
   lamports (Round 34, R33-15). The request's own amount, recipient and asset are
@@ -958,16 +971,16 @@ transaction under the stated threat model, and no external party has yet tried.
 document links here, and `tests/docs_numbers_match_the_code.rs` fails if a live
 document states one elsewhere.
 
-Rust, from the integrated runs of Round 40 on 2026-10-29 (`cargo test --locked`, debug
-profile without debug info, one leg at a time; logs kept outside the repository), each leg
-also checked against its per-binary floors (`.github/test-floors/rust-*.txt`):
+Rust, from CI's `rust-test` legs on the Round 41 head 752d5c4 (2026-10-31, CI run
+41155959027; `cargo test --locked`), each leg also checked against its per-binary floors
+(`.github/test-floors/rust-*.txt`); Round 40's integrated runs gave 2,607 / 533 / 2,011:
 
-- the default features CI runs: **2,607 Rust tests pass**, 0 failed,
+- the default features CI runs: **2,638 Rust tests pass**, 0 failed,
   15 ignored (network- or sample-dependent, plus three benchmarks and the R39-CB-5 memory
-  measurement, each named in `.github/test-allowlists/rust-ignored.txt`), across 189 test targets;
-- the featureless library (`--no-default-features --lib`): **533 passed, 4 ignored**;
-- the cli-only build (`--no-default-features --features cli`): **2,011 passed, 6 ignored**,
-  across 189 test targets.
+  measurement, each named in `.github/test-allowlists/rust-ignored.txt`), across 192 test targets;
+- the featureless library (`--no-default-features --lib`): **534 passed, 4 ignored**;
+- the cli-only build (`--no-default-features --features cli`): **2,023 passed, 6 ignored**,
+  across 192 test targets.
 
 CI's test-count gate holds each leg at these floors (`rust-test` matrix in
 `.github/workflows/ci.yml`), and each test binary at its own floor (Round 40).
@@ -980,8 +993,8 @@ MCP server 12; Vercel AI adapter 12; TypeScript SDK 68 hermetic, plus 4 against 
 (run in CI's container job); dashboard 51 (48 at Round 39; the shared conformance corpus), production build OK, and the e2e
 harness (`.github/scripts/dashboard-e2e.sh`: smoke at five widths with an overflow check that can
 fail under emulation, and the Round 36 and Round 39 fault states, axe included). Go SDK: 66,
-`go vet` clean, on 1.26.10 and 1.27.3. Python: 141 across the AI layer (51), `tools/mainnet-sample`
-(7) and `tools/live-measure` (83). CI scripts: 136 checks (`.github/scripts/ci-scripts.test.sh`,
+`go vet` clean, on 1.26.10 and 1.27.3. Python: 154 across the AI layer (51), `tools/mainnet-sample`
+(7) and `tools/live-measure` (96; 83 at Round 40). CI scripts: 136 checks (`.github/scripts/ci-scripts.test.sh`,
 including `validate_corpora.py` and the live-ruleset snapshot); release gate 52. Deploy kit: 163 checks (`deploy/tests/run.sh`; 162 at Round 36), plus
 `deploy/tests/backup-keys.test.sh`, 22 checks (Round 38: the `.mac` under the current key only).
 The npm advisory gate passes for all six packages with no new allowlist entry, and

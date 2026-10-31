@@ -201,9 +201,23 @@ fn build_rpc_state_diff(
     artifact_account_universe: Option<(usize, usize)>,
     artifact_accounts_undescribed: Option<Vec<String>>,
 ) -> StateDiff {
+    // Round 41 (D-25): an account holding no lamports does not exist. The
+    // simulator reports every account the transaction loads from the
+    // executed transaction's own account list, so an account the transaction
+    // closed — SPL Token's `CloseAccount` zeroes its lamports, assigns it to
+    // the System program and reallocates it to nothing — or one it named
+    // that never existed comes back as an account holding zero lamports, not
+    // as `null`, and the runtime removes it when the transaction commits.
+    // Read as an account, it showed every closure as an owner reassignment
+    // to the System program (`UndeclaredOwnerReassignment`), the wallet's
+    // own wSOL account created and closed inside the transaction as a System
+    // account (so its SOL as the wallet's loss: live run 41147736944 row 100,
+    // the plain D-20 shape), and a closed wSOL account as no longer the
+    // wallet's (D-22). Nothing of it survives the transaction — no balance,
+    // no data, no authority — so it is read as what it is: absent.
     let snap =
         |a: &Option<crate::rpc_client::AccountState>, key: &str| -> Option<AccountSnapshot> {
-            a.as_ref().map(|s| {
+            a.as_ref().filter(|s| s.lamports > 0).map(|s| {
                 AccountSnapshot::from_raw(key, s.lamports, &s.owner, &s.data)
                     .with_executable(s.executable)
             })
@@ -266,6 +280,7 @@ fn build_rpc_state_diff(
         token2022_mints: Default::default(),
         transaction_accounts: None,
         transaction_privileges: None,
+        top_level_instructions: None,
     }
 }
 
@@ -853,6 +868,57 @@ fn observed_cpi_callees(
     Some(out)
 }
 
+/// Every callee the simulator reported, with the top-level instruction it ran
+/// under (Round 41, D-21): `(top-level index, program)`, repeats kept. Read
+/// from the response's own grouping (`innerInstructions[].index`), in the
+/// form the RPC sent it, else from the compiled form. `None` — never a
+/// shorter list — when neither was readable, a program cannot be placed in
+/// the account list, or a group names a top-level instruction the message
+/// does not have.
+#[cfg(feature = "rpc")]
+fn callees_by_top_level(
+    message: Option<&crate::tx_artifact::ArtifactMessage>,
+    sim: &crate::rpc_client::SimulationResult,
+) -> Option<Vec<(usize, String)>> {
+    use crate::rpc_client::InnerAccountRef;
+    let message = message?;
+    if !message.lookups.is_empty() && sim.loaded_addresses.is_none() {
+        return None;
+    }
+    let mut keys: Vec<&str> = message.static_keys.iter().map(String::as_str).collect();
+    if let Some(l) = sim.loaded_addresses.as_ref() {
+        keys.extend(l.writable.iter().map(String::as_str));
+        keys.extend(l.readonly.iter().map(String::as_str));
+    }
+    let placed = |top: u8, program: Option<String>| -> Option<(usize, String)> {
+        let top = usize::from(top);
+        (top < message.instructions.len()).then_some(())?;
+        Some((top, program?))
+    };
+    match (sim.inner_reported.as_ref(), sim.inner_instructions.as_ref()) {
+        (Some(reported), _) => reported
+            .iter()
+            .map(|ix| {
+                let program = match &ix.program {
+                    InnerAccountRef::Index(i) => keys.get(usize::from(*i)).map(|k| k.to_string()),
+                    InnerAccountRef::Address(a) => Some(a.clone()),
+                };
+                placed(ix.top_level_index, program)
+            })
+            .collect(),
+        (None, Some(inner)) => inner
+            .iter()
+            .map(|ix| {
+                let program = keys
+                    .get(usize::from(ix.program_id_index))
+                    .map(|k| k.to_string());
+                placed(ix.top_level_index, program)
+            })
+            .collect(),
+        (None, None) => None,
+    }
+}
+
 /// Every Token-2022 instruction the simulator executed, in execution order,
 /// with its accounts resolved (Round 21).
 ///
@@ -1193,7 +1259,7 @@ fn observed_cpi_tree_of(
     let mut items = flat.into_iter().peekable();
     Some(CpiTraceNode {
         program_id: top.program_id.clone(),
-        instruction_discriminator: hex::encode(&top.data[..top.data.len().min(8)]),
+        instruction_discriminator: dispatch_selector(&top.program_id, &top.data),
         depth: 0,
         account_addresses: top.accounts.iter().flatten().cloned().collect(),
         children: nest(&mut items, 1),
@@ -1451,7 +1517,10 @@ fn siblings_keyed_on_their_bytes(
     message: &crate::tx_artifact::ArtifactMessage,
     coverage: &SiblingCoverage,
     declared: &[crate::tx_pattern_analysis::TransactionInstruction],
-) -> Vec<crate::tx_pattern_analysis::TransactionInstruction> {
+) -> (
+    Vec<crate::tx_pattern_analysis::TransactionInstruction>,
+    Vec<bool>,
+) {
     declared
         .iter()
         .enumerate()
@@ -1463,21 +1532,42 @@ fn siblings_keyed_on_their_bytes(
                 .flatten()
                 .and_then(|i| message.instructions.get(i))
             else {
-                return decl.clone();
+                return (decl.clone(), false);
             };
-            // An instruction with no data names no instruction; leaving the
-            // declaration alone keeps `assess_secondary_instructions`'
+            // An instruction with no data names no instruction, unless its
+            // program dispatches empty data to one (Round 41, D-26: the
+            // associated token program's `Create`). Otherwise the declaration
+            // is left alone, which keeps `assess_secondary_instructions`'
             // empty-discriminator fail-closed arm reachable rather than
-            // quietly turning it into an empty string here.
-            if actual.data.is_empty() {
-                return decl.clone();
-            }
-            crate::tx_pattern_analysis::TransactionInstruction {
-                instruction_discriminator: hex::encode(&actual.data[..actual.data.len().min(8)]),
-                ..decl.clone()
+            // quietly turning it into an empty string here; it is marked as
+            // empty IN THE BYTES, so a manifest whose instruction is
+            // explicitly the empty-data one (a memo) can describe it.
+            match dispatch_selector(&actual.program_id, &actual.data) {
+                selector if selector.is_empty() => (decl.clone(), true),
+                selector => (
+                    crate::tx_pattern_analysis::TransactionInstruction {
+                        instruction_discriminator: selector,
+                        ..decl.clone()
+                    },
+                    false,
+                ),
             }
         })
-        .collect()
+        .unzip()
+}
+
+/// The selector a top-level instruction's program dispatches on, read from
+/// its data: the first eight bytes, hex — except that the associated token
+/// account program dispatches EMPTY data to `Create`, which its manifest
+/// describes as `00` (Round 41, D-26). `spl-associated-token-account`'s
+/// processor: empty input is `Create`; otherwise a Borsh tag, `0` `Create`,
+/// `1` `CreateIdempotent`, `2` `RecoverNested`. Every other program's empty
+/// data stays empty, and names no instruction.
+fn dispatch_selector(program_id: &str, data: &[u8]) -> String {
+    if data.is_empty() && program_id == crate::intent_binding::ATA_PROGRAM {
+        return "00".to_string();
+    }
+    hex::encode(&data[..data.len().min(8)])
 }
 
 /// The wall-clock budget ONE verification may spend talking to an RPC.
@@ -2199,6 +2289,7 @@ fn verification_scope(
     simulated: bool,
     simulation_error: Option<&str>,
     diff_built: bool,
+    diff_empty: bool,
     privileges: PrivilegeSource,
     lookups: Option<Result<usize, String>>,
     instruction_located: bool,
@@ -2255,6 +2346,18 @@ fn verification_scope(
                 r.push(
                     UnobservedCode::NoStateDiff,
                     "the transaction was simulated but no pre/post state diff was built, so what it actually changes was not compared against the manifest",
+                );
+            } else if diff_empty {
+                // Round 41 (external review D-1, D-29): a simulation reporting
+                // that nothing the transaction can write changed. A transaction
+                // the chain runs always changes something — at least its fee
+                // payer's lamports — so an effect-free simulation is not a
+                // measurement of what these bytes do. It used to leave L4
+                // Inconclusive, which no rule refused; a lying RPC returning
+                // the pre-state as the post-state took L4 out of the decision.
+                r.push(
+                    UnobservedCode::NoStateDiff,
+                    "the transaction was simulated, but its pre/post state diff shows no account it can write changing — a transaction the chain runs always changes something, so an effect-free simulation is not evidence of what it does and nothing was compared against the manifest",
                 );
             }
             // What the pipeline actually did, rather than this function's
@@ -5916,6 +6019,7 @@ impl GraphiteCore {
         &self,
         effective_instructions: &[crate::tx_pattern_analysis::TransactionInstruction],
         trace_origin_range: &std::ops::Range<usize>,
+        empty_in_bytes: &std::collections::BTreeSet<usize>,
         every_close_refunds_its_authority: bool,
         declared_intent: &str,
         artifact: Option<(
@@ -5990,26 +6094,38 @@ impl GraphiteCore {
                     ));
                     continue;
                 }
-                let reason = format!(
+                // Round 41 (D-26): the bytes show this instruction with no
+                // data, and its program's manifest describes exactly that —
+                // an instruction declared with an empty discriminator (a
+                // memo). It is that instruction, judged as any other below.
+                let described_empty = empty_in_bytes.contains(&idx)
+                    && self
+                        .registry
+                        .get(&ix.program_id)
+                        .and_then(|m| m.instruction_for(""))
+                        .is_some_and(|i| i.discriminator.is_empty());
+                if !described_empty {
+                    let reason = format!(
                     "secondary instruction #{idx} (program {}) was DECLARED by the caller with an \
                      empty discriminator \u{2014} the instruction cannot be verified and a declared \
                      instruction has no reason to omit it (P12 fail-closed)",
                     ix.program_id
                 );
-                verdict = match verdict {
-                    RiskVerdict::Passed => RiskVerdict::Blocked {
-                        pattern: crate::risk_engine::RiskPattern::UnexpectedCpi,
-                        reason,
-                    },
-                    RiskVerdict::Blocked {
-                        pattern: existing,
-                        reason: prior,
-                    } => RiskVerdict::Blocked {
-                        pattern: existing,
-                        reason: format!("{prior} | {reason}"),
-                    },
-                };
-                continue;
+                    verdict = match verdict {
+                        RiskVerdict::Passed => RiskVerdict::Blocked {
+                            pattern: crate::risk_engine::RiskPattern::UnexpectedCpi,
+                            reason,
+                        },
+                        RiskVerdict::Blocked {
+                            pattern: existing,
+                            reason: prior,
+                        } => RiskVerdict::Blocked {
+                            pattern: existing,
+                            reason: format!("{prior} | {reason}"),
+                        },
+                    };
+                    continue;
+                }
             }
             let risk_ctx =
                 self.instruction_risk_context(&ix.program_id, &ix.instruction_discriminator);
@@ -6754,6 +6870,8 @@ impl GraphiteCore {
         // which the execution boundary refuses.
         let mut siblings_by_bytes: Option<Vec<crate::tx_pattern_analysis::TransactionInstruction>> =
             None;
+        // Round 41 (D-26): which of those the bytes show with empty data.
+        let mut siblings_empty_in_bytes: Vec<bool> = Vec::new();
         let l2_result = match (&artifact_parse_error, artifact_message.as_ref()) {
             (None, None) => l2_result,
             (Some(e), _) => {
@@ -6820,11 +6938,13 @@ impl GraphiteCore {
                             )
                         });
                         if let Some(coverage) = &coverage {
-                            siblings_by_bytes = Some(siblings_keyed_on_their_bytes(
+                            let (keyed, empty) = siblings_keyed_on_their_bytes(
                                 message,
                                 coverage,
                                 &input.transaction_instructions,
-                            ));
+                            );
+                            siblings_by_bytes = Some(keyed);
+                            siblings_empty_in_bytes = empty;
                         }
                         match c.matched_instruction {
                             None if c.same_program_and_data > 1 => PipelineLayerResult::new(
@@ -7566,7 +7686,7 @@ impl GraphiteCore {
                     .enumerate()
                     .filter(|(k, _)| *k != primary)
                     .flat_map(|(_, ix)| {
-                        let disc = hex::encode(&ix.data[..ix.data.len().min(8)]);
+                        let disc = dispatch_selector(&ix.program_id, &ix.data);
                         self.registry
                             .find_instruction(&ix.program_id, &disc)
                             .map(|def| {
@@ -7720,7 +7840,7 @@ impl GraphiteCore {
         // excuse. Conflating the two let an attacker declare a dangerous
         // instruction with an empty discriminator and skip every structural
         // risk check — see `assess_secondary_instructions`.
-        let (effective_instructions, trace_origin_range) = {
+        let (effective_instructions, trace_origin_range, empty_in_bytes) = {
             // Execution order: the primary instruction runs first, its CPI
             // callees execute during it (pre-order flatten), then the
             // remaining top-level instructions. Ordering matters to the AAT
@@ -7749,7 +7869,19 @@ impl GraphiteCore {
                     .clone()
                     .unwrap_or_else(|| input.transaction_instructions.clone()),
             );
-            (v, trace_start..trace_end)
+            // Round 41 (D-26): the effective indexes of the siblings the
+            // bytes show with empty data (none without the bytes).
+            let empty_in_bytes: std::collections::BTreeSet<usize> = if siblings_by_bytes.is_some() {
+                siblings_empty_in_bytes
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| **e)
+                    .map(|(d, _)| trace_end + d)
+                    .collect()
+            } else {
+                std::collections::BTreeSet::new()
+            };
+            (v, trace_start..trace_end, empty_in_bytes)
         };
 
         // P0-3 fix (2026-09-05 audit): risk-assess every SECONDARY
@@ -7764,6 +7896,7 @@ impl GraphiteCore {
             .assess_secondary_instructions(
                 &effective_instructions,
                 &trace_origin_range,
+                &empty_in_bytes,
                 closes.every_close_refunds_its_authority,
                 &input.proposed_intent.intent_type,
                 artifact_message
@@ -8033,6 +8166,10 @@ impl GraphiteCore {
         // or an index the account list cannot place — unknown, never empty.
         #[cfg_attr(not(feature = "rpc"), allow(unused_mut, unused_variables))]
         let mut observed_cpi_programs: Option<Vec<String>> = None;
+        // The same callees with the top-level instruction each ran under
+        // (Round 41, D-21). `None` when that could not be read.
+        #[cfg_attr(not(feature = "rpc"), allow(unused_mut, unused_variables))]
+        let mut observed_cpi_callers: Option<Vec<(usize, String)>> = None;
         // The primary instruction's CPI tree as the simulator executed it
         // (Round 19, F-19-22). `None` without a clean simulation, a located
         // instruction, or a readable inner-instruction report.
@@ -8367,6 +8504,8 @@ impl GraphiteCore {
                                 sim_res.loaded_addresses.as_ref(),
                                 sim_res.inner_program_indexes.as_deref(),
                             );
+                            observed_cpi_callers =
+                                callees_by_top_level(artifact_message.as_ref(), &sim_res);
                             observed_cpi_tree = match (
                                 artifact_message.as_ref(),
                                 located_index,
@@ -8845,6 +8984,31 @@ impl GraphiteCore {
                                                 sim_res.loaded_addresses.as_ref(),
                                             )
                                         });
+                                    // Round 41 (D-20): the top-level
+                                    // instructions, every account resolved
+                                    // — all of them or none.
+                                    diff.top_level_instructions =
+                                        artifact_message.as_ref().and_then(|m| {
+                                            m.instructions
+                                                .iter()
+                                                .map(|ix| {
+                                                    crate::tx_artifact::resolve_instruction_accounts(
+                                                        m,
+                                                        ix,
+                                                        resolved_lookups
+                                                            .as_ref()
+                                                            .and_then(|r| r.as_ref().ok()),
+                                                    )
+                                                    .map(|accounts| {
+                                                        crate::state_diff::TopLevelInstruction {
+                                                            program_id: ix.program_id.clone(),
+                                                            accounts,
+                                                            data: ix.data.clone(),
+                                                        }
+                                                    })
+                                                })
+                                                .collect::<Option<Vec<_>>>()
+                                        });
                                     if let Some(message) = artifact_message.as_ref() {
                                         diff.token2022_executed = token2022_executed(
                                             message,
@@ -8959,7 +9123,7 @@ impl GraphiteCore {
                             program_id: input.program_id.clone(),
                             simulation_usage: usage.clone(),
                             baseline: baseline.clone(),
-                            divergence_threshold: 2.0,
+                            divergence_threshold: crate::simulation_integrity::DIVERGENCE_THRESHOLD,
                         },
                     ) {
                         Ok(result) => result,
@@ -9095,6 +9259,58 @@ impl GraphiteCore {
                     }
                     None => true,
                 });
+                // Round 41 (D-21): a callee the simulator saw ONLY under other
+                // top-level instructions, each of whose own manifest
+                // instruction declares it in `allowed_cpis`, is that
+                // instruction's call, not the located one's. The set was
+                // judged against the PRIMARY's root and allowed CPIs: an
+                // honest 1-lamport System transfer beside an ATA
+                // `CreateIdempotent` for a Token-2022 mint was refused as
+                // `AuthorityHijack` ("token program from untrusted root
+                // '11111111'") for the ATA program's own declared Token-2022
+                // CPI (live mainnet run 41120603876). Each such sibling's
+                // executed calls are still judged as its own below (W14). A
+                // callee seen under the primary, under a sibling whose
+                // instruction does not declare it, under an unmanifested
+                // program, or whose caller could not be read, is judged here
+                // exactly as before.
+                if let (Some(callers), Some(message), Some(primary)) = (
+                    observed_cpi_callers.as_ref(),
+                    artifact_message.as_ref(),
+                    located_index,
+                ) {
+                    let declared_by = |top: usize, callee: &str| {
+                        top != primary
+                            && message.instructions.get(top).is_some_and(|ix| {
+                                self.registry
+                                    .get(&ix.program_id)
+                                    .and_then(|m| {
+                                        m.instruction_for(&dispatch_selector(
+                                            &ix.program_id,
+                                            &ix.data,
+                                        ))
+                                    })
+                                    .is_some_and(|d| d.allowed_cpis.iter().any(|c| c == callee))
+                            })
+                    };
+                    undeclared.retain(|p| {
+                        let under: Vec<usize> = callers
+                            .iter()
+                            .filter(|(_, c)| c == p)
+                            .map(|(top, _)| *top)
+                            .collect();
+                        let theirs = !under.is_empty() && under.iter().all(|t| declared_by(*t, p));
+                        if theirs {
+                            let mut at = under.clone();
+                            at.sort();
+                            at.dedup();
+                            risk_warnings.push(format!(
+                                "observed CPI {p}: made only under top-level instruction(s) {at:?}, whose own manifest instruction declares it — judged as theirs, not the located instruction's"
+                            ));
+                        }
+                        !theirs
+                    });
+                }
                 if undeclared.is_empty() {
                     (risk_summary, risk_warnings)
                 } else {
@@ -9260,8 +9476,10 @@ impl GraphiteCore {
                     let Some(top) = message.instructions.get(*index) else {
                         continue;
                     };
-                    let ctx =
-                        self.instruction_risk_context(&top.program_id, &hex::encode(&top.data));
+                    let ctx = self.instruction_risk_context(
+                        &top.program_id,
+                        &dispatch_selector(&top.program_id, &top.data),
+                    );
                     let mut callees: Vec<String> = Vec::new();
                     let mut stack: Vec<&crate::tx_pattern_analysis::CpiTraceNode> =
                         tree.children.iter().collect();
@@ -9630,6 +9848,22 @@ impl GraphiteCore {
                 )
             }) {
                 diff_declared.push(crate::state_diff::lamport_amount_line(&from, lamports));
+            }
+            // Round 41 (D-20): what the located instruction spends, read from
+            // the BYTES (the located instruction of the artifact, never the
+            // request's description), where it is an exact-in swap the Core
+            // decodes. It bounds the wrapped SOL L4 may count as the swap's
+            // declared debit rather than the wallet's loss.
+            if let Some(spend) = primary_instruction_index
+                .and_then(|i| artifact_message.as_ref()?.instructions.get(i))
+                .and_then(
+                    |ix| match crate::intent_binding::decode_swap(&ix.program_id, &ix.data) {
+                        Some(Ok(decoded)) => Some(decoded.amount_in),
+                        _ => None,
+                    },
+                )
+            {
+                diff_declared.push(crate::state_diff::swap_spend_line(spend));
             }
         }
         let diff_declared = &diff_declared;
@@ -10651,6 +10885,7 @@ impl GraphiteCore {
                     simulated,
                     simulation_error,
                     observed_diff.is_some(),
+                    observed_diff.as_ref().is_some_and(|d| d.is_empty()),
                     privilege_source,
                     resolved_lookups
                         .as_ref()

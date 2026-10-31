@@ -49,12 +49,15 @@ const ZERO_VARIANCE_EPSILON: f64 = 1e-6;
 ///
 /// THE DETECTION FLOOR this sets (Round 29, audit 2026-10-20, S2), stated
 /// exactly: a signal is flagged only when
-/// `|value − centre| > threshold × max(measured spread, 0.25 × |centre|, 1)`,
-/// for the mean/std statistic and the median/MAD one alike. With the
-/// pipeline's threshold of 2.0 (`verification.rs`), NO deviation of 50% of
-/// the centre or less is ever flagged, however tight the program's history
-/// is: a program centred on 100,000 CU is flagged above 150,000 or below
-/// 50,000 and not between. Deliberate: the figure judged is the whole
+/// `|value − centre| > threshold × max(measured spread, 0.25 × |centre|, F)`,
+/// for the mean/std statistic and the median/MAD one alike, where `F` is
+/// `MIN_COMPUTE_UNITS_SPREAD` (150 CU, Round 41) for compute and
+/// `MIN_ABSOLUTE_SPREAD` (1) for writes and hops. With the
+/// pipeline's threshold of 2.0 (`DIVERGENCE_THRESHOLD`), NO deviation of 50%
+/// of the centre or less — nor, for compute, of 300 CU or less — is ever
+/// flagged, however tight the program's history is: a program centred on
+/// 100,000 CU is flagged above 150,000 or below 50,000 and not between; one
+/// centred on 450 CU above 750 or below 150. Deliberate: the figure judged is the whole
 /// transaction's compute, and even one instruction in one composition
 /// varies with its accounts and arguments (a swap's route, a loop's length);
 /// a tighter floor flagged honest traffic as spoofing. Since Round 30 the
@@ -69,11 +72,49 @@ pub const MIN_RELATIVE_SPREAD: f64 = 0.25;
 /// identical history is a 1σ event, not a maximal one.
 pub const MIN_ABSOLUTE_SPREAD: f64 = 1.0;
 
+/// The divergence threshold the verification pipeline judges L3 with, in
+/// spreads (`verification.rs`; the finding reads "flagged at >2.0σ").
+pub const DIVERGENCE_THRESHOLD: f64 = 2.0;
+
+/// What the runtime charges for one Compute Budget instruction, in compute
+/// units (Agave's `solana_compute_budget_program::DEFAULT_COMPUTE_UNITS`).
+pub const COMPUTE_BUDGET_INSTRUCTION_UNITS: u64 = 150;
+
+/// Round 41: the absolute floor on the COMPUTE spread, in compute units —
+/// one Compute Budget instruction's cost.
+///
+/// The shape key (`SemanticGraphStore::shape_key`) leaves the Compute Budget
+/// program out so a priority fee does not split a shape, but the figure
+/// judged is the whole transaction's compute, which pays 150 CU for each of
+/// those instructions. Honest transactions of ONE shape therefore differ by
+/// 150 CU per instruction the wallet's fee settings add: a limit and a price
+/// are two, 300 CU. For a program whose own work is large that is noise
+/// inside the 25% relative floor; for a cheap one it is not: a System
+/// transfer is 150 CU, so honest transfers cost 150, 300 or 450 CU, and a
+/// baseline learned from limit+price transfers (450) judged a bare transfer
+/// (150) at 2.67σ — honest transfers refused as `SimulationSpoofing` on
+/// mainnet (live run 41120603876); one learned from bare transfers judged a
+/// price-only one at 4σ and a limit+price one at 8σ.
+///
+/// The floor follows the rule `MIN_ABSOLUTE_SPREAD` sets for writes and hops:
+/// one unit of honest structural variation the baseline cannot see — here,
+/// one Compute Budget instruction more or fewer than an identical history —
+/// is a 1σ event, not a maximal one. At the 2σ threshold a priority fee's
+/// two instructions added or removed are within the band (exactly at its
+/// edge for a uniform history; the threshold flags only beyond it), and
+/// three or more are not. It governs only centres below 600 CU (above, 25%
+/// of the centre is larger); writes and hops are not affected; and a value
+/// more than 300 CU from a cheap program's centre — a tenfold one, say — is
+/// still flagged.
+pub const MIN_COMPUTE_UNITS_SPREAD: f64 = COMPUTE_BUDGET_INSTRUCTION_UNITS as f64;
+
 /// The spread a signal is judged against: the measured one, or the floor.
-fn effective_spread(centre: f64, measured: f64) -> f64 {
+/// `absolute_floor` is the signal's own: `MIN_COMPUTE_UNITS_SPREAD` for
+/// compute, `MIN_ABSOLUTE_SPREAD` for writes and hops.
+fn effective_spread(centre: f64, measured: f64, absolute_floor: f64) -> f64 {
     measured
         .max(centre.abs() * MIN_RELATIVE_SPREAD)
-        .max(MIN_ABSOLUTE_SPREAD)
+        .max(absolute_floor)
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -174,22 +215,29 @@ pub struct BaselineAnchor {
 }
 
 /// The anchor a baseline is fixed to: its centres, and the effective spreads
-/// (`MIN_RELATIVE_SPREAD` and `MIN_ABSOLUTE_SPREAD` floors included) those
-/// centres are judged with, as they stand now.
+/// (`MIN_RELATIVE_SPREAD`, and `MIN_COMPUTE_UNITS_SPREAD` or
+/// `MIN_ABSOLUTE_SPREAD`, floors included) those centres are judged with, as
+/// they stand now.
 pub fn anchor_of(baseline: &ComputeBaseline) -> BaselineAnchor {
     BaselineAnchor {
         compute_units: baseline.mean_compute_units,
         compute_units_spread: effective_spread(
             baseline.mean_compute_units,
             baseline.std_compute_units,
+            MIN_COMPUTE_UNITS_SPREAD,
         ),
         account_writes: baseline.mean_account_writes,
         account_writes_spread: effective_spread(
             baseline.mean_account_writes,
             baseline.std_account_writes,
+            MIN_ABSOLUTE_SPREAD,
         ),
         cpi_hops: baseline.mean_cpi_hops,
-        cpi_hops_spread: effective_spread(baseline.mean_cpi_hops, baseline.std_cpi_hops),
+        cpi_hops_spread: effective_spread(
+            baseline.mean_cpi_hops,
+            baseline.std_cpi_hops,
+            MIN_ABSOLUTE_SPREAD,
+        ),
     }
 }
 
@@ -387,7 +435,11 @@ pub fn check_simulation_integrity(
             (
                 input.simulation_usage.compute_units as f64,
                 anchor.compute_units,
-                anchor.compute_units_spread,
+                // Round 41: an anchor fixed before the compute floor existed
+                // carries a spread below it; it is judged with the floor, as
+                // every other spread is. The floor is a constant, so this
+                // cannot be moved by anything a baseline learns.
+                anchor.compute_units_spread.max(MIN_COMPUTE_UNITS_SPREAD),
                 true,
                 "Compute usage",
             ),
@@ -440,6 +492,7 @@ pub fn check_simulation_integrity(
         input.simulation_usage.compute_units as f64,
         input.baseline.mean_compute_units,
         input.baseline.std_compute_units,
+        MIN_COMPUTE_UNITS_SPREAD,
         input.divergence_threshold,
         "Compute usage",
     ) {
@@ -448,6 +501,7 @@ pub fn check_simulation_integrity(
     if let Some(z) = robust_signal_z(
         input.simulation_usage.compute_units as f64,
         &recent_window(&input.baseline.recent_compute_units),
+        MIN_COMPUTE_UNITS_SPREAD,
         input.divergence_threshold,
         "Compute usage (robust median/MAD)",
     ) {
@@ -464,6 +518,7 @@ pub fn check_simulation_integrity(
             input.simulation_usage.account_writes as f64,
             input.baseline.mean_account_writes,
             input.baseline.std_account_writes,
+            MIN_ABSOLUTE_SPREAD,
             input.divergence_threshold,
             "Account write",
         ) {
@@ -472,6 +527,7 @@ pub fn check_simulation_integrity(
         if let Some(z) = robust_signal_z(
             input.simulation_usage.account_writes as f64,
             &recent_window(&input.baseline.recent_account_writes),
+            MIN_ABSOLUTE_SPREAD,
             input.divergence_threshold,
             "Account write (robust median/MAD)",
         ) {
@@ -489,6 +545,7 @@ pub fn check_simulation_integrity(
             input.simulation_usage.cpi_hops as f64,
             input.baseline.mean_cpi_hops,
             input.baseline.std_cpi_hops,
+            MIN_ABSOLUTE_SPREAD,
             input.divergence_threshold,
             "CPI hop",
         ) {
@@ -497,6 +554,7 @@ pub fn check_simulation_integrity(
         if let Some(z) = robust_signal_z(
             input.simulation_usage.cpi_hops as f64,
             &recent_window(&input.baseline.recent_cpi_hops),
+            MIN_ABSOLUTE_SPREAD,
             input.divergence_threshold,
             "CPI hop (robust median/MAD)",
         ) {
@@ -518,6 +576,7 @@ fn mean_std_z(
     value: f64,
     mean: f64,
     std: f64,
+    absolute_floor: f64,
     threshold: f64,
     label: &str,
 ) -> Option<SimulationIntegrityResult> {
@@ -525,7 +584,7 @@ fn mean_std_z(
     // against the floor, not treated as a point. The zero-variance BYPASS
     // (skipping the check when std == 0) stays closed — the check still
     // runs, with a spread that cannot be made arbitrarily small.
-    let std = effective_spread(mean, std);
+    let std = effective_spread(mean, std, absolute_floor);
     let z = (value - mean) / std;
     if z.is_nan() || z.is_infinite() {
         return Some(SimulationIntegrityResult {
@@ -560,6 +619,7 @@ fn mean_std_z(
 fn robust_signal_z(
     value: f64,
     samples: &[f64],
+    absolute_floor: f64,
     threshold: f64,
     label: &str,
 ) -> Option<SimulationIntegrityResult> {
@@ -570,8 +630,9 @@ fn robust_signal_z(
     let d = mad(samples)?;
     // Round 17 (F-16-02): the robust path gets the same floor as the
     // mean/std path — a zero-spread window is a ±25% band, not a point.
-    let z = if d * 1.4826 < effective_spread(m, 0.0) {
-        (value - m) / effective_spread(m, 0.0)
+    let floor = effective_spread(m, 0.0, absolute_floor);
+    let z = if d * 1.4826 < floor {
+        (value - m) / floor
     } else {
         robust_z(value, samples)?
     };
@@ -665,13 +726,13 @@ pub fn update_baseline(
     // S1: the robust windows are winsorized too, against their OWN centre
     // and spread (median ± one effective MAD-spread) — computed before this
     // observation is added, from the same window the check reads.
-    let window_learned = |samples: Vec<f64>, v: f64| -> f64 {
+    let window_learned = |samples: Vec<f64>, v: f64, absolute_floor: f64| -> f64 {
         if samples.len() < MIN_SAMPLES as usize {
             return v;
         }
         match (median(&samples), mad(&samples)) {
             (Some(m), Some(d)) => {
-                let s = effective_spread(m, d * 1.4826);
+                let s = effective_spread(m, d * 1.4826, absolute_floor);
                 let (lo, hi) = ((m - s).max(0.0), m + s);
                 if lo <= hi {
                     v.clamp(lo, hi)
@@ -685,16 +746,19 @@ pub fn update_baseline(
     let window_cu = window_learned(
         recent_window(&baseline.recent_compute_units),
         new_compute_units as f64,
+        MIN_COMPUTE_UNITS_SPREAD,
     )
     .round() as u64;
     let window_aw = window_learned(
         recent_window(&baseline.recent_account_writes),
         f64::from(new_account_writes),
+        MIN_ABSOLUTE_SPREAD,
     )
     .round() as u32;
     let window_ch = window_learned(
         recent_window(&baseline.recent_cpi_hops),
         f64::from(new_cpi_hops),
+        MIN_ABSOLUTE_SPREAD,
     )
     .round() as u32;
 
@@ -713,8 +777,8 @@ pub fn update_baseline(
     // past what honest variation has shown. The bootstrap (fewer than
     // MIN_SAMPLES) has no centre to hold to and records as observed.
     let (learned_cu, learned_aw, learned_ch) = if baseline.sample_count >= MIN_SAMPLES {
-        let clamp = |v: f64, mean: f64, std: f64| {
-            let s = effective_spread(mean, std);
+        let clamp = |v: f64, mean: f64, std: f64, absolute_floor: f64| {
+            let s = effective_spread(mean, std, absolute_floor);
             let (lo, hi) = ((mean - s).max(0.0), mean + s);
             // `f64::clamp` panics on NaN or inverted bounds; a baseline that
             // produces them (a corrupted persisted one) learns the value as
@@ -730,18 +794,21 @@ pub fn update_baseline(
                 new_compute_units as f64,
                 baseline.mean_compute_units,
                 baseline.std_compute_units,
+                MIN_COMPUTE_UNITS_SPREAD,
             )
             .round() as u64,
             clamp(
                 f64::from(new_account_writes),
                 baseline.mean_account_writes,
                 baseline.std_account_writes,
+                MIN_ABSOLUTE_SPREAD,
             )
             .round() as u32,
             clamp(
                 f64::from(new_cpi_hops),
                 baseline.mean_cpi_hops,
                 baseline.std_cpi_hops,
+                MIN_ABSOLUTE_SPREAD,
             )
             .round() as u32,
         )
@@ -811,6 +878,50 @@ pub fn update_baseline(
 
 #[cfg(test)]
 mod tests {
+    /// Round 41 (Assurance run 41195462495, simulation_integrity shard 8/10):
+    /// no test read the running mean and spread `update_baseline` keeps, so
+    /// 13 mutants of the account-writes Welford update survived. During the
+    /// bootstrap (fewer than MIN_SAMPLES) every observation is learned as
+    /// observed, so each signal's mean and standard deviation must be the
+    /// population mean and standard deviation of what was fed in.
+    #[test]
+    fn the_running_mean_and_spread_are_the_samples_own() {
+        let observations: [(u64, u32, u32); 5] = [
+            (1_000, 1, 0),
+            (2_000, 2, 1),
+            (3_000, 3, 2),
+            (4_000, 4, 3),
+            (6_000, 6, 5),
+        ];
+        assert!((observations.len() as u64) < MIN_SAMPLES);
+        let mut baseline = ComputeBaseline::default();
+        for &(cu, aw, ch) in &observations {
+            update_baseline(&mut baseline, cu, aw, ch);
+        }
+        let stats = |xs: Vec<f64>| {
+            let n = xs.len() as f64;
+            let mean = xs.iter().sum::<f64>() / n;
+            let var = xs.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>() / n;
+            (mean, var.sqrt())
+        };
+        let close = |a: f64, b: f64, what: &str| {
+            assert!(
+                (a - b).abs() < 1e-9 * b.abs().max(1.0),
+                "{what}: {a} != {b}"
+            );
+        };
+        let (m, s) = stats(observations.iter().map(|o| o.0 as f64).collect());
+        close(baseline.mean_compute_units, m, "compute units mean");
+        close(baseline.std_compute_units, s, "compute units std");
+        let (m, s) = stats(observations.iter().map(|o| f64::from(o.1)).collect());
+        close(baseline.mean_account_writes, m, "account writes mean");
+        close(baseline.std_account_writes, s, "account writes std");
+        let (m, s) = stats(observations.iter().map(|o| f64::from(o.2)).collect());
+        close(baseline.mean_cpi_hops, m, "CPI hops mean");
+        close(baseline.std_cpi_hops, s, "CPI hops std");
+        assert_eq!(baseline.sample_count, observations.len() as u64);
+    }
+
     /// Round 19 (F-19-21): a history of MIN_SAMPLES observed zero-hop
     /// executions judges a simulation that suddenly makes three CPI hops.
     #[test]
@@ -1399,7 +1510,7 @@ mod tests {
         let small = [1.0, 2.0, 3.0];
         assert_eq!(robust_z(100.0, &small), Some(0.6745 * 98.0 / 1.0));
         // The robust_signal_z gate requires MIN_SAMPLES in the window.
-        let r = robust_signal_z(100.0, &small, 2.0, "t");
+        let r = robust_signal_z(100.0, &small, MIN_ABSOLUTE_SPREAD, 2.0, "t");
         assert!(
             r.is_none(),
             "below MIN_SAMPLES the mean/std path must cover it"

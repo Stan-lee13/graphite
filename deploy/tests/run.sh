@@ -339,6 +339,12 @@ c="$(code -H "Authorization: Bearer $rkey" "$E/api/graph")"
 [ "$c" = 200 ] && ok "edge: GET /api/graph with the read key -> 200" || bad "edge: GET /api/graph -> $c"
 c="$(code -H "Authorization: Bearer $rkey" "$E/manifests")"
 [ "$c" = 200 ] && ok "edge: GET /manifests with the read key -> 200" || bad "edge: GET /manifests -> $c"
+# Round 41 (external review D-7): /api/* is a prefix match in Caddy, so a
+# nested read route reaches the Core; and a path that cleans to /admin does not.
+c="$(code -H "Authorization: Bearer $rkey" "$E/api/protocols/top")"
+[ "$c" = 200 ] && ok "edge: GET /api/protocols/top (nested) with the read key -> 200" || bad "edge: GET /api/protocols/top -> $c"
+c="$(code --path-as-is -H "Authorization: Bearer $key" "$E/api/../admin/quarantine")"
+[ "$c" = 404 ] && ok "edge: GET /api/../admin/quarantine -> 404" || bad "edge: GET /api/../admin/quarantine -> $c (wanted 404)"
 head -c 1100000 /dev/zero | tr '\0' 'a' >"$T/big.json"
 # Thirty times, not once: when Caddy streamed the body, the Core's early 413
 # and close raced its writes and about a third came back 502 (Round 34). The

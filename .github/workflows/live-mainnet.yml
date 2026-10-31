@@ -44,12 +44,12 @@ on:
         default: "200"
         type: string
       blocks:
-        description: "Recent blocks to sample (at least; more are fetched, up to 8, until the sample holds 1,000 transactions: the conformance harness needs 500+ verdicts)"
-        default: "2"
+        description: "Recent blocks to sample (at least; more are fetched, up to 8, until the sample holds 1,000 transactions: the conformance harness needs 500+ verdicts; Round 41: 4, so the honest-swap pass has more swaps to draw from)"
+        default: "4"
         type: string
       pace_seconds:
-        description: "Pause between /verify calls (each one makes several RPC calls)"
-        default: "1.0"
+        description: "Pause between /verify calls (each one makes several RPC calls; Round 41: 2.0, after run 41140520173 hit the public RPC's rate limit on 13 of 38 honest transfers)"
+        default: "2.0"
         type: string
       l8_checks:
         description: "Executed transactions to reconcile through /verify/execution"
@@ -61,6 +61,10 @@ on:
         type: string
       honest_transfers:
         description: "First verify up to N new unsigned 1-lamport / 1-base-unit transfers built from the sample's executed simple transfers (never signed or sent)"
+        default: "40"
+        type: string
+      honest_swaps:
+        description: "Then verify up to N honest direct swaps rebuilt from the sample's executed ones, the minimum re-quoted by RPC simulation (never signed or sent)"
         default: "40"
         type: string
       seed_evidence:
@@ -130,7 +134,7 @@ jobs:
       - name: Fetch recent finalized blocks
         id: fetch
         env:
-          BLOCKS: ${{ inputs.blocks || '2' }}
+          BLOCKS: ${{ inputs.blocks || '4' }}
         run: |
           set +e
           python3 tools/live-measure/live_mainnet.py fetch --rpc "$LIVE_RPC_URL" --blocks "$BLOCKS" --out "$RUNNER_TEMP/sample.json"
@@ -222,11 +226,12 @@ jobs:
         id: replay
         if: steps.fetch.outputs.skip == 'false'
         env:
-          PACE: ${{ inputs.pace_seconds || '1.0' }}
+          PACE: ${{ inputs.pace_seconds || '2.0' }}
           L8: ${{ inputs.l8_checks || '10' }}
           HARNESS_EXIT: ${{ steps.harness.outputs.exit }}
           FRESH: ${{ inputs.fresh_transactions || '40' }}
           HONEST: ${{ inputs.honest_transfers || '40' }}
+          SWAPS: ${{ inputs.honest_swaps || '40' }}
           SEEDED: ${{ steps.seed.outputs.exit == '0' }}
         run: |
           seeded=()
@@ -235,7 +240,7 @@ jobs:
           # --rpc is read from LIVE_RPC_URL (masked) for getLatestBlockhash only.
           python3 tools/live-measure/live_mainnet.py replay --selected "$REPORT_DIR/selected.jsonl" \
             --sample "$RUNNER_TEMP/sample.json" --core http://127.0.0.1:7331 --pace "$PACE" --l8 "$L8" \
-            --fresh "$FRESH" --honest "$HONEST" "${seeded[@]}" --harness-exit "$HARNESS_EXIT" --out-dir "$REPORT_DIR"
+            --fresh "$FRESH" --honest "$HONEST" --swaps "$SWAPS" --requests "$RUNNER_TEMP/requests.jsonl" "${seeded[@]}" --harness-exit "$HARNESS_EXIT" --out-dir "$REPORT_DIR"
           code=$?
           set -e
           echo "exit=$code" >> "$GITHUB_OUTPUT"

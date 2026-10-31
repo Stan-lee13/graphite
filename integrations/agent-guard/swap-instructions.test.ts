@@ -10,9 +10,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import bs58 from "bs58";
 import {
   decodeSwapInstruction,
   jupiterMinimumOut,
+  JUPITER_CANDIDATE_SWAPS,
   JUPITER_SWAP_VARIANTS,
   JUPITER_V6,
   METEORA_DLMM,
@@ -22,7 +24,7 @@ import {
   RAYDIUM_CPMM,
   SwapRouteRefusal,
 } from "./swap-instructions.js";
-import { concentratedData, inMinData, jupiterRouteData, raydiumAmmV4Data } from "./swap-fixtures.js";
+import { concentratedData, inMinData, jupiterRouteData, jupiterRouteV2Data, raydiumAmmV4Data } from "./swap-fixtures.js";
 
 const SCRIPTS = new URL("../../graphite-core/scripts/", import.meta.url);
 type Idl = {
@@ -79,24 +81,86 @@ test("the decoded layouts are the committed IDLs' layouts", () => {
   assert.equal(amm.instructions.find((i) => i.name === "SwapBaseIn")!.discriminator, "09");
 });
 
-test("Jupiter's Swap enum: the decoder's payload table matches the IDL, variant by variant", () => {
-  const jup = idl("idls/jupiter.json");
-  const variants = jup.types!.find((t) => t.name === "Swap")!.type.variants!;
-  assert.equal(JUPITER_SWAP_VARIANTS.length, variants.length);
-  variants.forEach((v, i) => {
-    const fields = (v.fields ?? []) as { type: unknown }[];
-    const sig = JSON.stringify(fields.map((f) => f.type));
-    const expected: Record<string, string> = {
-      "[]": "unit",
-      '["bool"]': "bool",
-      '[{"defined":{"name":"Side"}}]': "side",
-      '["u64","u64"]': "u64u64",
-      '["u32"]': "u32",
-      '["u8","bool","bool"]': "clone",
-      '["bool",{"option":{"defined":{"name":"RemainingAccountsInfo"}}}]': "whirlpoolV2",
-    };
-    assert.equal(JUPITER_SWAP_VARIANTS[i], expected[sig], `variant ${i} ${v.name} ${sig}`);
-  });
+/** The deployed Jupiter v6 program's IDL (Round 41, D-23). */
+const ONCHAIN_JUPITER = "out/onchain_idls/JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4.json";
+
+test("Jupiter v1 and v2 routes: the decoded layouts are the deployed program's IDL", () => {
+  const jup = idl(ONCHAIN_JUPITER);
+  const disc = (name: string) => Buffer.from(jup.instructions.find((x) => x.name === name)!.discriminator!).toString("hex");
+  assert.equal(disc("route"), "e517cb977ae3ad2a");
+  assert.equal(disc("shared_accounts_route"), "c1209b3341d69c81");
+  assert.equal(disc("route_v2"), "bb64facc31c4af14");
+  assert.equal(disc("shared_accounts_route_v2"), "d19853937cfed8e9");
+  const plan = { vec: { defined: { name: "RoutePlanStep" } } };
+  assert.deepEqual(argsOf(jup, "route"), [
+    ["route_plan", plan], ["in_amount", "u64"], ["quoted_out_amount", "u64"], ["slippage_bps", "u16"], ["platform_fee_bps", "u8"],
+  ]);
+  assert.deepEqual(argsOf(jup, "shared_accounts_route"), [["id", "u8"], ...argsOf(jup, "route")]);
+  const v2 = [
+    ["in_amount", "u64"], ["quoted_out_amount", "u64"], ["slippage_bps", "u16"], ["platform_fee_bps", "u16"],
+    ["positive_slippage_bps", "u16"], ["route_plan", { vec: { defined: { name: "RoutePlanStepV2" } } }],
+  ];
+  assert.deepEqual(argsOf(jup, "route_v2"), v2);
+  assert.deepEqual(argsOf(jup, "shared_accounts_route_v2"), [["id", "u8"], ...v2]);
+  const struct = (name: string) =>
+    (jup.types!.find((t) => t.name === name)!.type as unknown as { fields: { name: string; type: unknown }[] }).fields.map((f) => [f.name, f.type]);
+  assert.deepEqual(struct("RoutePlanStep"), [["swap", { defined: { name: "Swap" } }], ["percent", "u8"], ["input_index", "u8"], ["output_index", "u8"]]);
+  assert.deepEqual(struct("RoutePlanStepV2"), [["swap", { defined: { name: "Swap" } }], ["bps", "u16"], ["input_index", "u8"], ["output_index", "u8"]]);
+  assert.deepEqual(struct("RemainingAccountsSlice"), [["accounts_type", "u8"], ["length", "u8"]]);
+  assert.deepEqual(struct("CandidateSwapWithBps"), [["candidate_swap", { defined: { name: "CandidateSwap" } }], ["bps", "u32"]]);
+});
+
+test("Jupiter's Swap and CandidateSwap enums: the decoder's payload tables match the deployed IDL, variant by variant", () => {
+  const jup = idl(ONCHAIN_JUPITER);
+  type T = string | { defined?: { name: string }; array?: [unknown, number]; option?: unknown; vec?: { defined: { name: string } } };
+  const typeOf = (name: string) => jup.types!.find((t) => t.name === name)!.type;
+  const token = (t: T): string => {
+    if (typeof t === "string") return t;
+    if (t.defined) {
+      if (t.defined.name === "RemainingAccountsInfo") return "rai";
+      const e = typeOf(t.defined.name);
+      assert.equal(e.kind, "enum", t.defined.name);
+      assert.ok(e.variants!.every((v) => v.fields === undefined), `${t.defined.name} is a unit enum`);
+      return `enum${e.variants!.length}`;
+    }
+    if (t.array) return `${token(t.array[0] as T)}x${t.array[1]}`;
+    if (t.option) return `option<${token(t.option as T)}>`;
+    if (t.vec) return ({ CandidateSwap: "vec<candidate>", CandidateSwapWithBps: "vec<candidate_bps>" } as Record<string, string>)[t.vec.defined.name]!;
+    throw new Error(`unmapped ${JSON.stringify(t)}`);
+  };
+  for (const [name, table] of [["Swap", JUPITER_SWAP_VARIANTS], ["CandidateSwap", JUPITER_CANDIDATE_SWAPS]] as const) {
+    const variants = typeOf(name).variants!;
+    assert.equal(table.length, variants.length, name);
+    variants.forEach((v, i) => {
+      const fields = (v.fields ?? []) as { type: T }[];
+      assert.deepEqual(table[i], fields.map((f) => token(f.type)), `${name} variant ${i} ${v.name}`);
+    });
+  }
+  assert.equal(JUPITER_SWAP_VARIANTS.length, 204);
+  assert.equal(JUPITER_CANDIDATE_SWAPS.length, 20);
+});
+
+test("Jupiter route_v2: amounts, minimum and refusals, and a v2 route reads as its v1 twin", () => {
+  for (const shared of [false, true]) {
+    const sel = shared ? "d19853937cfed8e9" : "bb64facc31c4af14";
+    const d = decodeSwapInstruction(JUPITER_V6, Uint8Array.from(jupiterRouteV2Data({ shared })), sel);
+    assert.deepEqual([d.amountIn, d.minOut, d.discriminator], [1_000_000_000n, 149_250_000n, sel]);
+    const v1 = decodeSwapInstruction(JUPITER_V6, Uint8Array.from(jupiterRouteData({ shared })));
+    assert.deepEqual([d.amountIn, d.minOut], [v1.amountIn, v1.minOut], "a v2 route and its v1 twin read alike");
+  }
+  const refused = (data: number[], why: RegExp) => assert.throws(() => decodeSwapInstruction(JUPITER_V6, Uint8Array.from(data)), why);
+  refused(jupiterRouteV2Data({ platformFeeBps: 1 }), /platform_fee_bps is 1/);
+  refused(jupiterRouteV2Data({ positiveSlippageBps: 1 }), /positive_slippage_bps is 1/);
+  refused(jupiterRouteV2Data({ slippageBps: 10_001 }), /over 100%/);
+  refused(jupiterRouteV2Data({ trailing: [0] }), /follow the last argument/);
+  refused(jupiterRouteV2Data({ rawPlan: [0, 0, 0, 0] }), /no steps/);
+  refused(jupiterRouteV2Data({ rawPlan: [1, 0, 0, 0, 204, 0x10, 0x27, 0, 1] }), /Swap variant 204/);
+  refused(jupiterRouteV2Data({ rawPlan: [1, 0, 0, 0, 12, 2, 0x10, 0x27, 0, 1] }), /enum tag 2, past its 2 variants/);
+  refused(jupiterRouteV2Data().slice(0, -1), /ends inside/);
+  // A DynamicV2 step: two candidates (Whirlpool a_to_b, RaydiumClmm), each with bps, then two u8.
+  const dynamic = [1, 0, 0, 0, 146, 2, 0, 0, 0, 5, 1, 0x88, 0x13, 0, 0, 4, 0x88, 0x13, 0, 0, 3, 3, 0x10, 0x27, 0, 1];
+  assert.equal(decodeSwapInstruction(JUPITER_V6, Uint8Array.from(jupiterRouteV2Data({ rawPlan: dynamic }))).minOut, 149_250_000n);
+  refused(jupiterRouteV2Data({ rawPlan: [1, 0, 0, 0, 111, 1, 0, 0, 0, 20, 0, 0x10, 0x27, 0, 1] }), /CandidateSwap variant 20/);
 });
 
 test("each decoded program yields its amount in and its own minimum out", () => {
@@ -151,8 +215,10 @@ test("the data must end where the layout ends, and Borsh tags are strict", () =>
   whirl[8 + 32] = 2;
   refused(ORCA_WHIRLPOOLS, whirl, /not a Borsh bool/);
   refused(ORCA_WHIRLPOOLS, [...concentratedData("2b04ed0b1ac91e62", { amount: 1n, threshold: 1n, exactIn: true, whirlpool: true }), 2], /Option tag 2/);
-  refused(JUPITER_V6, jupiterRouteData({ rawPlan: [1, 0, 0, 0, 62, 100, 0, 1] }), /Swap variant 62/);
-  refused(JUPITER_V6, jupiterRouteData({ rawPlan: [1, 0, 0, 0, 42, 1, 1, 1, 0, 0, 0, 2, 3, 100, 0, 1] }), /AccountsType 2/);
+  // Round 41 (D-23, D-27): the deployed enum has 204 variants (62 was the first past the old table), and
+  // WhirlpoolSwapV2 is variant 47, whose remaining-accounts Option must have a tag of 0 or 1.
+  refused(JUPITER_V6, jupiterRouteData({ rawPlan: [1, 0, 0, 0, 204, 100, 0, 1] }), /Swap variant 204/);
+  refused(JUPITER_V6, jupiterRouteData({ rawPlan: [1, 0, 0, 0, 47, 1, 2, 100, 0, 1] }), /Option tag 2/);
   refused(JUPITER_V6, jupiterRouteData({ rawPlan: [0, 0, 0, 0] }), /no steps/);
   refused(JUPITER_V6, jupiterRouteData({ rawPlan: [255, 255, 255, 255] }), /more than 32/);
   refused(JUPITER_V6, jupiterRouteData({ slippageBps: 10_001 }), /over 100%/);
@@ -160,7 +226,8 @@ test("the data must end where the layout ends, and Borsh tags are strict", () =>
 
 test("a selector the guard does not decode, on a program it does, is refused; so is a mismatched declaration", () => {
   assert.throws(
-    () => decodeSwapInstruction(JUPITER_V6, Uint8Array.from([...Buffer.from("bb64facc31c4af14", "hex"), 0])),
+    // `route_with_token_ledger`: its input amount is not in its data.
+    () => decodeSwapInstruction(JUPITER_V6, Uint8Array.from([...Buffer.from("96564774a75d0e68", "hex"), 0])),
     /not an exact-in swap whose data the guard decodes/,
   );
   assert.throws(
@@ -173,4 +240,20 @@ test("a selector the guard does not decode, on a program it does, is refused; so
   );
   assert.throws(() => decodeSwapInstruction("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", new Uint8Array(9)), /not a program/);
   assert.throws(() => decodeSwapInstruction(RAYDIUM_CPMM, Uint8Array.from(inMinData("8fbe5adac41e33de", 0n, 1n))), /input amount is 0/);
+});
+
+test("the pinned mainnet route_v2 (slot 438012579) reads to its end; refused for its 150 bps platform fee only", () => {
+  const fixture = JSON.parse(readFileSync(new URL("../tests/fixtures/real_mainnet_jup.json", SCRIPTS), "utf8")) as {
+    transaction: { message: { accountKeys: string[]; instructions: { programIdIndex: number; data: string }[] } };
+  };
+  const m = fixture.transaction.message;
+  const route = m.instructions.find((ix) => m.accountKeys[ix.programIdIndex] === JUPITER_V6)!;
+  const data = bs58.decode(route.data);
+  assert.equal(Buffer.from(data.subarray(0, 8)).toString("hex"), "bb64facc31c4af14");
+  assert.throws(() => decodeSwapInstruction(JUPITER_V6, data), /platform_fee_bps is 150/);
+  const feeFree = Uint8Array.from(data);
+  feeFree[26] = 0;
+  feeFree[27] = 0;
+  const d = decodeSwapInstruction(JUPITER_V6, feeFree);
+  assert.deepEqual([d.amountIn, d.minOut], [2_200_000_000n, (85_363_099_743n * 9_100n) / 10_000n]);
 });

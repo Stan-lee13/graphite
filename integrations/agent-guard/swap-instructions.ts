@@ -19,8 +19,11 @@
  * The guard now builds a swap only from an instruction it decodes here, with
  * certainty, from the layouts committed in this repository:
  *
- *   Jupiter v6 `route`, `shared_accounts_route`
- *       graphite-core/scripts/idls/jupiter.json
+ *   Jupiter v6 `route`, `shared_accounts_route`, `route_v2`,
+ *   `shared_accounts_route_v2` (Round 41, D-23)
+ *       graphite-core/scripts/out/onchain_idls/JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4.json
+ *       (the deployed program's IDL; `scripts/idls/jupiter.json` agrees with
+ *       it on the v1 arguments but not on the Swap enum past variant 40)
  *   Orca Whirlpools `swap`, `swapV2`
  *       graphite-core/scripts/idls/orca-whirlpools.json (+ scripts/whirlpool_idl.json)
  *   Raydium CPMM `swap_base_input`        graphite-core/scripts/idls/raydium_cpmm.json
@@ -37,12 +40,12 @@
  * this file does not know, or a length past the data is a refusal.
  *
  * Left out, deliberately:
- *   - Jupiter `route_v2` / `shared_accounts_route_v2` (bb64facc31c4af14 /
- *     d19853937cfed8e9) and the `*_with_token_ledger` routes. No committed IDL
- *     carries the deployed v2 argument layout (`jupiter_v6_surfpool.json`'s
- *     discriminators are not the deployed ones), and a token-ledger route's
- *     input amount is not in its data. A route the guard cannot read is a
- *     route whose minimum it cannot hold anyone to.
+ *   - Jupiter's `*_with_token_ledger` routes: their input amount is not in
+ *     their data. A route the guard cannot read is a route whose minimum it
+ *     cannot hold anyone to.
+ *   - Jupiter `route_v2` / `shared_accounts_route_v2` with a non-zero
+ *     `positive_slippage_bps`: nothing committed says what it takes from the
+ *     output, so the delivered amount is not bounded by the route's bytes.
  *   - Jupiter's platform fee: a route with `platform_fee_bps > 0` is refused,
  *     because the fee is taken from the output the minimum is computed on.
  *   - Every exact-output form, named by its own refusal below.
@@ -155,90 +158,343 @@ function hex(bytes: Uint8Array): string {
 }
 
 /**
- * Jupiter v6 `Swap` enum (graphite-core/scripts/idls/jupiter.json, variants
- * 0..61): the argument bytes each variant carries. `swap-instructions.test.ts`
- * checks this table against the committed IDL, variant by variant.
- *   "unit": none; "bool"; "side" (enum Side, tag 0..1); "u64u64"; "u32";
- *   "clone" (u8, bool, bool); "whirlpoolV2" (bool, Option<RemainingAccountsInfo>).
+ * Jupiter v6 `Swap` enum, as the committed ON-CHAIN IDL states it
+ * (graphite-core/scripts/out/onchain_idls/JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4.json,
+ * variants 0..203): one Borsh field per token (Round 41, D-23; 188..203 from
+ * the IDL deployed on 2026-10-31, D-27).
+ *   "bool", "u8", "u16", "u32", "u64", "u128": the scalar (a bool is 0 or 1);
+ *   "enumN": a unit enum with N variants (Side is "enum2");
+ *   "u8xN", "u64xN": a fixed array; "bytes": a Vec<u8>;
+ *   "rai": RemainingAccountsInfo { slices: Vec<{ accounts_type: u8, length: u8 }> };
+ *   "option<T>": an Option (tag 0 or 1) of T;
+ *   "vec<candidate>" / "vec<candidate_bps>": Vec<CandidateSwap> /
+ *   Vec<CandidateSwapWithBps { candidate_swap, bps: u32 }>, each CandidateSwap
+ *   read from JUPITER_CANDIDATE_SWAPS.
+ * Until Round 41 this was the 62 variants of scripts/idls/jupiter.json, which
+ * agrees with the deployed program only up to variant 40.
+ * `swap-instructions.test.ts` checks both tables against the on-chain IDL,
+ * variant by variant; the Core's `round36_intent_binding` checks they are the
+ * Core's tables.
  */
-export type JupiterSwapPayload = "unit" | "bool" | "side" | "u64u64" | "u32" | "clone" | "whirlpoolV2";
-export const JUPITER_SWAP_VARIANTS: readonly JupiterSwapPayload[] = [
-  "unit", "unit", "unit", "unit", "unit", "unit", "unit", "unit", // 0-7 Saber..Raydium
-  "bool", // 8 Crema
-  "unit", "unit", "unit", // 9-11 Lifinity, Mercurial, Cykura
-  "side", // 12 Serum
-  "unit", "unit", // 13-14 MarinadeDeposit, MarinadeUnstake
-  "side", "side", // 15-16 Aldrin, AldrinV2
-  "bool", "bool", // 17-18 Whirlpool, Invariant
-  "unit", "unit", // 19-20 Meteora, GooseFX
-  "bool", // 21 DeltaFi
-  "unit", // 22 Balansol
-  "bool", // 23 MarcoPolo
-  "side", // 24 Dradex
-  "unit", "unit", // 25-26 LifinityV2, RaydiumClmm
-  "side", "side", // 27-28 Openbook, Phoenix
-  "u64u64", // 29 Symmetry
-  "unit", "unit", "unit", // 30-32 TokenSwapV2, HeliumTreasury…, StakeDexStakeWrappedSol
-  "u32", // 33 StakeDexSwapViaStake
-  "unit", "unit", "unit", "unit", "unit", // 34-38 GooseFXV2, Perps…, MeteoraDlmm
-  "side", // 39 OpenBookV2
-  "unit", // 40 RaydiumClmmV2
-  "clone", // 41 Clone
-  "whirlpoolV2", // 42 WhirlpoolSwapV2
-  "unit", "unit", "unit", "unit", "unit", "unit", "unit", "unit", "unit", "unit", // 43-52
-  "bool", // 53 Obric
-  "unit", // 54 FoxBuyFromEstimatedCost
-  "bool", "bool", // 55-56 FoxClaimPartial, SolFi
-  "unit", "unit", // 57-58 Solayer…
-  "side", // 59 TokenMill
-  "unit", "unit", // 60-61 DaosFunBuy, DaosFunSell
+export const JUPITER_SWAP_VARIANTS: readonly (readonly string[])[] = [
+  [], // 0 Saber
+  [], // 1 SaberAddDecimalsDeposit
+  [], // 2 SaberAddDecimalsWithdraw
+  [], // 3 TokenSwap
+  [], // 4 Sencha
+  [], // 5 Step
+  [], // 6 Cropper
+  [], // 7 Raydium
+  ["bool"], // 8 Crema
+  [], // 9 Lifinity
+  [], // 10 Mercurial
+  [], // 11 Cykura
+  ["enum2"], // 12 Serum
+  [], // 13 MarinadeDeposit
+  [], // 14 MarinadeUnstake
+  ["enum2"], // 15 Aldrin
+  ["enum2"], // 16 AldrinV2
+  ["bool"], // 17 Whirlpool
+  ["bool"], // 18 Invariant
+  [], // 19 Meteora
+  [], // 20 GooseFX
+  ["bool"], // 21 DeltaFi
+  [], // 22 Balansol
+  ["bool"], // 23 MarcoPolo
+  ["enum2"], // 24 Dradex
+  [], // 25 LifinityV2
+  [], // 26 RaydiumClmm
+  ["enum2"], // 27 Openbook
+  ["enum2"], // 28 Phoenix
+  ["u64", "u64"], // 29 Symmetry
+  [], // 30 TokenSwapV2
+  [], // 31 HeliumTreasuryManagementRedeemV0
+  [], // 32 StakeDexStakeWrappedSol
+  ["u32"], // 33 StakeDexSwapViaStake
+  [], // 34 GooseFXV2
+  [], // 35 Perps
+  [], // 36 PerpsAddLiquidity
+  [], // 37 PerpsRemoveLiquidity
+  [], // 38 MeteoraDlmm
+  ["enum2"], // 39 OpenBookV2
+  [], // 40 RaydiumClmmV2
+  ["u32"], // 41 StakeDexPrefundWithdrawStakeAndDepositStake
+  ["u8", "bool", "bool"], // 42 Clone
+  ["u8", "u8", "u32", "u32"], // 43 SanctumS
+  ["u8", "u32"], // 44 SanctumSAddLiquidity
+  ["u8", "u32"], // 45 SanctumSRemoveLiquidity
+  [], // 46 RaydiumCP
+  ["bool", "option<rai>"], // 47 WhirlpoolSwapV2
+  [], // 48 OneIntro
+  [], // 49 PumpWrappedBuy
+  [], // 50 PumpWrappedSell
+  [], // 51 PerpsV2
+  [], // 52 PerpsV2AddLiquidity
+  [], // 53 PerpsV2RemoveLiquidity
+  [], // 54 MoonshotWrappedBuy
+  [], // 55 MoonshotWrappedSell
+  [], // 56 StabbleStableSwap
+  [], // 57 StabbleWeightedSwap
+  ["bool"], // 58 Obric
+  [], // 59 FoxBuyFromEstimatedCost
+  ["bool"], // 60 FoxClaimPartial
+  ["bool"], // 61 SolFi
+  [], // 62 SolayerDelegateNoInit
+  [], // 63 SolayerUndelegateNoInit
+  ["enum2"], // 64 TokenMill
+  [], // 65 DaosFunBuy
+  [], // 66 DaosFunSell
+  [], // 67 ZeroFi
+  [], // 68 StakeDexWithdrawWrappedSol
+  [], // 69 VirtualsBuy
+  [], // 70 VirtualsSell
+  ["u8", "u8"], // 71 Perena
+  [], // 72 PumpSwapBuy
+  [], // 73 PumpSwapSell
+  [], // 74 Gamma
+  ["rai"], // 75 MeteoraDlmmSwapV2
+  [], // 76 Woofi
+  [], // 77 MeteoraDammV2
+  [], // 78 MeteoraDynamicBondingCurveSwap
+  [], // 79 StabbleStableSwapV2
+  [], // 80 StabbleWeightedSwapV2
+  ["u64"], // 81 RaydiumLaunchlabBuy
+  ["u64"], // 82 RaydiumLaunchlabSell
+  [], // 83 BoopdotfunWrappedBuy
+  [], // 84 BoopdotfunWrappedSell
+  ["enum2"], // 85 Plasma
+  ["bool", "u8"], // 86 GoonFi
+  ["u64", "bool"], // 87 HumidiFi
+  [], // 88 MeteoraDynamicBondingCurveSwapWithRemainingAccounts
+  ["enum2"], // 89 TesseraV
+  [], // 90 PumpWrappedBuyV2
+  [], // 91 PumpWrappedSellV2
+  [], // 92 PumpSwapBuyV2
+  [], // 93 PumpSwapSellV2
+  ["bool"], // 94 Heaven
+  ["bool"], // 95 SolFiV2
+  [], // 96 Aquifer
+  [], // 97 PumpWrappedBuyV3
+  [], // 98 PumpWrappedSellV3
+  [], // 99 PumpSwapBuyV3
+  [], // 100 PumpSwapSellV3
+  [], // 101 JupiterLendDeposit
+  [], // 102 JupiterLendRedeem
+  ["bool", "option<rai>"], // 103 DefiTuna
+  ["bool"], // 104 AlphaQ
+  [], // 105 RaydiumV2
+  ["bool"], // 106 SarosDlmm
+  ["enum2"], // 107 Futarchy
+  [], // 108 MeteoraDammV2WithRemainingAccounts
+  [], // 109 Obsidian
+  ["enum2"], // 110 WhaleStreet
+  ["vec<candidate>", "option<u8>"], // 111 DynamicV1
+  [], // 112 PumpWrappedBuyV4
+  [], // 113 PumpWrappedSellV4
+  [], // 114 CarrotIssue
+  [], // 115 CarrotRedeem
+  ["enum2"], // 116 Manifest
+  ["bool"], // 117 BisonFi
+  ["u64", "bool"], // 118 HumidiFiV2
+  ["bool"], // 119 PerenaStar
+  ["enum2", "bytes"], // 120 JupiterRfqV2
+  ["bool"], // 121 GoonFiV2
+  ["u128"], // 122 Scorch
+  ["u64x5", "u64"], // 123 VaultLiquidUnstake
+  [], // 124 XOrca
+  ["enum2"], // 125 Quantum
+  ["enum2", "u64", "u64"], // 126 WhaleStreetV2
+  ["bool"], // 127 Riptide
+  [], // 128 RunnerRodeo
+  ["bool"], // 129 TaurusFi
+  [], // 130 Omnipair
+  [], // 131 MSwap
+  ["enum8"], // 132 Hylo
+  [], // 133 VoltrDeposit
+  [], // 134 VoltrWithdraw
+  ["u8", "u8", "u32", "u32"], // 135 SanctumSV2
+  ["bool"], // 136 LemmingsFi
+  [], // 137 ScaleVmmBuy
+  [], // 138 ScaleVmmSell
+  [], // 139 ScaleAmmBuy
+  [], // 140 ScaleAmmSell
+  ["bool"], // 141 BisonFiV2
+  [], // 142 Trends
+  [], // 143 HumaDeposit
+  [], // 144 HumaInstantWithdraw
+  ["bool"], // 145 Kipseli
+  ["vec<candidate_bps>", "u8", "u8"], // 146 DynamicV2
+  [], // 147 PumpSwapBuyV3WithCashbackClaim
+  [], // 148 PumpSwapSellV3WithCashbackClaim
+  [], // 149 PumpWrappedBuyV4WithCashbackClaim
+  [], // 150 PumpWrappedSellV4WithCashbackClaim
+  ["bool"], // 151 GoonFiV3
+  ["bool"], // 152 PumpWrappedBuyV5
+  ["bool"], // 153 PumpWrappedSellV5
+  [], // 154 ZeroFiSwapV2
+  ["enum2", "bool"], // 155 BisonFiPredict
+  [], // 156 ByrealDynamicV3
+  ["u64", "bool"], // 157 Flux
+  [], // 158 VaultLiquidSellLst
+  ["u64"], // 159 VaultLiquidBuyLst
+  ["bool"], // 160 KipseliV2
+  ["enum2", "u32"], // 161 Deriverse
+  ["bool"], // 162 Hadron
+  [], // 163 BinaryFi
+  ["bool"], // 164 Metric
+  ["bool"], // 165 JupiterLendDexSwap
+  ["bool"], // 166 Gatorswap
+  ["bool", "bool"], // 167 Flint
+  ["bool"], // 168 Denali
+  [], // 169 PerenaStarV2Deposit
+  ["u8"], // 170 PerenaStarV2WithdrawFromExternal
+  ["enum3"], // 171 SanctumSols
+  ["enum8"], // 172 HyloV2
+  [], // 173 SanctumPamm
+  ["enum2"], // 174 Archer
+  [], // 175 TrenchWrappedBuy
+  [], // 176 TrenchWrappedSell
+  ["bool"], // 177 BisonFiMarketBacked
+  ["enum2"], // 178 TesseraVV2
+  [], // 179 Stableswap
+  [], // 180 BinaryFiV2
+  ["bool"], // 181 KipseliV3
+  ["enum2"], // 182 PerenaStarV2TrancheDeposit
+  ["enum2", "option<u8>"], // 183 PerenaStarV2TrancheWithdrawFromExternal
+  ["bool"], // 184 Quay
+  ["u64", "u8x32", "u8x16", "bool"], // 185 HumidiFiRouter
+  ["u64", "u64", "u8x32", "u8x16", "bool"], // 186 HumidiFiRouterV2
+  ["bool", "bool"], // 187 PumpWrappedBuyV6
+  [], // 188 HyloRouter
+  ["bool"], // 189 Memefun
+  ["u64", "u64", "u64", "u64", "u8x32", "u8x16", "bool"], // 190 HumidiFiRouterV3
+  ["bool", "bool"], // 191 PumpWrappedBuyV7
+  ["bool"], // 192 PumpWrappedSellV6
+  ["bool"], // 193 PumpSwapBuyV4
+  ["bool"], // 194 PumpSwapSellV4
+  [], // 195 ZeroFiSwapV3
+  ["bool"], // 196 DenaliV2
+  ["enum2"], // 197 QuantumV2
+  [], // 198 DrFraudsworthSolBuy
+  ["bool"], // 199 DrFraudsworthSolSell
+  [], // 200 DrFraudsworthSplBuy
+  [], // 201 DrFraudsworthSplSell
+  [], // 202 DrFraudsworthVaultConvert
+  ["bool"], // 203 BisonFiMarketBackedV2
 ];
-/** Jupiter's `AccountsType` (TransferHookA, TransferHookB): unit variants only. */
-const JUPITER_ACCOUNTS_TYPES = 2;
+/** Jupiter v6 `CandidateSwap` (the on-chain IDL, variants 0..19), tokens as above. */
+export const JUPITER_CANDIDATE_SWAPS: readonly (readonly string[])[] = [
+  ["u64", "bool"], // 0 HumidiFi
+  ["enum2"], // 1 TesseraV
+  ["u64", "bool"], // 2 HumidiFiV2
+  [], // 3 RaydiumV2
+  [], // 4 RaydiumClmm
+  ["bool"], // 5 Whirlpool
+  [], // 6 ZeroFi
+  ["bool"], // 7 BisonFiV2
+  ["bool"], // 8 GoonFiV2
+  ["bool"], // 9 GoonFiV3
+  ["bool", "option<rai>"], // 10 WhirlpoolV2
+  [], // 11 ZeroFiSwapV2
+  ["bool"], // 12 BisonFiMarketBacked
+  [], // 13 RaydiumClmmV2
+  ["enum2"], // 14 TesseraVV2
+  ["u64", "u8x32", "u8x16", "bool"], // 15 HumidiFiRouter
+  ["u64", "u64", "u8x32", "u8x16", "bool"], // 16 HumidiFiRouterV2
+  ["u64", "u64", "u64", "u64", "u8x32", "u8x16", "bool"], // 17 HumidiFiRouterV3
+  [], // 18 ZeroFiSwapV3
+  ["bool"], // 19 BisonFiMarketBackedV2
+];
 /** Orca Whirlpools' `AccountsType`: nine unit variants. */
 const WHIRLPOOL_ACCOUNTS_TYPES = 9;
 /** A route longer than this is not a route this guard has a reason to read. */
 const MAX_ROUTE_STEPS = 32;
 const MAX_REMAINING_SLICES = 16;
 
-function jupiterSwapPayload(r: Reader, step: number): void {
-  const tag = r.u8(`route_plan[${step}].swap`);
-  const kind = JUPITER_SWAP_VARIANTS[tag];
-  if (kind === undefined) {
-    throw new SwapRouteRefusal(
-      `Jupiter route step ${step} uses Swap variant ${tag}, past the ${JUPITER_SWAP_VARIANTS.length} ` +
-        "variants of the committed IDL; its layout is not one the guard can read",
-    );
-  }
-  const f = `route_plan[${step}].swap(${tag})`;
-  switch (kind) {
-    case "unit":
-      return;
+const MAX_CANDIDATE_SWAPS = 32;
+const MAX_SWAP_BYTES = 1024;
+
+/** One Borsh field of a Jupiter Swap / CandidateSwap payload, by its token. An unknown token is a refusal. */
+function jupiterField(r: Reader, token: string, f: string): void {
+  switch (token) {
     case "bool":
       r.bool(f);
       return;
-    case "side": {
-      const side = r.u8(f);
-      if (side > 1) throw new SwapRouteRefusal(`Jupiter ${f} has Side ${side}`);
+    case "u8":
+      r.u8(f);
       return;
-    }
-    case "u64u64":
-      r.u64(f);
-      r.u64(f);
+    case "u16":
+      r.u16(f);
       return;
     case "u32":
       r.u32(f);
       return;
-    case "clone":
-      r.u8(f);
-      r.bool(f);
-      r.bool(f);
+    case "u64":
+      r.u64(f);
       return;
-    case "whirlpoolV2":
-      r.bool(f);
-      if (r.option(f)) remainingAccountsInfo(r, f, JUPITER_ACCOUNTS_TYPES, false);
+    case "u128":
+    case "u8x16":
+      r.skip(16, f);
       return;
+    case "u8x32":
+      r.skip(32, f);
+      return;
+    case "u64x5":
+      r.skip(40, f);
+      return;
+    case "bytes":
+      r.skip(r.vecLen(f, MAX_SWAP_BYTES), f);
+      return;
+    case "rai": {
+      const n = r.vecLen(`${f}.slices`, MAX_REMAINING_SLICES);
+      for (let i = 0; i < n; i++) {
+        r.u8(`${f}.slices[${i}].accounts_type`);
+        r.u8(`${f}.slices[${i}].length`);
+      }
+      return;
+    }
+    case "option<u8>":
+      if (r.option(f)) r.u8(f);
+      return;
+    case "option<rai>":
+      if (r.option(f)) jupiterField(r, "rai", f);
+      return;
+    case "vec<candidate>":
+    case "vec<candidate_bps>": {
+      const n = r.vecLen(f, MAX_CANDIDATE_SWAPS);
+      for (let i = 0; i < n; i++) {
+        const tag = r.u8(`${f}[${i}]`);
+        const fields = JUPITER_CANDIDATE_SWAPS[tag];
+        if (fields === undefined) {
+          throw new SwapRouteRefusal(
+            `Jupiter ${f}[${i}] names CandidateSwap variant ${tag}, past the ${JUPITER_CANDIDATE_SWAPS.length} of the committed on-chain IDL`,
+          );
+        }
+        for (const t of fields) jupiterField(r, t, `${f}[${i}](${tag})`);
+        if (token === "vec<candidate_bps>") r.u32(`${f}[${i}].bps`);
+      }
+      return;
+    }
   }
+  const variants = /^enum(\d+)$/.exec(token);
+  if (variants) {
+    const tag = r.u8(f);
+    if (tag >= Number(variants[1])) throw new SwapRouteRefusal(`Jupiter ${f} has enum tag ${tag}, past its ${variants[1]} variants`);
+    return;
+  }
+  throw new SwapRouteRefusal(`Jupiter ${f} has a field of type ${token}, which the guard does not read`);
+}
+
+function jupiterSwapPayload(r: Reader, step: number): void {
+  const tag = r.u8(`route_plan[${step}].swap`);
+  const fields = JUPITER_SWAP_VARIANTS[tag];
+  if (fields === undefined) {
+    throw new SwapRouteRefusal(
+      `Jupiter route step ${step} uses Swap variant ${tag}, past the ${JUPITER_SWAP_VARIANTS.length} ` +
+        "variants of the committed on-chain IDL; its layout is not one the guard can read",
+    );
+  }
+  for (const t of fields) jupiterField(r, t, `route_plan[${step}].swap(${tag})`);
 }
 
 /** `RemainingAccountsInfo { slices: Vec<{ accounts_type: AccountsType, length: u8 }> }`. */
@@ -291,6 +547,47 @@ function decodeJupiterRoute(data: Uint8Array, shared: boolean, name: string, dis
   return { programId: JUPITER_V6, name, discriminator: disc, amountIn, minOut: jupiterMinimumOut(quotedOut, slippageBps) };
 }
 
+/**
+ * Jupiter v6 `route_v2` / `shared_accounts_route_v2` (Round 41, D-23), as the
+ * on-chain IDL lays them out: [id u8], in_amount u64, quoted_out_amount u64,
+ * slippage_bps u16, platform_fee_bps u16, positive_slippage_bps u16, then
+ * route_plan: Vec<RoutePlanStepV2 { swap, bps u16, input_index u8,
+ * output_index u8 }>. Every byte read; platform and positive-slippage fees
+ * must be 0; the minimum is the v1 route's.
+ */
+function decodeJupiterRouteV2(data: Uint8Array, shared: boolean, name: string, disc: string): DecodedSwap {
+  const r = new Reader(data, 8, name);
+  if (shared) r.u8("id");
+  const amountIn = r.u64("in_amount");
+  const quotedOut = r.u64("quoted_out_amount");
+  const slippageBps = r.u16("slippage_bps");
+  const platformFeeBps = r.u16("platform_fee_bps");
+  const positiveSlippageBps = r.u16("positive_slippage_bps");
+  const steps = r.vecLen("route_plan", MAX_ROUTE_STEPS);
+  if (steps === 0) throw new SwapRouteRefusal(`${name}: the route has no steps`);
+  for (let i = 0; i < steps; i++) {
+    jupiterSwapPayload(r, i);
+    r.u16(`route_plan[${i}].bps`);
+    r.u8(`route_plan[${i}].input_index`);
+    r.u8(`route_plan[${i}].output_index`);
+  }
+  r.end();
+  if (slippageBps > 10_000) throw new SwapRouteRefusal(`${name}: slippage_bps ${slippageBps} is over 100%`);
+  if (platformFeeBps !== 0) {
+    throw new SwapRouteRefusal(
+      `${name}: platform_fee_bps is ${platformFeeBps}. A platform fee is taken from the output the ` +
+        "route's minimum is computed on; the guard builds fee-free routes only",
+    );
+  }
+  if (positiveSlippageBps !== 0) {
+    throw new SwapRouteRefusal(
+      `${name}: positive_slippage_bps is ${positiveSlippageBps}; nothing committed says what it takes from the ` +
+        "output, so the delivered amount is not bounded by the route's bytes",
+    );
+  }
+  return { programId: JUPITER_V6, name, discriminator: disc, amountIn, minOut: jupiterMinimumOut(quotedOut, slippageBps) };
+}
+
 /** `amount, other_amount_threshold, sqrt_price_limit (u128), <exact-in flag>, [a_to_b]` (Whirlpool / CLMM). */
 function decodeConcentrated(
   data: Uint8Array,
@@ -337,6 +634,8 @@ const DECODERS: ReadonlyMap<string, ReadonlyMap<string, Decoder>> = new Map<stri
     new Map<string, Decoder>([
       ["e517cb977ae3ad2a", (d) => decodeJupiterRoute(d, false, "Jupiter v6 route", "e517cb977ae3ad2a")],
       ["c1209b3341d69c81", (d) => decodeJupiterRoute(d, true, "Jupiter v6 shared_accounts_route", "c1209b3341d69c81")],
+      ["bb64facc31c4af14", (d) => decodeJupiterRouteV2(d, false, "Jupiter v6 route_v2", "bb64facc31c4af14")],
+      ["d19853937cfed8e9", (d) => decodeJupiterRouteV2(d, true, "Jupiter v6 shared_accounts_route_v2", "d19853937cfed8e9")],
     ]),
   ],
   [

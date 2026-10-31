@@ -666,7 +666,13 @@ fn assess_impl(
             if !discriminator.is_empty() {
                 let declared = discriminator.as_str();
                 let selector = normalize_discriminator(pattern.discriminator);
-                if declared.len() < selector.len() && selector.starts_with(declared) {
+                // A strict prefix: `selector` begins with `declared` and goes
+                // on. (Equal text never reaches here: `disc_matches` above has
+                // already refused it.)
+                if selector
+                    .strip_prefix(declared)
+                    .is_some_and(|rest| !rest.is_empty())
+                {
                     return Ok(RiskVerdict::Blocked {
                         pattern: pattern.pattern,
                         reason: format!(
@@ -1787,6 +1793,73 @@ mod tests {
     const WALLET_A: &str = "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU";
     const WALLET_B: &str = "DuFgLf6zzf2N9v3iT4NrkdTPDSD2xK52CCnx6Ag2ckTP";
     const MINT: &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
+    /// Round 41 (Assurance run 41195462495, risk_engine shard 0/12): no test
+    /// read what `short_id` returns, so replacing it with "" or "xyzzy"
+    /// survived. A refusal names the programs it is about by this prefix.
+    #[test]
+    fn short_id_is_the_first_eight_characters() {
+        assert_eq!(short_id(WALLET_A), "9RGFwSry");
+        assert_eq!(short_id(MINT), "EPjFWdd5");
+        assert_eq!(short_id("12345678"), "12345678");
+        assert_eq!(short_id("abc"), "abc");
+        assert_eq!(short_id(""), "");
+        // By character, never by byte (A1-03/A3-09): nine two-byte
+        // characters give eight of them, and nothing panics.
+        assert_eq!(short_id("ééééééééé"), "éééééééé");
+    }
+
+    /// Round 41 (Assurance run 41195462495, risk_engine shard 1/12): an
+    /// empty discriminator on a program whose risky selectors include an
+    /// authority hand-over is refused AS that hand-over. Flipping the
+    /// `AuthorityHijack` comparison survived: the Token program's next entry
+    /// (CloseAccount, a Drainer) still blocked, under the wrong pattern.
+    #[test]
+    fn an_empty_discriminator_on_a_hand_over_program_is_refused_as_one() {
+        for program in [
+            TOKEN_PROGRAM_ID,
+            TOKEN_2022_PROGRAM_ID,
+            "11111111111111111111111111111111",
+        ] {
+            let v = assess(&input(program, "", &[WALLET_A, WALLET_B], "transfer")).unwrap();
+            assert_eq!(
+                pattern_of(&v),
+                Some(RiskPattern::AuthorityHijack),
+                "{program}"
+            );
+            let RiskVerdict::Blocked { reason, .. } = v else {
+                unreachable!()
+            };
+            assert!(
+                reason.contains("empty discriminator"),
+                "{program}: {reason}"
+            );
+        }
+    }
+
+    /// Round 41 (Assurance run 41195462495, risk_engine shard 10/12): the
+    /// `close` arm of `program_supports_intent` had no test of its own, so
+    /// flipping either token-program comparison, or joining them with `&&`,
+    /// survived. A close intent is served by exactly the two token programs
+    /// and Jupiter DCA; any other program is a mismatch (fail-closed).
+    #[test]
+    fn close_is_served_by_the_token_programs_and_jupiter_dca_only() {
+        for program in [
+            TOKEN_PROGRAM_ID,
+            TOKEN_2022_PROGRAM_ID,
+            "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M",
+        ] {
+            assert!(program_supports_intent(program, "close"), "{program}");
+        }
+        for program in [
+            "11111111111111111111111111111111",
+            "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+            "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+            WALLET_A,
+        ] {
+            assert!(!program_supports_intent(program, "close"), "{program}");
+        }
+    }
 
     fn input(program: &str, disc: &str, accounts: &[&str], intent: &str) -> RiskAssessmentInput {
         RiskAssessmentInput {

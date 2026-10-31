@@ -12,7 +12,7 @@
 2 tests/ai_layer_isolation.rs
 20 tests/cert_revalidation_attacks.rs
 2 tests/docs_match_the_registry.rs
-8 tests/docs_numbers_match_the_code.rs
+9 tests/docs_numbers_match_the_code.rs
 1 tests/docs_paths_resolve.rs
 3 tests/exploit_corpus_tests.rs
 1 tests/mainnet_conformance.rs
@@ -34,7 +34,7 @@
 3 tests/round34_audit_adopt_key.rs
 6 tests/round35_parsed_inner_instructions.rs
 6 tests/round36_env_names.rs
-22 tests/round36_intent_binding.rs
+23 tests/round36_intent_binding.rs
 4 tests/round38_audit_cli.rs
 8 tests/round38_create_funding.rs
 24 tests/round38_sibling_skims.rs
@@ -61,3 +61,11 @@
 2 tests/round40_signer_key_mode.rs
 2 tests/round40_terminal_escapes.rs
 2 tests/round40_first_manifest_cap.rs
+# Round 41 (live false refusals): the wrapped-SOL swap (D-20) and the ATA
+# program's Token-2022 CPI (D-21), with their attack controls
+17 tests/round41_live_false_refusals.rs
+# Round 41 (D-23): Jupiter route_v2 / shared_accounts_route_v2 decoded from the deployed IDL
+4 tests/round41_jupiter_route_v2.rs
+# Round 41 (L3): honest Compute Budget variation is not SimulationSpoofing;
+# the attack controls (gross divergence, drift past the anchor) through the pipeline
+10 tests/round41_l3_honest_compute_variation.rs

@@ -875,8 +875,21 @@ const COMMITTED_BLOCKS: &str =
 //     refused") before and after. The 23 instructions removed
 //     (R39-SUPPLY-CHAIN-11) are called by no row; the
 //     ATA, Kamino and Solend label fixes (R39-SUPPLY-CHAIN-12) moved no row.
+//
+// Re-pinned in Round 41 (D-26), from `96820ddc…` at `28aedcd`. Diffed row by
+// row (`GRAPHITE_MAINNET_VERDICTS_OUT` on a copy of `28aedcd` and on this
+// tree): 1 of 2,277 rows changed, none from refused to approved, approvals 0
+// before and after —
+//   rows[1125] (verdict line 1126), a Token-2022 `TransferChecked`
+//     (`0cfa41e10c6c0000`, slot 449808725) in a batch of four System
+//     transfers, two ATA `Create`s with
+//     EMPTY data, two `CreateIdempotent`s, four Token-2022 transfers, two
+//     closes and a memo: the empty-data `Create` siblings are now read as
+//     the ATA program's `Create` (`00`) rather than refused as declarations
+//     with an empty discriminator, so the first risk finding is Drainer where
+//     it was UnexpectedCpi; MultiInstructionDrain refuses it before and after.
 const COMMITTED_VERDICTS_SHA256: &str =
-    "96820ddcac1fe91f7f17418512c5923c0ab1f1cf7000467827b1c81eb9e8f7f5";
+    "39a4604763c4ff5300e9d554d085988d094ef05c2408fbb92dea9988c1a8265e";
 
 #[test]
 fn the_committed_mainnet_blocks_give_the_recorded_verdicts_every_run() {
