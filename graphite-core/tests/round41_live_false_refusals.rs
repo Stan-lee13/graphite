@@ -37,6 +37,7 @@ use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
 use graphite_core::semantic_graph_store::BehaviorEvidence;
 use graphite_core::solana_types::Pubkey;
 use graphite_core::state_diff::L4Relaxations;
+use graphite_core::tx_artifact::{ADDRESS_LOOKUP_TABLE_PROGRAM, LOOKUP_TABLE_META_SIZE};
 use graphite_core::tx_pattern_analysis::TransactionInstruction;
 use graphite_core::verification::{
     ExecutionDecision, ExtractedParameters, GraphiteCore, LayerStatus, ObservationPolicy,
@@ -204,6 +205,9 @@ struct Cluster {
     post: HashMap<String, Option<Account>>,
     /// What the simulation reports in `innerInstructions`.
     inner: Vec<Inner>,
+    /// Round 41 (D-25): the lookup tables of a v0 transaction, and what the
+    /// simulation reports as `loadedAddresses` (writable, readonly).
+    loaded: (Vec<String>, Vec<String>),
 }
 
 impl Cluster {
@@ -366,10 +370,34 @@ fn serve(state: Arc<Mutex<Cluster>>) -> String {
                 }
                 "simulateTransaction" => {
                     let ks = strings(&body["params"][1]["accounts"]["addresses"]);
+                    // Round 41 (D-25): as Agave answers. An account the
+                    // transaction loads is reported from the executed
+                    // transaction's own account list, so one the
+                    // transaction closed — or one that never existed — comes
+                    // back as an account holding nothing (zero lamports, the
+                    // System program, no data), not as `null`. SPL Token's
+                    // `CloseAccount` assigns the account to the System
+                    // program and reallocates it to zero bytes.
                     let post: Vec<String> = ks
                         .iter()
-                        .map(|k| account_json(s.post_of(k).as_ref()))
+                        .map(|k| match s.post_of(k) {
+                            None if s.keys.contains(k) => {
+                                account_json(Some(&acct(0, SYSTEM, vec![])))
+                            }
+                            a => account_json(a.as_ref()),
+                        })
                         .collect();
+                    let quoted = |v: &[String]| {
+                        v.iter()
+                            .map(|k| format!("\"{k}\""))
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    };
+                    let loaded = format!(
+                        r#"{{"writable":[{}],"readonly":[{}]}}"#,
+                        quoted(&s.loaded.0),
+                        quoted(&s.loaded.1)
+                    );
                     let balances = |pre: bool| -> String {
                         s.keys
                             .iter()
@@ -387,11 +415,12 @@ fn serve(state: Arc<Mutex<Cluster>>) -> String {
                     format!(
                         r#"{{"context":{{"slot":1000}},"value":{{"err":null,"logs":[],"unitsConsumed":40000,"fee":{FEE},
                         "preBalances":[{}],"postBalances":[{}],
-                        "innerInstructions":{},"loadedAddresses":{{"writable":[],"readonly":[]}},
+                        "innerInstructions":{},"loadedAddresses":{},
                         "accounts":[{}],"returnData":null}}}}"#,
                         balances(true),
                         balances(false),
                         inner_json(&s),
+                        loaded,
                         post.join(",")
                     )
                 }
@@ -493,6 +522,112 @@ fn frame(payer: &str, ixs: &[Ix]) -> (Vec<String>, Vec<u8>) {
         out.extend_from_slice(&i.data);
     }
     (keys, out)
+}
+
+/// A v0 message (Round 41, D-25): `entries` reach the transaction only
+/// through the lookup table `table` (writable or read-only as the
+/// instructions use them); everything else is a static key. Returns the full
+/// account list as the runtime loads it (static keys, then the loaded
+/// writable, then the loaded read-only), the bytes, and the loaded addresses.
+#[allow(clippy::type_complexity)]
+fn frame_v0(
+    payer: &str,
+    ixs: &[Ix],
+    table: &str,
+    entries: &[String],
+) -> (Vec<String>, Vec<u8>, (Vec<String>, Vec<String>)) {
+    let mut privileges: Vec<(String, bool, bool)> = vec![(payer.to_string(), true, true)];
+    let mut note = |k: &str, s: bool, w: bool| {
+        if let Some(e) = privileges.iter_mut().find(|e| e.0 == k) {
+            e.1 |= s;
+            e.2 |= w;
+        } else {
+            privileges.push((k.to_string(), s, w));
+        }
+    };
+    for i in ixs {
+        for (k, s, w) in &i.accounts {
+            note(k, *s, *w);
+        }
+        note(&i.program, false, false);
+    }
+    let programs: Vec<&str> = ixs.iter().map(|i| i.program.as_str()).collect();
+    for e in entries {
+        let p = privileges
+            .iter()
+            .find(|p| &p.0 == e)
+            .expect("a table entry the transaction uses");
+        assert!(
+            !p.1 && !programs.contains(&e.as_str()),
+            "{e}: a signer or a program cannot be loaded"
+        );
+    }
+    let loaded_w: Vec<String> = entries
+        .iter()
+        .filter(|e| privileges.iter().any(|p| &p.0 == *e && p.2))
+        .cloned()
+        .collect();
+    let loaded_r: Vec<String> = entries
+        .iter()
+        .filter(|e| !loaded_w.contains(e))
+        .cloned()
+        .collect();
+    let class = |e: &(String, bool, bool)| match (e.1, e.2) {
+        (true, true) => 0,
+        (true, false) => 1,
+        (false, true) => 2,
+        (false, false) => 3,
+    };
+    let payer_entry = privileges.remove(0);
+    privileges.retain(|p| !entries.contains(&p.0));
+    privileges.sort_by_key(class);
+    privileges.insert(0, payer_entry);
+    let statics: Vec<String> = privileges.iter().map(|e| e.0.clone()).collect();
+    let signers = privileges.iter().filter(|e| e.1).count();
+    let ro_signed = privileges.iter().filter(|e| e.1 && !e.2).count();
+    let ro_unsigned = privileges.iter().filter(|e| !e.1 && !e.2).count();
+    let all: Vec<String> = statics
+        .iter()
+        .chain(&loaded_w)
+        .chain(&loaded_r)
+        .cloned()
+        .collect();
+    let index = |k: &str| all.iter().position(|x| x == k).unwrap() as u8;
+    let mut out = Vec::new();
+    compact_u16(signers, &mut out);
+    for _ in 0..signers {
+        out.extend_from_slice(&[0u8; 64]);
+    }
+    out.push(0x80);
+    out.extend_from_slice(&[signers as u8, ro_signed as u8, ro_unsigned as u8]);
+    compact_u16(statics.len(), &mut out);
+    for k in &statics {
+        out.extend_from_slice(pk(k).as_bytes());
+    }
+    out.extend_from_slice(&[9u8; 32]);
+    compact_u16(ixs.len(), &mut out);
+    for i in ixs {
+        out.push(index(&i.program));
+        compact_u16(i.accounts.len(), &mut out);
+        for (k, _, _) in &i.accounts {
+            out.push(index(k));
+        }
+        compact_u16(i.data.len(), &mut out);
+        out.extend_from_slice(&i.data);
+    }
+    compact_u16(1, &mut out);
+    out.extend_from_slice(pk(table).as_bytes());
+    let positions = |set: &[String]| -> Vec<u8> {
+        set.iter()
+            .map(|k| entries.iter().position(|e| e == k).unwrap() as u8)
+            .collect()
+    };
+    for set in [&loaded_w, &loaded_r] {
+        let idx = positions(set);
+        compact_u16(idx.len(), &mut out);
+        out.extend_from_slice(&idx);
+    }
+    (all, out, (loaded_w, loaded_r))
 }
 
 fn system_transfer(lamports: u64) -> Vec<u8> {
@@ -639,15 +774,44 @@ fn core_for(endpoint: String, waivers: Waivers) -> (GraphiteCore, WalletProfile)
 
 /// Verify `ixs[primary]` under `intent`, the others declared as siblings.
 async fn verify(
-    mut cluster: Cluster,
+    cluster: Cluster,
     ixs: &[Ix],
     primary: usize,
     intent: &str,
     extracted: Option<ExtractedParameters>,
     waivers: Waivers,
 ) -> VerificationResult {
-    let (keys, bytes) = frame(OWNER, ixs);
+    verify_tx(cluster, ixs, primary, intent, extracted, waivers, None).await
+}
+
+/// `verify`, the transaction a v0 one when `table` names a lookup table and
+/// the accounts it serves (Round 41, D-25).
+async fn verify_tx(
+    mut cluster: Cluster,
+    ixs: &[Ix],
+    primary: usize,
+    intent: &str,
+    extracted: Option<ExtractedParameters>,
+    waivers: Waivers,
+    table: Option<(&str, &[String])>,
+) -> VerificationResult {
+    let (keys, bytes) = match table {
+        None => frame(OWNER, ixs),
+        Some((t, entries)) => {
+            let (keys, bytes, loaded) = frame_v0(OWNER, ixs, t, entries);
+            let mut data = vec![0u8; LOOKUP_TABLE_META_SIZE];
+            data[0..4].copy_from_slice(&1u32.to_le_bytes());
+            data[4..12].copy_from_slice(&u64::MAX.to_le_bytes());
+            for e in entries {
+                data.extend_from_slice(pk(e).as_bytes());
+            }
+            cluster.set(t, acct(5_000_000, ADDRESS_LOOKUP_TABLE_PROGRAM, data));
+            cluster.loaded = loaded;
+            (keys, bytes)
+        }
+    };
     cluster.keys = keys;
+    let versioned = table.is_some();
     let endpoint = serve(Arc::new(Mutex::new(cluster)));
     let (core, profile) = core_for(endpoint, waivers);
     let p = &ixs[primary];
@@ -687,8 +851,8 @@ async fn verify(
             .collect(),
         cpi_trace: None,
         real_account_metas: vec![],
-        uses_versioned_transaction: false,
-        lookup_table_count: 0,
+        uses_versioned_transaction: versioned,
+        lookup_table_count: u32::from(versioned),
         state_diff: None,
     };
     core.verify_async(&input).await.expect("a verdict")
@@ -2589,5 +2753,316 @@ async fn round41_l4_still_counts_what_leaves_a_temporary_account() {
             "{tag}: L4 does not count exactly the {lost} lamports: {}",
             l4(&r)
         );
+    }
+}
+
+// ─── D-25: the D-20 shape as the live runner met it (rows 100 and 645) ─────
+
+/// Raydium CPMM, the venue the live route went through.
+const CPMM: &str = "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C";
+/// Row 100's amount: 442,142 lamports.
+const ROW_IN: u64 = 442_142;
+
+/// Where the transaction's accounts are: all static (legacy), the venue's
+/// accounts in a lookup table (v0), or the venue's and the wallet's wSOL and
+/// output accounts in it too (v0).
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Keys {
+    Legacy,
+    PoolInTable,
+    UserAccountsInTable,
+}
+
+/// Row 100 (`token2022 = false`) or row 645 (`true`), exactly as the runner
+/// decoded them: Compute Budget; ATA `CreateIdempotent` of the wallet's wSOL
+/// account; System `Transfer` of `ROW_IN` into it; `SyncNative`; ATA
+/// `CreateIdempotent` of the wallet's output account (under Token-2022 for
+/// row 645); the Jupiter v6 `route` — `token_program` (Token-2022 for row
+/// 645), the wallet, the wSOL account, the output account, three program
+/// placeholders and the event authority, then the CPMM leg with the wallet,
+/// the wSOL and output accounts AGAIN, the two token programs, both mints
+/// and the observation account; `CloseAccount` of the wSOL account to the
+/// wallet. Returns the cluster, the instructions, the route's index and the
+/// table entries for `keys`.
+fn row_swap(token2022: bool, keys: Keys) -> (Cluster, Vec<Ix>, usize, Vec<String>) {
+    let mut c = Cluster::default();
+    base_programs(&mut c);
+    c.program(CPMM, LOADER);
+    let (out_mint, out_program, out_rent) = if token2022 {
+        (MINT_T22, TOKEN_2022, RENT_T22)
+    } else {
+        (MINT_X, TOKEN, RENT)
+    };
+    let wsol = ata(OWNER, NATIVE_MINT);
+    let dst = ata_under(OWNER, out_mint, out_program);
+    let (authority, config, pool_state, in_vault, out_vault, observation) =
+        (key(111), key(112), key(113), key(114), key(115), key(116));
+    let d = def(JUPITER, "route");
+    let head = accounts_for(
+        JUPITER,
+        &d,
+        &[
+            ("token_program", out_program.to_string()),
+            ("user_transfer_authority", OWNER.to_string()),
+            ("user_source_token_account", wsol.clone()),
+            ("user_destination_token_account", dst.clone()),
+            ("destination_token_account", JUPITER.to_string()),
+            ("destination_mint", out_mint.to_string()),
+            ("platform_fee_account", JUPITER.to_string()),
+            ("program", JUPITER.to_string()),
+        ],
+    );
+    let mut accounts: Vec<(String, bool, bool)> = d
+        .accounts
+        .iter()
+        .zip(&head)
+        .map(|(a, k)| (k.clone(), a.is_signer, a.is_writable))
+        .collect();
+    for (k, s, w) in [
+        (CPMM, false, false),
+        (OWNER, true, false),
+        (&authority, false, false),
+        (&config, false, false),
+        (&pool_state, false, true),
+        (&wsol, false, true),
+        (&dst, false, true),
+        (&in_vault, false, true),
+        (&out_vault, false, true),
+        (TOKEN, false, false),
+        (out_program, false, false),
+        (NATIVE_MINT, false, false),
+        (out_mint, false, false),
+        (&observation, false, true),
+    ] {
+        accounts.push((k.to_string(), s, w));
+    }
+    let mut data = hex_to_bytes(&d.discriminator);
+    data.extend_from_slice(&1u32.to_le_bytes());
+    // RaydiumCP is variant 46 of the deployed program's Swap enum.
+    data.extend_from_slice(&[46, 100, 0, 1]);
+    data.extend_from_slice(&ROW_IN.to_le_bytes());
+    data.extend_from_slice(&OUT.to_le_bytes());
+    data.extend_from_slice(&50u16.to_le_bytes());
+    data.push(0);
+    for k in [&authority, &config, &pool_state, &observation] {
+        c.set(k, acct(5 * SOL, CPMM, vec![1u8; 64]));
+    }
+    for (a, k) in d.accounts.iter().zip(&head) {
+        if !a.is_signer
+            && ![OWNER, JUPITER, TOKEN, TOKEN_2022, out_mint].contains(&k.as_str())
+            && *k != wsol
+            && *k != dst
+        {
+            c.set(k, acct(5 * SOL, JUPITER, vec![1u8; 64]));
+        }
+    }
+    c.set(NATIVE_MINT, acct(1_461_600, TOKEN, mint(0, 9)));
+    c.set(
+        out_mint,
+        acct(1_461_600, out_program, mint(10u64.pow(15), 6)),
+    );
+    let reserve = 10u64.pow(12);
+    c.set(
+        &in_vault,
+        acct(
+            RENT + reserve,
+            TOKEN,
+            token_account(NATIVE_MINT, &authority, reserve),
+        ),
+    );
+    c.after(
+        &in_vault,
+        acct(
+            RENT + reserve + ROW_IN,
+            TOKEN,
+            token_account(NATIVE_MINT, &authority, reserve + ROW_IN),
+        ),
+    );
+    c.set(
+        &out_vault,
+        acct(
+            RENT,
+            out_program,
+            token_account(out_mint, &authority, reserve),
+        ),
+    );
+    c.after(
+        &out_vault,
+        acct(
+            RENT,
+            out_program,
+            token_account(out_mint, &authority, reserve - OUT),
+        ),
+    );
+    let mut delivered = if token2022 {
+        token2022_ata_account(out_mint, OWNER)
+    } else {
+        token_account(out_mint, OWNER, 0)
+    };
+    delivered[64..72].copy_from_slice(&OUT.to_le_bytes());
+    c.after(&dst, acct(out_rent, out_program, delivered));
+    c.set(OWNER, acct(10 * SOL, SYSTEM, vec![]));
+    c.after(
+        OWNER,
+        acct(10 * SOL - FEE - ROW_IN - out_rent, SYSTEM, vec![]),
+    );
+    c.closed(&wsol);
+
+    let ixs = vec![
+        ix(COMPUTE_BUDGET, &[], compute_limit()),
+        create_idempotent(OWNER, &wsol, OWNER, NATIVE_MINT, TOKEN),
+        ix(
+            SYSTEM,
+            &[(OWNER, true, true), (&wsol, false, true)],
+            system_transfer(ROW_IN),
+        ),
+        ix(TOKEN, &[(&wsol, false, true)], vec![17u8]),
+        create_idempotent(OWNER, &dst, OWNER, out_mint, out_program),
+        Ix {
+            program: JUPITER.to_string(),
+            accounts,
+            data,
+        },
+        close_account(&wsol, OWNER, OWNER),
+    ];
+    let route_at = 5;
+    // What the simulator reports under each instruction.
+    let mut init = vec![18u8];
+    init.extend_from_slice(pk(OWNER).as_bytes());
+    let out_space = if token2022 { 170 } else { 165 };
+    for (top, token, account, mint_of, space, rent) in [
+        (1, TOKEN, &wsol, NATIVE_MINT, 165u64, RENT),
+        (4, out_program, &dst, out_mint, out_space, out_rent),
+    ] {
+        for (p, accts, data) in [
+            (token, vec![mint_of.to_string()], vec![21u8]),
+            (
+                SYSTEM,
+                vec![OWNER.to_string(), account.clone()],
+                system_create(rent, space, token),
+            ),
+            (token, vec![account.clone()], vec![22u8]),
+            (
+                token,
+                vec![account.clone(), mint_of.to_string()],
+                init.clone(),
+            ),
+        ] {
+            c.inner.push(Inner {
+                top,
+                program: p.to_string(),
+                accounts: accts,
+                data,
+            });
+        }
+    }
+    let mut cpmm_data = hex_to_bytes("8fbe5adac41e33de");
+    cpmm_data.extend_from_slice(&ROW_IN.to_le_bytes());
+    cpmm_data.extend_from_slice(&(OUT * 995 / 1000).to_le_bytes());
+    c.inner.push(Inner {
+        top: route_at,
+        program: CPMM.to_string(),
+        accounts: vec![
+            OWNER.to_string(),
+            authority.clone(),
+            config.clone(),
+            pool_state.clone(),
+        ],
+        data: cpmm_data,
+    });
+    let mut t_in = vec![12u8];
+    t_in.extend_from_slice(&ROW_IN.to_le_bytes());
+    t_in.push(9);
+    c.inner.push(Inner {
+        top: route_at,
+        program: TOKEN.to_string(),
+        accounts: vec![
+            wsol.clone(),
+            NATIVE_MINT.to_string(),
+            in_vault.clone(),
+            OWNER.to_string(),
+        ],
+        data: t_in,
+    });
+    let mut t_out = vec![12u8];
+    t_out.extend_from_slice(&OUT.to_le_bytes());
+    t_out.push(6);
+    c.inner.push(Inner {
+        top: route_at,
+        program: out_program.to_string(),
+        accounts: vec![
+            out_vault.clone(),
+            out_mint.to_string(),
+            dst.clone(),
+            authority.clone(),
+        ],
+        data: t_out,
+    });
+    let pool = vec![
+        authority.clone(),
+        config.clone(),
+        pool_state.clone(),
+        in_vault.clone(),
+        out_vault.clone(),
+        observation.clone(),
+    ];
+    let entries = match keys {
+        Keys::Legacy => vec![],
+        Keys::PoolInTable => pool,
+        Keys::UserAccountsInTable => {
+            let mut e = pool;
+            e.extend([wsol.clone(), dst.clone()]);
+            e
+        }
+    };
+    (c, ixs, route_at, entries)
+}
+
+async fn row_verdict(token2022: bool, keys: Keys, w: Waivers) -> VerificationResult {
+    let (c, ixs, route_at, entries) = row_swap(token2022, keys);
+    let out_mint = if token2022 { MINT_T22 } else { MINT_X };
+    let request = Some(ExtractedParameters {
+        amount: Some("0.000442142".to_string()),
+        input_token: Some("SOL".to_string()),
+        output_token: Some(out_mint.to_string()),
+        slippage_bps: Some(100),
+        ..Default::default()
+    });
+    let table = key(117);
+    let lookup = (!entries.is_empty()).then_some((table.as_str(), entries.as_slice()));
+    verify_tx(c, &ixs, route_at, "swap", request, w, lookup).await
+}
+
+/// D-25 reproduction (live run 41147736944 rows 100 and 645): the plain D-20
+/// shape — the wallet's wSOL ATA created, funded, synced, spent by a route
+/// that names it twice, closed to the wallet — with an SPL and a Token-2022
+/// output, legacy and v0 with the venue's (and the wallet's) accounts in a
+/// lookup table, is executable and bound, under the defaults and every
+/// waiver. The simulator reports the closed wSOL account as Agave does: an
+/// account holding zero lamports, owned by the System program.
+#[tokio::test]
+async fn round41_the_live_wrap_shapes_are_executable_legacy_and_v0() {
+    for w in CONFIGS {
+        for token2022 in [false, true] {
+            for keys in [Keys::Legacy, Keys::PoolInTable, Keys::UserAccountsInTable] {
+                let row = if token2022 { 645 } else { 100 };
+                let tag = format!("row {row}, {keys:?}, {w:?}");
+                let r = row_verdict(token2022, keys, w).await;
+                assert!(
+                    !names(&r, "SignerLamportsOutsideDeclaredDebit")
+                        && !names(&r, "IntentMismatch"),
+                    "{tag}: {} | {}",
+                    l4(&r),
+                    risk(&r)
+                );
+                assert!(
+                    !r.scope
+                        .unobserved_codes()
+                        .contains(&UnobservedCode::IntentParameters),
+                    "{tag}: the swap is not bound"
+                );
+                assert_executable(&tag, &r);
+            }
+        }
     }
 }

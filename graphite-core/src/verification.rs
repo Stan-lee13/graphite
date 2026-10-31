@@ -201,9 +201,23 @@ fn build_rpc_state_diff(
     artifact_account_universe: Option<(usize, usize)>,
     artifact_accounts_undescribed: Option<Vec<String>>,
 ) -> StateDiff {
+    // Round 41 (D-25): an account holding no lamports does not exist. The
+    // simulator reports every account the transaction loads from the
+    // executed transaction's own account list, so an account the transaction
+    // closed — SPL Token's `CloseAccount` zeroes its lamports, assigns it to
+    // the System program and reallocates it to nothing — or one it named
+    // that never existed comes back as an account holding zero lamports, not
+    // as `null`, and the runtime removes it when the transaction commits.
+    // Read as an account, it showed every closure as an owner reassignment
+    // to the System program (`UndeclaredOwnerReassignment`), the wallet's
+    // own wSOL account created and closed inside the transaction as a System
+    // account (so its SOL as the wallet's loss: live run 41147736944 row 100,
+    // the plain D-20 shape), and a closed wSOL account as no longer the
+    // wallet's (D-22). Nothing of it survives the transaction — no balance,
+    // no data, no authority — so it is read as what it is: absent.
     let snap =
         |a: &Option<crate::rpc_client::AccountState>, key: &str| -> Option<AccountSnapshot> {
-            a.as_ref().map(|s| {
+            a.as_ref().filter(|s| s.lamports > 0).map(|s| {
                 AccountSnapshot::from_raw(key, s.lamports, &s.owner, &s.data)
                     .with_executable(s.executable)
             })
