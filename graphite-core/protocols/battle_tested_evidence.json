@@ -980,7 +980,7 @@
    "manifest": "raydium-cpmm.json",
    "name": "Raydium CPMM",
    "declared_trust_tier": "BattleTested",
-   "measured_at_unix": 1793409776,
+   "measured_at_unix": 1793443296,
    "identity": {
     "exists": true,
     "executable": true,
@@ -989,31 +989,30 @@
    "volume": {
     "counts": "successful transactions whose account list carries the program address (getSignaturesForAddress); invocation is established by the decode sample, not by this number",
     "endpoint_answered": true,
-    "successful_transactions_counted": 1392,
+    "successful_transactions_counted": 1238,
     "signatures_scanned": 2000,
     "pages": 2,
     "reached_target": true,
-    "newest_slot": 463501433,
-    "oldest_slot": 463499200,
-    "newest_block_time": 1793409627,
-    "oldest_block_time": 1793409149,
-    "window_seconds": 478
+    "newest_slot": 463657846,
+    "oldest_slot": 463655079,
+    "newest_block_time": 1793443136,
+    "oldest_block_time": 1793442545,
+    "window_seconds": 591
    },
    "decode": {
     "transactions_requested": 80,
     "transactions_unavailable": 0,
-    "transactions_sampled": 85,
+    "transactions_sampled": 87,
     "anchor_event_cpis_excluded": 0,
-    "instructions_from_block_sweep": 14,
+    "instructions_from_block_sweep": 8,
     "decode_applicable": true,
-    "instructions_observed": 90,
-    "instructions_named_by_manifest": 90,
+    "instructions_observed": 93,
+    "instructions_named_by_manifest": 93,
     "decode_rate": 1.0,
     "instructions_by_name": {
-     "swap_base_input": 82,
-     "collect_fund_fee": 5,
-     "swap_base_output": 2,
-     "collect_creator_fee": 1
+     "swap_base_input": 84,
+     "collect_protocol_fee": 8,
+     "deposit": 1
     },
     "unmatched_leading_bytes": {}
    },

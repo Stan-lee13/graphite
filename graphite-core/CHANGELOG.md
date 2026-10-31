@@ -5,6 +5,8 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 
 ## Round 41
 
+Round 41 (2026-10-31) — Raydium CPMM was redeployed at slot 463,522,946, after the morning's census window, so the Core withdrew its imported evidence and an honest CPMM swap sat at 0.44 under Gaming's floor (live run 41190882806; the deployment read by `idl-refresh` run 41193460165's predecessor 41192883327). Re-measured on the new code by `census-refresh` run 41193460165: 1,238 successful transactions, decode rate 1.0, oldest slot 463,655,079; only CPMM's record changed (sha256 `78791179…9c73`, decoded from the log and checked against the printed one); 114 of 137 still meet the bar.
+
 Round 41 (2026-10-31) — four external AI reviews checked claim by claim (`docs/audit/ROUND41_EXTERNAL_REVIEW_TRIAGE.md`); what was true is fixed or recorded ([decisions D-28 to D-30](../docs/audit/TECHNICAL_LEAD_DECISIONS.md)):
 
 - **Contract:** unchanged (`no_state_diff` is an existing code, now also recorded for an effect-free RPC simulation).
