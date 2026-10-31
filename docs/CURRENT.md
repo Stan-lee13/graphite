@@ -118,7 +118,7 @@ Verdict trust tier:              the MINIMUM over every top-level program the tr
                                  unmanifested sibling makes it Unknown, refused on every built-in profile (Round 29).
                                  The evidence signals stay the primary's
 Grounded intents:                `withdraw`, `claim`, `burn` and `configure` (and `close` widened) since Round 30, each
-                                 for named instructions only (src/intent_grants.rs, 27 grants; Round 34 added the staking
+                                 for named instructions only (src/intent_grants.rs, 26 grants; Round 34 added the staking
                                  withdrawals — Stake Withdraw, Stake Pool WithdrawSol/WithdrawStake and their slippage
                                  forms, Marinade liquidUnstake — each only when the value goes to the instruction's
                                  own signing key; a `stake` intent declares no withdrawal, R33-1) and only when the

@@ -12,7 +12,7 @@
 2 tests/ai_layer_isolation.rs
 20 tests/cert_revalidation_attacks.rs
 2 tests/docs_match_the_registry.rs
-8 tests/docs_numbers_match_the_code.rs
+9 tests/docs_numbers_match_the_code.rs
 1 tests/docs_paths_resolve.rs
 3 tests/exploit_corpus_tests.rs
 1 tests/mainnet_conformance.rs
@@ -34,7 +34,7 @@
 3 tests/round34_audit_adopt_key.rs
 6 tests/round35_parsed_inner_instructions.rs
 6 tests/round36_env_names.rs
-22 tests/round36_intent_binding.rs
+23 tests/round36_intent_binding.rs
 4 tests/round38_audit_cli.rs
 8 tests/round38_create_funding.rs
 24 tests/round38_sibling_skims.rs

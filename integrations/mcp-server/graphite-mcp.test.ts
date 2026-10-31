@@ -13,7 +13,8 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { ElicitRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { GraphiteGuard } from "../agent-guard/guard.js";
 import { BLOCKED_VERDICT, mockApprovingCore, mockRpc, mockService, throwawayWallet } from "../agent-guard/loopback-mocks.js";
-import { createGraphiteMcpServer, parseConfirmation, type Confirmation } from "./graphite-mcp.js";
+import { createGraphiteMcpServer, describeForPerson, parseConfirmation, type Confirmation } from "./graphite-mcp.js";
+import type { ConfirmationSummary } from "../agent-guard/guard.js";
 
 const DEST = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
 const REQUEST = `Transfer 1.5 SOL to ${DEST}`;
@@ -144,7 +145,7 @@ test("M7: a person approves the RESOLVED transaction — destination, amount, ef
     assert.match(shown, new RegExp(`to ${DEST}`));
     assert.match(shown, /Program: 11111111111111111111111111111111/);
     assert.match(shown, /Simulated effect on the wallet/);
-    assert.match(shown, /Graphite: APPROVED, risk Clear/);
+    assert.match(shown, /Graphite: APPROVED \(executable_approved\), risk Clear/);
     assert.match(shown, /transaction [0-9a-f]{64}/);
     // Asked after the verdict, before anything was signed or sent.
     const sends = s.rpc.calls.filter((x) => x.method === "sendTransaction");
@@ -348,4 +349,34 @@ test("Round 39: only a boolean true from the person approves — a string, a num
   } finally {
     await s.close();
   }
+});
+
+// Round 41 (external review D-8): a verdict signed only because this
+// deployment accepted its residuals by name is analysis_only, not
+// executable_approved; the person is not told it was simply "APPROVED".
+test("D-8: a verdict signed under accepted residuals is shown as analysis only, not APPROVED", () => {
+  const summary = (acceptedUnobserved: string[]): ConfirmationSummary => ({
+    kind: "transfer",
+    request: "Send 1 SOL",
+    wallet: "W1111111111111111111111111111111",
+    transactionSha256: "a".repeat(64),
+    programId: "11111111111111111111111111111111",
+    destination: "D1111111111111111111111111111111",
+    lamports: "1000000000",
+    sol: "1",
+    walletEffect: { solOutLamports: "1000005000", tokens: [] },
+    verdict: {
+      approved: true,
+      confidence: 0.6,
+      risk: "Clear",
+      auditTrailId: "t",
+      unobservedCodes: acceptedUnobserved,
+      acceptedUnobserved,
+    },
+  });
+  const residual = describeForPerson(summary(["no_state_diff"]));
+  assert.doesNotMatch(residual, /Graphite: APPROVED/);
+  assert.match(residual, /Graphite: ANALYSIS ONLY \(not executable_approved;/);
+  assert.match(residual, /accepted by this deployment: no_state_diff/);
+  assert.match(describeForPerson(summary([])), /Graphite: APPROVED \(executable_approved\), risk Clear/);
 });

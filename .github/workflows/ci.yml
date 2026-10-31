@@ -1274,9 +1274,10 @@ jobs:
           # graphite-core/scripts/validate_corpora.py over the committed
           # corpora with 13 seeded faults; the live-mainnet seed pin); 136 at
           # Round 41 (the rulesets' unattributed-changes approval, the
-          # security-advisory link).
-          if [ -z "$passed" ] || [ "$passed" -lt 136 ]; then
-            echo "::error::ci-scripts tests: ${passed:-no summary} passed, floor 136"; exit 1
+          # security-advisory link); 138 with every workflow's actions pinned
+          # to a commit and its refusal of a floating tag (external review C-10).
+          if [ -z "$passed" ] || [ "$passed" -lt 138 ]; then
+            echo "::error::ci-scripts tests: ${passed:-no summary} passed, floor 138"; exit 1
           fi
 
   # Round 30 (G-11): the one check the `main` ruleset requires

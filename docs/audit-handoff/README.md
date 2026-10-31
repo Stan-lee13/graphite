@@ -21,11 +21,11 @@ gh attestation verify graphite-0.3.0-beta-x86_64-unknown-linux-gnu.tar.gz --repo
 The tag is built by `.github/workflows/release.yml` (two independent builds,
 compared byte for byte; SLSA provenance and SBOMs attested), so the binary and
 image you can verify are the ones built from the source you read. Until the tag
-exists, the base to review is the head of the branch
-`claude/admiring-archimedes-lfhr7n`: Round 38's answers to the Round 37 re-audit,
-on top of `8b3d8a4` (`main` after Round 36, PR #53). That branch is not merged to
-`main` yet, and it moves while the remaining Round 37 items are answered, so agree
-the exact SHA with the maintainer before starting and record it in your report.
+exists, the base to review is `main`: `3d5cab7` (Round 40, PR #60) at the time
+of writing, with Round 41 (live swap measurement, D-19 to D-30, the external
+reviews of 2026-10-31) on the branch `claude/admiring-archimedes-lfhr7n`
+(PR #61) until it is merged. `main` moves, so agree the exact SHA with the
+maintainer before starting and record it in your report.
 [`docs/CURRENT.md`](../CURRENT.md) says which round the code is at; `git log -1 --
 docs/CURRENT.md` says when it last changed.
 
@@ -145,7 +145,7 @@ reports). Paths are under `graphite-core/tests/` unless stated.
 | I-5 | The AI layer cannot approve; intent text cannot clear danger | `ai_cannot_approve.rs`, `ai_layer_isolation.rs`, `audit_review_r2_r3_intent_cannot_clear_danger.rs`, `round30_grounded_intents.rs` |
 | I-6 | Every audit record is chained; keyed, any edit, drop or reorder is detected; a checkpoint detects a dropped tail and a stale restore | `round30_audit_chain.rs`; `deploy/tests/run.sh` (tamper and stale-restore refusals) |
 | I-7 | A verdict that cannot be recorded is not returned (503 `AuditWriteFailed`) and is not counted; an error record cannot be made arbitrarily large | `server::tests::a_verdict_that_could_not_be_recorded_is_not_counted` (`graphite-core/src/server.rs`), `audit_flooding.rs` |
-| I-8 | The RPC is untrusted: its answers are bounded, cannot turn a refusal into an approval, and never leak its URL | `rpc_trust_boundary.rs`, `rpc_influence_bounds.rs`, `rpc_budget.rs`, `rpc_secret_redaction.rs`, `round29_rpc_client.rs` |
+| I-8 | The RPC is bounded: its answers are size-, time- and shape-checked, never leak its URL, cannot change what the bytes bind, and an effect-free simulation is never evidence (D-29). It IS the trust root for simulated effects: a coherent fabricated post-state can pass L4 (RESIDUAL_RISK §3, Round 41) | `rpc_trust_boundary.rs`, `rpc_influence_bounds.rs`, `rpc_budget.rs`, `rpc_secret_redaction.rs`, `round29_rpc_client.rs` |
 | I-9 | L8 reports inclusion only on chain bytes bound to the signature, and says what it rests on; a blocked transaction seen by either endpoint raises the alarm | `round30_l8_assurance.rs`, `l8_execution_reconciliation.rs`, `round12_rpc_equivocation.rs`, `audit_review_r1_l8_needs_chain_bytes.rs` |
 | I-10 | Unsafe configuration refuses to start (no key, short or equal keys, empty audit variables, key inside the data dir, retired options) | `audit_2026_10_20_startup_refusals.rs` |
 | I-11 | Requests are bounded: body 1 MiB, identifiers, header and body timeouts, connection caps | `wire_format_bounds.rs`, `audit_a4_slow_headers_hold_connections.rs`, `audit_w21_connection_lifetime.rs` |
@@ -195,7 +195,7 @@ audit) are items in [`docs/ops/production-checklist.md`](../ops/production-check
    splice the trail undetected, given an anchored checkpoint? Without one?
 4. **Witness independence** (I-9): is the heuristic a reasonable basis for
    `GRAPHITE_L8_HIGH_ASSURANCE`, and what would you require instead?
-5. **The 27 intent grants' facts** (`graphite-core/src/intent_grants.rs`): does each grant's declared effect match what the program does?
+5. **The 26 intent grants' facts** (`graphite-core/src/intent_grants.rs`): does each grant's declared effect match what the program does?
 6. **Declared effects** (I-3): can value leave a signer under a manifest that declares something
    narrower — through CPIs, Token-2022 extensions, close/realloc, lookup-table indirection?
 7. **Trust learning** (I-2): any path, including concurrency and the registry, by which callers

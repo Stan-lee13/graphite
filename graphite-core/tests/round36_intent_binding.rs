@@ -100,6 +100,13 @@ fn account(lamports: u64) -> String {
 
 /// A loopback cluster whose simulation of the corpus transfer is clean.
 fn cluster() -> String {
+    cluster_with(false)
+}
+
+/// `hollow`: the simulation reports every account exactly as the pre-state
+/// read it, the balances unchanged and no fee — a complete, successful
+/// simulation of a transaction that did nothing (external review D-1).
+fn cluster_with(hollow: bool) -> String {
     let listener = Arc::new(TcpListener::bind("127.0.0.1:0").unwrap());
     let addr = listener.local_addr().unwrap();
     let server = Arc::clone(&listener);
@@ -134,13 +141,23 @@ fn cluster() -> String {
                         .map(|a| a.len())
                         .unwrap_or(0);
                     let post: Vec<String> = (0..count)
-                        .map(|i| account(if i == 0 { 998_995_000 } else { 2_000_000 }))
+                        .map(|i| match (hollow, i) {
+                            (true, 0) => account(1_000_000_000),
+                            (true, _) => account(1_000_000),
+                            (false, 0) => account(998_995_000),
+                            (false, _) => account(2_000_000),
+                        })
                         .collect();
+                    let (fee, post_balances) = if hollow {
+                        (0, "1000000000,1000000,1")
+                    } else {
+                        (5000, "998995000,2000000,1")
+                    };
                     let complete = |err: &str, accounts: &str| {
                         format!(
                             r#"{{"jsonrpc":"2.0","id":1,"result":{{"context":{{"slot":1}},"value":{{
-                                "err":{err},"logs":[],"unitsConsumed":150,"fee":5000,
-                                "preBalances":[1000000000,1000000,1],"postBalances":[998995000,2000000,1],
+                                "err":{err},"logs":[],"unitsConsumed":150,"fee":{fee},
+                                "preBalances":[1000000000,1000000,1],"postBalances":[{post_balances}],
                                 "innerInstructions":[],"loadedAddresses":{{"writable":[],"readonly":[]}},
                                 {accounts}"returnData":null}}}}}}"#
                         )
@@ -262,6 +279,44 @@ async fn a_bound_transfer_is_executable() {
         ExecutionDecision::ExecutableApproved,
         "{:?}",
         r.risk_verdict.findings
+    );
+}
+
+/// Round 41 (external review D-1, decision D-29): a simulation that reports
+/// nothing changed — every account as the pre-state read it, no fee — left
+/// L4 Inconclusive, which no rule refused, so the control above stayed
+/// executable on it. A transaction the chain runs always changes something,
+/// so an effect-free simulation is not evidence: the verdict says the diff
+/// showed nothing and is never executable.
+#[tokio::test]
+async fn an_effect_free_simulation_is_never_executable() {
+    let core = core_at(&cluster_with(true));
+    let r = core
+        .verify_async(&request(params("0.002", &recipient(), "SOL"), true))
+        .await
+        .unwrap();
+    assert_ne!(
+        r.decision,
+        ExecutionDecision::ExecutableApproved,
+        "{} {:?}",
+        r.summary,
+        r.scope.unobserved()
+    );
+    assert!(!r.is_executable());
+    assert!(
+        r.scope
+            .unobserved_codes()
+            .contains(&UnobservedCode::NoStateDiff),
+        "{:?}",
+        r.scope.unobserved()
+    );
+    assert!(
+        r.scope
+            .unobserved()
+            .iter()
+            .any(|u| u.contains("no account it can write changing")),
+        "{:?}",
+        r.scope.unobserved()
     );
 }
 

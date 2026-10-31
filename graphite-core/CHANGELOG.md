@@ -5,6 +5,15 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 
 ## Round 41
 
+Round 41 (2026-10-31) — four external AI reviews checked claim by claim (`docs/audit/ROUND41_EXTERNAL_REVIEW_TRIAGE.md`); what was true is fixed or recorded ([decisions D-28 to D-30](../docs/audit/TECHNICAL_LEAD_DECISIONS.md)):
+
+- **Contract:** unchanged (`no_state_diff` is an existing code, now also recorded for an effect-free RPC simulation).
+- **Behaviour (stricter), D-29:** an RPC-built diff showing nothing the transaction can write changing is `no_state_diff` — never executable. It was L4 Inconclusive and could be `executable_approved`.
+- **Behaviour (stricter), D-30:** a registry upgrade signed or attested by a key of the program's earlier, still-unvalidated records stays capped at `HeuristicInferred`.
+- **MCP server:** a verdict signed only under residuals the deployment accepts is shown as "ANALYSIS ONLY (not executable_approved …)", not "APPROVED" (claim D-8).
+- **CI:** every workflow's actions must be pinned to a commit (`ci-scripts.test.sh`, with a refused `@v4` case; floor 138); the deploy test asks for a nested `/api` route and a path that cleans to `/admin` (claim D-7).
+- **Docs:** the intent grants are 26, not 27; the handoff names the base commit; I-8 says what the RPC can and cannot do; RESIDUAL_RISK §3 gains the RPC trust root, L3 bootstrap, rate-limit eviction and dashboard `connect-src` rows.
+
 Round 41 (2026-10-31) — the agent guard's swap spend cap trusted its RPC's simulation alone (external review claim D-2; [decision D-28](../docs/audit/TECHNICAL_LEAD_DECISIONS.md)):
 
 - **Agent guard (stricter):** a swap's outflow under `GRAPHITE_MAX_TRANSFER_LAMPORTS` is at least the route's own `in_amount` plus the message's fee (SOL input), and a non-SOL input always counts as that token spent; the simulation can only raise the figure. Tests: two lying-simulation cases in `guard.test.ts`, both failing on the previous code; the "within the cap" case's cap corrected to its route's real cost.

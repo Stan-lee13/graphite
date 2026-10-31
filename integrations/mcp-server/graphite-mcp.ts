@@ -68,9 +68,17 @@ export function describeForPerson(s: ConfirmationSummary): string {
   lines.push(`  SOL out: ${s.walletEffect.solOutLamports} lamports (fee and rent included; negative = received)`);
   for (const t of s.walletEffect.tokens) lines.push(`  ${t.mint}: ${t.delta} base units`);
   const v = s.verdict;
+  // Round 41 (external review D-8): an approval that reached this question
+  // only because the deployment accepted its residuals by name is
+  // analysis_only, not executable_approved, and is called that.
+  const decision = !v.approved
+    ? "NOT APPROVED"
+    : v.acceptedUnobserved.length > 0
+      ? "ANALYSIS ONLY (not executable_approved; signed only under residuals this deployment accepts)"
+      : "APPROVED (executable_approved)";
   lines.push(
     "",
-    `Graphite: ${v.approved ? "APPROVED" : "NOT APPROVED"}, risk ${v.risk}, confidence ${v.confidence}`,
+    `Graphite: ${decision}, risk ${v.risk}, confidence ${v.confidence}`,
     `  audit trail ${v.auditTrailId}${v.transactionSha256 ? `, transaction ${v.transactionSha256}` : ""}`,
     `  not observed: ${v.unobservedCodes.join(", ") || "none"}` +
       (v.acceptedUnobserved.length > 0 ? `; accepted by this deployment: ${v.acceptedUnobserved.join(", ")}` : ""),

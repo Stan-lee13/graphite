@@ -2289,6 +2289,7 @@ fn verification_scope(
     simulated: bool,
     simulation_error: Option<&str>,
     diff_built: bool,
+    diff_empty: bool,
     privileges: PrivilegeSource,
     lookups: Option<Result<usize, String>>,
     instruction_located: bool,
@@ -2345,6 +2346,18 @@ fn verification_scope(
                 r.push(
                     UnobservedCode::NoStateDiff,
                     "the transaction was simulated but no pre/post state diff was built, so what it actually changes was not compared against the manifest",
+                );
+            } else if diff_empty {
+                // Round 41 (external review D-1, D-29): a simulation reporting
+                // that nothing the transaction can write changed. A transaction
+                // the chain runs always changes something — at least its fee
+                // payer's lamports — so an effect-free simulation is not a
+                // measurement of what these bytes do. It used to leave L4
+                // Inconclusive, which no rule refused; a lying RPC returning
+                // the pre-state as the post-state took L4 out of the decision.
+                r.push(
+                    UnobservedCode::NoStateDiff,
+                    "the transaction was simulated, but its pre/post state diff shows no account it can write changing — a transaction the chain runs always changes something, so an effect-free simulation is not evidence of what it does and nothing was compared against the manifest",
                 );
             }
             // What the pipeline actually did, rather than this function's
@@ -10872,6 +10885,7 @@ impl GraphiteCore {
                     simulated,
                     simulation_error,
                     observed_diff.is_some(),
+                    observed_diff.as_ref().is_some_and(|d| d.is_empty()),
                     privilege_source,
                     resolved_lookups
                         .as_ref()

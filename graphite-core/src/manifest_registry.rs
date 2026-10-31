@@ -829,10 +829,33 @@ impl ManifestRegistryEngine {
             .into_iter()
             .filter(|f| !f.deprecated)
             .count();
+        // Round 41 (external review, D-30): the earlier versions' fixtures are
+        // independent of THIS upgrade only when none of its keys wrote them.
+        // While the program is still unvalidated, every fixture in force was
+        // written by the keys of its earlier submissions; an upgrade signed or
+        // attested by any of them replays its own reviewers' fixtures, which a
+        // self-consistent manifest passes by construction — the same thing D-9
+        // caps a first manifest for. It stays capped; an upgrade from disjoint
+        // keys, or measured volume, still lifts the cap.
+        let written_by_these_keys = || {
+            let ours: std::collections::HashSet<&str> = signer
+                .iter()
+                .map(String::as_str)
+                .chain(attesters.iter().map(String::as_str))
+                .collect();
+            self.records
+                .iter()
+                .filter(|r| r.program_id == program_id)
+                .flat_map(|r| r.signer.iter().chain(r.attesters.iter()))
+                .any(|k| ours.contains(k.as_str()))
+        };
         let unvalidated = match &head {
             None => true,
             Some(h) if head_tier.is_some() => h.first_manifest_unvalidated,
-            Some(_) => independent_fixtures == 0,
+            Some(h) => {
+                independent_fixtures == 0
+                    || (h.first_manifest_unvalidated && written_by_these_keys())
+            }
         };
         let tier = compute_trust_tier_for(&evidence, unvalidated);
         if head_tier.is_some_and(|head| tier <= head) {
@@ -1483,11 +1506,17 @@ mod tests {
         assert!(record.evidence.has_signed_manifest);
         assert!(record.first_manifest_unvalidated);
 
+        // Round 41 (D-30): from a reviewer who did not write v1.0's
+        // fixtures; the same signer's upgrade stays capped.
+        let upgrader = key(2);
+        engine
+            .register_reviewer(&pubkey_b58(&upgrader), 1000)
+            .unwrap();
         let upgrade = signed_upgrade(
             "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
             "v1.1",
             "v1.0",
-            &signer,
+            &upgrader,
         );
         let corpus = onboarding_corpus(&core, &upgrade);
         let decision = engine
@@ -1814,17 +1843,20 @@ mod tests {
         const PROGRAM: &str = NON_SEED;
         let mut engine = ManifestRegistryEngine::new();
         let mut store = SemanticGraphStore::new();
-        let (a, b, c) = (key(61), key(62), key(63));
+        let (a, b, c, d) = (key(61), key(62), key(63), key(64));
         engine.register_reviewer(&pubkey_b58(&a), 1000).unwrap();
         engine.register_reviewer(&pubkey_b58(&b), 1000).unwrap();
         engine.register_reviewer(&pubkey_b58(&c), 1000).unwrap();
+        engine.register_reviewer(&pubkey_b58(&d), 1000).unwrap();
         let core = GraphiteCore::new();
 
         // Round 40 (R39-CORE-IDENTITY-7): a first version's tier is capped
         // and more attestations of the same content cannot lift it — its
         // replay validated nothing, however many sign it. v0.9 is that first
         // version; resubmitted with two attesters it is refused as a replay.
-        let first_version = signed_submission(PROGRAM, "v0.9", &a);
+        // Round 41 (D-30): signed by a reviewer who takes no part in v1.0, so
+        // v1.0's replay of v0.9's fixtures is independent evidence.
+        let first_version = signed_submission(PROGRAM, "v0.9", &d);
         let first_corpus = onboarding_corpus(&core, &first_version);
         engine
             .submit(
@@ -2383,12 +2415,14 @@ mod tests {
     fn the_signer_does_not_attest_its_own_submission() {
         let mut engine = ManifestRegistryEngine::new();
         let mut store = SemanticGraphStore::new();
-        let (a, b) = (key(71), key(72));
+        let (a, b, c) = (key(71), key(72), key(73));
         engine.register_reviewer(&pubkey_b58(&a), 1000).unwrap();
         engine.register_reviewer(&pubkey_b58(&b), 1000).unwrap();
+        engine.register_reviewer(&pubkey_b58(&c), 1000).unwrap();
         let core = GraphiteCore::new();
         // Round 40: an upgrade, so the tier is what the evidence earns.
-        accept_first_version(&mut engine, &mut store, NON_SEED, "v0.9", &b);
+        // Round 41 (D-30): v0.9 from a reviewer with no part in v1.0.
+        accept_first_version(&mut engine, &mut store, NON_SEED, "v0.9", &c);
         let mut submission = signed_upgrade(NON_SEED, "v1.0", "v0.9", &a);
         let hash = submission.signing_message();
         submission.attestations = [&a, &b]
@@ -3255,9 +3289,80 @@ mod tests {
             }
         );
 
-        // The upgrade the gate replays against v1.0's fixtures: the cap is
-        // lifted, and the evidence earns its tier.
+        // Round 41 (D-30): the same reviewers' upgrade replays only fixtures
+        // they wrote themselves, so it validates nothing and stays capped.
+        // Until then this lifted the cap.
+        let mut same_keys = engine.clone();
+        let mut same_keys_store = store.clone();
         let upgrade = attested(signed_upgrade(NON_SEED, "v1.1", "v1.0", &signer));
+        let corpus = onboarding_corpus(&core, &upgrade);
+        assert_eq!(
+            same_keys
+                .submit(&mut same_keys_store, upgrade, Some((&corpus, &core)))
+                .unwrap(),
+            RegistryDecision::Accepted {
+                trust_tier: TrustTier::HeuristicInferred,
+                version_label: "v1.1".to_string(),
+            }
+        );
+        assert!(
+            same_keys
+                .records()
+                .last()
+                .unwrap()
+                .first_manifest_unvalidated
+        );
+        assert_eq!(
+            same_keys.manifests_in_force()[0].trust_tier,
+            "HeuristicInferred"
+        );
+        // One shared key is enough to keep it capped: a new signer with one
+        // of v1.0's attesters still replays that attester's fixtures.
+        let (signer2, c) = (key(114), key(115));
+        for k in [&signer2, &c] {
+            engine.register_reviewer(&pubkey_b58(k), 1000).unwrap();
+        }
+        let partly = {
+            let mut sub = signed_upgrade(NON_SEED, "v1.1", "v1.0", &signer2);
+            let message = sub.signing_message();
+            sub.attestations = [&a, &c]
+                .into_iter()
+                .map(|k| ReviewerAttestation {
+                    reviewer_pubkey: pubkey_b58(k),
+                    signature_hex: sign(k, &message),
+                })
+                .collect();
+            sub
+        };
+        let corpus = onboarding_corpus(&core, &partly);
+        assert_eq!(
+            engine
+                .clone()
+                .submit(&mut store.clone(), partly, Some((&corpus, &core)))
+                .unwrap(),
+            RegistryDecision::Accepted {
+                trust_tier: TrustTier::HeuristicInferred,
+                version_label: "v1.1".to_string(),
+            }
+        );
+
+        // The upgrade the gate replays against v1.0's fixtures, from keys
+        // that did not write them: the cap is lifted, and the evidence earns
+        // its tier.
+        let d = key(116);
+        engine.register_reviewer(&pubkey_b58(&d), 1000).unwrap();
+        let upgrade = {
+            let mut sub = signed_upgrade(NON_SEED, "v1.1", "v1.0", &signer2);
+            let message = sub.signing_message();
+            sub.attestations = [&c, &d]
+                .into_iter()
+                .map(|k| ReviewerAttestation {
+                    reviewer_pubkey: pubkey_b58(k),
+                    signature_hex: sign(k, &message),
+                })
+                .collect();
+            sub
+        };
         let corpus = onboarding_corpus(&core, &upgrade);
         assert_eq!(
             engine

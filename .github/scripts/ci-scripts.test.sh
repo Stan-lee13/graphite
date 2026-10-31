@@ -857,6 +857,29 @@ if "agent-guard-windows" not in jobs["ci-gate"]["needs"]:
     sys.exit("ci-gate does not need it")
 PY
 
+echo "== every action every workflow uses is pinned to a commit (Round 41, external review C-10)"
+# The agent-guard-windows case above checked one job; this holds every job of
+# every workflow, so a floating tag cannot be added anywhere unnoticed.
+cat >"$T/pins.py" <<'PY'
+import glob, os, re, sys, yaml
+bad = []
+for wf in sorted(glob.glob(os.path.join(sys.argv[1], "*.yml"))):
+    doc = yaml.safe_load(open(wf))
+    for name, job in (doc.get("jobs") or {}).items():
+        refs = [job["uses"]] if "uses" in job else []
+        refs += [s["uses"] for s in job.get("steps") or [] if "uses" in s]
+        for ref in refs:
+            if not (ref.startswith("./") or re.fullmatch(r"[\w.-]+/[\w./-]+@[0-9a-f]{40}", ref)):
+                bad.append(f"{os.path.basename(wf)} {name}: {ref}")
+if bad:
+    sys.exit("not pinned to a commit:\n" + "\n".join(bad))
+PY
+expect 0 "every uses: in .github/workflows is owner/repo@<40-hex sha> or a local action" python3 -I "$T/pins.py" "$root/.github/workflows"
+mkdir -p "$T/wf-tag"
+cp "$root/.github/workflows/ci.yml" "$T/wf-tag/ci.yml"
+sed -i '0,/uses: actions\/checkout@[0-9a-f]\{40\}/s//uses: actions\/checkout@v4/' "$T/wf-tag/ci.yml"
+expect 1 "a workflow using actions/checkout@v4 is refused" python3 -I "$T/pins.py" "$T/wf-tag"
+
 echo "== graphite-core is not published to crates.io (Round 40, checklist 10c)"
 expect 0 "Cargo.toml says publish = false and no workflow runs cargo publish" python3 -I - "$root" <<'PY'
 import glob, os, sys, tomllib

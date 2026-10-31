@@ -138,6 +138,20 @@ fn assert_every_statement(
     );
 }
 
+/// The intent grants (`intent_grants::GRANTS`). Round 41 (external review
+/// D-11): CURRENT and the handoff said 27 after D-2 had removed `update_offer`
+/// and left 26; nothing held the number.
+#[test]
+fn the_intent_grant_count_is_the_table() {
+    assert_every_statement(
+        "number of intent grants",
+        graphite_core::intent_grants::GRANTS.len() as u64,
+        &["grants"],
+        &["intent"],
+        &["intent_grants", "intent grant"],
+    );
+}
+
 /// The cross-language corpus's byte-level mutations.
 #[test]
 fn the_mutation_count_is_the_corpus() {

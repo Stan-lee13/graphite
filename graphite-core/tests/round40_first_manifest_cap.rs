@@ -13,7 +13,8 @@
 //! registry's evidence — in the manifest in force and in the graph record,
 //! the two sources `program_trust_tier` takes the verdict's tier from — not
 //! as a special case in the verdict. The first upgrade replayed against the
-//! fixtures the first version pinned lifts it.
+//! fixtures the first version pinned lifts it — from Round 41 (D-30), only an
+//! upgrade from reviewers who did not write those fixtures.
 //!
 //! The seeded built-in manifests are not registry submissions: they create
 //! no registry record, carry no flag, and keep their tier.
@@ -180,9 +181,30 @@ fn a_first_manifest_reaches_the_verdict_capped_and_its_validated_upgrade_does_no
         "HeuristicInferred"
     );
 
-    // Benign: the upgrade, replayed against the fixture v1 pinned, earns
-    // what its signature earns.
-    let v2 = signed(manifest(PROGRAM, "1.1.0", Some("1.0.0")), &reviewer);
+    // Round 41 (D-30): the same reviewer's upgrade replays only the fixture
+    // that reviewer wrote, so the verdict stays capped.
+    let mut same = engine.clone();
+    let mut same_store = store.clone();
+    let v2_same = signed(manifest(PROGRAM, "1.1.0", Some("1.0.0")), &reviewer);
+    let corpus = corpus_for(&gate, &v2_same, &ping);
+    same.submit(&mut same_store, v2_same, Some((&corpus, &gate)))
+        .unwrap();
+    assert_eq!(verdict_tier(&same, None, &ping), "HeuristicInferred");
+    assert_eq!(
+        verdict_tier(&same, Some(&same_store), &ping),
+        "HeuristicInferred"
+    );
+
+    // Benign: the upgrade from another reviewer, replayed against the
+    // fixture v1 pinned, earns what its signature earns.
+    let second = SigningKey::from_bytes(&[41u8; 32]);
+    engine
+        .register_reviewer(
+            &bs58::encode(second.verifying_key().to_bytes()).into_string(),
+            1_000,
+        )
+        .unwrap();
+    let v2 = signed(manifest(PROGRAM, "1.1.0", Some("1.0.0")), &second);
     let corpus = corpus_for(&gate, &v2, &ping);
     engine
         .submit(&mut store, v2, Some((&corpus, &gate)))
