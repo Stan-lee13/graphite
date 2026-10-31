@@ -1274,6 +1274,29 @@ def test_an_honest_direct_swap_is_a_candidate_with_what_the_wallet_gave_and_got(
     assert c["index"] == 1 and c["watch"] == [W_BONK] and c["sender"] == WALLET
 
 
+def test_a_jupiter_route_through_pump_amm_is_its_own_venue_and_is_picked():
+    """Round 41 (D-27): live samples held Pump AMM routes only by chance; as
+    their own venue the alternation picks one whenever a block has one."""
+    route = bytes.fromhex("e517cb977ae3ad2a") + bytes.fromhex("01000000c10064000001") \
+        + (2_000_000).to_bytes(8, "little") + (900).to_bytes(8, "little") + (100).to_bytes(2, "little") + b"\x00"
+
+    def jupiter(*extra):
+        return swap_row([CB, (hs.JUPITER_V6, [(WALLET, True, True), (W_USDC, False, True), (W_BONK, False, True), *extra],
+                              route)],
+                        pre=[(W_USDC, USDC, WALLET, 5_000_000), (W_BONK, BONK, WALLET, 0)],
+                        post=[(W_USDC, USDC, WALLET, 3_000_000), (W_BONK, BONK, WALLET, 900)])[0]
+
+    plain, _ = hs.swap_candidate(jupiter())
+    pump, _ = hs.swap_candidate(jupiter((hs.PUMP_AMM, False, False)))
+    assert plain["venue"] == "Jupiter v6 route"
+    assert pump["venue"] == "Jupiter v6 route via Pump AMM" and pump["layout"] == "jupiter"
+    # One slot left after the plain route: the Pump AMM route still gets it.
+    rows = [jupiter(), dict(jupiter((hs.PUMP_AMM, False, False)), row=4)]
+    picked, counts = hs.swap_candidates(rows, 2)
+    assert {c["venue"] for c in picked} == {"Jupiter v6 route", "Jupiter v6 route via Pump AMM"}
+    assert counts["by venue"] == {"Jupiter v6 route": 1, "Jupiter v6 route via Pump AMM": 1}
+
+
 def test_a_swap_beside_a_tip_or_another_signer_is_set_aside_by_reason():
     row, _ = usdc_to_bonk([wire.system_transfer(WALLET, TIPPER, 10_000)])
     assert hs.swap_candidate(row) == (None, "a SOL transfer beside the swap (a tip or a payment)")

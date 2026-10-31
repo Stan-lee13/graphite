@@ -1016,7 +1016,7 @@ jobs:
         working-directory: tools/live-measure
         run: |
           pytest -q -p no:cacheprovider test_live_measure.py 2>&1 | tee "$RUNNER_TEMP/pytest-live.log"
-          bash ../../.github/scripts/test-count.sh pytest "$RUNNER_TEMP/pytest-live.log" 96
+          bash ../../.github/scripts/test-count.sh pytest "$RUNNER_TEMP/pytest-live.log" 97
       # W23 (external review): the other lockfiles were audited and this one
       # was not. Every pin is exact and hashed, so no resolution is needed.
       - name: Advisory audit of the lockfile

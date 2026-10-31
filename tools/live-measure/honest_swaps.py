@@ -89,6 +89,7 @@ VENUES = {
 # The minimum is set this far under the quote; the request states the Core's
 # default (1%), so the minimum sits inside it while the pool moves less than
 # 0.5% between the quote and the Core's own simulation.
+PUMP_AMM = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
 QUOTE_SLIPPAGE_BPS = 50
 REQUEST_SLIPPAGE_BPS = 100
 
@@ -298,6 +299,10 @@ def swap_candidate(src):
     except ValueError:
         signature = None
     accounts = [(keys[a], *wire.privileges(msg, a, len(lw))) for a in sw.accounts]
+    # Round 41: a Jupiter route through Pump AMM is its own venue, so the
+    # alternation picks one whenever a block holds one (D-27 is about them).
+    if name.startswith("Jupiter") and any(k == PUMP_AMM for k, _, _ in accounts):
+        name = f"{name} via Pump AMM"
     # Every top-level instruction, for a reader judging a refusal: the
     # program, the first data bytes, the accounts (`s` signer, `w` writable).
     shape = []
