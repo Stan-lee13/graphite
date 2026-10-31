@@ -1788,6 +1788,21 @@ mod tests {
     const WALLET_B: &str = "DuFgLf6zzf2N9v3iT4NrkdTPDSD2xK52CCnx6Ag2ckTP";
     const MINT: &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
+    /// Round 41 (Assurance run 41195462495, risk_engine shard 0/12): no test
+    /// read what `short_id` returns, so replacing it with "" or "xyzzy"
+    /// survived. A refusal names the programs it is about by this prefix.
+    #[test]
+    fn short_id_is_the_first_eight_characters() {
+        assert_eq!(short_id(WALLET_A), "9RGFwSry");
+        assert_eq!(short_id(MINT), "EPjFWdd5");
+        assert_eq!(short_id("12345678"), "12345678");
+        assert_eq!(short_id("abc"), "abc");
+        assert_eq!(short_id(""), "");
+        // By character, never by byte (A1-03/A3-09): nine two-byte
+        // characters give eight of them, and nothing panics.
+        assert_eq!(short_id("ééééééééé"), "éééééééé");
+    }
+
     fn input(program: &str, disc: &str, accounts: &[&str], intent: &str) -> RiskAssessmentInput {
         RiskAssessmentInput {
             program_id: program.to_string(),
