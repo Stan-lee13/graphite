@@ -5,6 +5,10 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 
 ## Round 41
 
+Round 41 (2026-10-31) — the agent guard's swap spend cap trusted its RPC's simulation alone (external review claim D-2; [decision D-28](../docs/audit/TECHNICAL_LEAD_DECISIONS.md)):
+
+- **Agent guard (stricter):** a swap's outflow under `GRAPHITE_MAX_TRANSFER_LAMPORTS` is at least the route's own `in_amount` plus the message's fee (SOL input), and a non-SOL input always counts as that token spent; the simulation can only raise the figure. Tests: two lying-simulation cases in `guard.test.ts`, both failing on the previous code; the "within the cap" case's cap corrected to its route's real cost.
+
 Round 41 (2026-10-31) — four honest Jupiter v6 routes through Pump AMM refused live (run 41154452231) because their step uses `Swap` variant 193, `PumpSwapBuyV4`, which the IDL committed on 2026-09-23 did not have ([decision D-27](../docs/audit/TECHNICAL_LEAD_DECISIONS.md)):
 
 - **Contract:** unchanged.

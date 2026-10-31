@@ -1811,12 +1811,23 @@ export class GraphiteGuard {
     // per signature plus its priority fee), read from its bytes.
     const swapFee = transactionFee(boundSwap.messageBytes);
     const measuredOutflow = (effect.solOut > 0n ? effect.solOut : 0n) + maxPriorityFeeLamports(this.#swapEnvelope);
-    const outflowLamports = measuredOutflow > swapFee.totalLamports ? measuredOutflow : swapFee.totalLamports;
+    // Round 41 (external review D-2): the route's own bytes bound what it
+    // spends, as the stated amount bounds a transfer (`#transferOutflow`); the
+    // simulation is the guard's RPC's word and only ever raises the figure. A
+    // simulation showing less leaving than the route's in_amount no longer
+    // fits a larger swap under the cap, and a non-SOL input is always a token
+    // a lamport cap cannot price.
+    const nativeInput = groundedSwap.input.mint === NATIVE_MINT;
+    const routeOutflow = nativeInput ? decoded.amountIn + swapFee.totalLamports : swapFee.totalLamports;
+    const outflowLamports = measuredOutflow > routeOutflow ? measuredOutflow : routeOutflow;
+    const spentTokens = [...effect.tokenDelta]
+      .filter(([, delta]) => delta < 0n)
+      .map(([mint, delta]) => ({ mint, amount: -delta }));
     assertSwapAllowed(this.#spendPolicy, {
       lamports: outflowLamports,
-      tokens: [...effect.tokenDelta]
-        .filter(([, delta]) => delta < 0n)
-        .map(([mint, delta]) => ({ mint, amount: -delta })),
+      tokens: nativeInput
+        ? spentTokens
+        : [{ mint: groundedSwap.input.mint, amount: decoded.amountIn }, ...spentTokens],
     });
     assertSwapEffectMatches(groundedSwap, effect);
     const economics: SwapEconomics = assertSwapEconomics({
