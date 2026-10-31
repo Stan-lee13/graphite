@@ -36,16 +36,16 @@ and `gh` authenticated as a repository admin.
   Hand the auditors [`docs/audit-handoff/`](../audit-handoff/README.md): scope, threat model, build and test
   steps, the invariants and the tests that hold each, the known residuals, the questions, and the commit.
   Publish their report and the fixes before item 10.
-- [ ] **4. Keep or relax the Round 32 refusal defaults.** Since Round 32 a signer's loss under an
+- [x] **4. Keep or relax the Round 32 refusal defaults.** **Decided (Round 40, by the technical lead under the owner's delegation of 2026-10-25): kept at `0`** — `docs/audit/TECHNICAL_LEAD_DECISIONS.md`, RESIDUAL_RISK §2. Since Round 32 a signer's loss under an
   unreadable declaration (`GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS`), W19
   (`GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT`) and an unbounded granted withdrawal
   (`GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS`) are refused by default; each variable set to `1` restores
   the old behaviour and is logged at startup. Measured cost: W19 refused 1 of 200 replayed live mainnet
   transactions (0.5%). Run `.github/workflows/live-mainnet.yml` against your traffic profile; leave all
   three at `0` unless the measured false refusals are a cost you choose over the protection.
-- [ ] **5. Decide R-M9** (Constitution P12 vs. the drainer heuristic), the default of
+- [x] **5. Decide R-M9** — **decided (Round 40): R-M9 kept with its reasoning; upgrade quarantine stays opt-in; no automatic self-heal quarantine** (RESIDUAL_RISK §2) (Constitution P12 vs. the drainer heuristic), the default of
   `GRAPHITE_QUARANTINE_ON_UPGRADE` (`.env.example`), and the self-heal threshold (R-P10).
-- [ ] **6. Dependabot majors.** Round 31 took every update except, with reasons: the oracle's
+- [x] **6. Dependabot majors.** **Decided: the holds stand** (the four PRs below closed unmerged; `.github/dependency-holds.json` and `.github/dependabot.yml` record why; re-open one only with its paired bump and the oracles re-run). Routine patch PRs (#57, #58, #59 on 2026-10-29) are not holds: merge them when green. Round 31 took every update except, with reasons: the oracle's
   `solana-transaction`/`solana-message` 6 and `bincode` 3 (`graphite-core/CHANGELOG.md`),
   `@solana/web3.js` 1.x, `@types/node` 22.x. Each stays an explicit decision; close or re-open the
   corresponding Dependabot PRs to match. The pull requests named as owner items so far:
@@ -63,7 +63,7 @@ and `gh` authenticated as a repository admin.
 - [ ] **7. Assurance budgets.** After the first scheduled run of the weekly mutation and coverage jobs on
   the hosted runners: Actions → the run → read the measured scores; replace the three provisional
   mutation-score floors (each at 0.60) with measured ones in a PR.
-- [ ] **8. Benchmark review before any public claim.** `cargo run --release --locked --features cli -- benchmark --json`
+- [x] **8. Benchmark review before any public claim.** **Reviewed 2026-10-31** (Round 41, `graphite benchmark --json`, `deterministic_sha256` `2ab774d6…8a95`): holdout 38 rows, 37 of 37 exploits refused, the one benign Jupiter swap refused offline (precision 0.974, false-refusal rate on n=1); the README quotes exactly these with that caveat. `cargo run --release --locked --features cli -- benchmark --json`
   (in `graphite-core/`): the holdout is 38 rows and every offline approval is `analysis_only`; say so
   next to any number quoted.
 
