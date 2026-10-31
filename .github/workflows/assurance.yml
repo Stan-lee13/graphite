@@ -126,7 +126,12 @@ jobs:
       # file, from
       # `cargo mutants --list --file F` at Round 40: risk_engine 235 -> 12,
       # simulation_integrity 199 -> 10, tx_artifact 324 -> 17, state_diff
-      # 1,015 -> 51 (90 jobs; GitHub allows 256 per matrix). The "Plan" step
+      # 1,015 -> 51 (90 jobs; GitHub allows 256 per matrix). Round 41: run
+      # 41195462495's Plan step refused state_diff shard 50/51 as EMPTY —
+      # Round 41's code took state_diff to 1,150 mutants, ceil(1150/51) = 23
+      # a shard and 50 x 23 = 1,150 — so state_diff is now 58 shards of at
+      # most 20 (the last holds 10; 97 jobs; risk_engine 232, simulation_
+      # integrity 199 and tx_artifact 324 still fit their counts). The "Plan" step
       # lists the shard before anything is built and fails at once, naming
       # the file, if a shard has grown past 24 (15 + 24 x 9 = 231 minutes,
       # still 99 inside the step) or is empty: add shards here, in a reviewed
@@ -174,57 +179,64 @@ jobs:
           - { file: src/tx_artifact.rs, shard: 14/17 }
           - { file: src/tx_artifact.rs, shard: 15/17 }
           - { file: src/tx_artifact.rs, shard: 16/17 }
-          - { file: src/state_diff.rs, shard: 0/51 }
-          - { file: src/state_diff.rs, shard: 1/51 }
-          - { file: src/state_diff.rs, shard: 2/51 }
-          - { file: src/state_diff.rs, shard: 3/51 }
-          - { file: src/state_diff.rs, shard: 4/51 }
-          - { file: src/state_diff.rs, shard: 5/51 }
-          - { file: src/state_diff.rs, shard: 6/51 }
-          - { file: src/state_diff.rs, shard: 7/51 }
-          - { file: src/state_diff.rs, shard: 8/51 }
-          - { file: src/state_diff.rs, shard: 9/51 }
-          - { file: src/state_diff.rs, shard: 10/51 }
-          - { file: src/state_diff.rs, shard: 11/51 }
-          - { file: src/state_diff.rs, shard: 12/51 }
-          - { file: src/state_diff.rs, shard: 13/51 }
-          - { file: src/state_diff.rs, shard: 14/51 }
-          - { file: src/state_diff.rs, shard: 15/51 }
-          - { file: src/state_diff.rs, shard: 16/51 }
-          - { file: src/state_diff.rs, shard: 17/51 }
-          - { file: src/state_diff.rs, shard: 18/51 }
-          - { file: src/state_diff.rs, shard: 19/51 }
-          - { file: src/state_diff.rs, shard: 20/51 }
-          - { file: src/state_diff.rs, shard: 21/51 }
-          - { file: src/state_diff.rs, shard: 22/51 }
-          - { file: src/state_diff.rs, shard: 23/51 }
-          - { file: src/state_diff.rs, shard: 24/51 }
-          - { file: src/state_diff.rs, shard: 25/51 }
-          - { file: src/state_diff.rs, shard: 26/51 }
-          - { file: src/state_diff.rs, shard: 27/51 }
-          - { file: src/state_diff.rs, shard: 28/51 }
-          - { file: src/state_diff.rs, shard: 29/51 }
-          - { file: src/state_diff.rs, shard: 30/51 }
-          - { file: src/state_diff.rs, shard: 31/51 }
-          - { file: src/state_diff.rs, shard: 32/51 }
-          - { file: src/state_diff.rs, shard: 33/51 }
-          - { file: src/state_diff.rs, shard: 34/51 }
-          - { file: src/state_diff.rs, shard: 35/51 }
-          - { file: src/state_diff.rs, shard: 36/51 }
-          - { file: src/state_diff.rs, shard: 37/51 }
-          - { file: src/state_diff.rs, shard: 38/51 }
-          - { file: src/state_diff.rs, shard: 39/51 }
-          - { file: src/state_diff.rs, shard: 40/51 }
-          - { file: src/state_diff.rs, shard: 41/51 }
-          - { file: src/state_diff.rs, shard: 42/51 }
-          - { file: src/state_diff.rs, shard: 43/51 }
-          - { file: src/state_diff.rs, shard: 44/51 }
-          - { file: src/state_diff.rs, shard: 45/51 }
-          - { file: src/state_diff.rs, shard: 46/51 }
-          - { file: src/state_diff.rs, shard: 47/51 }
-          - { file: src/state_diff.rs, shard: 48/51 }
-          - { file: src/state_diff.rs, shard: 49/51 }
-          - { file: src/state_diff.rs, shard: 50/51 }
+          - { file: src/state_diff.rs, shard: 0/58 }
+          - { file: src/state_diff.rs, shard: 1/58 }
+          - { file: src/state_diff.rs, shard: 2/58 }
+          - { file: src/state_diff.rs, shard: 3/58 }
+          - { file: src/state_diff.rs, shard: 4/58 }
+          - { file: src/state_diff.rs, shard: 5/58 }
+          - { file: src/state_diff.rs, shard: 6/58 }
+          - { file: src/state_diff.rs, shard: 7/58 }
+          - { file: src/state_diff.rs, shard: 8/58 }
+          - { file: src/state_diff.rs, shard: 9/58 }
+          - { file: src/state_diff.rs, shard: 10/58 }
+          - { file: src/state_diff.rs, shard: 11/58 }
+          - { file: src/state_diff.rs, shard: 12/58 }
+          - { file: src/state_diff.rs, shard: 13/58 }
+          - { file: src/state_diff.rs, shard: 14/58 }
+          - { file: src/state_diff.rs, shard: 15/58 }
+          - { file: src/state_diff.rs, shard: 16/58 }
+          - { file: src/state_diff.rs, shard: 17/58 }
+          - { file: src/state_diff.rs, shard: 18/58 }
+          - { file: src/state_diff.rs, shard: 19/58 }
+          - { file: src/state_diff.rs, shard: 20/58 }
+          - { file: src/state_diff.rs, shard: 21/58 }
+          - { file: src/state_diff.rs, shard: 22/58 }
+          - { file: src/state_diff.rs, shard: 23/58 }
+          - { file: src/state_diff.rs, shard: 24/58 }
+          - { file: src/state_diff.rs, shard: 25/58 }
+          - { file: src/state_diff.rs, shard: 26/58 }
+          - { file: src/state_diff.rs, shard: 27/58 }
+          - { file: src/state_diff.rs, shard: 28/58 }
+          - { file: src/state_diff.rs, shard: 29/58 }
+          - { file: src/state_diff.rs, shard: 30/58 }
+          - { file: src/state_diff.rs, shard: 31/58 }
+          - { file: src/state_diff.rs, shard: 32/58 }
+          - { file: src/state_diff.rs, shard: 33/58 }
+          - { file: src/state_diff.rs, shard: 34/58 }
+          - { file: src/state_diff.rs, shard: 35/58 }
+          - { file: src/state_diff.rs, shard: 36/58 }
+          - { file: src/state_diff.rs, shard: 37/58 }
+          - { file: src/state_diff.rs, shard: 38/58 }
+          - { file: src/state_diff.rs, shard: 39/58 }
+          - { file: src/state_diff.rs, shard: 40/58 }
+          - { file: src/state_diff.rs, shard: 41/58 }
+          - { file: src/state_diff.rs, shard: 42/58 }
+          - { file: src/state_diff.rs, shard: 43/58 }
+          - { file: src/state_diff.rs, shard: 44/58 }
+          - { file: src/state_diff.rs, shard: 45/58 }
+          - { file: src/state_diff.rs, shard: 46/58 }
+          - { file: src/state_diff.rs, shard: 47/58 }
+          - { file: src/state_diff.rs, shard: 48/58 }
+          - { file: src/state_diff.rs, shard: 49/58 }
+          - { file: src/state_diff.rs, shard: 50/58 }
+          - { file: src/state_diff.rs, shard: 51/58 }
+          - { file: src/state_diff.rs, shard: 52/58 }
+          - { file: src/state_diff.rs, shard: 53/58 }
+          - { file: src/state_diff.rs, shard: 54/58 }
+          - { file: src/state_diff.rs, shard: 55/58 }
+          - { file: src/state_diff.rs, shard: 56/58 }
+          - { file: src/state_diff.rs, shard: 57/58 }
     defaults:
       run:
         working-directory: graphite-core
