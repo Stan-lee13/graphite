@@ -7709,6 +7709,189 @@ mod tests {
         want.sort();
         assert_eq!(got, want);
     }
+
+    #[test]
+    fn r41_native_kind_names_each_native_owner() {
+        assert_eq!(native_kind(STAKE_PROGRAM), "stake");
+        assert_eq!(native_kind(VOTE_PROGRAM), "vote");
+        assert_eq!(native_kind(SYSTEM_PROGRAM), "nonce");
+        assert_eq!(native_kind(SPL_TOKEN_PROGRAM), "native");
+    }
+
+    /// Assurance run 41195462495, state_diff shard 16/51 (0.391): which
+    /// authorities of a native account the transaction created no signer
+    /// holds, one authority kind at a time.
+    fn r41_native(owner: &str, authorities: &[(&str, &str)]) -> AccountSnapshot {
+        AccountSnapshot {
+            owner: owner.to_string(),
+            data_len: 200,
+            native_authorities: authorities
+                .iter()
+                .map(|(what, who)| (what.to_string(), who.to_string()))
+                .collect(),
+            ..lamport_snapshot(&r41_key(30), 2_282_880)
+        }
+    }
+
+    #[test]
+    fn r41_a_created_stake_accounts_unsigned_authorities_are_named() {
+        let (s, x) = (r41_key(1), r41_key(6));
+        let account = r41_key(30);
+        let signers: HashSet<&str> = [s.as_str()].into();
+        let named = |auths: &[(&str, &str)], splits: &[Vec<(String, String)>]| {
+            created_authorities_not_signing(
+                &r41_native(STAKE_PROGRAM, auths),
+                &account,
+                &signers,
+                splits,
+            )
+        };
+        let free = ("stake lockup", "unix 0, epoch 0");
+        let locked = ("stake lockup", "unix 1900000000, epoch 0");
+        // Staker and withdrawer sign, no lockup: no one is introduced, and
+        // a custodian of no lockup is not judged.
+        let clean = [
+            ("stake staker", s.as_str()),
+            ("stake withdrawer", s.as_str()),
+            free,
+            ("stake lockup custodian", x.as_str()),
+        ];
+        assert_eq!(named(&clean, &[]), Vec::<String>::new());
+        // A lockup in force: its custodian is judged.
+        let custodian = [
+            ("stake staker", s.as_str()),
+            ("stake withdrawer", s.as_str()),
+            locked,
+            ("stake lockup custodian", x.as_str()),
+        ];
+        assert_eq!(
+            named(&custodian, &[]),
+            vec![format!("stake lockup custodian {x}")]
+        );
+        let signed_custodian = [
+            ("stake staker", s.as_str()),
+            ("stake withdrawer", s.as_str()),
+            locked,
+            ("stake lockup custodian", s.as_str()),
+        ];
+        assert_eq!(named(&signed_custodian, &[]), Vec::<String>::new());
+        // A staker or withdrawer no signer holds.
+        let staker = [
+            ("stake staker", x.as_str()),
+            ("stake withdrawer", s.as_str()),
+            free,
+        ];
+        assert_eq!(named(&staker, &[]), vec![format!("stake staker {x}")]);
+        let withdrawer = [
+            ("stake staker", s.as_str()),
+            ("stake withdrawer", x.as_str()),
+            free,
+        ];
+        assert_eq!(
+            named(&withdrawer, &[]),
+            vec![format!("stake withdrawer {x}")]
+        );
+        // Exactly the authorities of an account this transaction splits from:
+        // no one new.
+        let split: Vec<(String, String)> = staker
+            .iter()
+            .map(|(a, b)| (a.to_string(), b.to_string()))
+            .collect();
+        assert_eq!(named(&staker, &[split]), Vec::<String>::new());
+    }
+
+    #[test]
+    fn r41_a_created_vote_accounts_unsigned_authorities_are_named() {
+        let (s, x) = (r41_key(1), r41_key(6));
+        let account = r41_key(30);
+        let signers: HashSet<&str> = [s.as_str()].into();
+        let named = |auths: &[(&str, &str)]| {
+            created_authorities_not_signing(
+                &r41_native(VOTE_PROGRAM, auths),
+                &account,
+                &signers,
+                &[],
+            )
+        };
+        // The withdrawer signs; each collector signs or is the account itself.
+        let clean = [
+            ("vote authorized withdrawer", s.as_str()),
+            ("vote inflation rewards collector", account.as_str()),
+            ("vote block revenue collector", s.as_str()),
+        ];
+        assert_eq!(named(&clean), Vec::<String>::new());
+        assert_eq!(
+            named(&[("vote authorized withdrawer", x.as_str())]),
+            vec![format!("vote authorized withdrawer {x}")]
+        );
+        for collector in [
+            "vote inflation rewards collector",
+            "vote block revenue collector",
+        ] {
+            assert_eq!(
+                named(&[(collector, x.as_str())]),
+                vec![format!("{collector} {x}")]
+            );
+        }
+        // A vote state this build cannot decode is a stranger.
+        assert_eq!(
+            named(&[("vote undecodable", s.as_str())]),
+            vec![format!("vote undecodable {s}")]
+        );
+    }
+
+    #[test]
+    fn r41_a_created_nonce_accounts_unsigned_authority_is_named() {
+        let (s, x) = (r41_key(1), r41_key(6));
+        let account = r41_key(30);
+        let signers: HashSet<&str> = [s.as_str()].into();
+        let named = |owner: &str, auths: &[(&str, &str)]| {
+            created_authorities_not_signing(&r41_native(owner, auths), &account, &signers, &[])
+        };
+        assert_eq!(
+            named(SYSTEM_PROGRAM, &[("nonce authority", s.as_str())]),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            named(SYSTEM_PROGRAM, &[("nonce authority", x.as_str())]),
+            vec![format!("nonce authority {x}")]
+        );
+        // Only the nonce authority is judged on a System account.
+        assert_eq!(
+            named(SYSTEM_PROGRAM, &[("nonce other", x.as_str())]),
+            Vec::<String>::new()
+        );
+        // An owner that is no native program introduces no one here.
+        assert_eq!(
+            named(SPL_TOKEN_PROGRAM, &[("nonce authority", x.as_str())]),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn r41_lamports_kept_by_names_the_keeping_signer() {
+        let (s, x) = (r41_key(1), r41_key(6));
+        let signers: HashSet<&str> = [s.as_str()].into();
+        assert_eq!(
+            lamports_kept_by(&r41_wsol(&r41_key(7), 1, &s), &signers),
+            Some(s.clone())
+        );
+        assert_eq!(
+            lamports_kept_by(&r41_wsol(&r41_key(7), 1, &x), &signers),
+            None
+        );
+        let nonce = r41_native(SYSTEM_PROGRAM, &[("nonce authority", s.as_str())]);
+        assert_eq!(lamports_kept_by(&nonce, &signers), Some(s.clone()));
+        let stake = r41_native(
+            STAKE_PROGRAM,
+            &[
+                ("stake staker", s.as_str()),
+                ("stake withdrawer", s.as_str()),
+                ("stake lockup", "unix 0, epoch 0"),
+            ],
+        );
+        assert_eq!(lamports_kept_by(&stake, &signers), Some(s.clone()));
+    }
 }
 
 /// W19 (external review, verified 2026-10-03): what a declaration line says
