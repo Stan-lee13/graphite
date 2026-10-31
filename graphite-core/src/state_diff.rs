@@ -6675,6 +6675,1040 @@ mod tests {
             assert!(!f.detail.is_empty(), "empty detail in {f:?}");
         }
     }
+
+    // ── Round 41: the wrapped-SOL helpers, one condition at a time ──────────
+    //
+    // Assurance run 41195462495 scored state_diff.rs shards 20 to 23 at 0.00
+    // to 0.27 against their 0.60 floor: the helpers Round 41 added to read the
+    // transaction's own top-level instructions (D-20 wrapped SOL, D-22 the
+    // wallet's own unwrap, D-24 a temporary wSOL account) were exercised only
+    // end to end, by `round41_live_false_refusals`, which is not among the
+    // shards' suites, and never one condition at a time. Each test below pins
+    // one helper's exact answer on an honest shape and on shapes that differ
+    // from it in one place, so a mutation of any one condition changes an
+    // answer. The losses netting they feed (`signer_lamport_losses`,
+    // `signer_holds`, shards 18 to 20) is pinned the same way.
+
+    use std::collections::{HashMap, HashSet};
+
+    const R41_RENT_SYSVAR: &str = "SysvarRent111111111111111111111111111111111";
+
+    fn r41_key(n: u8) -> String {
+        crate::solana_types::Pubkey([n; 32]).to_base58()
+    }
+
+    fn r41_pubkey(s: &str) -> crate::solana_types::Pubkey {
+        crate::solana_types::Pubkey::from_base58(s).expect("a valid key")
+    }
+
+    /// `owner`'s associated token account for the native mint under SPL Token.
+    fn r41_native_ata(owner: &str) -> String {
+        crate::solana_types::find_program_address(
+            &[
+                r41_pubkey(owner).as_bytes(),
+                r41_pubkey(SPL_TOKEN_PROGRAM).as_bytes(),
+                r41_pubkey(crate::intent_binding::NATIVE_MINT).as_bytes(),
+            ],
+            &r41_pubkey(crate::intent_binding::ATA_PROGRAM),
+        )
+        .expect("an ATA address")
+        .0
+        .to_base58()
+    }
+
+    /// The address `CreateAccountWithSeed(base, seed, SPL Token)` creates.
+    fn r41_seeded(base: &str, seed: &str) -> String {
+        crate::solana_types::create_with_seed(
+            &r41_pubkey(base),
+            seed.as_bytes(),
+            &r41_pubkey(SPL_TOKEN_PROGRAM),
+        )
+        .expect("a seeded address")
+        .to_base58()
+    }
+
+    fn r41_ix(program: &str, accounts: &[&str], data: Vec<u8>) -> TopLevelInstruction {
+        TopLevelInstruction {
+            program_id: program.to_string(),
+            accounts: accounts.iter().map(|a| a.to_string()).collect(),
+            data,
+        }
+    }
+
+    /// System `Transfer { lamports }`: tag 2, 12 bytes.
+    fn r41_transfer(lamports: u64) -> Vec<u8> {
+        let mut d = 2u32.to_le_bytes().to_vec();
+        d.extend_from_slice(&lamports.to_le_bytes());
+        d
+    }
+
+    /// System `CreateAccount { lamports, space, owner }`: tag 0, 52 bytes.
+    fn r41_create_account(lamports: u64, space: u64, owner: &str) -> Vec<u8> {
+        let mut d = 0u32.to_le_bytes().to_vec();
+        d.extend_from_slice(&lamports.to_le_bytes());
+        d.extend_from_slice(&space.to_le_bytes());
+        d.extend_from_slice(r41_pubkey(owner).as_bytes());
+        d
+    }
+
+    /// System `CreateAccountWithSeed { base, seed, lamports, space, owner }`:
+    /// tag 3, the seed a bincode `String` (u64 length, bytes).
+    fn r41_create_with_seed(
+        base: &str,
+        seed: &str,
+        lamports: u64,
+        space: u64,
+        owner: &str,
+    ) -> Vec<u8> {
+        let mut d = 3u32.to_le_bytes().to_vec();
+        d.extend_from_slice(r41_pubkey(base).as_bytes());
+        d.extend_from_slice(&(seed.len() as u64).to_le_bytes());
+        d.extend_from_slice(seed.as_bytes());
+        d.extend_from_slice(&lamports.to_le_bytes());
+        d.extend_from_slice(&space.to_le_bytes());
+        d.extend_from_slice(r41_pubkey(owner).as_bytes());
+        d
+    }
+
+    /// SPL Token `InitializeAccount3 { owner }`: tag 18, the owner's 32 bytes.
+    fn r41_init3(owner: &str) -> Vec<u8> {
+        let mut d = vec![18];
+        d.extend_from_slice(r41_pubkey(owner).as_bytes());
+        d
+    }
+
+    fn r41_token_snapshot(pubkey: &str, lamports: u64, mint: &str, owner: &str) -> AccountSnapshot {
+        AccountSnapshot {
+            owner: SPL_TOKEN_PROGRAM.to_string(),
+            data_len: TOKEN_ACCOUNT_LEN,
+            token: Some(TokenAccountView {
+                mint: mint.to_string(),
+                owner: owner.to_string(),
+                amount: lamports,
+                state: 1,
+                ..Default::default()
+            }),
+            ..lamport_snapshot(pubkey, lamports)
+        }
+    }
+
+    fn r41_wsol(pubkey: &str, lamports: u64, owner: &str) -> AccountSnapshot {
+        r41_token_snapshot(pubkey, lamports, crate::intent_binding::NATIVE_MINT, owner)
+    }
+
+    fn r41_delta(
+        pubkey: &str,
+        before: Option<AccountSnapshot>,
+        after: Option<AccountSnapshot>,
+    ) -> AccountDelta {
+        AccountDelta {
+            pubkey: pubkey.to_string(),
+            before,
+            after,
+        }
+    }
+
+    #[test]
+    fn r41_system_creation_reads_both_layouts_exactly() {
+        let (w, new) = (r41_key(1), r41_key(2));
+        let plain = r41_create_account(2_039_280, 165, SPL_TOKEN_PROGRAM);
+        let ix = r41_ix(SYSTEM_PROGRAM, &[&w, &new], plain.clone());
+        let c = system_creation(&ix).expect("a CreateAccount");
+        assert_eq!(
+            (c.funder, c.new, c.lamports, c.space, c.owner.as_str()),
+            (w.as_str(), new.as_str(), 2_039_280, 165, SPL_TOKEN_PROGRAM)
+        );
+        assert!(c.seeded.is_none());
+        // Exactly 52 bytes: one more is not the layout.
+        let mut longer = plain.clone();
+        longer.push(0);
+        assert!(system_creation(&r41_ix(SYSTEM_PROGRAM, &[&w, &new], longer)).is_none());
+        // The same bytes to another program are not the System program's.
+        assert!(system_creation(&r41_ix(SPL_TOKEN_PROGRAM, &[&w, &new], plain)).is_none());
+        // A Transfer creates nothing.
+        assert!(system_creation(&r41_ix(
+            SYSTEM_PROGRAM,
+            &[&w, &new],
+            r41_transfer(2_039_280)
+        ))
+        .is_none());
+
+        let seed = "graphite-r41";
+        let seeded = r41_create_with_seed(&w, seed, 2_039_281, 165, SPL_TOKEN_PROGRAM);
+        let ix = r41_ix(SYSTEM_PROGRAM, &[&w, &new, &w], seeded.clone());
+        let c = system_creation(&ix).expect("a CreateAccountWithSeed");
+        assert_eq!(
+            (c.funder, c.new, c.lamports, c.space, c.owner.as_str()),
+            (w.as_str(), new.as_str(), 2_039_281, 165, SPL_TOKEN_PROGRAM)
+        );
+        assert_eq!(
+            c.seeded.as_ref().map(|(b, s)| (b.as_str(), *s)),
+            Some((w.as_str(), seed.as_bytes()))
+        );
+        // The data ends where the layout ends, not a byte later or earlier.
+        let mut longer = seeded.clone();
+        longer.push(0);
+        assert!(system_creation(&r41_ix(SYSTEM_PROGRAM, &[&w, &new, &w], longer)).is_none());
+        let shorter = seeded[..seeded.len() - 1].to_vec();
+        assert!(system_creation(&r41_ix(SYSTEM_PROGRAM, &[&w, &new, &w], shorter)).is_none());
+    }
+
+    #[test]
+    fn r41_token_initialization_reads_the_three_layouts_exactly() {
+        let (acct, w) = (r41_key(3), r41_key(1));
+        let native = crate::intent_binding::NATIVE_MINT;
+        let one = r41_ix(
+            SPL_TOKEN_PROGRAM,
+            &[&acct, native, &w, R41_RENT_SYSVAR],
+            vec![1],
+        );
+        assert_eq!(
+            token_initialization(&one),
+            Some((acct.as_str(), native, w.clone()))
+        );
+        // InitializeAccount names its owner as the third account: without it,
+        // nothing is read.
+        assert_eq!(
+            token_initialization(&r41_ix(SPL_TOKEN_PROGRAM, &[&acct, native], vec![1])),
+            None
+        );
+        for tag in [16u8, 18] {
+            let mut data = r41_init3(&w);
+            data[0] = tag;
+            let ix = r41_ix(SPL_TOKEN_PROGRAM, &[&acct, native], data.clone());
+            assert_eq!(
+                token_initialization(&ix),
+                Some((acct.as_str(), native, w.clone())),
+                "tag {tag}"
+            );
+            // The owner is exactly 32 bytes.
+            let short = data[..data.len() - 1].to_vec();
+            let ix = r41_ix(SPL_TOKEN_PROGRAM, &[&acct, native], short);
+            assert_eq!(token_initialization(&ix), None, "tag {tag}, 31-byte owner");
+            let mut long = data.clone();
+            long.push(0);
+            let ix = r41_ix(SPL_TOKEN_PROGRAM, &[&acct, native], long);
+            assert_eq!(token_initialization(&ix), None, "tag {tag}, 33-byte owner");
+        }
+        // Only SPL Token's: the same bytes to Token-2022 or System are not read.
+        for program in [SPL_TOKEN_2022_PROGRAM, SYSTEM_PROGRAM] {
+            let ix = r41_ix(program, &[&acct, native, &w, R41_RENT_SYSVAR], vec![1]);
+            assert_eq!(token_initialization(&ix), None, "{program}");
+        }
+        // Another instruction (Transfer, tag 3) initializes nothing.
+        let ix = r41_ix(SPL_TOKEN_PROGRAM, &[&acct, native, &w], vec![3]);
+        assert_eq!(token_initialization(&ix), None);
+    }
+
+    #[test]
+    fn r41_handed_away_is_an_approve_or_set_authority_naming_the_account_first() {
+        let (acct, other, w) = (r41_key(3), r41_key(4), r41_key(1));
+        let one = |program: &str, tag: u8, first: &str| {
+            handed_away(&acct, &[r41_ix(program, &[first, &w, &w], vec![tag, 0])])
+        };
+        // Approve, SetAuthority and ApproveChecked, on either token program.
+        for program in [SPL_TOKEN_PROGRAM, SPL_TOKEN_2022_PROGRAM] {
+            for tag in [4u8, 6, 13] {
+                assert!(one(program, tag, &acct), "{program} tag {tag}");
+            }
+        }
+        // Any other token instruction (Transfer 3, CloseAccount 9) hands nothing.
+        for tag in [3u8, 9] {
+            assert!(!one(SPL_TOKEN_PROGRAM, tag, &acct), "tag {tag}");
+        }
+        // Naming another account first hands nothing of this one.
+        assert!(!one(SPL_TOKEN_PROGRAM, 4, &other));
+        // The same bytes to a program that is not a token program hand nothing.
+        assert!(!one(SYSTEM_PROGRAM, 4, &acct));
+        assert!(!handed_away(&acct, &[]));
+    }
+
+    #[test]
+    fn r41_an_associated_wsol_account_is_the_wallets_only_when_its_creation_says_so() {
+        use crate::intent_binding::{ATA_PROGRAM, NATIVE_MINT};
+        let (w, other) = (r41_key(1), r41_key(4));
+        let ata = r41_native_ata(&w);
+        let create = |program: &str, data: Vec<u8>, slots: [&str; 4]| {
+            let [account, wallet, mint, token_program] = slots;
+            r41_ix(
+                program,
+                &[&w, account, wallet, mint, SYSTEM_PROGRAM, token_program],
+                data,
+            )
+        };
+        let honest = [ata.as_str(), w.as_str(), NATIVE_MINT, SPL_TOKEN_PROGRAM];
+        for data in [vec![], vec![0], vec![1]] {
+            let ixs = [create(ATA_PROGRAM, data.clone(), honest)];
+            assert!(is_transient_own_wsol(&ata, &w, &ixs, None), "{data:?}");
+        }
+        let not = |ixs: &[TopLevelInstruction], why: &str| {
+            assert!(!is_transient_own_wsol(&ata, &w, ixs, None), "{why}");
+        };
+        not(&[], "no creation at all");
+        not(
+            &[create(SPL_TOKEN_PROGRAM, vec![1], honest)],
+            "another program",
+        );
+        not(
+            &[create(ATA_PROGRAM, vec![2], honest)],
+            "another instruction",
+        );
+        let usdc = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+        for (slots, why) in [
+            (
+                [other.as_str(), w.as_str(), NATIVE_MINT, SPL_TOKEN_PROGRAM],
+                "another account",
+            ),
+            (
+                [ata.as_str(), other.as_str(), NATIVE_MINT, SPL_TOKEN_PROGRAM],
+                "another wallet",
+            ),
+            (
+                [ata.as_str(), w.as_str(), usdc, SPL_TOKEN_PROGRAM],
+                "another mint",
+            ),
+            (
+                [
+                    ata.as_str(),
+                    w.as_str(),
+                    NATIVE_MINT,
+                    SPL_TOKEN_2022_PROGRAM,
+                ],
+                "Token-2022",
+            ),
+        ] {
+            not(&[create(ATA_PROGRAM, vec![1], slots)], why);
+        }
+        // Created as the wallet's, then handed to someone: not the wallet's.
+        not(
+            &[
+                create(ATA_PROGRAM, vec![1], honest),
+                r41_ix(SPL_TOKEN_PROGRAM, &[&ata, &other, &w], vec![4, 0]),
+            ],
+            "approved to another",
+        );
+        // The address must be the wallet's own associated account.
+        let ixs = [create(ATA_PROGRAM, vec![1], honest)];
+        assert!(!is_transient_own_wsol(&ata, &other, &ixs, None));
+    }
+
+    #[test]
+    fn r41_a_seeded_wsol_account_is_the_wallets_only_as_its_bytes_prove() {
+        let (w, other) = (r41_key(1), r41_key(4));
+        let native = crate::intent_binding::NATIVE_MINT;
+        let seed = "graphite-r41";
+        let acct = r41_seeded(&w, seed);
+        let create = |funder: &str, new: &str, base: &str, space: u64, owner: &str| {
+            r41_ix(
+                SYSTEM_PROGRAM,
+                &[funder, new, base],
+                r41_create_with_seed(base, seed, 2_040_280, space, owner),
+            )
+        };
+        let init = |account: &str, mint: &str, owner: &str| {
+            r41_ix(SPL_TOKEN_PROGRAM, &[account, mint], r41_init3(owner))
+        };
+        let honest = [
+            create(&w, &acct, &w, 165, SPL_TOKEN_PROGRAM),
+            init(&acct, native, &w),
+        ];
+        assert!(is_transient_own_wsol(&acct, &w, &honest, None));
+
+        let not = |account: &str, ixs: &[TopLevelInstruction], why: &str| {
+            assert!(!is_transient_own_wsol(account, &w, ixs, None), "{why}");
+        };
+        let usdc = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+        not(
+            &acct,
+            &[
+                create(&other, &acct, &w, 165, SPL_TOKEN_PROGRAM),
+                init(&acct, native, &w),
+            ],
+            "funded by another",
+        );
+        let elsewhere = r41_seeded(&w, "elsewhere");
+        not(
+            &acct,
+            &[
+                create(&w, &elsewhere, &w, 165, SPL_TOKEN_PROGRAM),
+                init(&acct, native, &w),
+            ],
+            "another account created",
+        );
+        not(
+            &acct,
+            &[
+                create(&w, &acct, &w, 165, SPL_TOKEN_2022_PROGRAM),
+                init(&acct, native, &w),
+            ],
+            "owned by Token-2022",
+        );
+        not(
+            &acct,
+            &[
+                create(&w, &acct, &w, 82, SPL_TOKEN_PROGRAM),
+                init(&acct, native, &w),
+            ],
+            "not 165 bytes",
+        );
+        not(
+            &acct,
+            &[
+                create(&w, &acct, &other, 165, SPL_TOKEN_PROGRAM),
+                init(&acct, native, &w),
+            ],
+            "another base",
+        );
+        // The base is the wallet but the account is not what the seed derives.
+        let stranger = r41_key(9);
+        not(
+            &stranger,
+            &[
+                create(&w, &stranger, &w, 165, SPL_TOKEN_PROGRAM),
+                init(&stranger, native, &w),
+            ],
+            "not derived",
+        );
+        // Initialized as the wallet's native account, but never created here.
+        not(&acct, &[init(&acct, native, &w)], "no creation");
+        // Created, but initialized for another mint, owner or account.
+        not(
+            &acct,
+            &[honest[0].clone(), init(&acct, usdc, &w)],
+            "another mint",
+        );
+        not(
+            &acct,
+            &[honest[0].clone(), init(&acct, native, &other)],
+            "another owner",
+        );
+        not(
+            &acct,
+            &[honest[0].clone(), init(&elsewhere, native, &w)],
+            "another account initialized",
+        );
+        not(&acct, &[honest[0].clone()], "never initialized");
+    }
+
+    #[test]
+    fn r41_a_keypair_wsol_account_is_the_wallets_only_when_the_keypair_signs() {
+        let w = r41_key(1);
+        let kp = r41_key(5);
+        let native = crate::intent_binding::NATIVE_MINT;
+        let ixs = [
+            r41_ix(
+                SYSTEM_PROGRAM,
+                &[&w, &kp],
+                r41_create_account(2_039_280, 165, SPL_TOKEN_PROGRAM),
+            ),
+            r41_ix(
+                SPL_TOKEN_PROGRAM,
+                &[&kp, native, &w, R41_RENT_SYSVAR],
+                vec![1],
+            ),
+        ];
+        let both: std::collections::BTreeSet<String> = [w.clone(), kp.clone()].into();
+        let wallet_only: std::collections::BTreeSet<String> = [w.clone()].into();
+        assert!(is_transient_own_wsol(&kp, &w, &ixs, Some(&both)));
+        assert!(!is_transient_own_wsol(&kp, &w, &ixs, Some(&wallet_only)));
+        assert!(!is_transient_own_wsol(&kp, &w, &ixs, None));
+    }
+
+    #[test]
+    fn r41_wsol_kept_by_reads_every_observed_side() {
+        let (w, attacker, wsol) = (r41_key(1), r41_key(6), r41_key(7));
+        let usdc = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+        let signers: HashSet<&str> = [w.as_str()].into();
+        let wallet = r41_delta(
+            &w,
+            Some(lamport_snapshot(&w, 10_000_000)),
+            Some(lamport_snapshot(&w, 9_000_000)),
+        );
+        let diff_with = |d: AccountDelta, ixs: Vec<TopLevelInstruction>| StateDiff {
+            deltas: vec![wallet.clone(), d],
+            top_level_instructions: Some(ixs),
+            ..Default::default()
+        };
+        let kept = |d: AccountDelta, ixs: Vec<TopLevelInstruction>, account: &str| {
+            let diff = diff_with(d, ixs.clone());
+            wsol_kept_by(&diff, &ixs, account, &w, &signers)
+        };
+        // Before and after: the wallet's native SPL Token account.
+        let honest = r41_delta(
+            &wsol,
+            Some(r41_wsol(&wsol, 2_039_280, &w)),
+            Some(r41_wsol(&wsol, 2_040_280, &w)),
+        );
+        assert!(kept(honest.clone(), vec![], &wsol));
+        // Only the after side observed (created and kept): still the wallet's.
+        let created = r41_delta(&wsol, None, Some(r41_wsol(&wsol, 2_040_280, &w)));
+        assert!(kept(created, vec![], &wsol));
+        // Another mint, another holder, another program: not the wallet's wSOL.
+        let usdc_account = r41_delta(
+            &wsol,
+            Some(r41_token_snapshot(&wsol, 2_039_280, usdc, &w)),
+            Some(r41_token_snapshot(&wsol, 2_040_280, usdc, &w)),
+        );
+        assert!(!kept(usdc_account, vec![], &wsol));
+        let theirs = r41_delta(
+            &wsol,
+            Some(r41_wsol(&wsol, 2_039_280, &attacker)),
+            Some(r41_wsol(&wsol, 2_040_280, &attacker)),
+        );
+        assert!(!kept(theirs, vec![], &wsol));
+        let mut t22 = r41_wsol(&wsol, 2_040_280, &w);
+        t22.owner = SPL_TOKEN_2022_PROGRAM.to_string();
+        assert!(!kept(
+            r41_delta(&wsol, Some(r41_wsol(&wsol, 2_039_280, &w)), Some(t22)),
+            vec![],
+            &wsol
+        ));
+        // One side the wallet's and one not: not the wallet's.
+        let handed = r41_delta(
+            &wsol,
+            Some(r41_wsol(&wsol, 2_039_280, &w)),
+            Some(r41_wsol(&wsol, 2_040_280, &attacker)),
+        );
+        assert!(!kept(handed, vec![], &wsol));
+        // An account the diff did not observe never qualifies.
+        assert!(!kept(honest, vec![], &r41_key(8)));
+        // Observed absent before and after: only as the transaction's bytes
+        // prove (here, the wallet's associated account created for it).
+        let ata = r41_native_ata(&w);
+        let transient = r41_delta(&ata, None, None);
+        let create_ata = r41_ix(
+            crate::intent_binding::ATA_PROGRAM,
+            &[
+                &w,
+                &ata,
+                &w,
+                crate::intent_binding::NATIVE_MINT,
+                SYSTEM_PROGRAM,
+                SPL_TOKEN_PROGRAM,
+            ],
+            vec![1],
+        );
+        assert!(kept(transient.clone(), vec![create_ata], &ata));
+        assert!(!kept(transient, vec![], &ata));
+    }
+
+    /// The honest D-20 shape: the wallet wraps `wrapped` lamports into its
+    /// own wSOL account by a System `Transfer`, the route debits `spent` of
+    /// them, and the declaration debits that account by name and spends at
+    /// most `spend`.
+    struct R41Wrap {
+        w: String,
+        wsol: String,
+        deltas: Vec<AccountDelta>,
+        ixs: Vec<TopLevelInstruction>,
+    }
+
+    fn r41_wrap(wrapped: u64, spent: u64) -> R41Wrap {
+        let (w, wsol) = (r41_key(1), r41_key(7));
+        let deltas = vec![
+            r41_delta(
+                &w,
+                Some(lamport_snapshot(&w, 10_000_000)),
+                Some(lamport_snapshot(&w, 10_000_000 - wrapped - 5_000)),
+            ),
+            r41_delta(
+                &wsol,
+                Some(r41_wsol(&wsol, 2_039_280, &w)),
+                Some(r41_wsol(&wsol, 2_039_280 + wrapped - spent, &w)),
+            ),
+        ];
+        let ixs = vec![r41_ix(SYSTEM_PROGRAM, &[&w, &wsol], r41_transfer(wrapped))];
+        R41Wrap {
+            w,
+            wsol,
+            deltas,
+            ixs,
+        }
+    }
+
+    fn r41_credit(
+        deltas: Vec<AccountDelta>,
+        ixs: Vec<TopLevelInstruction>,
+        spend: u64,
+        signers: &[&str],
+        wallets: &[&str],
+        named: &[&str],
+    ) -> std::collections::BTreeMap<String, i128> {
+        let declared = DeclaredEffects::parse(&[
+            "debits accounts.userSourceTokenAccount".to_string(),
+            swap_spend_line(spend),
+        ]);
+        let diff = StateDiff {
+            deltas,
+            top_level_instructions: Some(ixs),
+            ..Default::default()
+        };
+        let signers: HashSet<&str> = signers.iter().copied().collect();
+        let wallets: std::collections::BTreeSet<&str> = wallets.iter().copied().collect();
+        let names_of: HashMap<&str, Vec<&str>> = named
+            .iter()
+            .map(|a| (*a, vec!["userSourceTokenAccount"]))
+            .collect();
+        wrapped_for_declared_debit(&diff, &declared, &signers, &wallets, &names_of)
+    }
+
+    fn r41_credited(pairs: &[(&str, i128)]) -> std::collections::BTreeMap<String, i128> {
+        pairs.iter().map(|(k, v)| (k.to_string(), *v)).collect()
+    }
+
+    #[test]
+    fn r41_the_declaration_reads_the_debit_and_the_spend() {
+        let declared = DeclaredEffects::parse(&[
+            "debits accounts.userSourceTokenAccount".to_string(),
+            swap_spend_line(1_000),
+        ]);
+        assert!(declared.covers_by_name("debit", &["userSourceTokenAccount"]));
+        assert!(!declared.covers_by_name("debit", &["somethingElse"]));
+        assert_eq!(declared.declared_spend, Some(1_000));
+    }
+
+    #[test]
+    fn r41_what_a_wallet_wrapped_for_the_route_is_credited_exactly() {
+        // 1,000 wrapped, 700 debited by the route, 300 stayed in the account.
+        let s = r41_wrap(1_000, 700);
+        let (w, wsol) = (s.w.as_str(), s.wsol.as_str());
+        let credit = |deltas: Vec<AccountDelta>, ixs: Vec<TopLevelInstruction>, spend: u64| {
+            r41_credit(deltas, ixs, spend, &[w], &[w], &[wsol])
+        };
+        assert_eq!(
+            credit(s.deltas.clone(), s.ixs.clone(), 1_000),
+            r41_credited(&[(w, 700)])
+        );
+        // Never more than the instruction's stated spend.
+        assert_eq!(
+            credit(s.deltas.clone(), s.ixs.clone(), 500),
+            r41_credited(&[(w, 500)])
+        );
+        // No stated spend: nothing.
+        let declared =
+            DeclaredEffects::parse(&["debits accounts.userSourceTokenAccount".to_string()]);
+        let diff = StateDiff {
+            deltas: s.deltas.clone(),
+            top_level_instructions: Some(s.ixs.clone()),
+            ..Default::default()
+        };
+        let signers: HashSet<&str> = [w].into();
+        let wallets: std::collections::BTreeSet<&str> = [w].into();
+        let names_of: HashMap<&str, Vec<&str>> = [(wsol, vec!["userSourceTokenAccount"])].into();
+        assert!(
+            wrapped_for_declared_debit(&diff, &declared, &signers, &wallets, &names_of).is_empty()
+        );
+        // No resolved instructions: nothing.
+        let diff = StateDiff {
+            deltas: s.deltas.clone(),
+            ..Default::default()
+        };
+        let declared = DeclaredEffects::parse(&[
+            "debits accounts.userSourceTokenAccount".to_string(),
+            swap_spend_line(1_000),
+        ]);
+        assert!(
+            wrapped_for_declared_debit(&diff, &declared, &signers, &wallets, &names_of).is_empty()
+        );
+
+        // The same 12 bytes to a program that is not System move nothing.
+        let fake = vec![r41_ix(&r41_key(9), &[w, wsol], r41_transfer(1_000))];
+        assert!(credit(s.deltas.clone(), fake, 1_000).is_empty());
+        // A Transfer is exactly 12 bytes; and a System instruction that is not
+        // a Transfer is not read as one.
+        let mut longer = r41_transfer(1_000);
+        longer.push(0);
+        assert!(credit(
+            s.deltas.clone(),
+            vec![r41_ix(SYSTEM_PROGRAM, &[w, wsol], longer)],
+            1_000
+        )
+        .is_empty());
+        let mut other_tag = r41_transfer(1_000);
+        other_tag[0] = 8;
+        assert!(credit(
+            s.deltas.clone(),
+            vec![r41_ix(SYSTEM_PROGRAM, &[w, wsol], other_tag)],
+            1_000
+        )
+        .is_empty());
+        // A Transfer naming one account moves nothing readable.
+        assert!(credit(
+            s.deltas.clone(),
+            vec![r41_ix(SYSTEM_PROGRAM, &[w], r41_transfer(1_000))],
+            1_000
+        )
+        .is_empty());
+        // Into an account the declaration does not debit by name: nothing.
+        assert!(r41_credit(s.deltas.clone(), s.ixs.clone(), 1_000, &[w], &[w], &[]).is_empty());
+        // From a wallet to itself: nothing.
+        assert!(credit(
+            s.deltas.clone(),
+            vec![r41_ix(SYSTEM_PROGRAM, &[w, w], r41_transfer(1_000))],
+            1_000
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn r41_only_a_wallet_is_credited_for_what_it_wraps() {
+        // `k` signs and keeps the wSOL account, but is not one of the
+        // transaction's wallets: what it moves is not credited.
+        let (w, k, wsol) = (r41_key(1), r41_key(5), r41_key(7));
+        let deltas = vec![
+            r41_delta(
+                &k,
+                Some(lamport_snapshot(&k, 10_000_000)),
+                Some(lamport_snapshot(&k, 9_000_000)),
+            ),
+            r41_delta(
+                &wsol,
+                Some(r41_wsol(&wsol, 2_039_280, &k)),
+                Some(r41_wsol(&wsol, 2_039_580, &k)),
+            ),
+        ];
+        let ixs = vec![r41_ix(SYSTEM_PROGRAM, &[&k, &wsol], r41_transfer(1_000))];
+        assert!(r41_credit(
+            deltas.clone(),
+            ixs.clone(),
+            1_000,
+            &[&w, &k],
+            &[&w],
+            &[&wsol]
+        )
+        .is_empty());
+        // As a wallet, it is.
+        assert_eq!(
+            r41_credit(deltas, ixs, 1_000, &[&w, &k], &[&w, &k], &[&wsol]),
+            r41_credited(&[(&k, 700)])
+        );
+    }
+
+    #[test]
+    fn r41_two_wrapped_accounts_share_one_stated_spend() {
+        // 700 and 500 wrapped into two accounts and fully debited: the stated
+        // spend of 1,000 is credited once, whatever the order.
+        let (w, a, b) = (r41_key(1), r41_key(7), r41_key(8));
+        let deltas = vec![
+            r41_delta(
+                &w,
+                Some(lamport_snapshot(&w, 10_000_000)),
+                Some(lamport_snapshot(&w, 8_795_000)),
+            ),
+            r41_delta(
+                &a,
+                Some(r41_wsol(&a, 2_039_280, &w)),
+                Some(r41_wsol(&a, 2_039_280, &w)),
+            ),
+            r41_delta(
+                &b,
+                Some(r41_wsol(&b, 2_039_280, &w)),
+                Some(r41_wsol(&b, 2_039_280, &w)),
+            ),
+        ];
+        let ixs = vec![
+            r41_ix(SYSTEM_PROGRAM, &[&w, &a], r41_transfer(700)),
+            r41_ix(SYSTEM_PROGRAM, &[&w, &b], r41_transfer(500)),
+        ];
+        assert_eq!(
+            r41_credit(deltas, ixs, 1_000, &[&w], &[&w], &[&a, &b]),
+            r41_credited(&[(&w, 1_000)])
+        );
+    }
+
+    #[test]
+    fn r41_a_created_wsol_account_keeps_its_rent_out_of_the_credit() {
+        let w = r41_key(1);
+        let native = crate::intent_binding::NATIVE_MINT;
+        let seed = "graphite-r41";
+        let acct = r41_seeded(&w, seed);
+        let rent = u64::try_from(rent_exempt_minimum(165)).expect("rent fits");
+        let ixs = vec![
+            r41_ix(
+                SYSTEM_PROGRAM,
+                &[&w, &acct, &w],
+                r41_create_with_seed(&w, seed, rent + 1_000, 165, SPL_TOKEN_PROGRAM),
+            ),
+            r41_ix(SPL_TOKEN_PROGRAM, &[&acct, native], r41_init3(&w)),
+        ];
+        let wallet = r41_delta(
+            &w,
+            Some(lamport_snapshot(&w, 10_000_000)),
+            Some(lamport_snapshot(&w, 8_000_000)),
+        );
+        // Exists only inside the transaction: what it held beyond its rent
+        // (1,000) left by the route; the rent went back with its close.
+        let transient = vec![wallet.clone(), r41_delta(&acct, None, None)];
+        assert_eq!(
+            r41_credit(transient, ixs.clone(), 5_000, &[&w], &[&w], &[&acct]),
+            r41_credited(&[(&w, 1_000)])
+        );
+        // Created and still there with 300 above its rent: 700 left by the
+        // route, the rest is the account's own gain.
+        let kept = vec![
+            wallet,
+            r41_delta(&acct, None, Some(r41_wsol(&acct, rent + 300, &w))),
+        ];
+        assert_eq!(
+            r41_credit(kept, ixs, 5_000, &[&w], &[&w], &[&acct]),
+            r41_credited(&[(&w, 700)])
+        );
+    }
+
+    #[test]
+    fn r41_a_wallet_unwrapping_its_own_wsol_is_read_from_the_close_alone() {
+        let (w, b, wsol, k, f) = (r41_key(1), r41_key(2), r41_key(7), r41_key(5), r41_key(10));
+        let usdc = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+        let wallet = r41_delta(
+            &w,
+            Some(lamport_snapshot(&w, 1_000_000)),
+            Some(lamport_snapshot(&w, 3_040_000)),
+        );
+        let closed = r41_delta(&wsol, Some(r41_wsol(&wsol, 2_040_000, &w)), None);
+        let signers: HashSet<&str> = [w.as_str()].into();
+        let unwraps = |program: &str, accounts: &[&str], data: Vec<u8>| {
+            let diff = StateDiff {
+                deltas: vec![wallet.clone(), closed.clone()],
+                top_level_instructions: Some(vec![r41_ix(program, accounts, data)]),
+                ..Default::default()
+            };
+            unwrapped_by_its_wallet(&diff, &closed, &signers)
+        };
+        assert!(unwraps(SPL_TOKEN_PROGRAM, &[&wsol, &w, &w], vec![9]));
+        assert!(
+            !unwraps(SPL_TOKEN_2022_PROGRAM, &[&wsol, &w, &w], vec![9]),
+            "not the account's program"
+        );
+        assert!(
+            !unwraps(SYSTEM_PROGRAM, &[&wsol, &w, &w], vec![9]),
+            "not a token program"
+        );
+        assert!(
+            !unwraps(SPL_TOKEN_PROGRAM, &[&wsol, &w, &w], vec![9, 0]),
+            "not exactly CloseAccount"
+        );
+        assert!(
+            !unwraps(SPL_TOKEN_PROGRAM, &[&wsol, &w, &w], vec![3]),
+            "a Transfer"
+        );
+        assert!(
+            !unwraps(SPL_TOKEN_PROGRAM, &[&wsol, &w, &w, &w], vec![9]),
+            "a multisig close"
+        );
+        assert!(
+            !unwraps(SPL_TOKEN_PROGRAM, &[&r41_key(8), &w, &w], vec![9]),
+            "another account closed"
+        );
+        assert!(
+            !unwraps(SPL_TOKEN_PROGRAM, &[&wsol, &w, &b], vec![9]),
+            "closed to another"
+        );
+        // No instructions, or no before side: nothing to read.
+        let no_ixs = StateDiff {
+            deltas: vec![wallet.clone(), closed.clone()],
+            ..Default::default()
+        };
+        assert!(!unwrapped_by_its_wallet(&no_ixs, &closed, &signers));
+
+        // The receiving signer is not a wallet: it held data before (a
+        // System-owned nonce account), even beside a plain wallet `f`.
+        let mut nonce = lamport_snapshot(&k, 1_500_000);
+        nonce.data_len = 80;
+        let theirs = r41_delta(&wsol, Some(r41_wsol(&wsol, 2_040_000, &k)), None);
+        let diff = StateDiff {
+            deltas: vec![
+                r41_delta(&k, Some(nonce.clone()), Some(nonce)),
+                theirs.clone(),
+                r41_delta(
+                    &f,
+                    Some(lamport_snapshot(&f, 1_000_000)),
+                    Some(lamport_snapshot(&f, 1_000_000)),
+                ),
+            ],
+            top_level_instructions: Some(vec![r41_ix(
+                SPL_TOKEN_PROGRAM,
+                &[&wsol, &k, &k],
+                vec![9],
+            )]),
+            ..Default::default()
+        };
+        let k_signs: HashSet<&str> = [k.as_str(), f.as_str()].into();
+        assert!(!unwrapped_by_its_wallet(&diff, &theirs, &k_signs));
+
+        // The wallet closes its own account, but not one of wrapped SOL.
+        let usdc_account = r41_delta(
+            &wsol,
+            Some(r41_token_snapshot(&wsol, 2_040_000, usdc, &w)),
+            None,
+        );
+        let diff = StateDiff {
+            deltas: vec![wallet.clone(), usdc_account.clone()],
+            top_level_instructions: Some(vec![r41_ix(
+                SPL_TOKEN_PROGRAM,
+                &[&wsol, &w, &w],
+                vec![9],
+            )]),
+            ..Default::default()
+        };
+        assert!(!unwrapped_by_its_wallet(&diff, &usdc_account, &signers));
+    }
+
+    #[test]
+    fn r41_signer_holds_each_power_on_its_own() {
+        let (s, other) = (r41_key(1), r41_key(2));
+        let signers: HashSet<&str> = [s.as_str()].into();
+        let acct = r41_key(3);
+        let holds = |snap: AccountSnapshot| {
+            signer_holds(&r41_delta(&acct, Some(snap.clone()), Some(snap)), &signers)
+        };
+        let plain = lamport_snapshot(&acct, 1_000);
+        assert!(!holds(plain.clone()), "nothing a signer holds");
+        assert!(
+            holds(r41_token_snapshot(
+                &acct,
+                1_000,
+                crate::intent_binding::NATIVE_MINT,
+                &s
+            )),
+            "token owner"
+        );
+        assert!(!holds(r41_token_snapshot(
+            &acct,
+            1_000,
+            crate::intent_binding::NATIVE_MINT,
+            &other
+        )));
+        let mut native = plain.clone();
+        native.native_authorities = vec![("stake withdrawer".to_string(), s.clone())];
+        assert!(holds(native), "native authority");
+        let mint =
+            |mint_authority: Option<String>, freeze_authority: Option<String>| AccountSnapshot {
+                mint: Some(MintView {
+                    mint_authority,
+                    supply: 0,
+                    decimals: 6,
+                    freeze_authority,
+                }),
+                ..plain.clone()
+            };
+        assert!(holds(mint(Some(s.clone()), None)), "mint authority");
+        assert!(holds(mint(None, Some(s.clone()))), "freeze authority");
+        assert!(!holds(mint(Some(other.clone()), Some(other.clone()))));
+        let powers = |p: Token2022Powers| AccountSnapshot {
+            token2022_powers: Some(p),
+            ..plain.clone()
+        };
+        assert!(
+            holds(powers(Token2022Powers {
+                extension_authorities: vec![(14, Some(s.clone()))],
+                ..Default::default()
+            })),
+            "extension authority"
+        );
+        assert!(
+            holds(powers(Token2022Powers {
+                permanent_delegate: Some(Some(s.clone())),
+                ..Default::default()
+            })),
+            "permanent delegate"
+        );
+        assert!(
+            holds(powers(Token2022Powers {
+                close_authority: Some(Some(s.clone())),
+                ..Default::default()
+            })),
+            "close authority"
+        );
+        assert!(!holds(powers(Token2022Powers {
+            permanent_delegate: Some(Some(other.clone())),
+            close_authority: Some(None),
+            ..Default::default()
+        })));
+    }
+
+    #[test]
+    fn r41_each_signers_loss_is_netted_exactly() {
+        let (p, q, x, prog) = (r41_key(1), r41_key(2), r41_key(3), r41_key(20));
+        let usdc = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+        let (tp, tq, tp2) = (r41_key(11), r41_key(12), r41_key(13));
+        let (c, c2, c3, u) = (r41_key(21), r41_key(22), r41_key(23), r41_key(24));
+        let r0 = rent_exempt_minimum(0);
+        let r100 = rent_exempt_minimum(100);
+        let lam = |r: i128| u64::try_from(r).expect("fits");
+        let owned = |key: &str, lamports: u64, owner: &str, data_len: usize| AccountSnapshot {
+            owner: owner.to_string(),
+            data_len,
+            ..lamport_snapshot(key, lamports)
+        };
+        let deltas = vec![
+            // P pays the fee and 3,000,000 more; Q loses 1,000,000.
+            r41_delta(
+                &p,
+                Some(lamport_snapshot(&p, 10_000_000)),
+                Some(lamport_snapshot(&p, 6_995_000)),
+            ),
+            r41_delta(
+                &q,
+                Some(lamport_snapshot(&q, 5_000_000)),
+                Some(lamport_snapshot(&q, 4_000_000)),
+            ),
+            // What arrives in accounts each keeps: P 1,000,000, Q 500,000.
+            r41_delta(
+                &tp,
+                Some(r41_token_snapshot(&tp, 1_000_000, usdc, &p)),
+                Some(r41_token_snapshot(&tp, 2_000_000, usdc, &p)),
+            ),
+            r41_delta(
+                &tq,
+                Some(r41_token_snapshot(&tq, 1_000_000, usdc, &q)),
+                Some(r41_token_snapshot(&tq, 1_500_000, usdc, &q)),
+            ),
+            // Out of an account P keeps: not a stranger's lamports.
+            r41_delta(
+                &tp2,
+                Some(r41_token_snapshot(&tp2, 500_000, usdc, &p)),
+                Some(r41_token_snapshot(&tp2, 400_000, usdc, &p)),
+            ),
+            // 200,000 out of an account no signer keeps.
+            r41_delta(
+                &x,
+                Some(lamport_snapshot(&x, 300_000)),
+                Some(lamport_snapshot(&x, 100_000)),
+            ),
+            // Declared creations: one a program owns with no data, one the
+            // System program owns with 100 bytes, one System-owned with none
+            // (no rent: neither data nor a new owner).
+            r41_delta(&c, None, Some(owned(&c, lam(r0) + 10, &prog, 0))),
+            r41_delta(
+                &c2,
+                None,
+                Some(owned(&c2, lam(r100) + 10, SYSTEM_PROGRAM, 100)),
+            ),
+            r41_delta(&c3, None, Some(owned(&c3, 1_000, SYSTEM_PROGRAM, 0))),
+            // An undeclared creation: no rent.
+            r41_delta(&u, None, Some(owned(&u, 1_000_000, &prog, 50))),
+        ];
+        let changed: Vec<&AccountDelta> = deltas.iter().collect();
+        let signers: HashSet<&str> = [p.as_str(), q.as_str()].into();
+        let declared = |d: &AccountDelta| [&c, &c2, &c3].contains(&&d.pubkey);
+        let losses = signer_lamport_losses(&changed, &signers, Some(&p), 5_000, &declared);
+        let got: Vec<(String, i128, i128)> = losses
+            .iter()
+            .map(|(s, l)| (s.clone(), l.unexplained, l.rent))
+            .collect();
+        // Kept pool: 1,500,000 kept in, less 200,000 a stranger's = 1,300,000.
+        // P (fee payer first): 3,000,000 lost, 1,000,000 kept, then the
+        // creations' rent (r0 + r100 = 2,477,760) covers the 2,000,000 left.
+        // Q: 1,000,000 lost, 300,000 of the pool left, then the 477,760 of
+        // rent left: 222,240 unexplained.
+        assert_eq!(r0 + r100, 2_477_760);
+        let mut want = vec![
+            (p.clone(), 0, 2_000_000),
+            (q.clone(), 222_240, r0 + r100 - 2_000_000),
+        ];
+        want.sort();
+        assert_eq!(got, want);
+    }
 }
 
 /// W19 (external review, verified 2026-10-03): what a declaration line says
