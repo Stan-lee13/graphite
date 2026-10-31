@@ -1470,6 +1470,17 @@ enum Beside {
     /// A manifested program whose instruction declares no Token-2022 CPI
     /// (Memo) is reported calling it.
     UndeclaringSibling,
+    /// D-26: the ATA program's original `Create`, whose data is EMPTY.
+    AtaCreateEmpty,
+    /// D-26: an unmanifested program called with empty data.
+    ForeignEmpty,
+    /// D-26: SPL Token called with empty data (no instruction).
+    TokenEmpty,
+    /// D-26: an empty memo (the memo manifest's instruction is declared with
+    /// an empty discriminator).
+    MemoEmpty,
+    /// D-26: the ATA program's `RecoverNested` ([2]).
+    AtaRecoverNested,
 }
 
 fn transfer_beside(beside: Beside) -> (Cluster, Vec<Ix>) {
@@ -1490,10 +1501,12 @@ fn transfer_beside(beside: Beside) -> (Cluster, Vec<Ix>) {
     )];
     let mut owner_out = FEE + 1;
     match beside {
-        Beside::AtaCreate | Beside::CpiUnderPrimary => {
-            ixs.push(create_idempotent(
-                OWNER, &account, OWNER, MINT_T22, TOKEN_2022,
-            ));
+        Beside::AtaCreate | Beside::CpiUnderPrimary | Beside::AtaCreateEmpty => {
+            let mut create = create_idempotent(OWNER, &account, OWNER, MINT_T22, TOKEN_2022);
+            if beside == Beside::AtaCreateEmpty {
+                create.data = vec![];
+            }
+            ixs.push(create);
             owner_out += RENT_T22;
             c.after(
                 &account,
@@ -1552,6 +1565,32 @@ fn transfer_beside(beside: Beside) -> (Cluster, Vec<Ix>) {
                 accounts: vec![MINT_T22.to_string()],
                 data: vec![21u8, 7, 0],
             });
+        }
+        Beside::ForeignEmpty | Beside::TokenEmpty | Beside::MemoEmpty => {
+            let (program, accounts): (&str, Vec<(&str, bool, bool)>) = match beside {
+                Beside::ForeignEmpty => (FOREIGN, vec![(OWNER, true, false)]),
+                Beside::TokenEmpty => (TOKEN, vec![(&account, false, true)]),
+                _ => (MEMO, vec![(OWNER, true, false)]),
+            };
+            ixs.push(ix(program, &accounts, vec![]));
+        }
+        Beside::AtaRecoverNested => {
+            // `RecoverNested`: [nested, nested mint, destination, owner ATA,
+            // owner mint, wallet (signer), token program].
+            let (nested, owner_ata) = (key(120), key(121));
+            ixs.push(ix(
+                ATA_PROGRAM,
+                &[
+                    (&nested, false, true),
+                    (MINT_X, false, false),
+                    (&account, false, true),
+                    (&owner_ata, false, false),
+                    (MINT_T22, false, false),
+                    (OWNER, true, true),
+                    (TOKEN, false, false),
+                ],
+                vec![2u8],
+            ));
         }
     }
     c.after(OWNER, acct(10 * SOL - owner_out, SYSTEM, vec![]));
@@ -1637,6 +1676,9 @@ enum Unwrap {
     /// The same, the wSOL ATA created by `CreateIdempotent` in the same
     /// transaction (it exists only inside it).
     HonestCreated,
+    /// D-26: the same, created by the ATA program's original `Create`, whose
+    /// data is empty (live run 41147736944 row 1229).
+    HonestCreatedEmpty,
     /// The wSOL ATA closed to the attacker.
     CloseToStranger,
     /// Beside the honest unwrap, the wallet's NON-native token account
@@ -1756,8 +1798,12 @@ fn unwrap_swap(shape: Unwrap) -> (Cluster, Vec<Ix>, usize) {
     let mut owner_in: i128 = -i128::from(FEE);
     let mut attacker_in = 0u64;
     let mut ixs = vec![ix(COMPUTE_BUDGET, &[], compute_limit())];
-    if shape == Unwrap::HonestCreated {
-        ixs.push(create_idempotent(OWNER, &wsol, OWNER, NATIVE_MINT, TOKEN));
+    if matches!(shape, Unwrap::HonestCreated | Unwrap::HonestCreatedEmpty) {
+        let mut create = create_idempotent(OWNER, &wsol, OWNER, NATIVE_MINT, TOKEN);
+        if shape == Unwrap::HonestCreatedEmpty {
+            create.data = vec![];
+        }
+        ixs.push(create);
         owner_in -= i128::from(RENT);
         let mut init = vec![18u8];
         init.extend_from_slice(pk(OWNER).as_bytes());
@@ -3065,4 +3111,56 @@ async fn round41_the_live_wrap_shapes_are_executable_legacy_and_v0() {
             }
         }
     }
+}
+
+// ─── D-26: the ATA program's empty-data `Create` ────────────────────────────
+
+/// D-26 (live run 41147736944 row 1229): the ATA program's original
+/// `Create` carries no data — the program dispatches empty input to
+/// `Create`. Beside a 1-lamport transfer, and creating the wSOL account a
+/// swap into SOL unwraps through, it is executable; so is an empty memo,
+/// whose manifest instruction is declared with an empty discriminator.
+#[tokio::test]
+async fn round41_the_ata_programs_empty_data_create_is_executable() {
+    for w in CONFIGS {
+        for beside in [Beside::AtaCreateEmpty, Beside::MemoEmpty] {
+            let r = transfer_verdict(beside, w).await;
+            assert!(
+                !names(&r, "empty discriminator"),
+                "{beside:?} {w:?}: {}",
+                risk(&r)
+            );
+            assert_executable(&format!("1-lamport transfer, {beside:?}, {w:?}"), &r);
+        }
+        let r = unwrap_verdict(Unwrap::HonestCreatedEmpty, w).await;
+        assert!(!names(&r, "empty discriminator"), "{w:?}: {}", risk(&r));
+        assert_executable(&format!("swap into SOL, empty-data Create, {w:?}"), &r);
+    }
+}
+
+/// D-26 controls: empty data is still no instruction for every other
+/// program — an unmanifested one, or SPL Token — and the caller's empty
+/// declaration of it is still `UnexpectedCpi`; the ATA program's
+/// `RecoverNested` ([2]) beside a transfer is still not executable.
+#[tokio::test]
+async fn round41_empty_data_is_still_no_instruction_for_other_programs() {
+    let mut out = Outcomes::default();
+    let mut unnamed = Vec::new();
+    for w in ATTACK_CONFIGS {
+        for beside in [Beside::ForeignEmpty, Beside::TokenEmpty] {
+            let tag = format!("{beside:?}, {w:?}");
+            let r = transfer_verdict(beside, w).await;
+            out.refused(&tag, &r);
+            if !names(&r, "UnexpectedCpi") || !names(&r, "empty discriminator") {
+                unnamed.push(tag);
+            }
+        }
+        let r = transfer_verdict(Beside::AtaRecoverNested, w).await;
+        out.refused(&format!("RecoverNested, {w:?}"), &r);
+    }
+    out.assert_none_executable();
+    assert!(
+        unnamed.is_empty(),
+        "refused, but not as an empty declaration: {unnamed:#?}"
+    );
 }

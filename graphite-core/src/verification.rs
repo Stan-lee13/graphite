@@ -1259,7 +1259,7 @@ fn observed_cpi_tree_of(
     let mut items = flat.into_iter().peekable();
     Some(CpiTraceNode {
         program_id: top.program_id.clone(),
-        instruction_discriminator: hex::encode(&top.data[..top.data.len().min(8)]),
+        instruction_discriminator: dispatch_selector(&top.program_id, &top.data),
         depth: 0,
         account_addresses: top.accounts.iter().flatten().cloned().collect(),
         children: nest(&mut items, 1),
@@ -1517,7 +1517,10 @@ fn siblings_keyed_on_their_bytes(
     message: &crate::tx_artifact::ArtifactMessage,
     coverage: &SiblingCoverage,
     declared: &[crate::tx_pattern_analysis::TransactionInstruction],
-) -> Vec<crate::tx_pattern_analysis::TransactionInstruction> {
+) -> (
+    Vec<crate::tx_pattern_analysis::TransactionInstruction>,
+    Vec<bool>,
+) {
     declared
         .iter()
         .enumerate()
@@ -1529,21 +1532,42 @@ fn siblings_keyed_on_their_bytes(
                 .flatten()
                 .and_then(|i| message.instructions.get(i))
             else {
-                return decl.clone();
+                return (decl.clone(), false);
             };
-            // An instruction with no data names no instruction; leaving the
-            // declaration alone keeps `assess_secondary_instructions`'
+            // An instruction with no data names no instruction, unless its
+            // program dispatches empty data to one (Round 41, D-26: the
+            // associated token program's `Create`). Otherwise the declaration
+            // is left alone, which keeps `assess_secondary_instructions`'
             // empty-discriminator fail-closed arm reachable rather than
-            // quietly turning it into an empty string here.
-            if actual.data.is_empty() {
-                return decl.clone();
-            }
-            crate::tx_pattern_analysis::TransactionInstruction {
-                instruction_discriminator: hex::encode(&actual.data[..actual.data.len().min(8)]),
-                ..decl.clone()
+            // quietly turning it into an empty string here; it is marked as
+            // empty IN THE BYTES, so a manifest whose instruction is
+            // explicitly the empty-data one (a memo) can describe it.
+            match dispatch_selector(&actual.program_id, &actual.data) {
+                selector if selector.is_empty() => (decl.clone(), true),
+                selector => (
+                    crate::tx_pattern_analysis::TransactionInstruction {
+                        instruction_discriminator: selector,
+                        ..decl.clone()
+                    },
+                    false,
+                ),
             }
         })
-        .collect()
+        .unzip()
+}
+
+/// The selector a top-level instruction's program dispatches on, read from
+/// its data: the first eight bytes, hex — except that the associated token
+/// account program dispatches EMPTY data to `Create`, which its manifest
+/// describes as `00` (Round 41, D-26). `spl-associated-token-account`'s
+/// processor: empty input is `Create`; otherwise a Borsh tag, `0` `Create`,
+/// `1` `CreateIdempotent`, `2` `RecoverNested`. Every other program's empty
+/// data stays empty, and names no instruction.
+fn dispatch_selector(program_id: &str, data: &[u8]) -> String {
+    if data.is_empty() && program_id == crate::intent_binding::ATA_PROGRAM {
+        return "00".to_string();
+    }
+    hex::encode(&data[..data.len().min(8)])
 }
 
 /// The wall-clock budget ONE verification may spend talking to an RPC.
@@ -5982,6 +6006,7 @@ impl GraphiteCore {
         &self,
         effective_instructions: &[crate::tx_pattern_analysis::TransactionInstruction],
         trace_origin_range: &std::ops::Range<usize>,
+        empty_in_bytes: &std::collections::BTreeSet<usize>,
         every_close_refunds_its_authority: bool,
         declared_intent: &str,
         artifact: Option<(
@@ -6056,26 +6081,38 @@ impl GraphiteCore {
                     ));
                     continue;
                 }
-                let reason = format!(
+                // Round 41 (D-26): the bytes show this instruction with no
+                // data, and its program's manifest describes exactly that —
+                // an instruction declared with an empty discriminator (a
+                // memo). It is that instruction, judged as any other below.
+                let described_empty = empty_in_bytes.contains(&idx)
+                    && self
+                        .registry
+                        .get(&ix.program_id)
+                        .and_then(|m| m.instruction_for(""))
+                        .is_some_and(|i| i.discriminator.is_empty());
+                if !described_empty {
+                    let reason = format!(
                     "secondary instruction #{idx} (program {}) was DECLARED by the caller with an \
                      empty discriminator \u{2014} the instruction cannot be verified and a declared \
                      instruction has no reason to omit it (P12 fail-closed)",
                     ix.program_id
                 );
-                verdict = match verdict {
-                    RiskVerdict::Passed => RiskVerdict::Blocked {
-                        pattern: crate::risk_engine::RiskPattern::UnexpectedCpi,
-                        reason,
-                    },
-                    RiskVerdict::Blocked {
-                        pattern: existing,
-                        reason: prior,
-                    } => RiskVerdict::Blocked {
-                        pattern: existing,
-                        reason: format!("{prior} | {reason}"),
-                    },
-                };
-                continue;
+                    verdict = match verdict {
+                        RiskVerdict::Passed => RiskVerdict::Blocked {
+                            pattern: crate::risk_engine::RiskPattern::UnexpectedCpi,
+                            reason,
+                        },
+                        RiskVerdict::Blocked {
+                            pattern: existing,
+                            reason: prior,
+                        } => RiskVerdict::Blocked {
+                            pattern: existing,
+                            reason: format!("{prior} | {reason}"),
+                        },
+                    };
+                    continue;
+                }
             }
             let risk_ctx =
                 self.instruction_risk_context(&ix.program_id, &ix.instruction_discriminator);
@@ -6820,6 +6857,8 @@ impl GraphiteCore {
         // which the execution boundary refuses.
         let mut siblings_by_bytes: Option<Vec<crate::tx_pattern_analysis::TransactionInstruction>> =
             None;
+        // Round 41 (D-26): which of those the bytes show with empty data.
+        let mut siblings_empty_in_bytes: Vec<bool> = Vec::new();
         let l2_result = match (&artifact_parse_error, artifact_message.as_ref()) {
             (None, None) => l2_result,
             (Some(e), _) => {
@@ -6886,11 +6925,13 @@ impl GraphiteCore {
                             )
                         });
                         if let Some(coverage) = &coverage {
-                            siblings_by_bytes = Some(siblings_keyed_on_their_bytes(
+                            let (keyed, empty) = siblings_keyed_on_their_bytes(
                                 message,
                                 coverage,
                                 &input.transaction_instructions,
-                            ));
+                            );
+                            siblings_by_bytes = Some(keyed);
+                            siblings_empty_in_bytes = empty;
                         }
                         match c.matched_instruction {
                             None if c.same_program_and_data > 1 => PipelineLayerResult::new(
@@ -7632,7 +7673,7 @@ impl GraphiteCore {
                     .enumerate()
                     .filter(|(k, _)| *k != primary)
                     .flat_map(|(_, ix)| {
-                        let disc = hex::encode(&ix.data[..ix.data.len().min(8)]);
+                        let disc = dispatch_selector(&ix.program_id, &ix.data);
                         self.registry
                             .find_instruction(&ix.program_id, &disc)
                             .map(|def| {
@@ -7786,7 +7827,7 @@ impl GraphiteCore {
         // excuse. Conflating the two let an attacker declare a dangerous
         // instruction with an empty discriminator and skip every structural
         // risk check — see `assess_secondary_instructions`.
-        let (effective_instructions, trace_origin_range) = {
+        let (effective_instructions, trace_origin_range, empty_in_bytes) = {
             // Execution order: the primary instruction runs first, its CPI
             // callees execute during it (pre-order flatten), then the
             // remaining top-level instructions. Ordering matters to the AAT
@@ -7815,7 +7856,19 @@ impl GraphiteCore {
                     .clone()
                     .unwrap_or_else(|| input.transaction_instructions.clone()),
             );
-            (v, trace_start..trace_end)
+            // Round 41 (D-26): the effective indexes of the siblings the
+            // bytes show with empty data (none without the bytes).
+            let empty_in_bytes: std::collections::BTreeSet<usize> = if siblings_by_bytes.is_some() {
+                siblings_empty_in_bytes
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| **e)
+                    .map(|(d, _)| trace_end + d)
+                    .collect()
+            } else {
+                std::collections::BTreeSet::new()
+            };
+            (v, trace_start..trace_end, empty_in_bytes)
         };
 
         // P0-3 fix (2026-09-05 audit): risk-assess every SECONDARY
@@ -7830,6 +7883,7 @@ impl GraphiteCore {
             .assess_secondary_instructions(
                 &effective_instructions,
                 &trace_origin_range,
+                &empty_in_bytes,
                 closes.every_close_refunds_its_authority,
                 &input.proposed_intent.intent_type,
                 artifact_message
@@ -9217,7 +9271,12 @@ impl GraphiteCore {
                             && message.instructions.get(top).is_some_and(|ix| {
                                 self.registry
                                     .get(&ix.program_id)
-                                    .and_then(|m| m.instruction_for(&hex::encode(&ix.data)))
+                                    .and_then(|m| {
+                                        m.instruction_for(&dispatch_selector(
+                                            &ix.program_id,
+                                            &ix.data,
+                                        ))
+                                    })
                                     .is_some_and(|d| d.allowed_cpis.iter().any(|c| c == callee))
                             })
                     };
@@ -9404,8 +9463,10 @@ impl GraphiteCore {
                     let Some(top) = message.instructions.get(*index) else {
                         continue;
                     };
-                    let ctx =
-                        self.instruction_risk_context(&top.program_id, &hex::encode(&top.data));
+                    let ctx = self.instruction_risk_context(
+                        &top.program_id,
+                        &dispatch_selector(&top.program_id, &top.data),
+                    );
                     let mut callees: Vec<String> = Vec::new();
                     let mut stack: Vec<&crate::tx_pattern_analysis::CpiTraceNode> =
                         tree.children.iter().collect();
