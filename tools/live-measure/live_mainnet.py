@@ -584,6 +584,11 @@ def verify_one(report, entry, body_in, core, key, post_fn, tag=""):
                 "simulation_flagged": result.get("simulation_flagged"),
                 "simulation_divergence": result.get("simulation_divergence"),
                 "unobserved_codes": (result.get("scope") or {}).get("unobserved_codes"),
+                # Round 41: the scope's own words for what was left unbound
+                # (an `intent_parameters` entry says why a swap was not tied
+                # to its request, e.g. a route step the Core cannot read).
+                "unobserved": [str(u)[:400] for u in ((result.get("scope") or {}).get("unobserved") or [])
+                               if isinstance(u, str) and ("request" in u or "intent" in u or "bound" in u)],
                 # Round 40 (measure): what the Core read of the fee the bytes
                 # ask for, and the standing it gave the verdict.
                 "compute_budget": (result.get("scope") or {}).get("compute_budget"),
@@ -1533,6 +1538,8 @@ def swaps_markdown(s):
             out.append(f"  - the transaction's instructions: {' · '.join(r.get('shape') or [])}")
             for f in r.get("finding_reasons") or []:
                 out.append(f"  - {_cell(f)}")
+            for u in r.get("unobserved") or []:
+                out.append(f"  - unbound: {_cell(u)}")
     out.append("")
     return out
 
