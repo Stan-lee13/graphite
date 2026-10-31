@@ -810,7 +810,10 @@ transaction under the stated threat model, and no external party has yet tried.
   (`PumpSwapBuyV4`), past the IDL committed on 2026-09-23, and D-27 reads routes with the deployed
   IDL's 204 variants (the four routes' real bytes decode, `round41_jupiter_route_v2`). Run
   41158600693 on that fix: 22 of 22 transfers and 1 of 1 Jupiter swap `executable_approved`; no
-  Pump AMM route was in its sample, so that shape is not yet re-measured live. Opt-out:
+  Pump AMM route was in its sample, so that shape is not yet re-measured live. Run
+  41183860317 on 9fbd344 (after the external-review fixes D-28 to D-30): 26 of 26 transfers and
+  4 of 4 Jupiter swaps (`route`, `route_v2`, `shared_accounts_route`) `executable_approved`; no
+  verdict carried `no_state_diff`, so D-29's effect-free rule refused no honest transaction. Opt-out:
   `GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS=1` (value classes only).
 - **What binds an amount.** L4 binds a System `Transfer`/`CreateAccount`'s stated
   lamports (Round 34, R33-15). The request's own amount, recipient and asset are
