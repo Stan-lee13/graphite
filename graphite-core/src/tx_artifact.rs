@@ -2178,6 +2178,137 @@ pub fn check_durable_nonce(
 mod tests {
     use super::*;
 
+    /// Round 41 (Assurance run 41195462495, tx_artifact shard 14/17): the
+    /// legacy/v0 Compute Budget reading had 13 surviving mutants, because no
+    /// test read the heap rule, the price, the loaded-accounts limit, the
+    /// retired `RequestUnits` or the exact too-short boundary. Each case
+    /// below is the runtime's rule for one instruction.
+    mod compute_budget_rules {
+        use super::*;
+
+        fn cb(data: &[u8]) -> ArtifactInstruction {
+            ArtifactInstruction {
+                program_id: COMPUTE_BUDGET_PROGRAM.to_string(),
+                accounts: vec![],
+                account_indexes: vec![],
+                data: data.to_vec(),
+            }
+        }
+
+        fn other() -> ArtifactInstruction {
+            ArtifactInstruction {
+                program_id: SYSTEM_PROGRAM.to_string(),
+                accounts: vec![],
+                account_indexes: vec![],
+                data: vec![2, 0, 0, 0],
+            }
+        }
+
+        fn read(ixs: Vec<ArtifactInstruction>) -> ComputeBudgetRequest {
+            compute_budget_request(&ArtifactMessage {
+                version: None,
+                static_keys: vec![],
+                fee_payer: String::new(),
+                signers: vec![],
+                writable: vec![],
+                header_writable: vec![],
+                recent_blockhash: String::new(),
+                instructions: ixs,
+                lookups: vec![],
+                v1_config: None,
+            })
+        }
+
+        fn tagged(tag: u8, value: &[u8]) -> Vec<u8> {
+            let mut d = vec![tag];
+            d.extend_from_slice(value);
+            d
+        }
+
+        #[test]
+        fn a_heap_is_a_multiple_of_1024_between_32_and_256_kib() {
+            for heap in [32 * 1024u32, 64 * 1024, 256 * 1024] {
+                let r = read(vec![cb(&tagged(1, &heap.to_le_bytes())), other()]);
+                assert_eq!(r.heap_bytes, Some(heap));
+                assert!(r.problems.is_empty(), "{heap}: {:?}", r.problems);
+            }
+            for heap in [0u32, 16 * 1024, 31 * 1024, 33_000, 257 * 1024, 512 * 1024] {
+                let r = read(vec![cb(&tagged(1, &heap.to_le_bytes())), other()]);
+                assert_eq!(r.heap_bytes, Some(heap));
+                assert_eq!(r.problems.len(), 1, "{heap}: {:?}", r.problems);
+                assert!(r.problems[0].contains("heap"), "{heap}: {:?}", r.problems);
+            }
+        }
+
+        #[test]
+        fn the_limit_the_price_and_the_fee_are_read() {
+            let r = read(vec![
+                cb(&tagged(2, &300_000u32.to_le_bytes())),
+                cb(&tagged(3, &2_500_000u64.to_le_bytes())),
+                other(),
+            ]);
+            assert_eq!(r.compute_unit_limit, Some(300_000));
+            assert_eq!(r.effective_compute_unit_limit, 300_000);
+            assert_eq!(r.compute_unit_price_micro_lamports, Some(2_500_000));
+            // 2.5 lamports per CU x 300,000 CU.
+            assert_eq!(r.priority_fee_lamports, 750_000);
+            assert!(r.problems.is_empty(), "{:?}", r.problems);
+        }
+
+        #[test]
+        fn a_loaded_accounts_limit_of_zero_is_refused_and_any_other_is_read() {
+            let r = read(vec![cb(&tagged(4, &65_536u32.to_le_bytes())), other()]);
+            assert_eq!(r.loaded_accounts_data_size_limit, Some(65_536));
+            assert!(r.problems.is_empty(), "{:?}", r.problems);
+            let r = read(vec![cb(&tagged(4, &0u32.to_le_bytes())), other()]);
+            assert_eq!(r.loaded_accounts_data_size_limit, Some(0));
+            assert_eq!(r.problems.len(), 1, "{:?}", r.problems);
+            assert!(r.problems[0].contains("limit of zero"), "{:?}", r.problems);
+        }
+
+        #[test]
+        fn the_retired_request_units_is_refused() {
+            let r = read(vec![cb(&[0, 1, 2, 3, 4, 5, 6, 7, 8]), other()]);
+            assert_eq!(r.problems.len(), 1, "{:?}", r.problems);
+            assert!(
+                r.problems[0].contains("retired RequestUnits"),
+                "{:?}",
+                r.problems
+            );
+            assert_eq!(r.compute_unit_limit, None);
+            assert_eq!(r.heap_bytes, None);
+        }
+
+        #[test]
+        fn exactly_long_enough_is_read_one_byte_short_is_refused_longer_is_read() {
+            // SetComputeUnitPrice needs 9 bytes; SetComputeUnitLimit needs 5.
+            let price = tagged(3, &7u64.to_le_bytes());
+            let r = read(vec![cb(&price), other()]);
+            assert_eq!(r.compute_unit_price_micro_lamports, Some(7));
+            assert!(r.problems.is_empty(), "{:?}", r.problems);
+
+            let r = read(vec![cb(&price[..8]), other()]);
+            assert_eq!(r.compute_unit_price_micro_lamports, None);
+            assert_eq!(r.problems.len(), 1, "{:?}", r.problems);
+            assert!(r.problems[0].contains("too short"), "{:?}", r.problems);
+
+            // Trailing bytes are ignored, as agave's decoder ignores them.
+            let mut long = price.clone();
+            long.extend_from_slice(&[9, 9, 9]);
+            let r = read(vec![cb(&long), other()]);
+            assert_eq!(r.compute_unit_price_micro_lamports, Some(7));
+            assert!(r.problems.is_empty(), "{:?}", r.problems);
+
+            let limit = tagged(2, &50_000u32.to_le_bytes());
+            let r = read(vec![cb(&limit), other()]);
+            assert_eq!(r.compute_unit_limit, Some(50_000));
+            assert!(r.problems.is_empty(), "{:?}", r.problems);
+            let r = read(vec![cb(&limit[..4]), other()]);
+            assert_eq!(r.compute_unit_limit, None);
+            assert!(r.problems[0].contains("too short"), "{:?}", r.problems);
+        }
+    }
+
     fn key(n: u8) -> [u8; 32] {
         [n; 32]
     }
