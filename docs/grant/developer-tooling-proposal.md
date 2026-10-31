@@ -1,5 +1,9 @@
 # Graphite — Developer Tooling Grant Proposal
 
+> **Superseded on 2026-10-31.** The Foundation's form no longer takes a proposal document. The
+> current answers and milestones are in [`application-form-answers.md`](application-form-answers.md);
+> this file is kept as background and its figures are as of 2026-10-26.
+
 Solana Foundation, Developer Tooling. Draft of 2026-10-26, prepared from the repository at the head
 of PR #55. Every figure below is taken from a file in the repository, named next to it, and can
 be reproduced from that file or command (Constitution P16). Items marked **[OWNER]** are yours to
