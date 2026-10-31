@@ -666,7 +666,13 @@ fn assess_impl(
             if !discriminator.is_empty() {
                 let declared = discriminator.as_str();
                 let selector = normalize_discriminator(pattern.discriminator);
-                if declared.len() < selector.len() && selector.starts_with(declared) {
+                // A strict prefix: `selector` begins with `declared` and goes
+                // on. (Equal text never reaches here: `disc_matches` above has
+                // already refused it.)
+                if selector
+                    .strip_prefix(declared)
+                    .is_some_and(|rest| !rest.is_empty())
+                {
                     return Ok(RiskVerdict::Blocked {
                         pattern: pattern.pattern,
                         reason: format!(
@@ -1801,6 +1807,34 @@ mod tests {
         // By character, never by byte (A1-03/A3-09): nine two-byte
         // characters give eight of them, and nothing panics.
         assert_eq!(short_id("ééééééééé"), "éééééééé");
+    }
+
+    /// Round 41 (Assurance run 41195462495, risk_engine shard 1/12): an
+    /// empty discriminator on a program whose risky selectors include an
+    /// authority hand-over is refused AS that hand-over. Flipping the
+    /// `AuthorityHijack` comparison survived: the Token program's next entry
+    /// (CloseAccount, a Drainer) still blocked, under the wrong pattern.
+    #[test]
+    fn an_empty_discriminator_on_a_hand_over_program_is_refused_as_one() {
+        for program in [
+            TOKEN_PROGRAM_ID,
+            TOKEN_2022_PROGRAM_ID,
+            "11111111111111111111111111111111",
+        ] {
+            let v = assess(&input(program, "", &[WALLET_A, WALLET_B], "transfer")).unwrap();
+            assert_eq!(
+                pattern_of(&v),
+                Some(RiskPattern::AuthorityHijack),
+                "{program}"
+            );
+            let RiskVerdict::Blocked { reason, .. } = v else {
+                unreachable!()
+            };
+            assert!(
+                reason.contains("empty discriminator"),
+                "{program}: {reason}"
+            );
+        }
     }
 
     /// Round 41 (Assurance run 41195462495, risk_engine shard 10/12): the
