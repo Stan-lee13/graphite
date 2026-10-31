@@ -903,7 +903,8 @@ impl<'a> Reader<'a> {
 /// The argument bytes each Jupiter v6 `Swap` variant carries, as the
 /// committed ON-CHAIN IDL states them
 /// (`graphite-core/scripts/out/onchain_idls/JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4.json`,
-/// variants 0..187), one Borsh field per token (Round 41, D-23):
+/// variants 0..203), one Borsh field per token (Round 41, D-23; 188..203
+/// added by D-27 from the IDL deployed on 2026-10-31):
 ///
 /// - `bool`, `u8`, `u16`, `u32`, `u64`, `u128`: the scalar (a `bool` is 0 or 1);
 /// - `enumN`: a unit enum with N variants (`Side` is `enum2`), a tag below N;
@@ -924,95 +925,95 @@ impl<'a> Reader<'a> {
 /// `integrations/agent-guard/swap-instructions.ts` (`JUPITER_SWAP_VARIANTS`);
 /// `tests/round36_intent_binding.rs` checks the two agree and
 /// `tests/round41_live_false_refusals.rs` checks this one against the IDL.
-pub const JUPITER_SWAP_VARIANTS: [&[&str]; 188] = [
-    &[],                                       // 0 Saber
-    &[],                                       // 1 SaberAddDecimalsDeposit
-    &[],                                       // 2 SaberAddDecimalsWithdraw
-    &[],                                       // 3 TokenSwap
-    &[],                                       // 4 Sencha
-    &[],                                       // 5 Step
-    &[],                                       // 6 Cropper
-    &[],                                       // 7 Raydium
-    &["bool"],                                 // 8 Crema
-    &[],                                       // 9 Lifinity
-    &[],                                       // 10 Mercurial
-    &[],                                       // 11 Cykura
-    &["enum2"],                                // 12 Serum
-    &[],                                       // 13 MarinadeDeposit
-    &[],                                       // 14 MarinadeUnstake
-    &["enum2"],                                // 15 Aldrin
-    &["enum2"],                                // 16 AldrinV2
-    &["bool"],                                 // 17 Whirlpool
-    &["bool"],                                 // 18 Invariant
-    &[],                                       // 19 Meteora
-    &[],                                       // 20 GooseFX
-    &["bool"],                                 // 21 DeltaFi
-    &[],                                       // 22 Balansol
-    &["bool"],                                 // 23 MarcoPolo
-    &["enum2"],                                // 24 Dradex
-    &[],                                       // 25 LifinityV2
-    &[],                                       // 26 RaydiumClmm
-    &["enum2"],                                // 27 Openbook
-    &["enum2"],                                // 28 Phoenix
-    &["u64", "u64"],                           // 29 Symmetry
-    &[],                                       // 30 TokenSwapV2
-    &[],                                       // 31 HeliumTreasuryManagementRedeemV0
-    &[],                                       // 32 StakeDexStakeWrappedSol
-    &["u32"],                                  // 33 StakeDexSwapViaStake
-    &[],                                       // 34 GooseFXV2
-    &[],                                       // 35 Perps
-    &[],                                       // 36 PerpsAddLiquidity
-    &[],                                       // 37 PerpsRemoveLiquidity
-    &[],                                       // 38 MeteoraDlmm
-    &["enum2"],                                // 39 OpenBookV2
-    &[],                                       // 40 RaydiumClmmV2
-    &["u32"],                                  // 41 StakeDexPrefundWithdrawStakeAndDepositStake
-    &["u8", "bool", "bool"],                   // 42 Clone
-    &["u8", "u8", "u32", "u32"],               // 43 SanctumS
-    &["u8", "u32"],                            // 44 SanctumSAddLiquidity
-    &["u8", "u32"],                            // 45 SanctumSRemoveLiquidity
-    &[],                                       // 46 RaydiumCP
-    &["bool", "option<rai>"],                  // 47 WhirlpoolSwapV2
-    &[],                                       // 48 OneIntro
-    &[],                                       // 49 PumpWrappedBuy
-    &[],                                       // 50 PumpWrappedSell
-    &[],                                       // 51 PerpsV2
-    &[],                                       // 52 PerpsV2AddLiquidity
-    &[],                                       // 53 PerpsV2RemoveLiquidity
-    &[],                                       // 54 MoonshotWrappedBuy
-    &[],                                       // 55 MoonshotWrappedSell
-    &[],                                       // 56 StabbleStableSwap
-    &[],                                       // 57 StabbleWeightedSwap
-    &["bool"],                                 // 58 Obric
-    &[],                                       // 59 FoxBuyFromEstimatedCost
-    &["bool"],                                 // 60 FoxClaimPartial
-    &["bool"],                                 // 61 SolFi
-    &[],                                       // 62 SolayerDelegateNoInit
-    &[],                                       // 63 SolayerUndelegateNoInit
-    &["enum2"],                                // 64 TokenMill
-    &[],                                       // 65 DaosFunBuy
-    &[],                                       // 66 DaosFunSell
-    &[],                                       // 67 ZeroFi
-    &[],                                       // 68 StakeDexWithdrawWrappedSol
-    &[],                                       // 69 VirtualsBuy
-    &[],                                       // 70 VirtualsSell
-    &["u8", "u8"],                             // 71 Perena
-    &[],                                       // 72 PumpSwapBuy
-    &[],                                       // 73 PumpSwapSell
-    &[],                                       // 74 Gamma
-    &["rai"],                                  // 75 MeteoraDlmmSwapV2
-    &[],                                       // 76 Woofi
-    &[],                                       // 77 MeteoraDammV2
-    &[],                                       // 78 MeteoraDynamicBondingCurveSwap
-    &[],                                       // 79 StabbleStableSwapV2
-    &[],                                       // 80 StabbleWeightedSwapV2
-    &["u64"],                                  // 81 RaydiumLaunchlabBuy
-    &["u64"],                                  // 82 RaydiumLaunchlabSell
-    &[],                                       // 83 BoopdotfunWrappedBuy
-    &[],                                       // 84 BoopdotfunWrappedSell
-    &["enum2"],                                // 85 Plasma
-    &["bool", "u8"],                           // 86 GoonFi
-    &["u64", "bool"],                          // 87 HumidiFi
+pub const JUPITER_SWAP_VARIANTS: [&[&str]; 204] = [
+    &[],                                                     // 0 Saber
+    &[],                                                     // 1 SaberAddDecimalsDeposit
+    &[],                                                     // 2 SaberAddDecimalsWithdraw
+    &[],                                                     // 3 TokenSwap
+    &[],                                                     // 4 Sencha
+    &[],                                                     // 5 Step
+    &[],                                                     // 6 Cropper
+    &[],                                                     // 7 Raydium
+    &["bool"],                                               // 8 Crema
+    &[],                                                     // 9 Lifinity
+    &[],                                                     // 10 Mercurial
+    &[],                                                     // 11 Cykura
+    &["enum2"],                                              // 12 Serum
+    &[],                                                     // 13 MarinadeDeposit
+    &[],                                                     // 14 MarinadeUnstake
+    &["enum2"],                                              // 15 Aldrin
+    &["enum2"],                                              // 16 AldrinV2
+    &["bool"],                                               // 17 Whirlpool
+    &["bool"],                                               // 18 Invariant
+    &[],                                                     // 19 Meteora
+    &[],                                                     // 20 GooseFX
+    &["bool"],                                               // 21 DeltaFi
+    &[],                                                     // 22 Balansol
+    &["bool"],                                               // 23 MarcoPolo
+    &["enum2"],                                              // 24 Dradex
+    &[],                                                     // 25 LifinityV2
+    &[],                                                     // 26 RaydiumClmm
+    &["enum2"],                                              // 27 Openbook
+    &["enum2"],                                              // 28 Phoenix
+    &["u64", "u64"],                                         // 29 Symmetry
+    &[],                                                     // 30 TokenSwapV2
+    &[],                                                     // 31 HeliumTreasuryManagementRedeemV0
+    &[],                                                     // 32 StakeDexStakeWrappedSol
+    &["u32"],                                                // 33 StakeDexSwapViaStake
+    &[],                                                     // 34 GooseFXV2
+    &[],                                                     // 35 Perps
+    &[],                                                     // 36 PerpsAddLiquidity
+    &[],                                                     // 37 PerpsRemoveLiquidity
+    &[],                                                     // 38 MeteoraDlmm
+    &["enum2"],                                              // 39 OpenBookV2
+    &[],                                                     // 40 RaydiumClmmV2
+    &["u32"],                            // 41 StakeDexPrefundWithdrawStakeAndDepositStake
+    &["u8", "bool", "bool"],             // 42 Clone
+    &["u8", "u8", "u32", "u32"],         // 43 SanctumS
+    &["u8", "u32"],                      // 44 SanctumSAddLiquidity
+    &["u8", "u32"],                      // 45 SanctumSRemoveLiquidity
+    &[],                                 // 46 RaydiumCP
+    &["bool", "option<rai>"],            // 47 WhirlpoolSwapV2
+    &[],                                 // 48 OneIntro
+    &[],                                 // 49 PumpWrappedBuy
+    &[],                                 // 50 PumpWrappedSell
+    &[],                                 // 51 PerpsV2
+    &[],                                 // 52 PerpsV2AddLiquidity
+    &[],                                 // 53 PerpsV2RemoveLiquidity
+    &[],                                 // 54 MoonshotWrappedBuy
+    &[],                                 // 55 MoonshotWrappedSell
+    &[],                                 // 56 StabbleStableSwap
+    &[],                                 // 57 StabbleWeightedSwap
+    &["bool"],                           // 58 Obric
+    &[],                                 // 59 FoxBuyFromEstimatedCost
+    &["bool"],                           // 60 FoxClaimPartial
+    &["bool"],                           // 61 SolFi
+    &[],                                 // 62 SolayerDelegateNoInit
+    &[],                                 // 63 SolayerUndelegateNoInit
+    &["enum2"],                          // 64 TokenMill
+    &[],                                 // 65 DaosFunBuy
+    &[],                                 // 66 DaosFunSell
+    &[],                                 // 67 ZeroFi
+    &[],                                 // 68 StakeDexWithdrawWrappedSol
+    &[],                                 // 69 VirtualsBuy
+    &[],                                 // 70 VirtualsSell
+    &["u8", "u8"],                       // 71 Perena
+    &[],                                 // 72 PumpSwapBuy
+    &[],                                 // 73 PumpSwapSell
+    &[],                                 // 74 Gamma
+    &["rai"],                            // 75 MeteoraDlmmSwapV2
+    &[],                                 // 76 Woofi
+    &[],                                 // 77 MeteoraDammV2
+    &[],                                 // 78 MeteoraDynamicBondingCurveSwap
+    &[],                                 // 79 StabbleStableSwapV2
+    &[],                                 // 80 StabbleWeightedSwapV2
+    &["u64"],                            // 81 RaydiumLaunchlabBuy
+    &["u64"],                            // 82 RaydiumLaunchlabSell
+    &[],                                 // 83 BoopdotfunWrappedBuy
+    &[],                                 // 84 BoopdotfunWrappedSell
+    &["enum2"],                          // 85 Plasma
+    &["bool", "u8"],                     // 86 GoonFi
+    &["u64", "bool"],                    // 87 HumidiFi
     &[],                                 // 88 MeteoraDynamicBondingCurveSwapWithRemainingAccounts
     &["enum2"],                          // 89 TesseraV
     &[],                                 // 90 PumpWrappedBuyV2
@@ -1113,29 +1114,48 @@ pub const JUPITER_SWAP_VARIANTS: [&[&str]; 188] = [
     &["u64", "u8x32", "u8x16", "bool"],  // 185 HumidiFiRouter
     &["u64", "u64", "u8x32", "u8x16", "bool"], // 186 HumidiFiRouterV2
     &["bool", "bool"],                   // 187 PumpWrappedBuyV6
+    &[],                                 // 188 HyloRouter
+    &["bool"],                           // 189 Memefun
+    &["u64", "u64", "u64", "u64", "u8x32", "u8x16", "bool"], // 190 HumidiFiRouterV3
+    &["bool", "bool"],                   // 191 PumpWrappedBuyV7
+    &["bool"],                           // 192 PumpWrappedSellV6
+    &["bool"],                           // 193 PumpSwapBuyV4
+    &["bool"],                           // 194 PumpSwapSellV4
+    &[],                                 // 195 ZeroFiSwapV3
+    &["bool"],                           // 196 DenaliV2
+    &["enum2"],                          // 197 QuantumV2
+    &[],                                 // 198 DrFraudsworthSolBuy
+    &["bool"],                           // 199 DrFraudsworthSolSell
+    &[],                                 // 200 DrFraudsworthSplBuy
+    &[],                                 // 201 DrFraudsworthSplSell
+    &[],                                 // 202 DrFraudsworthVaultConvert
+    &["bool"],                           // 203 BisonFiMarketBackedV2
 ];
 
-/// Jupiter v6 `CandidateSwap` (the on-chain IDL, variants 0..16), the venues
+/// Jupiter v6 `CandidateSwap` (the on-chain IDL, variants 0..19), the venues
 /// a `DynamicV1`/`DynamicV2` step chooses among; tokens as
 /// [`JUPITER_SWAP_VARIANTS`].
-pub const JUPITER_CANDIDATE_SWAPS: [&[&str]; 17] = [
-    &["u64", "bool"],                          // 0 HumidiFi
-    &["enum2"],                                // 1 TesseraV
-    &["u64", "bool"],                          // 2 HumidiFiV2
-    &[],                                       // 3 RaydiumV2
-    &[],                                       // 4 RaydiumClmm
-    &["bool"],                                 // 5 Whirlpool
-    &[],                                       // 6 ZeroFi
-    &["bool"],                                 // 7 BisonFiV2
-    &["bool"],                                 // 8 GoonFiV2
-    &["bool"],                                 // 9 GoonFiV3
-    &["bool", "option<rai>"],                  // 10 WhirlpoolV2
-    &[],                                       // 11 ZeroFiSwapV2
-    &["bool"],                                 // 12 BisonFiMarketBacked
-    &[],                                       // 13 RaydiumClmmV2
-    &["enum2"],                                // 14 TesseraVV2
-    &["u64", "u8x32", "u8x16", "bool"],        // 15 HumidiFiRouter
-    &["u64", "u64", "u8x32", "u8x16", "bool"], // 16 HumidiFiRouterV2
+pub const JUPITER_CANDIDATE_SWAPS: [&[&str]; 20] = [
+    &["u64", "bool"],                                        // 0 HumidiFi
+    &["enum2"],                                              // 1 TesseraV
+    &["u64", "bool"],                                        // 2 HumidiFiV2
+    &[],                                                     // 3 RaydiumV2
+    &[],                                                     // 4 RaydiumClmm
+    &["bool"],                                               // 5 Whirlpool
+    &[],                                                     // 6 ZeroFi
+    &["bool"],                                               // 7 BisonFiV2
+    &["bool"],                                               // 8 GoonFiV2
+    &["bool"],                                               // 9 GoonFiV3
+    &["bool", "option<rai>"],                                // 10 WhirlpoolV2
+    &[],                                                     // 11 ZeroFiSwapV2
+    &["bool"],                                               // 12 BisonFiMarketBacked
+    &[],                                                     // 13 RaydiumClmmV2
+    &["enum2"],                                              // 14 TesseraVV2
+    &["u64", "u8x32", "u8x16", "bool"],                      // 15 HumidiFiRouter
+    &["u64", "u64", "u8x32", "u8x16", "bool"],               // 16 HumidiFiRouterV2
+    &["u64", "u64", "u64", "u64", "u8x32", "u8x16", "bool"], // 17 HumidiFiRouterV3
+    &[],                                                     // 18 ZeroFiSwapV3
+    &["bool"],                                               // 19 BisonFiMarketBackedV2
 ];
 const WHIRLPOOL_ACCOUNTS_TYPES: u8 = 9;
 const MAX_ROUTE_STEPS: u32 = 32;
@@ -2458,7 +2478,7 @@ mod tests {
 
     #[test]
     fn jupiter_variant_table_has_every_committed_variant() {
-        assert_eq!(JUPITER_SWAP_VARIANTS.len(), 188);
-        assert_eq!(JUPITER_CANDIDATE_SWAPS.len(), 17);
+        assert_eq!(JUPITER_SWAP_VARIANTS.len(), 204);
+        assert_eq!(JUPITER_CANDIDATE_SWAPS.len(), 20);
     }
 }

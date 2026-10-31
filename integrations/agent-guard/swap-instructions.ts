@@ -160,7 +160,8 @@ function hex(bytes: Uint8Array): string {
 /**
  * Jupiter v6 `Swap` enum, as the committed ON-CHAIN IDL states it
  * (graphite-core/scripts/out/onchain_idls/JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4.json,
- * variants 0..187): one Borsh field per token (Round 41, D-23).
+ * variants 0..203): one Borsh field per token (Round 41, D-23; 188..203 from
+ * the IDL deployed on 2026-10-31, D-27).
  *   "bool", "u8", "u16", "u32", "u64", "u128": the scalar (a bool is 0 or 1);
  *   "enumN": a unit enum with N variants (Side is "enum2");
  *   "u8xN", "u64xN": a fixed array; "bytes": a Vec<u8>;
@@ -364,8 +365,24 @@ export const JUPITER_SWAP_VARIANTS: readonly (readonly string[])[] = [
   ["u64", "u8x32", "u8x16", "bool"], // 185 HumidiFiRouter
   ["u64", "u64", "u8x32", "u8x16", "bool"], // 186 HumidiFiRouterV2
   ["bool", "bool"], // 187 PumpWrappedBuyV6
+  [], // 188 HyloRouter
+  ["bool"], // 189 Memefun
+  ["u64", "u64", "u64", "u64", "u8x32", "u8x16", "bool"], // 190 HumidiFiRouterV3
+  ["bool", "bool"], // 191 PumpWrappedBuyV7
+  ["bool"], // 192 PumpWrappedSellV6
+  ["bool"], // 193 PumpSwapBuyV4
+  ["bool"], // 194 PumpSwapSellV4
+  [], // 195 ZeroFiSwapV3
+  ["bool"], // 196 DenaliV2
+  ["enum2"], // 197 QuantumV2
+  [], // 198 DrFraudsworthSolBuy
+  ["bool"], // 199 DrFraudsworthSolSell
+  [], // 200 DrFraudsworthSplBuy
+  [], // 201 DrFraudsworthSplSell
+  [], // 202 DrFraudsworthVaultConvert
+  ["bool"], // 203 BisonFiMarketBackedV2
 ];
-/** Jupiter v6 `CandidateSwap` (the on-chain IDL, variants 0..16), tokens as above. */
+/** Jupiter v6 `CandidateSwap` (the on-chain IDL, variants 0..19), tokens as above. */
 export const JUPITER_CANDIDATE_SWAPS: readonly (readonly string[])[] = [
   ["u64", "bool"], // 0 HumidiFi
   ["enum2"], // 1 TesseraV
@@ -384,6 +401,9 @@ export const JUPITER_CANDIDATE_SWAPS: readonly (readonly string[])[] = [
   ["enum2"], // 14 TesseraVV2
   ["u64", "u8x32", "u8x16", "bool"], // 15 HumidiFiRouter
   ["u64", "u64", "u8x32", "u8x16", "bool"], // 16 HumidiFiRouterV2
+  ["u64", "u64", "u64", "u64", "u8x32", "u8x16", "bool"], // 17 HumidiFiRouterV3
+  [], // 18 ZeroFiSwapV3
+  ["bool"], // 19 BisonFiMarketBackedV2
 ];
 /** Orca Whirlpools' `AccountsType`: nine unit variants. */
 const WHIRLPOOL_ACCOUNTS_TYPES = 9;

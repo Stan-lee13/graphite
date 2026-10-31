@@ -208,24 +208,24 @@ fn round41_a_route_v2_reads_as_its_v1_twin_and_refuses_what_v1_refuses() {
         short.pop();
         refused(short, "ends inside");
         refused(
-            v2(shared, 50, 0, 0, &[1, 0, 0, 0, 188, 0x10, 0x27, 0, 1]),
-            "Swap variant 188",
+            v2(shared, 50, 0, 0, &[1, 0, 0, 0, 204, 0x10, 0x27, 0, 1]),
+            "Swap variant 204",
         );
         // Serum's Side is a two-variant enum.
         refused(
             v2(shared, 50, 0, 0, &[1, 0, 0, 0, 12, 2, 0x10, 0x27, 0, 1]),
             "enum tag 2",
         );
-        // DynamicV1 naming CandidateSwap 17, past the IDL's 17.
+        // DynamicV1 naming CandidateSwap 20, past the IDL's 20.
         refused(
             v2(
                 shared,
                 50,
                 0,
                 0,
-                &[1, 0, 0, 0, 111, 1, 0, 0, 0, 17, 0, 0x10, 0x27, 0, 1],
+                &[1, 0, 0, 0, 111, 1, 0, 0, 0, 20, 0, 0x10, 0x27, 0, 1],
             ),
-            "CandidateSwap variant 17",
+            "CandidateSwap variant 20",
         );
     }
     // DynamicV2 (146): two candidates, Whirlpool(a_to_b) and RaydiumClmm,
@@ -274,4 +274,69 @@ fn round41_the_pinned_mainnet_route_v2_reads_to_its_end() {
         d.min_out,
         (85_363_099_743u128 * (10_000 - 900) / 10_000) as u64
     );
+}
+
+/// Round 41 (D-27): the four honest SOL -> Token-2022 Jupiter v6 routes
+/// through Pump AMM that live run 41154452231 refused with the request
+/// unbound (rows 173, 1264, 1304, 1359). Their `route` data, as the
+/// `idl-refresh` workflow printed it from mainnet (run 41157821224), carries
+/// one step of Swap variant 193, `PumpSwapBuyV4 { close_user_volume_accumulator:
+/// bool }`, which the IDL committed on 2026-09-23 (188 variants) did not have.
+/// Read with the deployed IDL's 204 variants, each decodes to its own amounts;
+/// the step's bool must still be 0 or 1, and a tag past 203 is still refused.
+#[test]
+fn round41_the_live_pump_amm_routes_decode_with_the_deployed_idl() {
+    let rows: [(&str, u64, u64); 4] = [
+        (
+            "e517cb977ae3ad2a01000000c1006400010634f82f0000000092479065050000002c0100",
+            804_795_398,
+            22_483_427_077,
+        ),
+        (
+            "e517cb977ae3ad2a01000000c100640001b653170000000000133f62840c000000640000",
+            1_528_758,
+            53_223_032_351,
+        ),
+        (
+            "e517cb977ae3ad2a01000000c1006400011e030300000000001b786f3501000000640000",
+            197_406,
+            5_139_550_337,
+        ),
+        (
+            "e517cb977ae3ad2a01000000c100640001762333000000000019264b721f000000640000",
+            3_351_414,
+            133_710_898_615,
+        ),
+    ];
+    let hex = |h: &str| -> Vec<u8> {
+        (0..h.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&h[i..i + 2], 16).unwrap())
+            .collect()
+    };
+    for (h, amount_in, min_out) in rows {
+        let data = hex(h);
+        assert_eq!(data[12], 193, "the step is PumpSwapBuyV4");
+        let d = decode_swap(JUPITER_V6, &data)
+            .expect("Jupiter v6 is a decoded program")
+            .unwrap_or_else(|e| panic!("{h}: {e}"));
+        assert_eq!((d.amount_in, d.min_out), (amount_in, min_out), "{h}");
+
+        let mut not_bool = data.clone();
+        not_bool[13] = 2;
+        assert!(
+            decode_swap(JUPITER_V6, &not_bool).unwrap().is_err(),
+            "PumpSwapBuyV4's field is a bool"
+        );
+        let mut past = data.clone();
+        past[12] = 204;
+        let e = decode_swap(JUPITER_V6, &past).unwrap().unwrap_err();
+        assert!(e.contains("Swap variant 204"), "{e}");
+        let mut fee = data.clone();
+        *fee.last_mut().unwrap() = 1;
+        assert!(
+            decode_swap(JUPITER_V6, &fee).unwrap().is_err(),
+            "a platform fee is still refused"
+        );
+    }
 }

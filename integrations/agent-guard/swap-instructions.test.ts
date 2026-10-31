@@ -136,7 +136,8 @@ test("Jupiter's Swap and CandidateSwap enums: the decoder's payload tables match
       assert.deepEqual(table[i], fields.map((f) => token(f.type)), `${name} variant ${i} ${v.name}`);
     });
   }
-  assert.equal(JUPITER_SWAP_VARIANTS.length, 188);
+  assert.equal(JUPITER_SWAP_VARIANTS.length, 204);
+  assert.equal(JUPITER_CANDIDATE_SWAPS.length, 20);
 });
 
 test("Jupiter route_v2: amounts, minimum and refusals, and a v2 route reads as its v1 twin", () => {
@@ -153,13 +154,13 @@ test("Jupiter route_v2: amounts, minimum and refusals, and a v2 route reads as i
   refused(jupiterRouteV2Data({ slippageBps: 10_001 }), /over 100%/);
   refused(jupiterRouteV2Data({ trailing: [0] }), /follow the last argument/);
   refused(jupiterRouteV2Data({ rawPlan: [0, 0, 0, 0] }), /no steps/);
-  refused(jupiterRouteV2Data({ rawPlan: [1, 0, 0, 0, 188, 0x10, 0x27, 0, 1] }), /Swap variant 188/);
+  refused(jupiterRouteV2Data({ rawPlan: [1, 0, 0, 0, 204, 0x10, 0x27, 0, 1] }), /Swap variant 204/);
   refused(jupiterRouteV2Data({ rawPlan: [1, 0, 0, 0, 12, 2, 0x10, 0x27, 0, 1] }), /enum tag 2, past its 2 variants/);
   refused(jupiterRouteV2Data().slice(0, -1), /ends inside/);
   // A DynamicV2 step: two candidates (Whirlpool a_to_b, RaydiumClmm), each with bps, then two u8.
   const dynamic = [1, 0, 0, 0, 146, 2, 0, 0, 0, 5, 1, 0x88, 0x13, 0, 0, 4, 0x88, 0x13, 0, 0, 3, 3, 0x10, 0x27, 0, 1];
   assert.equal(decodeSwapInstruction(JUPITER_V6, Uint8Array.from(jupiterRouteV2Data({ rawPlan: dynamic }))).minOut, 149_250_000n);
-  refused(jupiterRouteV2Data({ rawPlan: [1, 0, 0, 0, 111, 1, 0, 0, 0, 17, 0, 0x10, 0x27, 0, 1] }), /CandidateSwap variant 17/);
+  refused(jupiterRouteV2Data({ rawPlan: [1, 0, 0, 0, 111, 1, 0, 0, 0, 20, 0, 0x10, 0x27, 0, 1] }), /CandidateSwap variant 20/);
 });
 
 test("each decoded program yields its amount in and its own minimum out", () => {
@@ -214,9 +215,9 @@ test("the data must end where the layout ends, and Borsh tags are strict", () =>
   whirl[8 + 32] = 2;
   refused(ORCA_WHIRLPOOLS, whirl, /not a Borsh bool/);
   refused(ORCA_WHIRLPOOLS, [...concentratedData("2b04ed0b1ac91e62", { amount: 1n, threshold: 1n, exactIn: true, whirlpool: true }), 2], /Option tag 2/);
-  // Round 41 (D-23): the deployed enum has 188 variants (62 was the first past the old table), and
+  // Round 41 (D-23, D-27): the deployed enum has 204 variants (62 was the first past the old table), and
   // WhirlpoolSwapV2 is variant 47, whose remaining-accounts Option must have a tag of 0 or 1.
-  refused(JUPITER_V6, jupiterRouteData({ rawPlan: [1, 0, 0, 0, 188, 100, 0, 1] }), /Swap variant 188/);
+  refused(JUPITER_V6, jupiterRouteData({ rawPlan: [1, 0, 0, 0, 204, 100, 0, 1] }), /Swap variant 204/);
   refused(JUPITER_V6, jupiterRouteData({ rawPlan: [1, 0, 0, 0, 47, 1, 2, 100, 0, 1] }), /Option tag 2/);
   refused(JUPITER_V6, jupiterRouteData({ rawPlan: [0, 0, 0, 0] }), /no steps/);
   refused(JUPITER_V6, jupiterRouteData({ rawPlan: [255, 255, 255, 255] }), /more than 32/);

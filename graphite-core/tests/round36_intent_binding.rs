@@ -991,7 +991,7 @@ fn a_jupiter_route_is_decoded_to_its_own_minimum() {
         decode_swap(JUPITER_V6, &fee).unwrap().is_err(),
         "platform fee"
     );
-    // Round 41 (D-23): the table is the on-chain IDL's 188 variants; the
+    // Round 41 (D-23, D-27): the table is the on-chain IDL's 204 variants; the
     // first tag past it is refused (62 was the first past the old table).
     let mut bad_variant = d.clone();
     bad_variant[12] = JUPITER_SWAP_VARIANTS.len() as u8;
