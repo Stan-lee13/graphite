@@ -1057,7 +1057,7 @@ def swap_pass(report, sample_rows, requests_by_row, n, core, key, post_fn, block
             continue
         s["constructed"] += 1
         row.update(venue=c["venue"], sender=c["sender"], asset_in=c["asset_in"], asset_out=c["asset_out"],
-                   original_signature=c.get("signature"), swap_accounts=c.get("accounts"),
+                   original_signature=c.get("signature"), swap_accounts=c.get("accounts"), shape=c.get("shape"),
                    amount=body["proposed_intent"]["extracted_parameters"]["amount"], quoted=quoted,
                    minimum=honest_swaps.minimum_of(c["layout"], data), original_version=c["version"],
                    primary=(harness or {}).get("program_id"))
@@ -1530,6 +1530,7 @@ def swaps_markdown(s):
         for r in rest:
             accts = ", ".join(f"{i}:`{short(a)}`{'s' if sg else ''}{'w' if w else ''}" for i, (a, sg, w) in enumerate(r.get("swap_accounts") or []))
             out.append(f"- row {r['row']} (`{r.get('original_signature')}`): {accts}")
+            out.append(f"  - the transaction's instructions: {' · '.join(r.get('shape') or [])}")
             for f in r.get("finding_reasons") or []:
                 out.append(f"  - {_cell(f)}")
     out.append("")
