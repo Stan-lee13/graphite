@@ -1,0 +1,120 @@
+name: IDL refresh
+
+# Round 41: fetch a program's own published Anchor IDL from mainnet, read-only,
+# with the committed script (graphite-core/scripts/fetch_onchain_idls.py), and
+# print how it differs from the committed copy.
+#
+# Why: the Core reads a Jupiter v6 route's steps by the Swap enum of the
+# on-chain IDL committed on 2026-09-23 (188 variants;
+# graphite-core/src/intent_binding.rs, JUPITER_SWAP_VARIANTS). A step using a
+# variant Jupiter added since, or one whose fields changed, cannot be read, so
+# the route's request stays unbound and the swap is refused. Live run
+# 41154452231 refused four honest Jupiter routes through Pump AMM that way.
+# This job measures; it changes nothing: each fetched IDL is printed (gzip,
+# base64, between markers) and uploaded, with the route bytes of the
+# transactions in .github/idl-refresh-signatures.txt, and a person commits the
+# IDL and extends the table by pull request, where every test that reads them
+# runs against it.
+#
+# Run it: label a pull request `idl-refresh`, or dispatch it on main.
+# No keys, no signing, no writes to chain; public RPC, the script's own pacing.
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      program_ids:
+        description: "Space-separated program ids to fetch (empty: .github/idl-refresh-programs.txt)"
+        default: ""
+        type: string
+
+concurrency:
+  group: idl-refresh-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  fetch:
+    name: Fetch the deployed IDLs (read-only)
+    if: github.event_name != 'pull_request' || github.event.label.name == 'idl-refresh'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Fetch
+        timeout-minutes: 15
+        env:
+          IDS: ${{ inputs.program_ids || '' }}
+        run: |
+          set -euo pipefail
+          read -r -a ids <<<"$IDS"
+          if [ "${#ids[@]}" -eq 0 ]; then
+            mapfile -t ids < <(grep -Ev '^[[:space:]]*(#|$)' .github/idl-refresh-programs.txt)
+          fi
+          out=graphite-core/scripts/out/onchain_idls
+          mkdir -p "$RUNNER_TEMP/committed"
+          for id in "${ids[@]}"; do
+            if [ -f "$out/$id.json" ]; then cp "$out/$id.json" "$RUNNER_TEMP/committed/"; fi
+          done
+          printf '%s\n' "${ids[@]}" > "$RUNNER_TEMP/ids.txt"
+          python3 graphite-core/scripts/fetch_onchain_idls.py "${ids[@]}"
+
+      - name: What changed
+        run: |
+          set -euo pipefail
+          while read -r id; do
+            echo "## $id" | tee -a "$GITHUB_STEP_SUMMARY"
+            new=graphite-core/scripts/out/onchain_idls/$id.json
+            if [ ! -f "$new" ]; then
+              echo "no IDL was fetched" | tee -a "$GITHUB_STEP_SUMMARY"; continue
+            fi
+            if [ -f "$RUNNER_TEMP/committed/$id.json" ]; then
+              python3 graphite-core/scripts/idl_refresh_report.py compare "$RUNNER_TEMP/committed/$id.json" "$new" | tee -a "$GITHUB_STEP_SUMMARY"
+            else
+              echo "no committed copy to compare with" | tee -a "$GITHUB_STEP_SUMMARY"
+            fi
+            sha256sum "$new"
+          done < "$RUNNER_TEMP/ids.txt"
+
+      - name: The listed transactions' Jupiter instructions
+        run: |
+          set -euo pipefail
+          mapfile -t sigs < <(grep -Ev '^[[:space:]]*(#|$)' .github/idl-refresh-signatures.txt)
+          if [ "${#sigs[@]}" -gt 0 ]; then
+            python3 graphite-core/scripts/idl_refresh_report.py txs JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 "${sigs[@]}"
+          fi
+
+      - name: The fetched files (gzip, base64), for a reader without artifact access
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/fetched"
+          while read -r id; do
+            f=graphite-core/scripts/out/onchain_idls/$id.json
+            [ -f "$f" ] || continue
+            cp "$f" "$RUNNER_TEMP/fetched/"
+            echo "IDL-GZIP-BASE64-BEGIN $id"
+            gzip -9 -n -c "$f" | base64 -w 0
+            echo
+            echo "IDL-GZIP-BASE64-END $id"
+          done < "$RUNNER_TEMP/ids.txt"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: idl-refresh
+          path: ${{ runner.temp }}/fetched/
+          retention-days: 30
+          if-no-files-found: warn
