@@ -5,6 +5,12 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 
 ## Round 41
 
+Round 41 (2026-10-31) — the census re-measured for the six swap venues the Core decodes (Jupiter v6, Orca Whirlpools, Raydium CPMM, CLMM and AMM v4, Meteora DLMM), by the new read-only `census-refresh` workflow (run 41154691186), because the Core withdraws census evidence on a deployment newer than the census window (Round 30) and live runs showed Jupiter's withdrawn (confidence 0.44 under Gaming's 0.55):
+
+- **Data:** `protocols/battle_tested_evidence.json` sha256 `973e4d58…07138b` → `daa97cac…ccece4`; the six records re-measured (each still meets the bar; Jupiter v6 decode 0.934), every other record unchanged (`--merge`); 114 of 137 records still meet the bar.
+- **Tests:** `round40_census_import` reads the Whirlpool count from the census record instead of pinning 1,061.
+- **Not done:** a full 137-program re-measure (the first run measured 105 in four hours and was stopped); it showed Pump.fun and Pump AMM decoding below the bar now, which the committed census does not yet record.
+
 Round 41 (2026-10-30) — L3 refused honest System transfers on mainnet (live run 41120603876; [decision D-19](../docs/audit/TECHNICAL_LEAD_DECISIONS.md)):
 
 - **Contract:** unchanged.

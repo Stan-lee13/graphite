@@ -557,6 +557,15 @@ mod upgrades {
             .unwrap()
     }
 
+    /// The census's own count for the program (Round 41: read from the
+    /// record, so a re-measured census does not need this test edited; the
+    /// import must carry exactly this figure).
+    fn census_count() -> u64 {
+        record_of(WHIRLPOOL)["volume"]["successful_transactions_counted"]
+            .as_u64()
+            .unwrap()
+    }
+
     fn imported_core(deploy_slot: &Arc<AtomicU64>) -> GraphiteCore {
         let mut core = GraphiteCore::new();
         ci::import_embedded_into(&mut core).unwrap();
@@ -565,7 +574,7 @@ mod upgrades {
                 .unwrap()
                 .evidence
                 .battle_tested_tx_count,
-            1061
+            census_count()
         );
         core.attach_rpc_client(SolanaRpcClient::new(RpcConfig {
             endpoint: serve(deploy_slot.clone()),
@@ -592,7 +601,11 @@ mod upgrades {
         let slot = Arc::new(AtomicU64::new(census_slot() - 1_000_000));
         let mut core = imported_core(&slot);
         let kept = core.verify_async(&input()).await.unwrap();
-        assert_eq!(volume(&core), 1061, "an older deployment keeps the import");
+        assert_eq!(
+            volume(&core),
+            census_count(),
+            "an older deployment keeps the import"
+        );
 
         slot.store(census_slot() + 1_000_000, Ordering::SeqCst);
         let r = core.verify_async(&input()).await.unwrap();
