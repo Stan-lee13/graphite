@@ -89,7 +89,8 @@ jobs:
           done < "$RUNNER_TEMP/ids.txt"
           # Round 41: each program's deployment as the loader states it (the
           # Core withdraws census evidence measured before the last deployment).
-          python3 graphite-core/scripts/idl_refresh_report.py deployments graphite-core/scripts/out/idl_index.json $(cat "$RUNNER_TEMP/ids.txt") | tee -a "$GITHUB_STEP_SUMMARY"
+          mapfile -t ids < "$RUNNER_TEMP/ids.txt"
+          python3 graphite-core/scripts/idl_refresh_report.py deployments graphite-core/scripts/out/idl_index.json "${ids[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: The listed transactions' Jupiter instructions
         run: |
