@@ -1522,6 +1522,14 @@ fn signer_holds(d: &AccountDelta, signers: &std::collections::HashSet<&str>) -> 
             })
 }
 
+/// Whether either side of `d` is an SPL Token or Token-2022 account.
+fn is_token_account(d: &AccountDelta) -> bool {
+    [d.before.as_ref(), d.after.as_ref()]
+        .into_iter()
+        .flatten()
+        .any(|s| s.owner == SPL_TOKEN_PROGRAM || s.owner == SPL_TOKEN_2022_PROGRAM)
+}
+
 /// What one signer lost: `unexplained` after what stayed its own and the
 /// rent of declared creations, and `rent` — the part of that rent netted
 /// against it (Round 37, R37-7).
@@ -1570,13 +1578,23 @@ fn signer_lamport_losses(
                 creation_rent += lam.min(rent);
             }
         } else if lam < 0 && !is_signer {
-            let kept_before = d
-                .before
-                .as_ref()
-                .and_then(|s| lamports_kept_by(s, signers))
-                .is_some();
-            if !kept_before {
-                left_strangers += -lam;
+            let kept_before = d.before.as_ref().and_then(|s| lamports_kept_by(s, signers));
+            match kept_before {
+                // Round 41 audit: lamports leaving a native account a signer
+                // keeps — its stake or nonce account — are that signer's
+                // loss. They were counted nowhere: a sibling Stake
+                // `Withdraw` paying a stranger was silent, and one paying
+                // the signer's own token account masked a transfer out of
+                // the wallet. Moving value between a keeper's own accounts
+                // still nets to zero against what arrives in them. Token
+                // accounts are not counted here: their outflow is a token
+                // debit, judged against the declaration (D-20 credits the
+                // wrapped SOL a route spends).
+                Some(h) if !is_token_account(d) => {
+                    *out.entry(h).or_default() += -lam;
+                }
+                Some(_) => {}
+                None => left_strangers += -lam,
             }
         }
     }
@@ -7708,6 +7726,106 @@ mod tests {
         ];
         want.sort();
         assert_eq!(got, want);
+    }
+
+    /// Round 41 full-codebase audit: lamports leaving a stake account a
+    /// signer keeps were counted nowhere — neither a stranger's (it is kept)
+    /// nor the signer's (it is not the signer's key). A sibling Stake
+    /// `Withdraw` paying an attacker was silent, and one paying the signer's
+    /// own token account masked a transfer out of the wallet. Both fail on
+    /// the previous code; the honest withdrawal and split still net to zero.
+    #[test]
+    fn r41a_a_kept_stake_accounts_outflow_is_its_keepers_loss() {
+        const SOL: u64 = 1_000_000_000;
+        let (u, st, a, t, st2) = (
+            r41_key(31),
+            r41_key(32),
+            r41_key(33),
+            r41_key(34),
+            r41_key(35),
+        );
+        let usdc = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+        let auths = [
+            ("stake staker", u.as_str()),
+            ("stake withdrawer", u.as_str()),
+            ("stake lockup", "unix 0, epoch 0"),
+        ];
+        let stake = |key: &str, lamports: u64| AccountSnapshot {
+            pubkey: key.to_string(),
+            lamports,
+            ..r41_native(STAKE_PROGRAM, &auths)
+        };
+        let signers: HashSet<&str> = [u.as_str()].into();
+        let none = |_: &AccountDelta| false;
+        let loss = |deltas: Vec<AccountDelta>| {
+            let changed: Vec<&AccountDelta> = deltas.iter().collect();
+            signer_lamport_losses(&changed, &signers, Some(&u), 5_000, &none)[&u].unexplained
+        };
+        // (a) 50 SOL out of U's stake account to a stranger, U pays the fee.
+        let drained = loss(vec![
+            r41_delta(
+                &u,
+                Some(lamport_snapshot(&u, 10 * SOL)),
+                Some(lamport_snapshot(&u, 10 * SOL - 5_000)),
+            ),
+            r41_delta(&st, Some(stake(&st, 60 * SOL)), Some(stake(&st, 10 * SOL))),
+            r41_delta(
+                &a,
+                Some(lamport_snapshot(&a, SOL)),
+                Some(lamport_snapshot(&a, 51 * SOL)),
+            ),
+        ]);
+        assert_eq!(
+            drained,
+            i128::from(50 * SOL),
+            "the stake drained to a stranger is U's loss"
+        );
+        // (b) 2 SOL from the stake account into U's token account, and 2 SOL
+        // from U's wallet to a stranger: U is 2 SOL poorer.
+        let masked = loss(vec![
+            r41_delta(
+                &u,
+                Some(lamport_snapshot(&u, 10 * SOL)),
+                Some(lamport_snapshot(&u, 8 * SOL - 5_000)),
+            ),
+            r41_delta(&st, Some(stake(&st, 60 * SOL)), Some(stake(&st, 58 * SOL))),
+            r41_delta(
+                &t,
+                Some(r41_token_snapshot(&t, 2_039_280, usdc, &u)),
+                Some(r41_token_snapshot(&t, 2_039_280 + 2 * SOL, usdc, &u)),
+            ),
+            r41_delta(
+                &a,
+                Some(lamport_snapshot(&a, SOL)),
+                Some(lamport_snapshot(&a, 3 * SOL)),
+            ),
+        ]);
+        assert_eq!(
+            masked,
+            i128::from(2 * SOL),
+            "a stake withdrawal into U's own account does not excuse U's transfer out"
+        );
+        // Honest: 5 SOL withdrawn from the stake account to U's wallet.
+        let withdrawn = loss(vec![
+            r41_delta(
+                &u,
+                Some(lamport_snapshot(&u, 10 * SOL)),
+                Some(lamport_snapshot(&u, 15 * SOL - 5_000)),
+            ),
+            r41_delta(&st, Some(stake(&st, 60 * SOL)), Some(stake(&st, 55 * SOL))),
+        ]);
+        assert_eq!(withdrawn, 0);
+        // Honest: 20 SOL split into a new stake account U keeps.
+        let split = loss(vec![
+            r41_delta(
+                &u,
+                Some(lamport_snapshot(&u, 10 * SOL)),
+                Some(lamport_snapshot(&u, 10 * SOL - 5_000)),
+            ),
+            r41_delta(&st, Some(stake(&st, 60 * SOL)), Some(stake(&st, 40 * SOL))),
+            r41_delta(&st2, None, Some(stake(&st2, 20 * SOL))),
+        ]);
+        assert_eq!(split, 0);
     }
 
     #[test]
