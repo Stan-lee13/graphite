@@ -124,9 +124,17 @@ const DEFAULT_MAX_CONNECTIONS_PER_PEER: usize = 64;
 /// arrived. A client that asked for `/manifests` and never read the answer,
 /// or that kept an idle keep-alive open, held its connection slot and its
 /// per-peer slot indefinitely, so a handful of addresses could fill the
-/// 1,024-connection cap. A request is bounded by `REQUEST_TIMEOUT` (10 s), so
-/// this cuts only connections that are stalled or idle; a client reconnects.
+/// 1,024-connection cap. At its lifetime a connection closes GRACEFULLY
+/// (Round 41): the request in flight is answered with `Connection: close`
+/// and no new one is read, so a busy keep-alive loses no request; an idle
+/// one closes at once. One still writing `REQUEST_TIMEOUT` +
+/// `CONNECTION_CLOSE_GRACE` later is dropped. A client reconnects.
 const DEFAULT_CONNECTION_LIFETIME: Duration = Duration::from_secs(120);
+
+/// How long past `REQUEST_TIMEOUT` a connection that began closing at its
+/// lifetime may take to write its last response before it is dropped
+/// (Round 41).
+const CONNECTION_CLOSE_GRACE: Duration = Duration::from_secs(5);
 
 /// How many peers' worth of connections one IPv6 /48 may hold together
 /// (audit 2026-10-20, L6).
@@ -359,6 +367,40 @@ const DEFAULT_MAX_CONCURRENT_VERIFICATIONS: usize = 32;
 /// (`graphite_auxiliary_load_shed_total`). `/health` draws on neither.
 const MAX_CONCURRENT_AUXILIARY: usize = 16;
 
+/// The operator's own routes — `/admin/*` and `/metrics` — draw on a pool of
+/// their own, and so do the guards' lifecycle reports on `/audit/event`
+/// (Round 41 full-codebase audit). All of them shared
+/// `MAX_CONCURRENT_AUXILIARY` with the dashboard's reads, so anyone holding
+/// the read key could keep it full of slow `/api/*` scans: the operator's
+/// `/admin/quarantine` — the action meant for an incident — and every
+/// guard's lifecycle report were shed with 503. Dashboard reads cannot take
+/// either pool.
+const MAX_CONCURRENT_OPERATOR: usize = 4;
+
+/// The guards' lifecycle reports' own pool (see `MAX_CONCURRENT_OPERATOR`).
+const MAX_CONCURRENT_LIFECYCLE: usize = 16;
+
+/// Which non-verification pool a matched route draws on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AuxPool {
+    /// `/admin/*`, `/metrics`.
+    Operator,
+    /// `/audit/event`.
+    Lifecycle,
+    /// The dashboard's `/api/*`, `/manifests` and anything else.
+    Dashboard,
+}
+
+fn aux_pool(path: &str) -> AuxPool {
+    if path.starts_with("/admin/") || path == "/metrics" {
+        AuxPool::Operator
+    } else if path == "/audit/event" {
+        AuxPool::Lifecycle
+    } else {
+        AuxPool::Dashboard
+    }
+}
+
 /// Dashboard series caps: the confidence chart and the violations list only
 /// ever materialize this many points per request (memory stays bounded as
 /// the audit log grows); the response still reports the true totals.
@@ -410,6 +452,10 @@ struct AppState {
     /// The separate pool for every route that is not a verification (see
     /// `MAX_CONCURRENT_AUXILIARY`), so those can never hold `inflight`.
     aux_inflight: Arc<tokio::sync::Semaphore>,
+    /// The operator routes' own pool (see `MAX_CONCURRENT_OPERATOR`).
+    ops_inflight: Arc<tokio::sync::Semaphore>,
+    /// The lifecycle reports' own pool (see `MAX_CONCURRENT_LIFECYCLE`).
+    lifecycle_inflight: Arc<tokio::sync::Semaphore>,
     /// Operator-pinned wallet profile; when set it overrides the request body.
     pinned_profile: Option<crate::policy_engine::WalletProfile>,
     /// Opt-out allowing a caller-supplied profile weaker than any built-in.
@@ -1911,6 +1957,8 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         inflight: Arc::new(tokio::sync::Semaphore::new(inflight_limit)),
         inflight_limit,
         aux_inflight: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_AUXILIARY)),
+        ops_inflight: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_OPERATOR)),
+        lifecycle_inflight: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_LIFECYCLE)),
         pinned_profile,
         allow_permissive_profiles,
     };
@@ -2046,7 +2094,8 @@ async fn serve_hardened(
 
     let permits = Arc::new(tokio::sync::Semaphore::new(max_connections));
     let peers = Arc::new(PeerConnections::default());
-    let graceful = hyper_util::server::graceful::GracefulShutdown::new();
+    // Tells every connection to close gracefully at shutdown (Round 41).
+    let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
     let mut shutdown = std::pin::pin!(shutdown);
     loop {
         let (stream, remote) = tokio::select! {
@@ -2112,27 +2161,69 @@ async fn serve_hardened(
                 TokioIo::new(stream),
                 hyper_util::service::TowerToHyperService::new(service),
             );
-        let connection = graceful.watch(connection);
+        let mut stopping = stop_rx.clone();
         tokio::spawn(async move {
-            match tokio::time::timeout(connection_lifetime, connection).await {
-                Ok(Err(e)) => tracing::debug!("connection from {remote} ended: {e}"),
-                Ok(Ok(())) => {}
-                // Dropping the connection closes its socket.
-                Err(_) => tracing::debug!(
-                    "connection from {remote} closed: open for {}s (GRAPHITE_CONNECTION_LIFETIME_SECS)",
-                    connection_lifetime.as_secs()
-                ),
+            // Round 41 full-codebase audit: the lifetime used to DROP the
+            // connection, cutting a busy keep-alive mid-request (the proxy
+            // answered 502, the agent got no verdict). At its lifetime — or at
+            // server shutdown — the connection now closes gracefully: the
+            // request in flight is answered (with `Connection: close`) and no
+            // new one is read; an idle connection closes at once. It is
+            // dropped only if that takes longer than a request may.
+            let mut connection = std::pin::pin!(connection);
+            let deadline = tokio::time::sleep(connection_lifetime);
+            let mut deadline = std::pin::pin!(deadline);
+            let mut closing = false;
+            loop {
+                tokio::select! {
+                    ended = connection.as_mut() => {
+                        if let Err(e) = ended {
+                            tracing::debug!("connection from {remote} ended: {e}");
+                        }
+                        break;
+                    }
+                    _ = deadline.as_mut() => {
+                        if closing {
+                            // Dropping the connection closes its socket.
+                            tracing::debug!(
+                                "connection from {remote} dropped: still busy {}s after it began closing",
+                                (REQUEST_TIMEOUT + CONNECTION_CLOSE_GRACE).as_secs()
+                            );
+                            break;
+                        }
+                        tracing::debug!(
+                            "connection from {remote} closing: open for {}s (GRAPHITE_CONNECTION_LIFETIME_SECS)",
+                            connection_lifetime.as_secs()
+                        );
+                        closing = true;
+                        connection.as_mut().graceful_shutdown();
+                        deadline
+                            .as_mut()
+                            .reset(tokio::time::Instant::now() + REQUEST_TIMEOUT + CONNECTION_CLOSE_GRACE);
+                    }
+                    _ = stopping.changed(), if !closing => {
+                        closing = true;
+                        connection.as_mut().graceful_shutdown();
+                        deadline
+                            .as_mut()
+                            .reset(tokio::time::Instant::now() + REQUEST_TIMEOUT);
+                    }
+                }
             }
             drop(permit);
             drop(peer_slot);
         });
     }
     drop(listener);
-    tokio::select! {
-        _ = graceful.shutdown() => {}
-        _ = tokio::time::sleep(REQUEST_TIMEOUT) => {
-            tracing_log("shutdown: connections still open after the request timeout were dropped");
-        }
+    // Every connection closes gracefully; shutdown waits for them (each holds
+    // a connection permit) up to the request timeout.
+    let _ = stop_tx.send(true);
+    let max = u32::try_from(max_connections).unwrap_or(u32::MAX);
+    if tokio::time::timeout(REQUEST_TIMEOUT, permits.acquire_many(max))
+        .await
+        .is_err()
+    {
+        tracing_log("shutdown: connections still open after the request timeout were dropped");
     }
     Ok(())
 }
@@ -2558,12 +2649,23 @@ async fn concurrency_limit_middleware(
         };
     let req = axum::http::Request::from_parts(parts, axum::body::Body::from(bytes));
     if !verification {
-        let Ok(permit) = Arc::clone(&state.aux_inflight).try_acquire_owned() else {
+        let which = aux_pool(&path);
+        let (pool, limit) = match which {
+            AuxPool::Operator => (&state.ops_inflight, MAX_CONCURRENT_OPERATOR),
+            AuxPool::Lifecycle => (&state.lifecycle_inflight, MAX_CONCURRENT_LIFECYCLE),
+            AuxPool::Dashboard => (&state.aux_inflight, MAX_CONCURRENT_AUXILIARY),
+        };
+        let Ok(permit) = Arc::clone(pool).try_acquire_owned() else {
             Metrics::inc(&state.metrics.aux_load_shed);
             static AUX_SHED_LOG: LogThrottle = LogThrottle::new(REFUSAL_LOG_WINDOW_MS);
             if let Some(suppressed) = AUX_SHED_LOG.admit() {
                 tracing_client_reject(&format!(
-                    "at capacity: {MAX_CONCURRENT_AUXILIARY} non-verification requests already in flight, shedding{}",
+                    "at capacity: {limit} {} requests already in flight, shedding{}",
+                    match which {
+                        AuxPool::Operator => "operator",
+                        AuxPool::Lifecycle => "lifecycle-report",
+                        AuxPool::Dashboard => "dashboard",
+                    },
                     suppressed_note(suppressed)
                 ));
             }
@@ -2574,7 +2676,7 @@ async fn concurrency_limit_middleware(
                     "error": "server at capacity for this route",
                     "error_type": "LoadShed",
                     "hint": "the server is already running its maximum number of concurrent non-verification requests (dashboard reads, lifecycle reports, operator actions); verifications are unaffected. Retry after the interval in the Retry-After header",
-                    "in_flight_limit": MAX_CONCURRENT_AUXILIARY,
+                    "in_flight_limit": limit,
                 })),
             )
                 .into_response();
@@ -5715,6 +5817,8 @@ mod tests {
             inflight: Arc::new(tokio::sync::Semaphore::new(1024)),
             inflight_limit: 1024,
             aux_inflight: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_AUXILIARY)),
+            ops_inflight: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_OPERATOR)),
+            lifecycle_inflight: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_LIFECYCLE)),
             pinned_profile: None,
             allow_permissive_profiles: false,
         };
@@ -6119,6 +6223,50 @@ mod tests {
     }
 
     const VERIFY_TEST_KEY: &str = "verify-test-key";
+
+    /// Round 41 full-codebase audit: the operator's routes shared the
+    /// dashboard's pool, so a read-key holder keeping it full of slow
+    /// `/api/*` scans had `/admin/quarantine`, `/audit/event` and `/metrics`
+    /// shed with 503. With every dashboard slot held, the operator's routes
+    /// (and the guards' lifecycle reports) are still served; the dashboard
+    /// read is the one shed.
+    #[tokio::test]
+    async fn a_full_dashboard_pool_cannot_lock_the_operator_out() {
+        let (mut state, _dir, key) = keyed_state();
+        state.aux_inflight = Arc::new(tokio::sync::Semaphore::new(2));
+        let _polls = Arc::clone(&state.aux_inflight)
+            .try_acquire_many_owned(2)
+            .unwrap();
+        let app = build_app(state, vec![]);
+        let (status, json) = post_json(
+            &app,
+            "/admin/quarantine",
+            Some(&key),
+            serde_json::json!({"program_id": SYSTEM, "reason": "incident"}),
+        )
+        .await;
+        assert_eq!(
+            status,
+            axum::http::StatusCode::OK,
+            "/admin/quarantine while the dashboard pool is full: {json}"
+        );
+        // The dashboard read, authenticated, is the one shed.
+        let mut req = axum::http::Request::builder()
+            .method("GET")
+            .uri("/api/policy-violations")
+            .header("authorization", format!("Bearer {VERIFY_TEST_KEY}"))
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+        req.extensions_mut().insert(ConnectInfo(addr));
+        let resp = tower::ServiceExt::oneshot(app.clone(), req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(aux_pool("/admin/quarantine"), AuxPool::Operator);
+        assert_eq!(aux_pool("/metrics"), AuxPool::Operator);
+        assert_eq!(aux_pool("/audit/event"), AuxPool::Lifecycle);
+        assert_eq!(aux_pool("/api/policy-violations"), AuxPool::Dashboard);
+        assert_eq!(aux_pool("/manifests"), AuxPool::Dashboard);
+    }
 
     #[tokio::test]
     async fn quarantine_endpoint_blocks_the_program_and_persists_it() {
