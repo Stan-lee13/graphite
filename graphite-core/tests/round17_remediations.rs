@@ -847,6 +847,86 @@ async fn a_siblings_executed_cpis_are_judged_by_its_own_manifest() {
     assert!(!sibling_finding(&r), "{:?}", r.risk_verdict);
 }
 
+/// Round 41 full-codebase audit: W14 judged a sibling's executed CPIs only
+/// when the sibling had a manifest. An UNMANIFESTED sibling's token CPI,
+/// beside a primary whose root may call the token programs, was judged
+/// against nothing, so the risk verdict depended on whether the caller
+/// declared it. An unmanifested program is an unknown protocol: judged with
+/// no allowed CPI, its executed Token call is refused either way.
+#[tokio::test]
+async fn an_unmanifested_siblings_executed_token_cpi_is_judged_as_its_own() {
+    const TOKEN: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+    let unknown = bs58::encode([0x5au8; 32]).into_string();
+    let dest = strings(&corpus_entry("legacy_single_transfer")["static_keys"])[1].clone();
+    // Legacy message: payer, dest, then System, the unmanifested program and
+    // Token read-only. Ix 0: System Transfer; ix 1: the unknown program.
+    let mut message = vec![1u8, 0, 3, 5];
+    for k in [
+        payer_b58(),
+        dest.clone(),
+        SYSTEM.to_string(),
+        unknown.clone(),
+        TOKEN.to_string(),
+    ] {
+        message.extend(bs58::decode(k).into_vec().unwrap());
+    }
+    message.extend([7u8; 32]);
+    message.push(2);
+    message.extend([2, 2, 0, 1, 12]);
+    message.extend(transfer_data(2_000_000));
+    message.extend([3, 0, 2, 0xab, 0xcd]);
+    let mut artifact = vec![1u8];
+    artifact.extend([0u8; 64]);
+    artifact.extend(message);
+
+    let input_with = |cpi_targets: Vec<String>| {
+        let mut input = describe(artifact.clone());
+        input.account_addresses = vec![payer_b58(), dest.clone()];
+        input.transaction_instructions =
+            vec![graphite_core::tx_pattern_analysis::TransactionInstruction {
+                program_id: unknown.clone(),
+                instruction_discriminator: "abcd".to_string(),
+                account_addresses: vec![],
+                cpi_targets,
+            }];
+        input
+    };
+    let w14_finding = |r: &VerificationResult| {
+        r.risk_verdict.findings.iter().any(|f| {
+            f.reason.contains("top-level instruction #1") && f.reason.contains(unknown.as_str())
+        })
+    };
+
+    let knobs: Shared = Arc::default();
+    let core = core_at(&cluster(Arc::clone(&knobs)));
+    {
+        let mut k = knobs.lock().unwrap();
+        k.inner_program_indexes = vec![4];
+        k.inner_top_level_index = 1;
+    }
+    // Undeclared: what ran is judged as the sibling's own.
+    let r = core.verify_async(&input_with(vec![])).await.unwrap();
+    assert!(
+        w14_finding(&r),
+        "the unmanifested sibling's Token CPI was not judged: {:?}",
+        r.risk_verdict
+    );
+    assert_eq!(r.risk_verdict.status, "Blocked", "{:?}", r.risk_verdict);
+    assert!(!r.approved);
+    // Declared: refused the same way.
+    let r = core
+        .verify_async(&input_with(vec![TOKEN.to_string()]))
+        .await
+        .unwrap();
+    assert_eq!(r.risk_verdict.status, "Blocked", "{:?}", r.risk_verdict);
+    assert!(!r.approved);
+
+    // Control: the sibling executed nothing — no W14 finding.
+    knobs.lock().unwrap().inner_program_indexes = vec![];
+    let r = core.verify_async(&input_with(vec![])).await.unwrap();
+    assert!(!w14_finding(&r), "{:?}", r.risk_verdict);
+}
+
 // ─── F-16-11: every verdict on record ───────────────────────────────────────
 
 #[tokio::test]

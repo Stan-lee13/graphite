@@ -9490,18 +9490,25 @@ impl GraphiteCore {
                     callees.sort();
                     callees.dedup();
                     callees.retain(|c| *c != top.program_id);
-                    let cpi_blocked = if ctx.manifest_found {
-                        crate::risk_engine::unexpected_cpi_target(&callees, &ctx.allowed_cpis)
-                            .or_else(|| {
-                                crate::risk_engine::token_cpi_from_untrusted_root(
-                                    &top.program_id,
-                                    &callees,
-                                    &ctx.allowed_cpis,
-                                )
-                            })
+                    // Round 41 full-codebase audit: an UNMANIFESTED sibling
+                    // was skipped here, so its executed token CPI was judged
+                    // only against the primary's root — a trusted route's —
+                    // and passed whenever the caller left it undeclared. It
+                    // is an unknown protocol: judged with no allowed CPI,
+                    // which Checks 1 and 1b already fail closed on.
+                    let allowed: &[String] = if ctx.manifest_found {
+                        &ctx.allowed_cpis
                     } else {
-                        None
+                        &[]
                     };
+                    let cpi_blocked = crate::risk_engine::unexpected_cpi_target(&callees, allowed)
+                        .or_else(|| {
+                            crate::risk_engine::token_cpi_from_untrusted_root(
+                                &top.program_id,
+                                &callees,
+                                allowed,
+                            )
+                        });
                     if let Some(RiskVerdict::Blocked { pattern, reason }) = cpi_blocked {
                         summary.status = "Blocked".to_string();
                         summary.findings.push(RiskFinding {

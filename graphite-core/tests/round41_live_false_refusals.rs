@@ -1345,6 +1345,45 @@ async fn round41_an_honest_wrap_and_swap_of_sol_is_executable() {
     }
 }
 
+/// Round 41 full-codebase audit (W14, unmanifested siblings): beside an
+/// honest Jupiter route — a trusted root that may call the token programs —
+/// an unmanifested program the owner signs for executes an SPL Token CPI the
+/// caller does not declare. That CPI was judged against the ROUTE's root and
+/// passed, and W14 skipped the sibling because it had no manifest, so the
+/// risk verdict depended on whether the caller declared it. Judged as the
+/// unknown protocol it is, it is refused whether declared or not.
+#[tokio::test]
+async fn round41_an_unmanifested_siblings_token_cpi_beside_a_route_is_judged() {
+    for w in [Waivers::None, Waivers::All] {
+        let (mut c, mut ixs, route) = wrap_swap(Wrap::HonestExisting);
+        let at = ixs.len();
+        ixs.push(ix(
+            FOREIGN,
+            &[
+                (OWNER, true, false),
+                (MINT_X, false, false),
+                (TOKEN, false, false),
+            ],
+            b"hello".to_vec(),
+        ));
+        c.inner.push(Inner {
+            top: at,
+            program: TOKEN.to_string(),
+            accounts: vec![MINT_X.to_string()],
+            data: vec![21u8],
+        });
+        let r = verify(c, &ixs, route, "swap", wrap_request("0.605263158"), w).await;
+        record(&format!("unmanifested sibling Token CPI {w:?}"), &r);
+        assert!(
+            names(&r, &format!("top-level instruction #{at}")),
+            "{w:?}: the unmanifested sibling's executed Token CPI was not judged as its own: {}",
+            risk(&r)
+        );
+        assert_eq!(r.risk_verdict.status, "Blocked", "{w:?}: {}", risk(&r));
+        assert_ne!(r.decision, ExecutionDecision::ExecutableApproved, "{w:?}");
+    }
+}
+
 /// D-20 attack controls: every way of letting SOL leave beside the wrap to
 /// someone other than the route's declared input debit, never executable.
 #[tokio::test]
