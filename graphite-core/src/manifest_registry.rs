@@ -1280,7 +1280,7 @@ impl ManifestRegistryEngine {
 /// A base58 ed25519 public key, if `pubkey_b58` is one: 32 bytes that decode
 /// to a valid curve point.
 fn parse_verifying_key(pubkey_b58: &str) -> Option<ed25519_dalek::VerifyingKey> {
-    let decoded = bs58::decode(pubkey_b58).into_vec().ok()?;
+    let decoded = crate::solana_types::decode_base58_bounded(pubkey_b58, 32)?;
     let bytes = <[u8; 32]>::try_from(decoded.as_slice()).ok()?;
     ed25519_dalek::VerifyingKey::from_bytes(&bytes).ok()
 }

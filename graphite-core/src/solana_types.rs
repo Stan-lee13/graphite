@@ -12,6 +12,30 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+/// The most base58 characters `bytes` bytes can need (Round 41 audit):
+/// ceil(n · log 256 / log 58) ≤ n · 1.3658 + 1 — 44 for a 32-byte key, 88
+/// for a 64-byte signature. A leading zero byte spells as one `1`, which is
+/// fewer. Base58 decoding is quadratic in its input, so every string that
+/// arrives from a caller or an RPC is held to this before it is decoded.
+pub const fn max_base58_len(bytes: usize) -> usize {
+    bytes * 13_658 / 10_000 + 1
+}
+
+/// The longest base58 spelling of a 32-byte key.
+pub const MAX_PUBKEY_BASE58_LEN: usize = max_base58_len(32);
+
+/// The longest base58 spelling of a 64-byte signature.
+pub const MAX_SIGNATURE_BASE58_LEN: usize = max_base58_len(64);
+
+/// `s` decoded, if it is base58 no longer than `max_bytes` bytes can spell;
+/// a longer string is refused without being decoded (Round 41 audit).
+pub fn decode_base58_bounded(s: &str, max_bytes: usize) -> Option<Vec<u8>> {
+    if s.len() > max_base58_len(max_bytes) {
+        return None;
+    }
+    bs58::decode(s).into_vec().ok()
+}
+
 #[derive(Debug, Clone, Error)]
 pub enum SolanaTypeError {
     #[error("invalid base58: {0}")]
@@ -110,6 +134,16 @@ impl Pubkey {
     }
 
     pub fn from_base58(s: &str) -> Result<Self, SolanaTypeError> {
+        // Round 41 audit: base58 decoding is quadratic in the input, and a
+        // caller's string (an extracted parameter, a program id) reached it
+        // unbounded — a 1 MiB string pinned a worker for minutes. A 32-byte
+        // key is at most 44 characters; anything longer is refused first.
+        if s.len() > MAX_PUBKEY_BASE58_LEN {
+            return Err(SolanaTypeError::InvalidBase58(format!(
+                "{} characters; a 32-byte key is at most {MAX_PUBKEY_BASE58_LEN}",
+                s.len()
+            )));
+        }
         let decoded = bs58::decode(s)
             .into_vec()
             .map_err(|e| SolanaTypeError::InvalidBase58(e.to_string()))?;
@@ -341,6 +375,37 @@ impl Instruction {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Round 41 audit: a caller's string reached the quadratic base58
+    /// decoder unbounded. A key is refused by its length before decoding;
+    /// the bound is exact for 32-byte keys and 64-byte signatures.
+    #[test]
+    fn base58_is_refused_by_length_before_it_is_decoded() {
+        assert_eq!(MAX_PUBKEY_BASE58_LEN, 44);
+        assert_eq!(MAX_SIGNATURE_BASE58_LEN, 88);
+        // The longest real spellings fit the bounds.
+        assert_eq!(bs58::encode([0xffu8; 32]).into_string().len(), 44);
+        assert_eq!(bs58::encode([0xffu8; 64]).into_string().len(), 88);
+        for n in [1usize, 31, 32, 33, 64, 1232, 10 * 1024] {
+            let longest = bs58::encode(vec![0xffu8; n]).into_string().len();
+            assert!(longest <= max_base58_len(n), "{n}: {longest}");
+            assert!(decode_base58_bounded(&"2".repeat(max_base58_len(n) + 1), n).is_none());
+        }
+        let key = "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU";
+        assert!(Pubkey::from_base58(key).is_ok());
+        // 45 characters: refused for its length, not decoded and measured.
+        let long = format!("{key}1");
+        match Pubkey::from_base58(&long) {
+            Err(SolanaTypeError::InvalidBase58(m)) => assert!(m.contains("at most 44"), "{m}"),
+            other => panic!("{other:?}"),
+        }
+        // A megabyte of base58 is refused at once.
+        let huge = "2".repeat(1 << 20);
+        let t = std::time::Instant::now();
+        assert!(Pubkey::from_base58(&huge).is_err());
+        assert!(decode_base58_bounded(&huge, 10 * 1024).is_none());
+        assert!(t.elapsed() < std::time::Duration::from_secs(1));
+    }
 
     /// R30: the Round 29 fix (bump 0 is never tried) had no test, because no
     /// real seed exercises it. The search is driven with a derivation whose

@@ -718,9 +718,8 @@ pub fn bound_artifact_sha256(
     let malformed = || SignatureBindingError::SignatureMalformed {
         signature: signature.to_string(),
     };
-    let decoded = bs58::decode(signature)
-        .into_vec()
-        .map_err(|_| malformed())?;
+    let decoded =
+        crate::solana_types::decode_base58_bounded(signature, 64).ok_or_else(malformed)?;
     let expected: [u8; 64] = decoded.as_slice().try_into().map_err(|_| malformed())?;
 
     // The frame must parse in full, which also guarantees that every declared
@@ -745,9 +744,7 @@ pub fn bound_artifact_sha256(
     }
 
     let fee_payer = message.fee_payer.clone();
-    let key_bytes: [u8; 32] = bs58::decode(&fee_payer)
-        .into_vec()
-        .ok()
+    let key_bytes: [u8; 32] = crate::solana_types::decode_base58_bounded(&fee_payer, 32)
         .and_then(|v| v.as_slice().try_into().ok())
         .ok_or_else(|| SignatureBindingError::FeePayerKeyInvalid {
             fee_payer: fee_payer.clone(),

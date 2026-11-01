@@ -63,6 +63,14 @@ use crate::durable::MAX_LIFECYCLE_DETAIL_CHARS;
 /// A Solana transaction signature is 64 bytes, base58: 86 to 88 characters
 /// of the base58 alphabet that decode to exactly 64 bytes.
 fn signature_shape(s: &str) -> Result<(), String> {
+    // Round 41 audit: refused by length before the (quadratic) decode.
+    if s.len() > crate::solana_types::MAX_SIGNATURE_BASE58_LEN {
+        return Err(format!(
+            "signature is {} characters; a Solana signature is at most {}",
+            s.len(),
+            crate::solana_types::MAX_SIGNATURE_BASE58_LEN
+        ));
+    }
     match bs58::decode(s).into_vec() {
         Ok(bytes) if bytes.len() == 64 => Ok(()),
         Ok(bytes) => Err(format!(
@@ -5207,6 +5215,21 @@ fn tracing_server_error(msg: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Round 41 audit: a signature is refused by its length before the
+    /// quadratic base58 decode; a real one still passes.
+    #[test]
+    fn a_signature_is_refused_by_its_length_before_decoding() {
+        let real = bs58::encode([0xffu8; 64]).into_string();
+        assert_eq!(real.len(), 88);
+        assert!(signature_shape(&real).is_ok());
+        let long = format!("{real}2");
+        let why = signature_shape(&long).unwrap_err();
+        assert!(why.contains("at most 88"), "{why}");
+        let t = std::time::Instant::now();
+        assert!(signature_shape(&"2".repeat(1 << 20)).is_err());
+        assert!(t.elapsed() < std::time::Duration::from_secs(1));
+    }
     use crate::policy_engine::WEAKEST_BUILTIN_MIN_CONFIDENCE;
 
     // ── X-Forwarded-For spoofing (HIGH, 2026-09-05 production audit) ────────

@@ -420,3 +420,35 @@ async fn refusals_carry_no_runs_of_spaces() {
     }
     handle.join().unwrap();
 }
+
+// ── Round 41 audit ──────────────────────────────────────────────────────────
+
+/// An RPC-reported inner instruction's base58 `data` was decoded with no
+/// bound (decoding is quadratic). A CPI carries at most 10 KiB, so a longer
+/// string is refused before decoding and makes the whole report unknown; 10
+/// KiB itself still reads.
+#[test]
+fn inner_instruction_data_longer_than_a_cpi_can_carry_is_unknown() {
+    let with_data = |data: String| {
+        serde_json::json!({
+            "err": null, "logs": [], "unitsConsumed": 1000,
+            "preBalances": [1, 2], "postBalances": [1, 2],
+            "innerInstructions": [{
+                "index": 0,
+                "instructions": [{
+                    "programIdIndex": 1, "accounts": [0], "data": data, "stackHeight": 2
+                }]
+            }]
+        })
+    };
+    let max = bs58::encode(vec![0xffu8; 10 * 1024]).into_string();
+    let ok = simulation_result_from_value_for_test(&with_data(max.clone())).unwrap();
+    let inner = ok.inner_instructions.expect("10 KiB of data is read");
+    assert_eq!(inner[0].data.len(), 10 * 1024);
+    let over = format!("{max}{}", "2".repeat(64));
+    let sim = simulation_result_from_value_for_test(&with_data(over)).unwrap();
+    assert!(
+        sim.inner_instructions.is_none(),
+        "data longer than a CPI can carry makes the report unknown"
+    );
+}

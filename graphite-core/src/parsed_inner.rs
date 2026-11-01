@@ -83,7 +83,7 @@ fn address(info: &Map<String, Value>, key: &str) -> Option<String> {
 }
 
 fn pubkey(s: &str) -> Option<[u8; 32]> {
-    let bytes = bs58::decode(s).into_vec().ok()?;
+    let bytes = crate::solana_types::decode_base58_bounded(s, 32)?;
     let key: [u8; 32] = bytes.try_into().ok()?;
     // The canonical spelling only: one key, one string.
     (bs58::encode(key).into_string() == s).then_some(key)

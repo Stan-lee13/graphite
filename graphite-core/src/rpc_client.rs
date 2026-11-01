@@ -36,6 +36,14 @@ fn bundled_root_certificates() -> Vec<reqwest::Certificate> {
 /// and inner together (agave `MAX_INSTRUCTION_TRACE_LENGTH`). An RPC reporting
 /// more inner instructions than this is not describing an execution (A2-11).
 pub const MAX_INSTRUCTION_TRACE_LENGTH: usize = 64;
+
+/// The most data one cross-program invocation can carry (agave
+/// `MAX_CPI_INSTRUCTION_DATA_LEN`, 10 KiB). An RPC-reported inner
+/// instruction's base58 `data` longer than that spells is refused before it
+/// is decoded — decoding is quadratic, and a hostile or intercepted RPC
+/// could otherwise wedge a worker for hours (Round 41 audit) — and, like any
+/// unreadable entry, makes the whole report unknown.
+pub const MAX_CPI_INSTRUCTION_DATA_LEN: usize = 10 * 1024;
 /// The deepest instruction stack the runtime allows, with room for SIMD-0268's
 /// raise from 5 to 9 (A2-11). A reported `stackHeight` past it is refused.
 pub const MAX_INSTRUCTION_STACK_HEIGHT: u32 = 9;
@@ -427,7 +435,10 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
                         .iter()
                         .map(|a| a.as_u64().and_then(|a| u8::try_from(a).ok()))
                         .collect::<Option<Vec<u8>>>()?;
-                    let data = bs58::decode(ix.get("data")?.as_str()?).into_vec().ok()?;
+                    let data = crate::solana_types::decode_base58_bounded(
+                        ix.get("data")?.as_str()?,
+                        MAX_CPI_INSTRUCTION_DATA_LEN,
+                    )?;
                     let stack_height = match ix.get("stackHeight") {
                         None | Some(serde_json::Value::Null) => None,
                         Some(h) => {
@@ -498,7 +509,10 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
                                     .map(InnerAccountRef::Index)
                             })
                             .collect::<Option<Vec<_>>>()?;
-                        let data = bs58::decode(ix.get("data")?.as_str()?).into_vec().ok()?;
+                        let data = crate::solana_types::decode_base58_bounded(
+                            ix.get("data")?.as_str()?,
+                            MAX_CPI_INSTRUCTION_DATA_LEN,
+                        )?;
                         (program, Some((accounts, data)))
                     } else {
                         let program_id = ix.get("programId")?.as_str()?;
@@ -517,7 +531,10 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
                                 .iter()
                                 .map(|a| a.as_str().map(str::to_string))
                                 .collect::<Option<Vec<_>>>()?;
-                            let data = bs58::decode(ix.get("data")?.as_str()?).into_vec().ok()?;
+                            let data = crate::solana_types::decode_base58_bounded(
+                                ix.get("data")?.as_str()?,
+                                MAX_CPI_INSTRUCTION_DATA_LEN,
+                            )?;
                             Some((accounts, data))
                         };
                         let body = body.map(|(accounts, data)| {
