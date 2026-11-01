@@ -1465,6 +1465,29 @@ fn registry_state_path(explicit: Option<PathBuf>) -> PathBuf {
 }
 
 /// Resolve the Semantic Graph state file path for registry submissions.
+/// Round 41 full-codebase audit: the registry CLI's graph file may be a
+/// data directory's own snapshot (`GRAPHITE_GRAPH_STATE=<data
+/// dir>/semantic_graph.json`). A running server holds that graph in memory
+/// and writes it back over the file, so a revocation written beside it was
+/// lost and the revoked reviewer's attestations kept lifting the tier. When
+/// the file is a snapshot, or sits in a directory a Graphite process locks,
+/// the CLI takes that directory's lock — refusing while the server runs.
+fn lock_graph_data_dir(
+    graph_path: &Path,
+) -> Result<Option<std::fs::File>, Box<dyn std::error::Error>> {
+    let dir = match graph_path.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
+        _ => PathBuf::from("."),
+    };
+    let is_snapshot = graph_path.file_name().and_then(|n| n.to_str())
+        == Some(crate::verification::SEMANTIC_GRAPH_FILENAME);
+    if is_snapshot || dir.join(crate::verification::DATA_DIR_LOCK).exists() {
+        Ok(Some(crate::verification::lock_data_dir(&dir)?))
+    } else {
+        Ok(None)
+    }
+}
+
 fn graph_state_path(explicit: Option<PathBuf>) -> PathBuf {
     explicit
         .or_else(|| {
@@ -2199,6 +2222,21 @@ pub fn manifest_diff(before: &ProtocolManifest, after: &ProtocolManifest) -> Vec
         ));
     }
 
+    // Round 41 full-codebase audit: instructions are paired by name, so a
+    // name used twice would hide one of them ("no instruction-level changes"
+    // over a whole added instruction). Say so first; validation refuses such
+    // a manifest.
+    for (side, m) in [("current", before), ("candidate", after)] {
+        let mut seen: BTreeMap<&str, usize> = BTreeMap::new();
+        for i in &m.instructions {
+            *seen.entry(i.name.as_str()).or_default() += 1;
+        }
+        for (name, n) in seen.into_iter().filter(|(_, n)| *n > 1) {
+            out.push(format!(
+                "  !! DUPLICATE INSTRUCTION NAME on the {side} side: {name:?} names {n} instructions — this diff cannot pair them, and validation refuses the manifest"
+            ));
+        }
+    }
     let old: BTreeMap<&str, _> = before
         .instructions
         .iter()
@@ -3368,6 +3406,7 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
                 });
             }
             let _registry_lock = lock_registry(&state_path)?;
+            let _graph_lock = lock_graph_data_dir(&graph_path)?;
             let mut engine = load_registry(&state_path)?;
             let mut store = load_graph(&graph_path)?;
             let regression = match corpus_dir {
@@ -3377,11 +3416,22 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
                 )),
                 None => None,
             };
-            let decision = engine.submit(
+            let decision = match engine.submit(
                 &mut store,
                 submission,
                 regression.as_ref().map(|(c, core)| (c, core)),
-            )?;
+            ) {
+                Ok(decision) => decision,
+                // Round 41 full-codebase audit (MR-2): the engine records the
+                // replay gate's refusal so the same label or content is never
+                // taken again — but only in memory. Save it, or a resubmission
+                // after `deprecate-fixture` (or a Core upgrade) is accepted.
+                Err(e @ crate::manifest_registry::RegistryError::RegressionGateBlocked(_)) => {
+                    save_registry(&engine, &state_path)?;
+                    return Err(e.into());
+                }
+                Err(e) => return Err(e.into()),
+            };
             match decision {
                 RegistryDecision::Accepted {
                     trust_tier,
@@ -3412,6 +3462,7 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
             let state_path = registry_state_path(state);
             let graph_path = graph_state_path(graph_state);
             let _registry_lock = lock_registry(&state_path)?;
+            let _graph_lock = lock_graph_data_dir(&graph_path)?;
             let mut engine = load_registry(&state_path)?;
             let mut store = load_graph(&graph_path)?;
             let affected = engine.revoke_reviewer(&mut store, &pubkey)?;
@@ -3778,6 +3829,29 @@ mod tests {
 
     const DIFF_PROGRAM: &str = "GdP9U5aYx7f2kQzVwNmT8jRcL4hB6eX3sDnWqA1uMoH";
 
+    /// Round 41 full-codebase audit: a candidate adding a whole second
+    /// instruction under an existing name diffed to "no instruction-level
+    /// changes" (instructions are paired by name). It is now flagged, on
+    /// either side, and the validator refuses the manifest.
+    #[test]
+    fn a_duplicated_instruction_name_is_flagged_and_refused() {
+        let before = diff_manifest(DIFF_PROGRAM, "1.0");
+        let mut after = diff_manifest(DIFF_PROGRAM, "2.0");
+        let mut hidden = after.instructions[0].clone();
+        hidden.discriminator = "02".to_string();
+        hidden.allowed_cpis = vec!["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string()];
+        after.instructions.insert(0, hidden);
+        let out = manifest_diff(&before, &after).join("\n");
+        assert!(
+            out.contains("!! DUPLICATE INSTRUCTION NAME on the candidate side"),
+            "{out}"
+        );
+        let back = manifest_diff(&after, &before).join("\n");
+        assert!(back.contains("on the current side"), "{back}");
+        let err = crate::manifest::validate_manifest(&after).unwrap_err();
+        assert!(err.to_string().contains("appears more than once"), "{err}");
+    }
+
     #[test]
     fn an_unchanged_manifest_diffs_to_nothing() {
         let a = diff_manifest(DIFF_PROGRAM, "1.0");
@@ -4138,6 +4212,166 @@ mod tests {
         assert!(behavior.evidence.has_signed_manifest);
         assert!(behavior.first_manifest_unvalidated);
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Round 41 full-codebase audit: the registry CLI wrote a data
+    /// directory's graph snapshot while the server held it, and the server
+    /// wrote its in-memory graph back over the revocation. It now takes the
+    /// data directory's lock, refusing while another process holds it.
+    #[test]
+    fn registry_cli_will_not_write_a_running_servers_graph() {
+        let dir = reg_dir();
+        let state = dir.join("state.json");
+        let graph = dir.join("semantic_graph.json");
+        let pubkey = bs58::encode(
+            ed25519_dalek::SigningKey::from_bytes(&[7u8; 32])
+                .verifying_key()
+                .to_bytes(),
+        )
+        .into_string();
+        run_registry(RegistryAction::RegisterReviewer {
+            state: Some(state.clone()),
+            pubkey: pubkey.clone(),
+            reputation: 500,
+        })
+        .unwrap();
+        let revoke = || {
+            run_registry(RegistryAction::RevokeReviewer {
+                state: Some(state.clone()),
+                graph_state: Some(graph.clone()),
+                pubkey: pubkey.clone(),
+            })
+        };
+        // A "server" holds the data directory.
+        let held = crate::verification::lock_data_dir(&dir).unwrap();
+        let err = revoke().unwrap_err();
+        assert!(
+            format!("{err}").contains("held by another Graphite process"),
+            "{err}"
+        );
+        assert!(!graph.exists(), "nothing was written beside the server");
+        drop(held);
+        // With the server stopped, the revocation goes through.
+        revoke().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Round 41 full-codebase audit (MR-2): `registry submit` never saved the
+    /// replay gate's refusal — the engine recorded it in memory and the CLI
+    /// exited — so the same refused version was accepted on a second try.
+    #[test]
+    fn registry_cli_a_refused_version_stays_refused_across_runs() {
+        const PROGRAM: &str = "AuditTest1111111111111111111111111111111111";
+        let dir = reg_dir();
+        let state = dir.join("state.json");
+        let graph = dir.join("graph.json");
+        let key = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
+        run_registry(RegistryAction::RegisterReviewer {
+            state: Some(state.clone()),
+            pubkey: bs58::encode(key.verifying_key().to_bytes()).into_string(),
+            reputation: 500,
+        })
+        .unwrap();
+        let manifest = |label: &str, previous: Option<&str>| {
+            serde_json::json!({
+              "graphite_manifest_version": "1.0",
+              "protocol": {"name": "Test Audit Protocol", "program_id": PROGRAM,
+                           "website": "https://example.com", "github": "https://github.com/example"},
+              "version": {"label": label, "effective_from_slot": 0, "previous_version_ref": previous},
+              "instructions": [{
+                "name": "Ping", "discriminator": "aabbccdd",
+                "accounts": [{"name": "signer", "role": "signer", "is_writable": false,
+                              "is_signer": true, "pda_seeds": []}],
+                "expected_state_changes": ["no state changes"],
+                "allowed_cpis": [], "risk_rules": ["signer must be a signer"]
+              }],
+              "trust_tier": "HeuristicInferred"
+            })
+            .to_string()
+        };
+        let input = |account: &str| {
+            serde_json::json!({
+                "proposed_intent": {"intent_type": "transfer",
+                    "raw_natural_language": "ping the audit test program", "confidence_of_parse": 0.9},
+                "program_id": PROGRAM, "protocol_version": "1.0.0",
+                "instruction_discriminator": "aabbccdd", "account_addresses": [account],
+                "compute_units": 150, "account_writes": 1, "cpi_hops": 0
+            })
+            .to_string()
+        };
+        let submit = |manifest_path: &std::path::Path, corpus: &std::path::Path| {
+            run_registry(RegistryAction::Submit {
+                state: Some(state.clone()),
+                graph_state: Some(graph.clone()),
+                manifest_path: manifest_path.to_path_buf(),
+                signer_key_hex: Some(hex::encode([7u8; 32])),
+                attestations: vec![],
+                corpus_dir: Some(corpus.to_path_buf()),
+            })
+        };
+        // v1, onboarded against its own fixture.
+        let v1 = dir.join("v1.json");
+        std::fs::write(&v1, manifest("1.0.0", None)).unwrap();
+        let corpus = dir.join("corpus");
+        std::fs::write(
+            dir.join("in1.json"),
+            input("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"),
+        )
+        .unwrap();
+        run_registry(RegistryAction::RecordFixture {
+            corpus_dir: corpus.clone(),
+            manifest_path: v1.clone(),
+            input_path: dir.join("in1.json"),
+        })
+        .unwrap();
+        submit(&v1, &corpus).unwrap();
+        // v2, against a corpus pinning the opposite outcome for another input.
+        let v2 = dir.join("v2.json");
+        std::fs::write(&v2, manifest("1.1.0", Some("1.0.0"))).unwrap();
+        let pin = dir.join("pin");
+        std::fs::write(
+            dir.join("in2.json"),
+            input("9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU"),
+        )
+        .unwrap();
+        run_registry(RegistryAction::RecordFixture {
+            corpus_dir: pin.clone(),
+            manifest_path: v2.clone(),
+            input_path: dir.join("in2.json"),
+        })
+        .unwrap();
+        // Pin the opposite of the outcome v2 gives that input, the way an
+        // operator's corpus would (an edited file would fail its integrity
+        // check instead, which records no refusal).
+        let recorded = crate::regression_engine::RegressionCorpus::load_from_dir(&pin).unwrap();
+        let mut pinning = crate::regression_engine::RegressionCorpus::new();
+        for f in recorded.fixtures_for(PROGRAM) {
+            pinning.add_fixture(crate::regression_engine::RegressionFixture::new(
+                f.input.clone(),
+                !f.expected_approved,
+                "pin",
+            ));
+        }
+        std::fs::remove_dir_all(&pin).unwrap();
+        pinning.save_to_dir(&pin).unwrap();
+        let err = submit(&v2, &pin).unwrap_err();
+        assert!(
+            format!("{err}").contains("regression"),
+            "the gate refuses v2: {err}"
+        );
+        // The refusal is on disk ...
+        let engine = load_registry(&state).unwrap();
+        assert!(
+            engine.refused().iter().any(|r| r.version_label == "1.1.0"),
+            "the refusal was not saved"
+        );
+        // ... so the same v2, against the clean corpus, is still refused.
+        let err = submit(&v2, &corpus).unwrap_err();
+        assert!(
+            format!("{err}").contains("refused by the regression gate before"),
+            "a refused version was taken on a second try: {err}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

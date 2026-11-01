@@ -995,6 +995,20 @@ pub fn validate_manifest(manifest: &ProtocolManifest) -> Result<(), ManifestErro
                 )));
             }
         }
+        // Round 41 full-codebase audit: names identify instructions to a
+        // reviewer (`graphite protocol diff` pairs them by name). Two
+        // instructions under one name let an upgrade add a whole new one —
+        // its own discriminator, accounts and CPIs — while the diff read "no
+        // instruction-level changes".
+        let mut names = std::collections::HashSet::new();
+        for ix in &manifest.instructions {
+            if !names.insert(ix.name.as_str()) {
+                return Err(ManifestError::Invalid(format!(
+                    "instruction name '{}' appears more than once; each instruction needs its own name",
+                    ix.name
+                )));
+            }
+        }
         for ix in &manifest.instructions {
             if ix.name.is_empty() {
                 return Err(ManifestError::Invalid("instruction with empty name".into()));

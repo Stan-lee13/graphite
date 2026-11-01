@@ -335,4 +335,9 @@ command refuses a key file group or others can read or write, as the server
 refuses such an audit key file (Windows: the ACL is not inspected). A compromised reviewer key is
 revoked with `graphite registry revoke-reviewer --pubkey <base58>`; its
 signatures and attestations stop counting and the tiers they helped earn are
-recomputed.
+recomputed. When `GRAPHITE_GRAPH_STATE` is a data directory's own
+`semantic_graph.json` (or sits in a directory a Graphite process locks), stop
+the server first: since Round 41 `revoke-reviewer` and `submit` take that data
+directory's lock and refuse while the server holds it — otherwise the running
+server writes its in-memory graph back over the revocation. The revocation
+takes effect when the server starts again.

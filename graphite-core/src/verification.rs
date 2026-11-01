@@ -2835,7 +2835,7 @@ impl PipelineLayerResult {
 }
 
 /// File name of the semantic-graph snapshot inside the data directory.
-const SEMANTIC_GRAPH_FILENAME: &str = "semantic_graph.json";
+pub(crate) const SEMANTIC_GRAPH_FILENAME: &str = "semantic_graph.json";
 
 /// The name of the lock file one process holds on its data directory.
 pub const DATA_DIR_LOCK: &str = "graphite.lock";
