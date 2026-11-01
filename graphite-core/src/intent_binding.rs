@@ -2001,6 +2001,14 @@ fn bind_swap(input: &BindingInput<'_>) -> Binding {
 
 // ── Account creation (Round 38, R37-7) ──────────────────────────────────────
 
+/// The largest account a `create` may fund with its rent without the request
+/// stating the amount, when the payer does not keep it (Round 41). Ordinary
+/// created accounts fit: an SPL token account is 165 bytes, a mint 82, a
+/// nonce account 80, a stake account 200, Metaplex metadata 679 and a master
+/// edition 282. Anything larger — a program buffer, a 10 MiB data account —
+/// is value the request must state.
+pub const UNSTATED_CREATION_MAX_BYTES: usize = 1_024;
+
 /// A creation is held to the rent of what it creates (Round 38, R37-7).
 ///
 /// `create` bound nothing, and L4 holds a signer's wallet to the located
@@ -2013,6 +2021,15 @@ fn bind_swap(input: &BindingInput<'_>) -> Binding {
 ///   minimum for its size, plus, in all, the SOL amount the request states;
 /// - no other account that is not a signer's own gains lamports, and no
 ///   top-level System or token instruction moves a signer's value to one.
+///
+/// Round 41 (full-codebase audit, R37-7 completed): the size is the
+/// transaction builder's choice too, so rent alone bounds nothing — 7.3 SOL
+/// into a 1 MiB account the attacker's program owns was exactly its rent and
+/// was `executable_approved`. A created account's rent is the creation's own
+/// cost only when the account is the payer's (the bytes and the simulation
+/// show the payer keeping it: [`kept_by`]) or it is no larger than
+/// [`UNSTATED_CREATION_MAX_BYTES`]; otherwise everything it is funded with
+/// counts against the amount the request states.
 fn bind_create(input: &BindingInput<'_>) -> Binding {
     let stated = match input.params.and_then(|p| p.amount.as_ref()) {
         None => 0u64,
@@ -2047,28 +2064,44 @@ fn bind_create(input: &BindingInput<'_>) -> Binding {
     };
     let created =
         |d: &crate::state_diff::AccountDelta| d.lamports_before() == 0 && d.lamports_after() > 0;
+    // The wallet that funds the creation. Round 39 (R39-CORE-DECISION-1): a
+    // co-signer is not it.
+    let payer: Vec<String> = input.signers.first().cloned().into_iter().collect();
     let mut beyond: i128 = 0;
-    let mut largest: Option<(String, i128, usize)> = None;
+    let mut largest: Option<(String, i128, usize, bool)> = None;
     for d in diff.deltas.iter().filter(|d| created(d)) {
         let size = d.after.as_ref().map_or(0, |s| s.data_len);
-        let excess = i128::from(d.lamports_after()) - crate::state_diff::rent_exempt_minimum(size);
+        // Round 41: rent is the creation's own cost only for an account the
+        // payer keeps, or one of an ordinary created account's size.
+        let rent_is_own =
+            size <= UNSTATED_CREATION_MAX_BYTES || kept_by(&d.pubkey, &payer, diff, ixs);
+        let excused = if rent_is_own {
+            crate::state_diff::rent_exempt_minimum(size)
+        } else {
+            0
+        };
+        let excess = i128::from(d.lamports_after()) - excused;
         if excess > 0 {
             beyond += excess;
-            if largest.as_ref().is_none_or(|(_, e, _)| excess > *e) {
-                largest = Some((d.pubkey.clone(), excess, size));
+            if largest.as_ref().is_none_or(|(_, e, _, _)| excess > *e) {
+                largest = Some((d.pubkey.clone(), excess, size, rent_is_own));
             }
         }
     }
     if beyond > i128::from(stated) {
-        let (account, excess, size) = largest.expect("an excess has an account");
-        return Binding::mismatch(format!(
-            "the creation funds {account} with {excess} lamports beyond the rent-exempt minimum for its {size} bytes ({beyond} beyond rent in all; the request states {stated}): lamports put into a new account beyond its rent are a transfer"
-        ));
+        let (account, excess, size, rent_is_own) = largest.expect("an excess has an account");
+        return Binding::mismatch(if rent_is_own {
+            format!(
+                "the creation funds {account} with {excess} lamports beyond the rent-exempt minimum for its {size} bytes ({beyond} beyond rent in all; the request states {stated}): lamports put into a new account beyond its rent are a transfer"
+            )
+        } else {
+            format!(
+                "the creation funds {account}, {size} bytes the wallet does not keep, with {excess} lamports ({beyond} in all; the request states {stated}): an account larger than {UNSTATED_CREATION_MAX_BYTES} bytes that the wallet does not keep is funded with value the request must state, its rent included"
+            )
+        });
     }
-    // What is not a creation: value leaving a signer for anyone else. Round
-    // 39 (R39-CORE-DECISION-1): "anyone else" is anyone the fee payer — the
-    // wallet that funds the creation — does not keep; a co-signer is not it.
-    let payer: Vec<String> = input.signers.first().cloned().into_iter().collect();
+    // What is not a creation: value leaving a signer for anyone else —
+    // anyone the fee payer does not keep.
     let own = |a: &str| {
         kept_by(a, &payer, diff, ixs) || diff.deltas.iter().any(|d| d.pubkey == a && created(d))
     };

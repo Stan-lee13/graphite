@@ -5,6 +5,10 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 
 ## Round 41
 
+Round 41 (2026-11-01) — full-codebase audit, first fix ([decision D-31](../docs/audit/TECHNICAL_LEAD_DECISIONS.md)):
+
+- **Behaviour (stricter), D-31:** a `create` that states no amount may fund an account with its rent only when the wallet keeps the account or it is at most 1,024 bytes; a larger account the wallet does not keep is funded with value the request must state, rent included. It was `executable_approved` for 7.3 SOL into a 1 MiB account the attacker's program owned (R37-7 completed).
+
 Round 41 (2026-10-31) — Raydium CPMM was redeployed at slot 463,522,946, after the morning's census window, so the Core withdrew its imported evidence and an honest CPMM swap sat at 0.44 under Gaming's floor (live run 41190882806; the deployment read by `idl-refresh` run 41193460165's predecessor 41192883327). Re-measured on the new code by `census-refresh` run 41193460165: 1,238 successful transactions, decode rate 1.0, oldest slot 463,655,079; only CPMM's record changed (sha256 `78791179…9c73`, decoded from the log and checked against the printed one); 114 of 137 still meet the bar.
 
 Round 41 (2026-10-31) — four external AI reviews checked claim by claim (`docs/audit/ROUND41_EXTERNAL_REVIEW_TRIAGE.md`); what was true is fixed or recorded ([decisions D-28 to D-30](../docs/audit/TECHNICAL_LEAD_DECISIONS.md)):

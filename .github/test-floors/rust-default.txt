@@ -36,7 +36,7 @@
 6 tests/round36_env_names.rs
 23 tests/round36_intent_binding.rs
 4 tests/round38_audit_cli.rs
-8 tests/round38_create_funding.rs
+16 tests/round38_create_funding.rs
 24 tests/round38_sibling_skims.rs
 14 tests/round38_unscoped_authority.rs
 3 tests/round39_conformance_corpus.rs
