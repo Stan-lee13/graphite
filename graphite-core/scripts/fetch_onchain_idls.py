@@ -8,9 +8,14 @@ For every program id given (or the top N of scripts/out/inventory_census.json):
   * Anchor IDL account               -> the program's OWN published interface
 
 The IDL address is `create_with_seed(find_program_address([], pid), "anchor:idl",
-pid)` and the account is owned by the program itself, so a fetched IDL is the
-deployed program's own statement about its instruction surface — not a
-third-party copy that could have drifted.
+pid)` and the account is owned by the program itself, so a fetched IDL is what
+the program's IDL authority last published — not a third-party copy. It is
+written separately from the program binary and can lag the deployed code (Audit
+A095: Squads v4's IDL account lacks five instructions its deployed program has;
+validate_corpora.py pins that). The Core does not rely on it being complete: it
+reads every field to the end, refuses unknown tags, and a program deployed after
+the IDL's last change (`idl_refresh_report.py deployments`) is a reason to
+re-check.
 
 Output: scripts/out/onchain_idls/<program_id>.json + out/idl_index.json
 """

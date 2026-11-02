@@ -34,8 +34,13 @@ build-from-source stack.
    `NO_PROXY`: every connection goes straight to the provider's address, and
    the connect-time address guard judges that address. Through an environment
    proxy the guard would judge only the proxy's address, and the proxy would
-   resolve the provider's host name itself — a name that resolves to a private,
-   loopback or metadata address would reach it without the guard seeing it.
+   resolve the provider's host name itself — a name that resolves to a
+   link-local or cloud-metadata address would reach it without the guard
+   seeing it. The guard refuses only those (and unspecified, multicast and
+   broadcast addresses); it does NOT refuse private (RFC 1918, CGNAT, ULA) or
+   loopback addresses, so a provider name that DNS re-points at an internal
+   service is reached (Audit A080). Restrict the Core's egress with the host
+   firewall if that matters here.
    If the host can only reach the internet through a proxy, allow the RPC
    providers' addresses through the firewall instead; a forward proxy in
    front of the Core's RPC traffic is not supported.

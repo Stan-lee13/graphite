@@ -270,7 +270,8 @@
       "source": { "none": "a dated snapshot; age only" },
       "pinned_in": [
         { "file": "Dockerfile", "text": "http://snapshot.debian.org/archive/debian/20261021T000000Z" },
-        { "file": "Dockerfile", "text": "http://snapshot.debian.org/archive/debian-security/20261021T000000Z" }
+        { "file": "Dockerfile", "text": "http://snapshot.debian.org/archive/debian-security/20261021T000000Z" },
+        { "file": "Dockerfile", "text": "snapshot=\"2026-10-21T00:00:00Z\"" }
       ],
       "consistent": [
         {

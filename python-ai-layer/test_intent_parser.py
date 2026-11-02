@@ -67,6 +67,24 @@ def test_transfer_all_my():
     print("✓ test_transfer_all_my passed")
 
 
+def test_my_is_a_possessive_not_all():
+    """Audit A074: 'my' said 'all'. 'Send my 5 SOL to X' was a transfer of ALL
+    of token '5' with no destination: the label said more than the text."""
+    dest = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+    r = parse_intent(f"Send my 5 SOL to {dest}")
+    assert r["intent_type"] == "transfer"
+    p = r["extracted_parameters"]
+    assert p["amount"] == "5" and p["input_token"] == "SOL" and p["destination"] == dest, p
+    r = parse_intent(f"Send my USDC to {dest}")
+    p = r["extracted_parameters"]
+    assert p.get("amount") != "all", p
+    assert p.get("input_token") == "USDC" and p.get("destination") == dest, p
+    # "all my" and "entire" still mean all.
+    assert parse_intent(f"Send all my SOL to {dest}")["extracted_parameters"]["amount"] == "all"
+    assert parse_intent(f"Send entire SOL to {dest}")["extracted_parameters"]["amount"] == "all"
+    print("✓ test_my_is_a_possessive_not_all passed")
+
+
 def test_swap_intent():
     result = parse_intent("Swap 1 SOL for USDC")
     assert result["intent_type"] == "swap"

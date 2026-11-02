@@ -214,6 +214,22 @@ export function readBypass(m: ReadonlyMap<string, number> | null, counters: read
   return { state: hits.length > 0 ? "alarm" : missing.length > 0 ? "unknown" : "clear", hits, missing };
 }
 
+/**
+ * The bypass reading for a /metrics poll that may have stopped answering
+ * (Audit A062). A failed poll keeps its last good map on screen, and the
+ * System view drew "clear" from it while the Overview drew the same state
+ * "unknown". Counters only grow, so a stale non-zero is still an alarm; a
+ * stale all-zero is "stale", never "clear".
+ */
+export function readBypassNow(
+  m: ReadonlyMap<string, number> | null,
+  stale: boolean,
+  counters: readonly string[] = BYPASS_COUNTERS,
+): Omit<BypassReading, "state"> & { state: BypassReading["state"] | "stale" } {
+  const r = readBypass(m, counters);
+  return stale && (r.state === "clear" || r.state === "unknown") ? { ...r, state: "stale" } : r;
+}
+
 export interface TrailTotals {
   verifications: number;
   refused: number;

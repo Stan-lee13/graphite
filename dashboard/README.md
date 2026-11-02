@@ -179,8 +179,9 @@ it the same way.
 The console receives its copy on the Connection screen, which tests it in
 two steps: `/health` proves the address is a Core that this origin may talk
 to, and a key-guarded route (`/api/protocols/top`) proves the key. By
-default the key is kept for this tab only (sessionStorage) and is gone when
-the tab closes; ticking "Remember the key on this device" keeps it in this
+default the key is kept for this browser session only (sessionStorage); a
+browser may restore it with a reopened tab or a restored session, so on a
+shared machine use "Forget key" before leaving (Audit A093). Ticking "Remember the key on this device" keeps it in this
 browser's localStorage instead, and un-ticking it removes that copy. Either
 way it is never written to a URL, and "Forget key" drops it (and nothing
 else) with one click. Since Round 39 an address that carries a user name,

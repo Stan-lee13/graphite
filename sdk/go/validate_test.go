@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -474,5 +475,25 @@ func TestNotExecutableVerdictsAndTheirExecutions(t *testing.T) {
 		if _, err := NewClient(serve(t, http.StatusOK, body).URL).VerifyExecution(in); err == nil {
 			t.Errorf("%s: must be refused", name)
 		}
+	}
+}
+
+// Audit A060: printing a configured client never prints its Bearer key.
+func TestPrintingAClientNeverPrintsItsKey(t *testing.T) {
+	const key = "graphite-secret-key-0123456789abcdef"
+	c := NewClientWithAPIKey("https://graphite.example", key)
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s"} {
+		for _, v := range []any{c, *c} {
+			out := fmt.Sprintf(verb, v)
+			if strings.Contains(out, key) {
+				t.Fatalf("%s of %T prints the key: %s", verb, v, out)
+			}
+			if !strings.Contains(out, "graphite.example") {
+				t.Fatalf("%s of %T no longer says which server: %s", verb, v, out)
+			}
+		}
+	}
+	if out := fmt.Sprintf("%+v", NewClient("https://graphite.example")); strings.Contains(out, "redacted") {
+		t.Fatalf("a client with no key claims one: %s", out)
 	}
 }

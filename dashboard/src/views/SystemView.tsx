@@ -4,8 +4,8 @@
 // operator needs them in.
 
 import { api, type Health, type Metrics } from "../api";
-import { readBypass } from "../figures";
-import { auditReading, persistenceReading } from "../status";
+import { readBypassNow } from "../figures";
+import { auditReading, persistenceReading, whileSilent } from "../status";
 import { usePolling } from "../usePolling";
 import { Empty, Fault, FaultNote, Figure, Freshness, PageHead, Section, Skeleton, State, fmt, pollFault, relTime } from "../ui";
 
@@ -107,8 +107,17 @@ export function SystemView() {
         {/* Round 39 (R39-DASH-5, status.ts): a /health without these
             fields is "Not reported", not "Off"; failing appends are not
             "Writing". */}
-        <Figure label="Audit trail" value={audit?.value ?? "—"} tone={audit?.tone} sub={audit?.sub} />
-        <Figure label="Graph snapshots" value={persistence?.value ?? "—"} tone={persistence?.tone} sub={persistence?.sub} />
+        {/* Audit A062: never green from a /health that is not answering. */}
+        {(() => {
+          const a = audit && whileSilent(audit, silent);
+          const p = persistence && whileSilent(persistence, silent);
+          return (
+            <>
+              <Figure label="Audit trail" value={a?.value ?? "—"} tone={a?.tone} sub={a?.sub} />
+              <Figure label="Graph snapshots" value={p?.value ?? "—"} tone={p?.tone} sub={p?.sub} />
+            </>
+          );
+        })()}
         {/* Round 30: whether any approval can be executable at all. A Core
             without an RPC simulates nothing, and every approval it makes is
             for analysis only. "Not reported" when the Core does not say. */}
@@ -218,8 +227,18 @@ export function SystemView() {
                     </State>
                   ),
                   clear: <State kind="pass">clear</State>,
+                  // Audit A062: /metrics answered once and has stopped; the
+                  // counters below are the last read, not now.
+                  stale: (
+                    <State
+                      kind="warn"
+                      title={`/metrics is not answering${metrics.updatedAt !== null ? `; the counters below were last read ${relTime(metrics.updatedAt)}` : ""}`}
+                    >
+                      unknown
+                    </State>
+                  ),
                   unread: undefined,
-                }[readBypass(m, g.counters.map((c) => c.metric)).state]
+                }[readBypassNow(m, metrics.error !== null, g.counters.map((c) => c.metric)).state]
               : undefined
           }
           flush

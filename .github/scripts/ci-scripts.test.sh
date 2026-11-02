@@ -615,6 +615,9 @@ grep -q $'\x1b' "$T/cargo-colour.log" && ok "the coloured log fixture carries AN
 expect 0 "a coloured cargo log still names each binary at its floor" "${TC[@]}" cargo "$T/cargo-colour.log" 52 "$T/allow.txt" "$T/floors.txt"
 grep -v 'tests/alpha.rs' "$T/cargo.log" | grep -v '^test result: ok\. 7 passed' >"$T/cargo-noalpha.log"
 expect 1 "a listed binary missing from the log fails" "${TC[@]}" cargo "$T/cargo-noalpha.log" 40 "$T/allow.txt" "$T/floors.txt"
+# Audit A094: and says so ("did not run"), not "ran more than once".
+out="$("${TC[@]}" cargo "$T/cargo-noalpha.log" 40 "$T/allow.txt" "$T/floors.txt" 2>&1 || true)"
+grep -q "tests/alpha.rs' (floor 7) did not run" <<<"$out" && ok "a listed binary missing from the log is named as not run" || bad "missing-binary message: $out"
 expect 1 "a floors file that does not exist fails" "${TC[@]}" cargo "$T/cargo.log" 52 "$T/allow.txt" "$T/no-floors.txt"
 printf '# nothing listed\n' >"$T/floors-empty.txt"
 expect 1 "a floors file that lists no binary fails (empty is not 'no floor')" "${TC[@]}" cargo "$T/cargo.log" 52 "$T/allow.txt" "$T/floors-empty.txt"

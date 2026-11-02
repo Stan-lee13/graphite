@@ -207,8 +207,21 @@ Pick one form: `deploy/compose/docker-compose.prod.yml` or `deploy/systemd/` (bo
   `/etc/graphite/audit.key` (root, 600; systemd hands it over as a credential). Leave the admin key
   empty unless someone uses `/admin/*`. Give the dashboard and Prometheus the **read** key only.
   Rotation: `deploy/scripts/rotate-keys.sh` and [keys.md](keys.md).
+- [ ] **9b-console. How the console reaches the Core (Audit A063).** Not through the edge: by design
+  it answers `/health` 404 and forwards only the routes a remote caller needs, so a browser's CORS
+  preflight (every keyed request has one) gets Caddy's 404, and the console's connection test fails
+  on `/health`. Reach the Core on loopback over SSH instead, with the console served from the
+  operator's machine and its origin in `GRAPHITE_CORS_ORIGINS`:
+  systemd: `ssh -L 7331:127.0.0.1:7331 <host>`, then point the console at `http://127.0.0.1:7331`.
+  Compose publishes no Core port; add a host-loopback one in a local override (never in the
+  production file, whose hardening check refuses it), e.g. `docker-compose.override.yml` with
+  `services: { graphite: { ports: ["127.0.0.1:7331:7331"] } }`, then the same tunnel. The same port
+  is what `deploy/scripts/health-textfile.sh` needs on a compose host (its default URL).
 - [ ] **9c. The audit MAC key off the data volume** — done by both forms; check after start:
-  `curl -s localhost:7331/health | jq .audit.integrity` is `"tamper_evident"`.
+  `curl -s localhost:7331/health | jq .audit.integrity` is `"tamper_evident"`. Compose publishes no
+  Core port, so there use the loopback override of 9b-console, or
+  `docker compose exec graphite graphite healthcheck --strict` (exit 0 only when healthy and not
+  degraded; Audit A078). Every `/health` check below reads the same way.
   Keep a copy of the key off the host (a password manager or HSM-backed vault), separately from backups.
 - [ ] **9d. Checkpoints to WORM storage.** Create an S3 bucket with Object Lock enabled (it can only be
   enabled at creation): `aws s3api create-bucket --bucket <b> --object-lock-enabled-for-bucket …`.

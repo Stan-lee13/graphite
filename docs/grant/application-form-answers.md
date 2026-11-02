@@ -37,7 +37,9 @@ you; don't paste them.
 
 > Graphite is an open-source safety check that sits between an AI agent and its Solana wallet.
 > Before the agent's key signs a transaction, Graphite verifies that the exact transaction bytes
-> do what the agent says they do, and nothing else.
+> do what the agent says they do: the amount, recipient and asset are bound to the bytes, and
+> anything Graphite can observe the transaction doing beyond that is refused. Simulated effects
+> rest on the operator's RPC.
 >
 > The agent states its intent, for example "swap 1 SOL for USDC with at least 140 USDC out".
 > Graphite then:
@@ -169,7 +171,7 @@ to unlock each portion of that funding.**
 >    human in the loop, not a warning for a person.
 > 2. It is open source and self-hostable, so anyone can audit the checker or run their own.
 > 3. Its approval is tied to the exact bytes being signed and to the stated amount, recipient and
->    asset. A transaction that does more than it claims is refused.
+>    asset. A transaction Graphite can observe doing more than it claims is refused.
 > 4. It judges each instruction against a description generated from the program's own IDL, not
 >    against a reputation score.
 > 5. It refuses anything it cannot observe instead of guessing.
@@ -205,12 +207,12 @@ to unlock each portion of that funding.**
 > - its transaction parser is checked in CI against the Anza SDK's own decoder;
 > - its rebuild of inner instructions is checked against Agave's parser;
 > - it models Token-2022 transfer fees and extensions;
-> - it resolves address lookup tables the way the runtime does;
+> - it resolves address lookup tables and checks them against the simulator's loaded addresses;
 > - it reads legacy, v0 and v1 transactions.
 >
 > My edge is discipline:
 > - 41 rounds of adversarial review and repair, every finding written down with its root cause;
-> - every security fix proven with a test that fails without it;
+> - every security fix has a regression test, and most were shown to fail without the fix;
 > - outside reviews checked claim by claim against the code, and the true ones fixed;
 > - known limitations published next to the features;
 > - no performance claim without a run anyone can reproduce.

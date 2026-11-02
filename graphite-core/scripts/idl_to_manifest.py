@@ -2,8 +2,10 @@
 """Turn a program's OWN on-chain Anchor IDL into a Graphite protocol manifest.
 
 The input is whatever `fetch_onchain_idls.py` pulled out of the IDL account the
-program itself owns, so the instruction surface is the deployed program's own
-statement - not a third-party copy that may have drifted.
+program itself owns: what the program's IDL authority last published, not a
+third-party copy. It can lag the deployed code (Audit A095; see
+fetch_onchain_idls.py), so an instruction it does not list is undescribed and
+refused, never assumed.
 
 What is taken from the IDL (ground truth, never invented):
   * instruction names

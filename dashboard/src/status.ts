@@ -31,6 +31,16 @@ const bytes = (n: number) =>
 const wholeOrNull = (v: unknown): number | null =>
   typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : null;
 
+/**
+ * A /health figure while /health is not answering (Audit A062): the last
+ * good value stays on screen, but never green. The Status figure already
+ * says "Not answering"; the trail and snapshot figures stayed "Writing".
+ */
+export function whileSilent(r: Reading, silent: boolean): Reading {
+  if (!silent || r.tone !== "pass") return r;
+  return { ...r, tone: "warn", sub: r.sub ? `${r.sub} (as of the last answer)` : "as of the last answer" };
+}
+
 /** The audit trail figure. Unread is "Not reported", never "Off". */
 export function auditReading(h: Pick<Health, "audit">): Reading {
   const a = h.audit;

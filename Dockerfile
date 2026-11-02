@@ -97,9 +97,17 @@ FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2
 # rebuild produced. The sources are now ONE snapshot.debian.org timestamp for
 # the main and security archives: every build of this file installs the same
 # versions. apt still checks every index against the archive keyring in the
-# base image (so plain http is safe here, and the image has no CA store to do
-# https with yet); Check-Valid-Until is off because a snapshot's Release files
-# are old by design.
+# base image (so the indexes cannot be forged over plain http, and the image
+# has no CA store to do https with yet); Check-Valid-Until is off because a
+# snapshot's Release files are old by design.
+#
+# Audit A069: signatures prove an index is genuine, not that it is THIS
+# snapshot's. An on-path attacker could answer with an older genuine index and
+# apt would install the older ca-certificates and openssl it lists. The
+# security suite, where their fixes land, is re-signed with every security
+# push, so the build refuses one dated more than 14 days before the snapshot
+# timestamp. Exact version pins would close it for the main suite too; they
+# must be read from the snapshot when it is next re-pinned.
 #
 # The cost A6-14 named is real: a snapshot freezes the trust store and openssl
 # too. It is held in check, not ignored: the timestamp is listed in
@@ -124,6 +132,11 @@ RUN rm -f /etc/apt/sources.list \
         'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
         > /etc/apt/sources.list.d/debian.sources \
     && apt-get -o Acquire::Check-Valid-Until=false -o Acquire::Retries=5 update \
+    && snapshot="2026-10-21T00:00:00Z" \
+    && sec="$(ls /var/lib/apt/lists/*debian-security*bookworm-security_InRelease)" \
+    && sec_date="$(sed -n 's/^Date: //p' "$sec")" \
+    && echo "bookworm-security index dated $sec_date (snapshot $snapshot)" \
+    && [ "$(date -u -d "$sec_date" +%s)" -ge "$(( $(date -u -d "$snapshot" +%s) - 14 * 86400 ))" ] \
     && apt-get -o Acquire::Retries=5 install -y --no-install-recommends ca-certificates \
     && dpkg-query -W ca-certificates openssl \
     && rm -rf /var/lib/apt/lists/*

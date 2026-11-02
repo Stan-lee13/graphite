@@ -66,7 +66,10 @@ jobs:
           out=graphite-core/scripts/out/onchain_idls
           mkdir -p "$RUNNER_TEMP/committed"
           for id in "${ids[@]}"; do
-            if [ -f "$out/$id.json" ]; then cp "$out/$id.json" "$RUNNER_TEMP/committed/"; fi
+            # Audit A072: moved aside, not copied. The fetch writes a file only
+            # when it succeeds; a copy left in place read as "fetched, same as
+            # committed" after a failed fetch, and was hashed and uploaded.
+            if [ -f "$out/$id.json" ]; then mv "$out/$id.json" "$RUNNER_TEMP/committed/"; fi
           done
           printf '%s\n' "${ids[@]}" > "$RUNNER_TEMP/ids.txt"
           python3 graphite-core/scripts/fetch_onchain_idls.py "${ids[@]}"

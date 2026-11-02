@@ -242,7 +242,7 @@ Recorded, not hidden. Each is in `01-findings.md` or `02-roadmap-gap.md` with it
 - **Rounds 32–34 defaults.** A signer's loss under an unreadable declaration, under a debit line
   that names no account (R33-5), or beyond a System transfer's stated amount is refused by default.
   Round 36 rewrote 35 declarations from their IDLs (F-005): 1,767 of 3,541 instructions still carry
-  such a line (1,802 before), and none of the 27 withdrawal grants does (18 before); 9 of the
+  such a line (1,802 before), and none of the 26 grants does (14 of them withdrawals; 18 before); 9 of the
   rewrites await the owner's sign-off. The cost on live traffic is measured by the live-mainnet
   workflow only: W19 refused 1 of 200 in Round 32. Round 35 ran it on Round 34's code: no defect,
   and honest swaps (Jupiter `route_v2`, Pump AMM `sell`, Meteora DBC `swap2`) were refused by R33-5

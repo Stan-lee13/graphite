@@ -49,10 +49,12 @@ and baselines earned since the last good snapshot exist only in memory.
 (rebuilt), an archive that could not be read, or a record that failed to read
 back; `/metrics` read errors; a dashboard total that went backwards.
 
-**Meaning:** the audit trail is corruption-evident (lengths and SHA-256 of
-archives are checked when indexed; records are read back and matched). It is
-not tamper-proof against someone who can write to the volume: such a person
-can rewrite a file and its index consistently.
+**Meaning:** every record is hash-chained; lengths and SHA-256 of archives are
+checked when indexed, and records are read back and matched. With
+`GRAPHITE_AUDIT_KEY_FILE` the chain links and the archive indexes are MAC'd,
+so the trail is tamper-evident against anyone without the key (Round 30,
+Round 38). Without a key it is corruption-evident only: someone who can write
+the volume can rewrite a file and its index consistently (Audit A096).
 
 1. Stop writes from going anywhere unexpected: snapshot the volume as it is now
    (backup-restore.md, cold backup) before touching anything.

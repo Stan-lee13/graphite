@@ -139,7 +139,7 @@ reports). Paths are under `graphite-core/tests/` unless stated.
 | # | Invariant | Held by |
 |---|---|---|
 | I-1 | `approved`/`executable` is about exact bytes: an approval for bytes nothing simulated, or for no bytes, is never executable | `round30_execution_decision.rs`, `round30_decision_fixtures.rs`, `artifact_binding.rs`; `sdk/typescript/src/execution-decision.test.ts`, `sdk/go/decision_test.go` (the same fixtures in each language) |
-| I-2 | A caller cannot raise any program's confidence for other callers | `round30_trust_learning.rs` |
+| I-2 | A caller cannot raise the confidence of a program the built-in floor does not already admit, for other callers. Above the floor (for example after `graphite evidence import-census`, 0.59) a verify-key holder's clean, simulated requests DO train it, up to the OfficialManifest ceiling of 0.75 (Audit A079; the residual in SECURITY.md, Round 40, and RESIDUAL_RISK §3) | `round30_trust_learning.rs` |
 | I-3 | A signer's lamports or tokens move only under a manifest that declares the movement | `r30_declared_effects.rs`, `r30_declared_effects_census.rs`, `round30_fuzz_findings.rs` |
 | I-4 | An L2, L4 or L5 failure refuses, whatever the confidence or the profile | `l2_l4_l5_hard_gate.rs`, `l4_state_diff_gate.rs` |
 | I-5 | The AI layer cannot approve; intent text cannot clear danger | `ai_cannot_approve.rs`, `ai_layer_isolation.rs`, `audit_review_r2_r3_intent_cannot_clear_danger.rs`, `round30_grounded_intents.rs` |

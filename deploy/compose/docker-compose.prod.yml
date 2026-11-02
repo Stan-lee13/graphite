@@ -10,8 +10,13 @@
 #
 # Prepare (once), from this directory:
 #   install -d -m 0700 secrets anchors
-#   for k in api_key admin_api_key read_api_key audit_key; do openssl rand -hex 32 > secrets/$k; done
+#   for k in api_key read_api_key audit_key; do openssl rand -hex 32 > secrets/$k; done
+#   : > secrets/admin_api_key   # empty: /admin/* off until someone needs it (Audit A096)
 #   sudo chown 10001:10001 secrets/* anchors && sudo chmod 0600 secrets/*
+#   sudo install -d -o 10002 -g 10002 -m 0700 caddy-data caddy-config
+#     # Caddy runs as 10002 (Audit A067). Upgrading from the named volumes
+#     # caddy-data/caddy-config: copy their contents here first and chown
+#     # them, or Caddy re-issues its certificates.
 #     # 10001 is the image's user. The server refuses an audit key that
 #     # group/other can read; leave admin_api_key EMPTY to disable /admin/*.
 #   cat > .env <<'EOF'
@@ -21,7 +26,12 @@
 #   ACME_EMAIL=ops@example.com
 #   EOF
 #   # plus GRAPHITE_RPC_URL, GRAPHITE_RPC_WITNESS_URL, GRAPHITE_WALLET_PROFILE…
-#   # in graphite.env (mode 0600; every variable is in the root .env.example).
+#   # in graphite.env (mode 0600; every variable is in the root .env.example,
+#   # but leave out every GRAPHITE_*API_KEY line: the keys come only from the
+#   # secrets above, and the Core refuses to start with one in graphite.env).
+#   # The RPC URLs are NOT file-backed: a provider token in one is in
+#   # `docker inspect` and `docker compose config`. Prefer a provider that
+#   # authenticates by allow-listed IP, or treat that output as secret.
 #
 # Verify the image before the first pull (docs/ops/production-checklist.md):
 #   gh attestation verify oci://ghcr.io/<owner>/graphite-core@sha256:<digest> --repo <owner>/graphite \
@@ -38,18 +48,26 @@ services:
   caddy:
     image: caddy:2.11.7@sha256:3095ad245c353e3bdb27a38f22a095c1cfa9e295ab21c0214c3e72b0e2960525
     restart: unless-stopped
+    # Audit A067: the one process that parses internet traffic runs
+    # unprivileged. It listens on 8080/8443 inside the container (no
+    # capability needed, so none is added) and the host publishes 80/443.
+    user: "10002:10002"
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      - "80:8080"
+      - "443:8443"
+      - "443:8443/udp"
     environment:
+      CADDY_HTTP_PORT: "8080"
+      CADDY_HTTPS_PORT: "8443"
       GRAPHITE_SITE: ${GRAPHITE_SITE:?set GRAPHITE_SITE (the public host name) in .env}
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
       GRAPHITE_UPSTREAM: graphite:7331
     volumes:
       - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
+      # Bind mounts owned by 10002 (see Prepare): a fresh named volume takes
+      # the image's root-owned /data, which this user could not write.
+      - ./caddy-data:/data
+      - ./caddy-config:/config
     networks:
       edge: {}
       # A fixed address on the backend network (Round 40, R39-CB-8): the Core
@@ -64,7 +82,6 @@ services:
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
-    cap_add: [NET_BIND_SERVICE]
     security_opt: ["no-new-privileges:true"]
     deploy:
       resources:
@@ -95,6 +112,15 @@ services:
       - /bin/sh
       - -ec
       - |
+        # Audit A064: every key comes from /run/secrets. One that arrives
+        # from the environment (graphite.env) would stay active whatever the
+        # secret says, and sits in `docker inspect`: refuse to start.
+        for v in GRAPHITE_API_KEY GRAPHITE_READ_API_KEY GRAPHITE_ADMIN_API_KEY; do
+          if env | grep -q "^$$v="; then
+            echo "graphite: $$v is set in the container's environment (graphite.env?); here every key comes from /run/secrets. REFUSING TO START." >&2
+            exit 78
+          fi
+        done
         GRAPHITE_API_KEY="$$(cat /run/secrets/api_key)"
         GRAPHITE_READ_API_KEY="$$(cat /run/secrets/read_api_key)"
         export GRAPHITE_API_KEY GRAPHITE_READ_API_KEY
@@ -207,5 +233,3 @@ networks:
 
 volumes:
   graphite-data:
-  caddy-data:
-  caddy-config:

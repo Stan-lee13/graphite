@@ -60,3 +60,15 @@ test("R39-DASH-6: a /health that answered an error is not an unreachable Core", 
   assert.equal(coreState({ healthError: null, health: { degraded: true }, keyedError: null }), "degraded");
   assert.equal(coreState({ healthError: null, health: { degraded: false }, keyedError: "server" }), "ok");
 });
+
+test("Audit A062: a /health figure is never green while /health is not answering", async () => {
+  const { whileSilent } = await import("./status.ts");
+  const writing = { value: "Writing", tone: "pass" as const, sub: "12 appends" };
+  assert.deepEqual(whileSilent(writing, false), writing);
+  const silent = whileSilent(writing, true);
+  assert.equal(silent.tone, "warn");
+  assert.equal(silent.value, "Writing");
+  assert.match(silent.sub ?? "", /as of the last answer/);
+  const failing = { value: "Failing", tone: "block" as const };
+  assert.deepEqual(whileSilent(failing, true), failing);
+});

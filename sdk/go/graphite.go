@@ -170,6 +170,20 @@ func (c *Client) httpClient() *http.Client {
 	return newHTTPClient()
 }
 
+// clientView is Client without its methods, so Format can print it.
+type clientView Client
+
+// Format prints the client with its APIKey redacted (Audit A060): a
+// `log.Printf("%+v", client)` at startup, a %#v or a panic dump wrote the
+// operator's Bearer key. Every verb prints the same redacted view.
+func (c Client) Format(f fmt.State, verb rune) {
+	v := clientView(c)
+	if v.APIKey != "" {
+		v.APIKey = "<redacted>"
+	}
+	fmt.Fprintf(f, fmt.FormatString(f, verb), v)
+}
+
 // NewClientWithAPIKey creates a client for a secured Core deployment. The key
 // is sent as `Authorization: Bearer <key>` on every authenticated request.
 func NewClientWithAPIKey(baseURL, apiKey string) *Client {

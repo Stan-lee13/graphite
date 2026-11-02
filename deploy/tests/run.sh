@@ -156,12 +156,13 @@ elif what == "hardening":
     for n, s in svcs.items():
         if s.get("read_only") is not True: out.append(f"{n}: not read_only")
         if s.get("cap_drop") != ["ALL"]: out.append(f"{n}: cap_drop is not [ALL]")
-        if set(s.get("cap_add") or []) - ({"NET_BIND_SERVICE"} if n == "caddy" else set()): out.append(f"{n}: cap_add {s.get('cap_add')}")
+        if s.get("cap_add"): out.append(f"{n}: cap_add {s.get('cap_add')}")
         if "no-new-privileges:true" not in (s.get("security_opt") or []): out.append(f"{n}: no no-new-privileges")
         if s.get("privileged") or s.get("network_mode") == "host" or s.get("pid") == "host" or s.get("ipc") == "host": out.append(f"{n}: host namespace or privileged")
         if any("docker.sock" in str(v) for v in s.get("volumes") or []): out.append(f"{n}: mounts the docker socket")
         if n != "caddy" and (s.get("ports") or s.get("network_mode")): out.append(f"{n}: publishes ports")
-        if n != "caddy" and str(s.get("user", "")).split(":")[0] in ("", "0", "root"): out.append(f"{n}: runs as root")
+        # Audit A067: Caddy too; it was exempt, and it is the one that parses internet traffic.
+        if str(s.get("user", "")).split(":")[0] in ("", "0", "root"): out.append(f"{n}: runs as root")
 elif what == "digests":
     for n, s in svcs.items():
         img = s.get("image", "")
@@ -595,6 +596,20 @@ expect_rc 1 "the restored (older) trail fails the newer checkpoint, as it should
   "$G" audit verify --data-dir "$T/data" --key-file "$T/keys/audit-1.key" --checkpoint "$(find "$T/anchors" -name 'audit.jsonl-checkpoint-*' | LC_ALL=C sort | tail -n 1)"
 check "server starts on the restored directory" start_core "$T/keys/audit-1.key"
 
+# Audit A066: systemd's DynamicUser keeps StateDirectory= data in
+# /var/lib/private/graphite behind a /var/lib/graphite symlink. A restore to
+# the symlink must swap the target and leave the symlink, or the unit fails
+# to start (STATE_DIRECTORY, status 238).
+mkdir -p "$T/sd-private"
+cp -a "$T/data" "$T/sd-private/graphite"
+rm -f "$T/sd-private/graphite/graphite.lock"
+ln -s "$T/sd-private/graphite" "$T/sd-link"
+expect_rc 0 "restore.sh to a symlinked StateDirectory" env ACCEPT_STALE_RESTORE=1 "${R[@]}" "$cold" "$T/sd-link"
+[ -L "$T/sd-link" ] && [ "$(readlink -f "$T/sd-link")" = "$(readlink -f "$T/sd-private/graphite")" ] &&
+  ok "the StateDirectory symlink is kept, pointing at the restored data" || bad "the StateDirectory symlink was replaced: $(ls -ld "$T/sd-link")"
+ls -d "$T"/sd-private/graphite.pre-restore-* >/dev/null 2>&1 && ok "the previous target is kept aside beside it" || bad "the previous target was not kept aside"
+expect_rc 0 "the restored target verifies" "$G" audit verify --data-dir "$T/sd-link" --key-file "$T/keys/audit-1.key"
+
 echo "== key rotation"
 rotate_out="$("$deploy/scripts/rotate-keys.sh" audit-key "$T/keys" 2>&1)" && ok "rotate-keys.sh audit-key" || bad "rotate-keys.sh audit-key"
 grep -q GRAPHITE_AUDIT_PREVIOUS_KEY_FILE <<<"$rotate_out" && ok "rotate-keys.sh audit-key says to set the previous key" || bad "rotate-keys.sh audit-key does not mention GRAPHITE_AUDIT_PREVIOUS_KEY_FILE"
@@ -746,6 +761,16 @@ grep -qx GRAPHITE_API_KEY=aaaa <<<"$out" && grep -qx GRAPHITE_READ_API_KEY=rrrr 
 echo kkkk >"$T/secrets/admin_api_key"
 out="$(env -i PATH="$PATH" sh -ec "$(cat "$T/entry.sh")")"
 grep -qx GRAPHITE_ADMIN_API_KEY=kkkk <<<"$out" && ok "entrypoint: admin key exported when set" || bad "entrypoint (admin)"
+# Audit A064: a key that arrives from the environment (graphite.env via
+# env_file) is refused, whichever key it is, even with an empty admin secret.
+: >"$T/secrets/admin_api_key"
+for v in GRAPHITE_ADMIN_API_KEY GRAPHITE_API_KEY GRAPHITE_READ_API_KEY; do
+  if env -i PATH="$PATH" "$v=from-graphite-env" sh -ec "$(cat "$T/entry.sh")" >"$T/entry.out" 2>&1; then
+    bad "entrypoint ran with $v from the environment"
+  else
+    grep -q "REFUSING TO START" "$T/entry.out" && ok "entrypoint: $v from the environment -> refuses" || bad "entrypoint ($v): $(cat "$T/entry.out")"
+  fi
+done
 rm "$T/secrets/api_key"
 if env -i PATH="$PATH" sh -ec "$(cat "$T/entry.sh")" >/dev/null 2>&1; then bad "entrypoint ran without the api_key secret"; else ok "entrypoint: missing api_key secret -> refuses"; fi
 

@@ -275,18 +275,32 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: binary-*
+      # Audit A070: the artifacts themselves, not the hash files each build
+      # wrote about itself. Build a runs third-party code (cargo-cyclonedx)
+      # after its hashes were written and before its upload; a tarball it
+      # changed now differs from build b's, which never ran it.
       - name: Compare
         run: |
+          set -euo pipefail
           a=$(cut -d' ' -f1 binary-a/binary.sha256)
           b=$(cut -d' ' -f1 binary-b/binary.sha256)
           ta=$(cut -d' ' -f1 binary-a/dist/*.tar.gz.sha256)
           tb=$(cut -d' ' -f1 binary-b/dist/*.tar.gz.sha256)
+          ra=$(sha256sum binary-a/dist/*.tar.gz | cut -d' ' -f1)
+          rb=$(sha256sum binary-b/dist/*.tar.gz | cut -d' ' -f1)
           echo "binary  a=$a b=$b"
-          echo "tarball a=$ta b=$tb"
-          if [ "$a" != "$b" ] || [ "$ta" != "$tb" ]; then
-            echo "::error::the two release builds differ; not publishing an unreproducible release"
+          echo "tarball recorded a=$ta b=$tb; downloaded a=$ra b=$rb"
+          if [ "$a" != "$b" ] || [ "$ta" != "$tb" ] || [ "$ra" != "$rb" ] || [ "$ra" != "$ta" ]; then
+            echo "::error::the two release builds differ, or a tarball is not the one its build recorded; not publishing"
             exit 1
           fi
+          cmp binary-a/dist/*.tar.gz binary-b/dist/*.tar.gz
+          for x in a b; do
+            mkdir -p "unpack-$x" && tar -xzf "binary-$x"/dist/*.tar.gz -C "unpack-$x"
+            got=$(sha256sum "unpack-$x"/*/graphite | cut -d' ' -f1)
+            [ "$got" = "$a" ] || { echo "::error::build $x's tarball holds a binary ($got) that is not the recorded one ($a)"; exit 1; }
+          done
+          diff -r unpack-a unpack-b
 
   image:
     name: Container image, image SBOM, smoke test

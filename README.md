@@ -108,7 +108,7 @@ WITH GRAPHITE:
                                     If any check fails → BLOCKED. Period.
 ```
 
-This is not a simulation. This is not advisory. Graphite is a **deterministic verification gate** — if Graphite blocks, the transaction is not submitted.
+This is not a simulation. This is not advisory. Graphite is a **deterministic verification gate**: a client that follows its decision does not submit what it blocks, and L8 detects one that did.
 
 ---
 

@@ -519,11 +519,12 @@ transaction under the stated threat model, and no external party has yet tried.
 
 ## What is NOT enforced (documented limitations)
 
-- **Honest intents exist for 21 instructions, not for whole classes (Round 30,
-  R-M14).** Since R2 an intent declares only the security classes
-  `manifest::INTENT_DECLARES` lists. Round 30 added `withdraw`, `claim`, `burn`
-  and `configure` (and widened `close`) for named Raydium, Meteora DLMM, Pump and
-  SPL Token / Token-2022 instructions and one marketplace `update_offer`, each
+- **Honest intents exist for 26 instructions, not for whole classes (Round 30,
+  R-M14; Round 34; Round 40, D-2).** Since R2 an intent declares only the security classes
+  `manifest::INTENT_DECLARES` lists. Round 30 added `withdraw`, `claim` and `burn`
+  (and widened `close`) for named Raydium, Meteora DLMM, Pump and SPL Token /
+  Token-2022 instructions, and Round 34 the staking withdrawals (`configure` and the
+  marketplace `update_offer` were removed in Round 40), each
   only when the transaction's own accounts show the funds stay with the signer.
   Every other withdrawal, claim, protocol close, mint and admin setter is still
   refused whatever label it carries (Round 24 measured 219 of 48,855 executed
@@ -787,7 +788,7 @@ transaction under the stated threat model, and no external party has yet tried.
 - **Round 34's L4 defaults refuse more, and their live cost is not yet measured.**
   A signer's loss under a debit line that names no account is refused (R33-5):
   1,700 of 3,518 instructions carry such a line (1,767 at Round 36, 1,802 before it). None of
-  the 27 withdrawal grants does since Round 36 (F-005: 35 declarations rewritten
+  the 26 grants (14 withdrawals, 6 closes, 4 burns, 2 claims) does since Round 36 (F-005: 35 declarations rewritten
   from their IDLs, the 18 withdrawal grants among them); the 9 medium-confidence
   rewrites (Stake Pool, Raydium AMM v4: no IDL file in the repository) await the
   owner's sign-off. Rent paid
@@ -931,7 +932,7 @@ transaction under the stated threat model, and no external party has yet tried.
 |---|---|---|
 | Independent third-party audit | Not performed | Owner |
 | External review R2/R3 (a declared intent clearing a dangerous instruction) | **Closed in Round 24**: reproduced on `eb17aa5`, fixed by one intent-to-class table read by L5 and the Risk Engine, and by the control-change rules; one more case (R3-b) found by the round's own mainnet re-measurement and fixed | — |
-| Honest intents for withdrawals, claims and protocol closes | **Partly done (Round 30, R-M14/R-M13; Round 34)**: 27 grounded grants (`src/intent_grants.rs`: 21 in Round 30, the 6 staking withdrawals in Round 34); the rest stays refused; the 219 / 9 measured costs not re-measured (sample not in the repository); MMM `updatePool` needs its IDL | Engineering |
+| Honest intents for withdrawals, claims and protocol closes | **Partly done (Round 30, R-M14/R-M13; Round 34)**: 26 grounded grants (`src/intent_grants.rs`: 14 withdraw, 6 close, 4 burn, 2 claim; the 6 staking withdrawals added in Round 34, `configure` and `update_offer` removed in Round 40, D-2); the rest stays refused; the 219 / 9 measured costs not re-measured (sample not in the repository); MMM `updatePool` needs its IDL | Engineering |
 | Protocol upgrade detection (ProgramData slot / upgrade authority watch) | **Done (Round 27; evidence reset Round 30)**: with an RPC, a manifested program redeployed or handed to a new upgrade authority since last seen is reported on the verdict (`program_upgrades`), on `/health` and in the metrics; `GRAPHITE_QUARANTINE_ON_UPGRADE=1` also quarantines it. Since Round 30 the upgrade withdraws the program's evidence and a first sighting whose deployment is newer than the evidence withdraws it too. Loader-v4 deployments are read since Round 36 | — |
 | Execution decision (approved ≠ permission to sign) | **Done (Round 30, G-01)**: `decision` / `executable` on every verdict, recomputed by every client | — |
 | Tamper-evident audit trail | **Done when keyed (Round 30, G-07)**: hash chain + HMAC, `graphite audit verify` / `checkpoint`, anchor directory. Making the anchor storage immutable (WORM / object lock) and scheduling checkpoints is the operator's | Owner (deployment) |
