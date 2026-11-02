@@ -34,6 +34,8 @@ labels: protocol-manifest
       seed-constrains the account (a guessed template flags legitimate
       transactions)
 - [ ] `allowed_cpis` declares what the program really calls
+- [ ] `graphite manifest-verify --manifest <file>` accepts it (the runtime
+      loader's checks; exit 1 when invalid)
 - [ ] `trust_tier` is `OfficialManifest` — `BattleTested` is not something a
       submission may claim; it is measured
       (`graphite-core/scripts/battle_tested_census.py`) and the loader lowers

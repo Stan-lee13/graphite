@@ -11,8 +11,8 @@ Graphite is a transaction verification engine for Solana AI agents. Every contri
 ## Branch Rules
 
 - `main` is the integration branch. Every commit on it must have a green GitHub Actions run — the run for the exact SHA, read from the Actions runs endpoint, not a commit message claiming it.
-- Branch protection is not yet enabled (owner decision, tracked in `ROADMAP.md`), so the CI gate is a discipline rather than a mechanism today. Treat it as mandatory anyway: a red run is fixed before anything else lands.
-- Security fixes ship with a reproduction test, and the fix is reverted once locally to show that test fails without it. Record the result in the round report under `docs/`.
+- The committed rulesets (`.github/rulesets/`) were applied on 2026-10-30 and require the `CI gate` check on `main`; who may bypass them is still to be read by an admin (`docs/ops/branch-protection.md`). Treat the gate as mandatory either way: a red run is fixed before anything else lands.
+- Security fixes ship with a reproduction test that fails on the code before the fix (write it first, or revert the fix once locally to show it). Record the result in the round report under `docs/`, or as a decision in `docs/audit/TECHNICAL_LEAD_DECISIONS.md`.
 - Historical phase branches (`phase2-development`) are closed; do not target them.
 
 ## Development Setup
@@ -38,7 +38,7 @@ npm ci && npm run build && npm test
 
 # The agent guard (the execution boundary) — also regenerates the cross-language corpus
 cd ../../integrations/agent-guard
-npm ci --ignore-scripts && npm run typecheck && npm test && npm run emit:corpus
+npm ci --ignore-scripts && npm run typecheck && npm test && npm run emit:artifact-fixture && npm run emit:corpus
 git diff --exit-code -- ../../graphite-core/fixtures/artifacts/   # CI fails on drift
 
 # The framework adapters (each imports the guard, so install the guard first)
@@ -65,7 +65,7 @@ Every PR must satisfy all 16 Constitution principles. The most commonly violated
 
 ## PR Checklist
 
-Every commit to `main` must pass the full CI gate (`.github/workflows/ci.yml`), which runs on every pull request, merge-queue entry and push to `main`; its `CI gate` job needs every other job, and is the one check the prepared rulesets (`.github/rulesets/main.json`) require once an owner applies them. Since Round 30 each suite's log is counted against a floor of passing tests, and a new `#[ignore]` (not named in `.github/test-allowlists/rust-ignored.txt`), a Go `t.Skip` or an extra node/pytest skip fails the job — so a test you delete or skip needs the floor or the allowlist changed in the same PR, with a reason:
+Every commit to `main` must pass the full CI gate (`.github/workflows/ci.yml`), which runs on every pull request, merge-queue entry and push to `main`; its `CI gate` job needs every other job, and is the one check the rulesets (`.github/rulesets/main.json`) require. Since Round 30 each suite's log is counted against a floor of passing tests, and a new `#[ignore]` (not named in `.github/test-allowlists/rust-ignored.txt`), a Go `t.Skip` or an extra node/pytest skip fails the job — so a test you delete or skip needs the floor or the allowlist changed in the same PR, with a reason. Since Round 40 each Rust leg also holds every listed test binary to its own floor (`.github/test-floors/`), and a security suite (a round's or audit's regression suite, an adversarial suite, an invariant suite) that is in no floors file fails the CI-script tests; a new one needs its line there:
 
 - [ ] `cargo fmt --all -- --check` clean (0 diffs)
 - [ ] `cargo clippy --all-targets --all-features -- -D warnings` passes (0 warnings)
@@ -78,6 +78,7 @@ Every commit to `main` must pass the full CI gate (`.github/workflows/ci.yml`), 
 - [ ] SDK live-server suites against a running Core: `GRAPHITE_URL=http://127.0.0.1:7331 GRAPHITE_API_KEY=… npm test` in `sdk/typescript`, and `go test -tags liveserver ./...` in `sdk/go` with the same two variables. They are SKIPPED when `GRAPHITE_URL` is unset, so a green offline run says nothing about them; CI sets it in the container job. (`GRAPHITE_URL` is the SDK tests' variable only: the SAK bridge reads `GRAPHITE_CORE_URL` and refuses `GRAPHITE_URL` on its own.)
 - [ ] Python AI layer `pytest` passes; `tools/mainnet-sample` `python3 test_mainnet_sample.py` passes
 - [ ] Dashboard `npm run typecheck` + `npm test` + `npm run build`
+- [ ] If `deploy/` changed: `deploy/tests/run.sh` passes against a release build (`deploy/README.md`); if a CI script or the release gate changed: `bash .github/scripts/ci-scripts.test.sh` and `bash .github/scripts/release-gate.test.sh` pass
 - [ ] No new `unwrap()` or `panic!()` in the verification hot path
 - [ ] Constitution principles checked (P1-P16)
 - [ ] No public performance claim without reproducible benchmark (P16)
@@ -135,7 +136,7 @@ seed-constrains it, because a wrong template flags legitimate transactions
 itself the top tier: the loader lowers a declared `BattleTested` to
 `OfficialManifest` unless the measurement in
 `protocols/battle_tested_evidence.json` shows the program is executable, that
-at least 1,000 successful transactions invoked it over a stated window, and
+at least 1,000 successful transactions carry its address over a stated window, and
 that the manifest names at least 90% of the instructions actually observed on
 chain. Write `BattleTested` only once the census says you may — and note that
 the tier is a statement about **usage and description accuracy, not safety**.

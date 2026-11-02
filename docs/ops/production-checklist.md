@@ -275,18 +275,21 @@ Pick one form: `deploy/compose/docker-compose.prod.yml` or `deploy/systemd/` (bo
   production traffic; until then confidence for programs without history stays at its floor and
   refusals of them are expected. Check progress on `GET /api/graph` (read key).
 - [ ] **12. MMM `updatePool`** stays ungranted until its IDL is in the repository.
-- [ ] **13. Sign off the 9 medium-confidence declaration rewrites — STOP-SHIP (Round 36, F-005).**
+- [ ] **13. Sign off the 2 medium-confidence declaration rewrites — STOP-SHIP (Round 36, F-005).**
   Round 36 rewrote 35 declarations from their IDLs (`docs/audit-r36/declaration-rewrites.json`); 26
-  are `"confidence": "high"`, and 9 are `"confidence": "medium"` — eight because the repository holds
+  were `"confidence": "high"`, and 9 were `"confidence": "medium"` — eight because the repository holds
   no IDL file for them, and Marinade's because its committed IDL (`graphite-core/scripts/idls/marinade.json`)
   carries no docs, so the roles rest on account names: SPL Stake Pool `WithdrawSol`, `WithdrawSolWithSlippage`, `WithdrawStake`,
   `WithdrawStakeWithSlippage`; Marinade `liquidUnstake`; Raydium AMM v4 `SwapBaseIn`, `SwapBaseOut`,
-  `SwapBaseInV2`, `SwapBaseOutV2`. Read each row's `old_lines`, `new_lines`, `idl_source` and
+  `SwapBaseInV2`, `SwapBaseOutV2`. Round 40 (D-5, `docs/audit/TECHNICAL_LEAD_DECISIONS.md`) promoted
+  seven of them to `high` against the committed IDL or the upstream source at a pinned commit; SPL
+  Stake Pool `WithdrawSol` and `WithdrawSolWithSlippage` stay `medium` and are what this item still
+  needs. Read each remaining row's `old_lines`, `new_lines`, `idl_source` and
   `justification` against the program's own interface, and record the sign-off (or the correction)
   in a pull request that changes the row's `confidence`.
   ```sh
   jq -r '.rewrites[] | select(.confidence=="medium") | "\(.manifest) \(.instruction)"' docs/audit-r36/declaration-rewrites.json
-  python3 -I graphite-core/scripts/validate_corpora.py   # lists the nine; fails if one changes without review
+  python3 -I graphite-core/scripts/validate_corpora.py   # lists the two that remain; fails if one changes without review
   ```
 
 ## Running it

@@ -74,8 +74,11 @@ invariant rests on. The residuals it leaves are RESIDUAL_RISK §3's Round 41 row
 CI and Assurance were green on that code. Checklist item 7 is still open: the mutation dispatch,
 Assurance run 41450528699 on `ecd1e15`, found surviving mutants in the `state_diff` and
 `simulation_integrity` shards, and 37 shards were cancelled mid-run for a reason not yet known, so
-no module has a complete score and the floors are still the provisional ones. The release is still
-blocked on G-4, G-5, G-2 and G-1 as above.
+no module has a complete score and the floors are still the provisional ones. Checklist item 13
+(STOP-SHIP) is also still open: Round 40 (D-5) promoted seven of the nine medium-confidence
+declaration rewrites with recorded evidence, and SPL Stake Pool `WithdrawSol` and
+`WithdrawSolWithSlippage` still wait for a sign-off. The release is still blocked on G-4, G-5, G-2
+and G-1 as above, and on that sign-off.
 
 # Earlier verdict (2026-10-25, after Round 38), kept as the record of that round
 
