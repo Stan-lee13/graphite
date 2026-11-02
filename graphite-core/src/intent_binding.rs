@@ -2280,10 +2280,15 @@ pub struct WithdrawalContext<'a> {
     /// a required signer of the instruction (Round 39). `None` when no grant
     /// applies, and then nothing is anyone's own.
     pub owner: Option<&'a str>,
+    /// Which of `instructions` is the granted one (Audit W22, D-39). It
+    /// alone is the route: every other instruction, the granted program's
+    /// own included, is a sibling. `None`, or an index that is not an
+    /// instruction of `program_id`, leaves the grant unbound.
+    pub located: Option<usize>,
 }
 
 /// Nothing beside a granted withdrawal takes value from a signer (Round 38,
-/// R37-1): [`keeps_value`] with the withdrawing program's instructions as the
+/// R37-1): [`keeps_value`] with the located withdrawal instruction as the
 /// route and the minimums' recipients' mints as the value to watch.
 ///
 /// Every granted withdrawal, not only the ones with a minimum: a Stake
@@ -2309,8 +2314,8 @@ pub fn withdrawal_keeps_value(
 }
 
 /// Nothing beside a granted operation takes value from its owner (Round 39,
-/// R39-CORE-DECISION-2): [`keeps_value`] with the granted program's
-/// instructions as the route, the grant's owner as the keeper, and as the
+/// R39-CORE-DECISION-2): [`keeps_value`] with the granted instruction (and
+/// since D-39 only it) as the route, the grant's owner as the keeper, and as the
 /// value to watch every mint the owner holds in the diff (and the minimums'
 /// recipients' mints). A mismatch is `IntentMismatch`.
 ///
@@ -2339,10 +2344,20 @@ pub fn grant_keeps_value(
             )))
         }
     };
-    let route: Vec<&Ix> = ixs
-        .iter()
-        .filter(|ix| ix.program_id == beside.program_id)
-        .collect();
+    // Audit W22 (A001, D-39): the route is the granted instruction alone.
+    // Every instruction of the granted program was the route, and every
+    // account any of them named was excused from the gain check: a second
+    // instruction of the same pool program, naming an attacker's pool, took
+    // what the grant paid and nothing saw it.
+    let route: Vec<&Ix> = match beside.located.and_then(|i| ixs.get(i)) {
+        Some(ix) if ix.program_id == beside.program_id => vec![ix],
+        _ if ixs.is_empty() => Vec::new(),
+        _ => {
+            return Err(Binding::unbound(format!(
+                "{instruction}: the granted instruction was not located among the transaction's instructions, so what rides beside it cannot be told from it"
+            )))
+        }
+    };
     let keepers: Vec<String> = beside.owner.map(str::to_string).into_iter().collect();
     let mut mints: Vec<String> = minimums
         .iter()

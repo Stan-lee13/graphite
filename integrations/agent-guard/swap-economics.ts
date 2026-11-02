@@ -17,17 +17,21 @@
  *      was simulated:  minOut ≥ received × (1 − maxSlippage). The chain then
  *      enforces, at landing, at most `maxSlippage` less than was simulated;
  *   3. the minimum meets a price floor: the minimum the request states ("for
- *      at least 140 USDC"), or the operator's rate for the pair
- *      (GRAPHITE_SWAP_MIN_RATES, output units per input unit). With neither,
+ *      at least 140 USDC") AND the operator's rate for the pair
+ *      (GRAPHITE_SWAP_MIN_RATES, output units per input unit), each that is
+ *      set. The request can only raise the operator's floor: its text is
+ *      written by an agent whose inputs an attacker can steer, and a floor
+ *      it could lower is no floor (Audit A003). With neither,
  *      the swap is refused, unless the operator has accepted unpriced swaps
  *      (GRAPHITE_SWAP_ALLOW_UNPRICED=1, logged at startup as an accepted
  *      risk): a simulation shows what a pool pays now, not whether that is a
  *      price anyone would agree to — a pool the route's author controls pays
  *      whatever its author likes.
  *
- * `maxSlippage` is the slippage the request states ("with 0.5% slippage"),
- * else GRAPHITE_SWAP_MAX_SLIPPAGE_BPS (default 100 = 1%), never above
- * `SWAP_SLIPPAGE_CEILING_BPS`.
+ * `maxSlippage` is GRAPHITE_SWAP_MAX_SLIPPAGE_BPS (default 100 = 1%), never
+ * above `SWAP_SLIPPAGE_CEILING_BPS`. A slippage the request states ("with
+ * 0.5% slippage") can tighten it, never widen it (Audit A003): to allow
+ * more, the operator sets more.
  */
 import {
   KNOWN_TOKEN_MINTS,
@@ -237,38 +241,48 @@ export function assertSwapEconomics(params: {
       `the request allows ${stated / 100}% slippage; the guard allows at most ${SWAP_SLIPPAGE_CEILING_BPS / 100}%`,
     );
   }
-  const maxSlippageBps = stated ?? policy.maxSlippageBps;
+  // Audit A003: the request can tighten the operator's bound, never widen it.
+  const maxSlippageBps = stated === undefined ? policy.maxSlippageBps : Math.min(stated, policy.maxSlippageBps);
   if (decoded.minOut * 10_000n < simulatedOut * BigInt(10_000 - maxSlippageBps)) {
     throw new SwapRouteRefusal(
       `${decoded.name}'s minimum output is ${decoded.minOut}, more than ${maxSlippageBps} bps below the ${simulatedOut} ` +
         "the simulation delivered: at landing the chain would accept that much less than was verified" +
-        (stated === undefined ? " (state a slippage in the request, or set GRAPHITE_SWAP_MAX_SLIPPAGE_BPS)" : ""),
+        (maxSlippageBps === policy.maxSlippageBps ? " (the operator's bound, GRAPHITE_SWAP_MAX_SLIPPAGE_BPS; a request can tighten it, not widen it)" : " (the slippage the request states)"),
     );
   }
 
-  // 3. A price floor for the minimum: the request's, else the operator's.
-  if (grounded.minOutText !== undefined) {
-    const floor = tokenAmountToBaseUnits(grounded.minOutText, outDecimals);
-    if (decoded.minOut < floor) {
-      throw new SwapRouteRefusal(
-        `the request asks for at least ${grounded.minOutText} ${grounded.output.written} (${floor} base units); ` +
-          `${decoded.name}'s minimum output is ${decoded.minOut}`,
-      );
-    }
-    return { amountIn: decoded.amountIn, minOut: decoded.minOut, simulatedOut, maxSlippageBps, floor: { baseUnits: floor, source: "request" } };
-  }
+  // 3. A price floor for the minimum: the request's and the operator's, each
+  // that is set (Audit A003: the request's floor no longer replaces the
+  // operator's; it can only raise it).
+  let floor: { baseUnits: bigint; source: "request" | "operator" } | undefined;
   const rate = policy.minRates.find((r) => r.inMint === inMint && r.outMint === outMint);
   if (rate !== undefined) {
     // minOut ≥ rate × amountIn / 10^inDecimals × 10^outDecimals, rounded up.
     const { num, scale } = decimalParts(rate.rate);
-    const floor = ceilDiv(num * decoded.amountIn * 10n ** BigInt(outDecimals), scale * 10n ** BigInt(inDecimals));
-    if (decoded.minOut < floor) {
+    const operatorFloor = ceilDiv(num * decoded.amountIn * 10n ** BigInt(outDecimals), scale * 10n ** BigInt(inDecimals));
+    if (decoded.minOut < operatorFloor) {
       throw new SwapRouteRefusal(
         `${decoded.name}'s minimum output is ${decoded.minOut} base units of ${grounded.output.written}; the operator's ` +
-          `floor for ${rate.pair} (${rate.rate} per unit, GRAPHITE_SWAP_MIN_RATES) requires ${floor} for this input`,
+          `floor for ${rate.pair} (${rate.rate} per unit, GRAPHITE_SWAP_MIN_RATES) requires ${operatorFloor} for this input` +
+          (grounded.minOutText !== undefined ? `, whatever the request states (it asks for at least ${grounded.minOutText})` : ""),
       );
     }
-    return { amountIn: decoded.amountIn, minOut: decoded.minOut, simulatedOut, maxSlippageBps, floor: { baseUnits: floor, source: "operator" } };
+    floor = { baseUnits: operatorFloor, source: "operator" };
+  }
+  if (grounded.minOutText !== undefined) {
+    const requestFloor = tokenAmountToBaseUnits(grounded.minOutText, outDecimals);
+    if (decoded.minOut < requestFloor) {
+      throw new SwapRouteRefusal(
+        `the request asks for at least ${grounded.minOutText} ${grounded.output.written} (${requestFloor} base units); ` +
+          `${decoded.name}'s minimum output is ${decoded.minOut}`,
+      );
+    }
+    if (floor === undefined || requestFloor > floor.baseUnits) {
+      floor = { baseUnits: requestFloor, source: "request" };
+    }
+  }
+  if (floor !== undefined) {
+    return { amountIn: decoded.amountIn, minOut: decoded.minOut, simulatedOut, maxSlippageBps, floor };
   }
   if (!policy.allowUnpriced) {
     throw new SwapRouteRefusal(

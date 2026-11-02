@@ -167,10 +167,13 @@ submitted — and nothing is signed under a residual the operator has not accept
   `swap2` — `SWAP_PROGRAM_IDS` is exactly these programs (it used to be 46, DCA, limit
   orders, perps, a bridge and lockers among them). Exact-out forms are refused by name. The
   route may spend no more than the request names; its minimum must be above zero, at most
-  what the simulation delivered, and within the allowed slippage of it (the request's
-  "with n% slippage", else `GRAPHITE_SWAP_MAX_SLIPPAGE_BPS`, default 100, never above
-  500); and it must meet a price floor — the request's "for at least …" or the operator's
-  `GRAPHITE_SWAP_MIN_RATES` ("SOL/USDC=100", output units per input unit). With neither,
+  what the simulation delivered, and within the allowed slippage of it
+  (`GRAPHITE_SWAP_MAX_SLIPPAGE_BPS`, default 100, never above 500; the request's "with n%
+  slippage" can tighten it, never widen it); and it must meet every price floor that is
+  set — the request's "for at least …" and the operator's `GRAPHITE_SWAP_MIN_RATES`
+  ("SOL/USDC=100", output units per input unit). The request's text can raise the
+  operator's floor, never lower it (Audit A003: that text is written by an agent an
+  attacker can steer). With neither,
   the swap is refused unless `GRAPHITE_SWAP_ALLOW_UNPRICED=1`, logged at startup as an
   accepted risk (`swap-economics.ts`).
 - **The envelope around a swap is the guard's (Round 29, L4).** Optionally a ComputeBudget

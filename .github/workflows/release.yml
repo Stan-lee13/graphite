@@ -328,6 +328,13 @@ jobs:
           fi
           echo "sha256=$want" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        # Audit A006: the BuildKit daemon that resolves the Dockerfile's
+        # digest-pinned FROMs and writes every layer of the release image is
+        # pinned by digest too. Left to the default it is
+        # moby/buildkit:buildx-stable-1, a moving tag. In .github/pinned-tools.json.
+        with:
+          driver: docker-container
+          driver-opts: image=moby/buildkit:v0.34.1@sha256:99368f3e46177c6405b9740e4461d91cee004128daeecca78d4ceac50ec1da5c
       # Built once, into an OCI archive. The same archive is smoke-tested and
       # scanned here and pushed, unchanged, by `publish`: the digest users pull
       # is the digest of what was checked. `GRAPHITE_BINARY=prebuilt` takes

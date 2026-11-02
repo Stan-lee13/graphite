@@ -392,9 +392,11 @@ Graphite approved is the exact message contained in the bytes signed and submitt
   `swapV2`, Raydium CPMM `swap_base_input`, Raydium CLMM `swap` / `swap_v2`, Raydium AMM v4
   `SwapBaseIn`, Meteora DLMM `swap` / `swap2`). The guard decodes the route's amount in and
   minimum out and requires: amount in ≤ the request; minimum out > 0 and ≤ the simulated
-  delivery; minimum out ≥ simulated × (1 − slippage), the slippage stated in the request
-  or `GRAPHITE_SWAP_MAX_SLIPPAGE_BPS` (default 100, at most 500); and a price floor (the
-  request's "for at least N TOKEN", or `GRAPHITE_SWAP_MIN_RATES`) unless
+  delivery; minimum out ≥ simulated × (1 − slippage), the slippage
+  `GRAPHITE_SWAP_MAX_SLIPPAGE_BPS` (default 100, at most 500), which a slippage stated in
+  the request can tighten, never widen; and every price floor that is set (the request's
+  "for at least N TOKEN" and `GRAPHITE_SWAP_MIN_RATES`; the request can raise the
+  operator's floor, never lower it, Audit A003) unless
   `GRAPHITE_SWAP_ALLOW_UNPRICED=1`. The Core does not read the minimum; the guard does.
   Wrapping and unwrapping wSOL is not supported (the Risk Engine refuses `CloseAccount`).
 - **A person sees the resolved transaction (Round 29).** `confirm(summary)` runs right

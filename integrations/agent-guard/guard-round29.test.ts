@@ -351,17 +351,24 @@ test("H4: exact-output instructions are refused by name", async () => {
   );
 });
 
-test("H2: a minimum far below what was simulated is refused; a stated slippage can widen it, never past 5%", async () => {
+test("H2: a minimum far below what was simulated is refused; only the operator widens the slippage, never past 5%", async () => {
   // 140 USDC minimum against 150 simulated: 6.7% below.
   await swapRefused(jupiterRouteData({ quotedOut: 140_000_000n, slippageBps: 0 }), /more than 100 bps below/);
+  // Audit A003: the request's text does not widen the operator's bound.
+  await swapRefused(jupiterRouteData({ quotedOut: 145_000_000n, slippageBps: 0 }), /more than 100 bps below/, {
+    text: `${SWAP} with 4% slippage`,
+  });
+  const wide: SwapPolicy = { maxSlippageBps: 500, minRates: [], allowUnpriced: true };
   await swapRefused(jupiterRouteData({ quotedOut: 140_000_000n, slippageBps: 0 }), /more than 500 bps below/, {
     text: `${SWAP} with 5% slippage`,
+    swapPolicy: wide,
   });
   await swapRefused(jupiterRouteData({ quotedOut: 140_000_000n, slippageBps: 0 }), /allows 7% slippage; the guard allows at most 5%/, {
     text: `${SWAP} with 7% slippage`,
+    swapPolicy: wide,
   });
-  // 145 against 150: 3.3% below, within a stated 4%.
-  await swapAccepted(jupiterRouteData({ quotedOut: 145_000_000n, slippageBps: 0 }), { text: `${SWAP} with 4% slippage` });
+  // 145 against 150: 3.3% below, within the operator's 5% and a stated 4%.
+  await swapAccepted(jupiterRouteData({ quotedOut: 145_000_000n, slippageBps: 0 }), { text: `${SWAP} with 4% slippage`, swapPolicy: wide });
 });
 
 test("H2: the chain must hold the route to at least what the simulation delivered was measured against", async () => {

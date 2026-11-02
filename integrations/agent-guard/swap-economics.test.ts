@@ -101,3 +101,31 @@ test("environment: strict parsing, a slippage ceiling, and a startup line naming
   assert.match(describeSwapPolicy(swapPolicyFromEnv({ GRAPHITE_SWAP_ALLOW_UNPRICED: "1" })), /ACCEPTED RISK \(GRAPHITE_SWAP_ALLOW_UNPRICED=1\)/);
   assert.match(describeSwapPolicy(swapPolicyFromEnv({})), /is refused/);
 });
+
+test("Audit A003: the request's text can raise the operator's floor and tighten its slippage, never lower or widen them", () => {
+  const rates = (r: string, o: Partial<SwapPolicy> = {}) => policy({ allowUnpriced: false, minRates: parseSwapMinRates(r), ...o });
+  // The injected request: "for at least 0.01 USDC" against an operator floor of 140 per SOL.
+  const dust = { decoded: decoded(1_000_000_000n, 10_000n), effect: effectUsdc(10_100n) };
+  assert.throws(
+    () => assertSwapEconomics({ ...dust, grounded: g("Swap 1 SOL for USDC for at least 0.01 USDC"), policy: rates("SOL/USDC=140") }),
+    /operator's floor for SOL\/USDC .* requires 140000000 for this input, whatever the request states/,
+  );
+  // An honest request above the operator's floor binds at the higher of the two.
+  const base = { decoded: decoded(1_000_000_000n, 149_250_000n), effect: effectUsdc(150_000_000n) };
+  const r = assertSwapEconomics({ ...base, grounded: g("Swap 1 SOL for USDC for at least 149 USDC"), policy: rates("SOL/USDC=140") });
+  assert.deepEqual(r.floor, { baseUnits: 149_000_000n, source: "request" });
+  const o = assertSwapEconomics({ ...base, grounded: g("Swap 1 SOL for USDC for at least 100 USDC"), policy: rates("SOL/USDC=140") });
+  assert.deepEqual(o.floor, { baseUnits: 140_000_000n, source: "operator" });
+  // Slippage: a stated 5% does not widen the operator's 1%; a stated 0.5% tightens it.
+  const wide = { decoded: decoded(1_000_000_000n, 9_500n), effect: effectUsdc(10_000n) };
+  assert.throws(
+    () => assertSwapEconomics({ ...wide, grounded: g("Swap 1 SOL for USDC with 5% slippage"), policy: policy() }),
+    /more than 100 bps below .* GRAPHITE_SWAP_MAX_SLIPPAGE_BPS; a request can tighten it, not widen it/,
+  );
+  assert.equal(assertSwapEconomics({ ...wide, grounded: g("Swap 1 SOL for USDC with 5% slippage"), policy: policy({ maxSlippageBps: 500 }) }).maxSlippageBps, 500);
+  const tight = { decoded: decoded(1_000_000_000n, 9_940n), effect: effectUsdc(10_000n) };
+  assert.throws(
+    () => assertSwapEconomics({ ...tight, grounded: g("Swap 1 SOL for USDC with 0.5% slippage"), policy: policy() }),
+    /more than 50 bps below .*\(the slippage the request states\)/,
+  );
+});

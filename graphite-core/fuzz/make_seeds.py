@@ -39,15 +39,17 @@ for i, row in enumerate(sample["rows"]):
         taken[version] += 1
         put("parse_transaction", f"mainnet-{version}-{i}", raw)
 
-# lookup_table: [n][table: n*8 bytes][v0 transaction]. Table metadata is 56
-# bytes: type tag 1, deactivation slot u64::MAX (active), last-extended slot,
-# its start index, an authority option and padding.
-for k, raw in zip((1, 4, 16), v0_with_lookups):
+# lookup_table: [n: u16 LE][table: n bytes][v0 transaction]. Table metadata
+# is 56 bytes: type tag 1, deactivation slot u64::MAX (active), last-extended
+# slot, its start index, an authority option and padding. Audit A002: a table
+# of 256 entries, so every index a real lookup can name resolves.
+for k, raw in zip((1, 4, 16, 256), v0_with_lookups + v0_with_lookups):
     meta = struct.pack("<IQQB", 1, 2**64 - 1, 0, 0) + b"\x00" + b"\x00" * 32 + b"\x00\x00"
     assert len(meta) == 56
-    table = meta + b"".join(bytes([j + 1]) * 32 for j in range(k))
-    put("lookup_table", f"table{k}", bytes([len(table) // 8]) + table + raw)
+    table = meta + b"".join(bytes([j % 255 + 1, j // 255 + 1]) * 16 for j in range(k))
+    put("lookup_table", f"table{k}", struct.pack("<H", len(table)) + table + raw)
 
+small_manifests = 0
 for name in (
     "system-program.json",
     "spl-token.json",
@@ -56,7 +58,21 @@ for name in (
     "jupiter-v6.json",
 ):
     with open(os.path.join(core, "protocols", name), "rb") as f:
-        put("manifest_json", name, f.read())
+        whole = f.read()
+    put("manifest_json", name, whole)
+    # Audit A002: and small documents a mutation can stay valid around: the
+    # shipped manifest cut to its first instruction, then to its first two
+    # (a discriminator pair for the prefix-ambiguity rule), where the cut is
+    # under 4 KiB.
+    doc = json.loads(whole)
+    for keep in (1, 2):
+        small = dict(doc, instructions=doc["instructions"][:keep])
+        text = json.dumps(small, separators=(",", ":")).encode()
+        if len(text) < 4096:
+            put("manifest_json", f"{name[:-5]}-{keep}.json", text)
+            small_manifests += 1
+
+assert small_manifests >= 8, small_manifests
 
 mint_key = bytes(range(32))
 owner = bytes(range(32, 64))
@@ -135,6 +151,53 @@ docs = {
     },
     "null": None,
 }
+# Audit A002: the inner instructions in the form Agave returns under
+# jsonParsed (`parsed_inner::rebuild`): a parsed System transfer and a parsed
+# SPL Token transferChecked, each with its stackHeight, beside a raw one.
+docs["simulation-parsed-inner"] = dict(
+    docs["simulation"],
+    innerInstructions=[
+        {
+            "index": 0,
+            "instructions": [
+                {
+                    "program": "system",
+                    "programId": "11111111111111111111111111111111",
+                    "parsed": {
+                        "type": "transfer",
+                        "info": {
+                            "source": "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T",
+                            "destination": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+                            "lamports": 5,
+                        },
+                    },
+                    "stackHeight": 2,
+                },
+                {
+                    "program": "spl-token",
+                    "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+                    "parsed": {
+                        "type": "transferChecked",
+                        "info": {
+                            "source": "7UX2i7SucgLMQcfZ75s3VXmZZY4YRUyJN9X1RgfMoDUi",
+                            "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                            "destination": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+                            "authority": "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T",
+                            "tokenAmount": {"amount": "1000", "decimals": 6, "uiAmount": 0.001, "uiAmountString": "0.001"},
+                        },
+                    },
+                    "stackHeight": 2,
+                },
+                {
+                    "programId": "ComputeBudget111111111111111111111111111111",
+                    "accounts": [],
+                    "data": "3DTZbgwsozUF",
+                    "stackHeight": 2,
+                },
+            ],
+        }
+    ],
+)
 for name, doc in docs.items():
     put("rpc_json", name, json.dumps(doc).encode())
 

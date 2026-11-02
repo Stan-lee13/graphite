@@ -44,14 +44,20 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: false
+      # Audit A002: each target's -max_len fits its largest committed seed
+      # (ci-scripts.test.sh fails a seed longer than its target's max_len).
+      # libFuzzer reads a seed truncated to max_len: at one 4096 for every
+      # target, each manifest_json seed (9.5 to 59 KB) became a prefix that is
+      # not JSON, and that target never started from a valid manifest. A
+      # lookup table of 256 entries is 8,248 bytes before its transaction.
       matrix:
-        target:
-          - parse_transaction
-          - lookup_table
-          - manifest_json
-          - token_extensions
-          - state_diff
-          - rpc_json
+        include:
+          - { target: parse_transaction, max_len: 4096 }
+          - { target: lookup_table, max_len: 16384 }
+          - { target: manifest_json, max_len: 65536 }
+          - { target: token_extensions, max_len: 4096 }
+          - { target: state_diff, max_len: 4096 }
+          - { target: rpc_json, max_len: 4096 }
     defaults:
       run:
         working-directory: graphite-core/fuzz
@@ -78,14 +84,14 @@ jobs:
           mkdir -p "corpus/${{ matrix.target }}"
           cargo +"$FUZZ_TOOLCHAIN" fuzz run -O "${{ matrix.target }}" \
             "corpus/${{ matrix.target }}" "seeds/${{ matrix.target }}" -- \
-            -seed=20261021 -runs=200000 -max_len=4096
+            -seed=20261021 -runs=200000 -max_len=${{ matrix.max_len }}
       - name: Long run
         if: github.event_name != 'pull_request'
         run: |
           mkdir -p "corpus/${{ matrix.target }}"
           cargo +"$FUZZ_TOOLCHAIN" fuzz run -O "${{ matrix.target }}" \
             "corpus/${{ matrix.target }}" "seeds/${{ matrix.target }}" -- \
-            -max_total_time=1800 -max_len=4096
+            -max_total_time=1800 -max_len=${{ matrix.max_len }}
       - name: Upload crash artifacts
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

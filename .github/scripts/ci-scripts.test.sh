@@ -880,6 +880,63 @@ cp "$root/.github/workflows/ci.yml" "$T/wf-tag/ci.yml"
 sed -i '0,/uses: actions\/checkout@[0-9a-f]\{40\}/s//uses: actions\/checkout@v4/' "$T/wf-tag/ci.yml"
 expect 1 "a workflow using actions/checkout@v4 is refused" python3 -I "$T/pins.py" "$T/wf-tag"
 
+echo "== every committed fuzz seed fits the max_len its target runs with (Audit A002)"
+cat >"$T/seedlen.py" <<'PY'
+import os, sys, yaml
+wf, seeds, targets = sys.argv[1], sys.argv[2], sys.argv[3]
+job = yaml.safe_load(open(wf))["jobs"]["fuzz"]
+runs = "\n".join(s.get("run", "") for s in job["steps"])
+if runs.count("-max_len=${{ matrix.max_len }}") != 2:
+    sys.exit("the smoke and the long run do not both take -max_len from the matrix")
+lens = {e["target"]: int(e["max_len"]) for e in job["strategy"]["matrix"]["include"]}
+have = sorted(f[:-3] for f in os.listdir(targets) if f.endswith(".rs"))
+if sorted(lens) != have:
+    sys.exit(f"the fuzz matrix runs {sorted(lens)}; fuzz_targets holds {have}")
+bad = []
+for t, n in lens.items():
+    d = os.path.join(seeds, t)
+    files = sorted(os.listdir(d)) if os.path.isdir(d) else []
+    if not files:
+        bad.append(f"{t}: no committed seeds")
+    for f in files:
+        size = os.path.getsize(os.path.join(d, f))
+        if size > n:
+            bad.append(f"{t}/{f}: {size} bytes, past -max_len={n}; libFuzzer reads only its first {n}")
+if bad:
+    sys.exit("\n".join(bad))
+PY
+fz="$root/graphite-core/fuzz"
+expect 0 "each target's seeds are at most its matrix max_len, and the matrix runs every target" python3 -I "$T/seedlen.py" "$root/.github/workflows/assurance.yml" "$fz/seeds" "$fz/fuzz_targets"
+mkdir -p "$T/wf-seedlen"
+sed 's/{ target: manifest_json, max_len: 65536 }/{ target: manifest_json, max_len: 4096 }/' "$root/.github/workflows/assurance.yml" >"$T/wf-seedlen/assurance.yml"
+expect 1 "manifest_json at -max_len=4096 is refused: its whole-manifest seeds would be cut" python3 -I "$T/seedlen.py" "$T/wf-seedlen/assurance.yml" "$fz/seeds" "$fz/fuzz_targets"
+
+echo "== every BuildKit daemon a workflow sets up is pinned by digest (Audit A006)"
+cat >"$T/buildkit.py" <<'PY'
+import glob, os, re, sys, yaml
+bad, seen = [], 0
+for wf in sorted(glob.glob(os.path.join(sys.argv[1], "*.yml"))):
+    doc = yaml.safe_load(open(wf))
+    for name, job in (doc.get("jobs") or {}).items():
+        for s in job.get("steps") or []:
+            if not s.get("uses", "").startswith("docker/setup-buildx-action@"):
+                continue
+            seen += 1
+            w = s.get("with") or {}
+            opts = str(w.get("driver-opts", ""))
+            if w.get("driver") != "docker-container" or not re.search(r"(^|\n|,)image=moby/buildkit:[\w.-]+@sha256:[0-9a-f]{64}($|\n|,)", opts):
+                bad.append(f"{os.path.basename(wf)} {name}: driver={w.get('driver')!r} driver-opts={opts!r}")
+if bad:
+    sys.exit("BuildKit not pinned by digest:\n" + "\n".join(bad))
+if seen == 0:
+    sys.exit("no setup-buildx-action step found: the release builds its image with one")
+PY
+expect 0 "every setup-buildx-action step runs moby/buildkit:<tag>@sha256:<64 hex> on the docker-container driver" python3 -I "$T/buildkit.py" "$root/.github/workflows"
+mkdir -p "$T/wf-buildkit"
+cp "$root/.github/workflows/release.yml" "$T/wf-buildkit/release.yml"
+sed -i 's/image=moby\/buildkit:\([^@]*\)@sha256:[0-9a-f]\{64\}/image=moby\/buildkit:buildx-stable-1/' "$T/wf-buildkit/release.yml"
+expect 1 "a BuildKit image taken by tag alone is refused" python3 -I "$T/buildkit.py" "$T/wf-buildkit"
+
 echo "== graphite-core is not published to crates.io (Round 40, checklist 10c)"
 expect 0 "Cargo.toml says publish = false and no workflow runs cargo publish" python3 -I - "$root" <<'PY'
 import glob, os, sys, tomllib

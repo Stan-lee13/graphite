@@ -1,7 +1,9 @@
 //! Address-lookup-table decoding and v0 lookup resolution.
 //!
-//! Input: one length byte `n`, then `n` bytes of table account data, then a
-//! serialized transaction. Every lookup the transaction declares is resolved
+//! Input: a two-byte little-endian length `n`, then `n` bytes of table
+//! account data, then a serialized transaction (Audit A002: one length byte
+//! scaled by 8 capped a table at 2,040 bytes, 62 addresses, so lookup indexes
+//! 62..=255, which real 256-entry tables use, could never resolve). Every lookup the transaction declares is resolved
 //! against that one table. A table that decodes must account for every byte
 //! (no partial address list), and a resolution that is accepted must give the
 //! message exactly as many addresses as its lookups index, in the runtime's
@@ -13,12 +15,10 @@ use libfuzzer_sys::fuzz_target;
 use std::collections::HashMap;
 
 fuzz_target!(|data: &[u8]| {
-    let Some((&n, rest)) = data.split_first() else {
+    let Some((len, rest)) = data.split_first_chunk::<2>() else {
         return;
     };
-    let n = (n as usize).min(rest.len());
-    // Scale the one-byte length so tables with several addresses are reachable.
-    let table_len = (n * 8).min(rest.len());
+    let table_len = usize::from(u16::from_le_bytes(*len)).min(rest.len());
     let (table, tx_bytes) = rest.split_at(table_len);
 
     if let Ok(addresses) = tx::decode_lookup_table("Table", table) {

@@ -10050,6 +10050,13 @@ impl GraphiteCore {
             signers: &signers,
             program_id: &input.program_id,
             owner: grant_owner.as_deref(),
+            // D-39: the located instruction; with no artifact the described
+            // instruction is the only one `binding_instructions` builds.
+            located: if artifact_message.is_some() {
+                primary_instruction_index
+            } else {
+                Some(0)
+            },
         };
         let bind_request = || {
             crate::intent_binding::bind(&crate::intent_binding::BindingInput {

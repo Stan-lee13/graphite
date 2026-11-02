@@ -400,3 +400,42 @@ func TestHealthAndManifestsRefuseAMalformed200(t *testing.T) {
 		}
 	}
 }
+
+// Audit A005: walkJSON recursed with no depth limit and copied the whole
+// parent path at every level, so a ~50 KB body of nested brackets held
+// gigabytes and the fatal out-of-memory or stack overflow killed the
+// process. A body nested deeper than maxJSONDepth is refused as an invalid
+// response, quickly and without the quadratic path.
+func TestDeeplyNestedBodyIsRefusedNotFatal(t *testing.T) {
+	for _, open := range []string{"[", `{"a":`} {
+		body := []byte(strings.Repeat(open, 200_000))
+		start := time.Now()
+		err := checkNoFoldedDuplicates(body)
+		if err == nil || !strings.Contains(err.Error(), "nested deeper") {
+			t.Fatalf("%q x 200000: got %v, want a depth refusal", open, err)
+		}
+		if d := time.Since(start); d > 2*time.Second {
+			t.Fatalf("%q x 200000 took %v", open, d)
+		}
+		var v map[string]any
+		if err := decodeStrict(body, &v, "verdict", func(any) string { return "" }); err == nil || !errors.Is(err, ErrInvalidResponse) {
+			t.Fatalf("decodeStrict: %v", err)
+		}
+	}
+}
+
+func TestNestingUpToTheLimitStillWalksAndNamesThePath(t *testing.T) {
+	ok := strings.Repeat("[", maxJSONDepth) + strings.Repeat("]", maxJSONDepth)
+	if err := checkNoFoldedDuplicates([]byte(ok)); err != nil {
+		t.Fatalf("depth %d: %v", maxJSONDepth, err)
+	}
+	over := strings.Repeat("[", maxJSONDepth+1) + strings.Repeat("]", maxJSONDepth+1)
+	if err := checkNoFoldedDuplicates([]byte(over)); err == nil {
+		t.Fatalf("depth %d accepted", maxJSONDepth+1)
+	}
+	// The duplicate-key error still names where it is.
+	err := checkNoFoldedDuplicates([]byte(`{"a":[0,{"b":{"x":1,"X":2}}]}`))
+	if err == nil || !strings.Contains(err.Error(), "$.a[1].b:") {
+		t.Fatalf("path: %v", err)
+	}
+}

@@ -19,10 +19,25 @@ and baselines earned since the last good snapshot exist only in memory.
 2. Free space on the volume's filesystem (`df -h` on the host; `docker system
    df` for images and build cache). Never delete anything under the data
    volume to make room: it is the audit trail.
-3. If `GRAPHITE_AUDIT_MAX_ARCHIVES` is `0` (keep every archive, the default),
-   move old `audit.jsonl.<stamp>-<seq>` archives to off-host storage
-   (backup-restore.md) rather than deleting them; their indexes under
-   `audit.jsonl-index/` are rebuilt when needed.
+3. Do not move or delete audit archives by hand while the server runs. Since
+   Round 38, a trail whose oldest record is above seq 0 with no prune record
+   naming it is a break: `graphite audit verify` exits 1, `backup.sh` keeps
+   nothing ("nothing kept"), `graphite audit checkpoint` and so
+   `anchor-checkpoints.sh` write nothing, and L8 no longer finds the verdicts
+   in the archives that left (Audit A009). If archives must go to make room:
+   1. Take an off-host backup first, while `graphite audit verify` still exits
+      0 (backup-restore.md); it is the only copy of the records that leave.
+   2. Either set `GRAPHITE_AUDIT_MAX_ARCHIVES` to the number to keep, so the
+      writer prunes at its next rotation and records the prune itself; or, with
+      the server stopped (step 1's warning applies: free space any other way
+      first if a snapshot failed), move the oldest archives off the volume and
+      run `graphite audit acknowledge-prune --data-dir <dir> --key-file <current
+      key>` once, which records where the trail starts now (keys.md, "Pruning
+      and prune records").
+   3. Confirm `graphite audit verify` exits 0 before restarting, and that the
+      next `backup.sh` run and checkpoint succeed.
+
+   Indexes under `audit.jsonl-index/` are rebuilt when needed.
 4. The failure counters do not reset while the process runs. Once writes
    succeed again, confirm new records land (`writes_ok` rising on `/health`),
    then restart during a quiet moment to clear `degraded`.

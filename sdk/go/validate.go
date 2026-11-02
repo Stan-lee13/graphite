@@ -55,12 +55,46 @@ func foldKey(s string) string {
 	return b.String()
 }
 
+// maxJSONDepth bounds how deeply a response may nest (Audit A005). Every
+// Graphite response is a few levels deep; encoding/json's Token, unlike
+// Decode, enforces no nesting limit, and the walk below is recursive.
+const maxJSONDepth = 256
+
+// jsonPath is where the walk is, rendered only when an error names it: a
+// path string built at every level copied the whole parent path each time,
+// quadratic in the depth (Audit A005).
+type jsonPath struct {
+	parent *jsonPath
+	key    string
+	index  int
+	isElem bool
+}
+
+func (p *jsonPath) String() string {
+	var parts []*jsonPath
+	for q := p; q != nil; q = q.parent {
+		parts = append(parts, q)
+	}
+	var b strings.Builder
+	b.WriteString("$")
+	for i := len(parts) - 1; i >= 0; i-- {
+		if parts[i].isElem {
+			fmt.Fprintf(&b, "[%d]", parts[i].index)
+		} else {
+			b.WriteString(".")
+			b.WriteString(parts[i].key)
+		}
+	}
+	return b.String()
+}
+
 // checkNoFoldedDuplicates walks a JSON document and refuses any object with
-// two keys that fold together, and any trailing data after the document.
+// two keys that fold together, any nesting deeper than maxJSONDepth, and any
+// trailing data after the document.
 func checkNoFoldedDuplicates(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
-	if err := walkJSON(dec, "$"); err != nil {
+	if err := walkJSON(dec, nil, 0); err != nil {
 		return err
 	}
 	if _, err := dec.Token(); err != io.EOF {
@@ -69,7 +103,7 @@ func checkNoFoldedDuplicates(data []byte) error {
 	return nil
 }
 
-func walkJSON(dec *json.Decoder, path string) error {
+func walkJSON(dec *json.Decoder, path *jsonPath, depth int) error {
 	tok, err := dec.Token()
 	if err != nil {
 		return err
@@ -77,6 +111,9 @@ func walkJSON(dec *json.Decoder, path string) error {
 	delim, ok := tok.(json.Delim)
 	if !ok {
 		return nil
+	}
+	if depth >= maxJSONDepth {
+		return fmt.Errorf("%s: the document is nested deeper than %d levels", path, maxJSONDepth)
 	}
 	switch delim {
 	case '{':
@@ -92,13 +129,13 @@ func walkJSON(dec *json.Decoder, path string) error {
 				return fmt.Errorf("%s: keys %q and %q are the same key to a case-insensitive decoder", path, prior, key)
 			}
 			seen[f] = key
-			if err := walkJSON(dec, path+"."+key); err != nil {
+			if err := walkJSON(dec, &jsonPath{parent: path, key: key}, depth+1); err != nil {
 				return err
 			}
 		}
 	case '[':
 		for i := 0; dec.More(); i++ {
-			if err := walkJSON(dec, fmt.Sprintf("%s[%d]", path, i)); err != nil {
+			if err := walkJSON(dec, &jsonPath{parent: path, index: i, isElem: true}, depth+1); err != nil {
 				return err
 			}
 		}

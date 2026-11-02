@@ -1275,9 +1275,12 @@ jobs:
           # corpora with 13 seeded faults; the live-mainnet seed pin); 136 at
           # Round 41 (the rulesets' unattributed-changes approval, the
           # security-advisory link); 138 with every workflow's actions pinned
-          # to a commit and its refusal of a floating tag (external review C-10).
-          if [ -z "$passed" ] || [ "$passed" -lt 138 ]; then
-            echo "::error::ci-scripts tests: ${passed:-no summary} passed, floor 138"; exit 1
+          # to a commit and its refusal of a floating tag (external review C-10);
+          # 142 with the BuildKit daemon pinned by digest and its refusal of a
+          # tag (Audit A006), and every fuzz seed within its target's max_len
+          # and its refusal of a cut seed (Audit A002).
+          if [ -z "$passed" ] || [ "$passed" -lt 142 ]; then
+            echo "::error::ci-scripts tests: ${passed:-no summary} passed, floor 142"; exit 1
           fi
 
   # Round 30 (G-11): the one check the `main` ruleset requires
