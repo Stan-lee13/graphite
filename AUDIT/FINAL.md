@@ -51,6 +51,23 @@ argument for the independent audit.
 
 ---
 
+## Round 41 full-codebase audit (2026-11-02)
+
+A second, whole-repository pass after the verdict above, run as internal engineering work (not an
+independent audit): every directory, file and component read for anything earlier rounds missed.
+96 findings (1 high, 9 medium, 75 low, 11 info). All but one were confirmed real and fixed
+test-first, each with a test that fails on the code before the fix; one (A088) was only partly
+real and was fixed where real. Each is recorded with its test in
+`docs/audit/TECHNICAL_LEAD_DECISIONS.md`, D-39 to D-54. The high (D-39: a grant's route was every
+instruction of its program, so a same-program sibling could skim the grant) and the mediums
+(D-40..D-47, D-50) are summarised at the top of `docs/CURRENT.md`.
+
+What it changes about the verdict above: nothing in the release gates (G-4, the independent audit,
+and G-5, a deployment with its own RPC, are still open). The code is stricter in several defaults
+(an unmanifested program capped at 0.55 whatever its evidence; a narrower unauthenticated
+`/health`; more configuration refused at start), and the test floors now cover every suite an
+invariant rests on. The residuals it leaves are RESIDUAL_RISK §3's Round 41 rows.
+
 # Earlier verdict (2026-10-25, after Round 38), kept as the record of that round
 
 **Scope:** the whole repository, audited in six areas at `3327fcf` ([`00-map.md`](00-map.md)) and
