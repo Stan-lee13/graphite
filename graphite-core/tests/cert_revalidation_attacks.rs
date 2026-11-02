@@ -8,6 +8,8 @@
 use graphite_core::risk_engine::{assess, RiskAssessmentInput, RiskPattern, RiskVerdict};
 use graphite_core::tx_pattern_analysis::TOKEN_PROGRAM;
 
+mod attack_harness;
+
 #[allow(clippy::too_many_arguments)]
 fn risk_input(
     program: &str,
@@ -158,13 +160,27 @@ fn cert_p0_1_whitespace_padded_discriminator_fails_safely() {
     // Fail-closed: the malformed discriminator must be rejected — either a
     // hard error (invalid hex) or a non-approval. Approval is the only
     // unacceptable outcome.
-    match core.verify(&input) {
-        Ok(result) => assert!(
-            !result.approved,
-            "whitespace-padded discriminator must not be approved end-to-end"
-        ),
-        Err(_) => { /* fail-closed rejection — acceptable */ }
-    }
+    //
+    // Audit A007: "either" could not fail — Treasury needs 0.95 confidence,
+    // out of reach of a fresh engine, so a non-approval held whatever the
+    // pipeline did with "03 ". What refuses it is the transaction builder's
+    // hex validation: the padded discriminator is not hex, and the input is
+    // refused before any verdict. Asserted as that refusal, by name.
+    assert!(
+        core.verify(&input).is_err(),
+        "whitespace-padded discriminator must not produce a verdict"
+    );
+    attack_harness::expect_input_refused(&input, "invalid hex");
+    // Positive control: the same input without the padding is APPROVED by an
+    // engine with earned evidence for SPL Token, so the padding — not the
+    // shape or the profile — is what is refused.
+    let mut trimmed = input.clone();
+    trimmed.instruction_discriminator = "03".to_string();
+    trimmed.compute_units = 150;
+    trimmed.account_writes = 2;
+    let seeded_core =
+        attack_harness::seeded_core(TOKEN_PROGRAM, &["debits accounts.from by amount"]);
+    attack_harness::assert_approved(&attack_harness::verify_with(&seeded_core, &trimmed));
 }
 
 // ── P0-2: TransferChecked — fresh layouts ──────────────────────────────────

@@ -8,6 +8,8 @@
 use graphite_core::risk_engine::{assess, RiskAssessmentInput, RiskPattern, RiskVerdict};
 use graphite_core::tx_pattern_analysis::TOKEN_PROGRAM;
 
+mod attack_harness;
+
 fn risk_input(
     program: &str,
     accounts: &[&str],
@@ -126,6 +128,19 @@ fn attack_p0_1_unknown_selector_full_pipeline_not_approved() {
     // unknown to BOTH the manifest and the actual program. Through the FULL
     // pipeline (not the risk engine in isolation), P12 Response 2 reduces
     // confidence — the transaction must not be approved end-to-end.
+    //
+    // Audit A007: the premise above is wrong, and the assertion below could
+    // not fail — Treasury needs 0.95 confidence, which a fresh engine never
+    // reaches, so `!approved` held whatever 0x12 was. SPL Token's instruction
+    // set continues past SyncNative (0x12 is InitializeAccount3, 0x13
+    // InitializeMultisig2, … 0x18 UiAmountToAmount) and the manifest
+    // describes 0x12, so this input is refused by the intent-class gate
+    // (Check 9b: a 'transfer' intent cannot declare a 'create' instruction).
+    // The case now asserts that cause, on a fresh engine and on one with
+    // earned evidence for SPL Token, and adds what its name says: a selector
+    // no manifest describes (0x63), refused by the Unknown tier's ceiling
+    // even with earned evidence, while the same engine approves a described
+    // Transfer.
     use graphite_core::policy_engine::WalletProfile;
     use graphite_core::verification::{ProposedIntent, VerificationInput};
     use graphite_core::GraphiteCore;
@@ -163,6 +178,57 @@ fn attack_p0_1_unknown_selector_full_pipeline_not_approved() {
     assert!(
         !result.approved,
         "unknown selector 0x12 on SPL Token was approved end-to-end"
+    );
+    attack_harness::assert_blocked_by(
+        &result,
+        &["risk:PermissionEscalation", "layer:L5_SemanticVerification"],
+    );
+
+    // An engine with earned evidence for SPL Token, inputs shaped to its
+    // baseline.
+    let seeded_core = attack_harness::seeded_core(SPL_TOKEN, &["debits accounts.from by amount"]);
+    let mut seeded_input = input.clone();
+    seeded_input.compute_units = 150;
+    seeded_input.account_writes = 2;
+    // Positive control: it approves a described Transfer under Treasury …
+    let mut transfer = seeded_input.clone();
+    transfer.instruction_discriminator = "03".to_string();
+    transfer
+        .account_addresses
+        .push("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string());
+    attack_harness::assert_approved(&attack_harness::verify_with(&seeded_core, &transfer));
+    // … still refuses 0x12 by the intent-class gate …
+    let seeded = attack_harness::verify_with(&seeded_core, &seeded_input);
+    attack_harness::assert_blocked_by(&seeded, &["risk:PermissionEscalation"]);
+    assert!(
+        seeded
+            .risk_verdict
+            .findings
+            .iter()
+            .any(|f| f.reason.contains("Intent-class mismatch")),
+        "0x12 is not refused by the intent-class gate: {:?}",
+        seeded.risk_verdict.findings
+    );
+    // … and refuses a selector no manifest describes: the undescribed
+    // instruction sits at the Unknown tier, whose 0.55 ceiling the earned
+    // evidence does not lift, under Treasury's 0.95.
+    let mut undescribed = seeded_input.clone();
+    undescribed.instruction_discriminator = "63".to_string();
+    let u = attack_harness::verify_with(&seeded_core, &undescribed);
+    assert!(
+        !u.approved,
+        "undescribed selector 0x63 on SPL Token was approved with earned evidence: {}",
+        u.summary
+    );
+    assert_eq!(
+        u.trust_tier, "Unknown",
+        "an undescribed instruction must sit at the Unknown tier: {}",
+        u.summary
+    );
+    assert!(
+        u.confidence <= 0.55,
+        "the Unknown tier's 0.55 ceiling must hold for an undescribed instruction, got {}",
+        u.confidence
     );
 }
 
@@ -425,10 +491,10 @@ fn attack_check10_stake_withdraw_no_intent_is_blocked() {
         instruction_discriminator: "04000000".to_string(), // Stake Withdraw
         account_addresses: vec![
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(), // stake
-            "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),  // withdrawer
+            "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),  // to (recipient)
             "SysvarC1ock11111111111111111111111111111111".to_string(),  // clock
             "SysvarStakeHistory1111111111111111111111111".to_string(),  // stake history
-            "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU".to_string(), // to
+            "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU".to_string(), // withdrawer
         ],
         instruction_data: None,
         cpi_targets: vec![],
@@ -450,6 +516,32 @@ fn attack_check10_stake_withdraw_no_intent_is_blocked() {
         !result.approved,
         "Stake Withdraw with no declared intent must be blocked by its manifest risk_class"
     );
+    // Audit A007: `!approved` alone could not fail (Treasury needs 0.95,
+    // out of reach of a fresh engine). The cause is Check 10's
+    // MaliciousAccountChange on the manifest-declared 'withdraw' class with
+    // no intent declared — on the fresh engine and on one with earned
+    // evidence for the Stake program.
+    let check10 = |r: &graphite_core::verification::VerificationResult| {
+        attack_harness::assert_blocked_by(r, &["risk:MaliciousAccountChange"]);
+        assert!(
+            r.risk_verdict
+                .findings
+                .iter()
+                .any(|f| f.pattern == "MaliciousAccountChange"
+                    && f.reason.contains("no intent was declared")),
+            "the refusal is not Check 10's empty-intent gate: {:?}",
+            r.risk_verdict.findings
+        );
+    };
+    check10(&result);
+    let mut seeded_input = input.clone();
+    seeded_input.compute_units = 150;
+    seeded_input.account_writes = 2;
+    let seeded_core = attack_harness::seeded_core(
+        "Stake11111111111111111111111111111111111111",
+        &["debits accounts.from by amount"],
+    );
+    check10(&attack_harness::verify_with(&seeded_core, &seeded_input));
 }
 
 #[test]
@@ -478,10 +570,10 @@ fn attack_check10_stake_withdraw_with_declared_intent_not_check10_blocked() {
         instruction_discriminator: "04000000".to_string(), // Stake Withdraw
         account_addresses: vec![
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(), // stake
-            "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),  // withdrawer
+            "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),  // to (recipient)
             "SysvarC1ock11111111111111111111111111111111".to_string(),  // clock
             "SysvarStakeHistory1111111111111111111111111".to_string(),  // stake history
-            "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU".to_string(), // to
+            "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU".to_string(), // withdrawer
         ],
         instruction_data: None,
         cpi_targets: vec![],
