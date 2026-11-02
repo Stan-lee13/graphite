@@ -801,8 +801,16 @@ if not re.search(r'test-count\.sh cargo "\$RUNNER_TEMP/cargo-test-\$LEG\.log" "\
     sys.exit("the test step does not pass .github/test-floors/rust-$LEG.txt as test-count.sh's 5th argument")
 tests = sorted(f for f in os.listdir(os.path.join(root, "graphite-core/tests")) if f.endswith(".rs"))
 patterns = ["round3*.rs", "round4*.rs", "ai_layer_isolation.rs", "docs_*.rs", "*exploit*.rs", "*attack*.rs", "mainnet_conformance.rs", "regression_corpus.rs"]
+# Audit A008: and the suites the audit hand-off names as holding an invariant
+# (I-4 l2/l4 gates, I-8 rpc_*, I-10 startup refusals, I-11 request bounds,
+# I-13 upgrades), every earlier round's and audit's regression suite, the
+# hand-written adversarial suites, and the fuzz seeds' own check.
+patterns += ["round1*.rs", "round2*.rs", "audit_*.rs", "l2_*.rs", "l4_*.rs", "l8_*.rs", "rpc_*.rs",
+             "ai_cannot_approve.rs", "adversarial_*.rs", "extreme_adversarial.rs", "redteam_*.rs",
+             "evading_the_fixes.rs", "wire_format_bounds.rs", "rm1_*.rs", "quarantine_gate.rs", "r30_*.rs",
+             "fuzz_seeds_*.rs"]
 security = {f"tests/{f}" for f in tests if any(fnmatch.fnmatch(f, p) for p in patterns)}
-if len(security) < 35:
+if len(security) < 120:
     sys.exit(f"only {len(security)} security suites matched: the patterns no longer find them")
 for leg in [l["leg"] for l in job["strategy"]["matrix"]["include"]]:
     path = os.path.join(root, f".github/test-floors/rust-{leg}.txt")

@@ -144,7 +144,7 @@ jobs:
           # leg would compile the same thing twice.
           - leg: default
             flags: ""
-            floor: 2638
+            floor: 2720
             timeout: 90
           # `--lib` deliberately. Without a feature there is no async runtime
           # to drive the synchronous `verify()`, so it refuses with an error
@@ -164,7 +164,7 @@ jobs:
             timeout: 20
           - leg: cli
             flags: "--no-default-features --features cli"
-            floor: 2023
+            floor: 2083
             timeout: 45
     defaults:
       run:

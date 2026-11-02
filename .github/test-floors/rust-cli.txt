@@ -64,3 +64,88 @@
 8 tests/round41_l3_honest_compute_variation.rs
 # Round 41 (D-23): Jupiter route_v2 / shared_accounts_route_v2 decoded from the deployed IDL
 4 tests/round41_jupiter_route_v2.rs
+# Audit A008 (Round 41): the invariant and regression suites the security
+# patterns did not reach, floored at their counts in a full run of this leg at 79e0944.
+102 tests/adversarial_handcrafted.rs
+50 tests/adversarial_tests.rs
+4 tests/ai_cannot_approve.rs
+3 tests/audit_2026_10_20_cli_reproduces_server.rs
+8 tests/audit_2026_10_20_core_gates.rs
+2 tests/audit_a1_close_trailing_byte.rs
+4 tests/audit_a1_compute_budget_trailing.rs
+1 tests/audit_a1_nonce_account_from_lookup_table.rs
+2 tests/audit_a1_sibling_program_id_utf8_panic.rs
+1 tests/audit_a1_token_batch_sibling.rs
+1 tests/audit_a2_baseline_variance_ratchet.rs
+1 tests/audit_a2_caller_diff_displaces_structural_gate.rs
+2 tests/audit_a2_data_only_change_is_not_noop.rs
+5 tests/audit_a2_declared_effects_account_names.rs
+2 tests/audit_a2_delegate_allowance_increase.rs
+1 tests/audit_a2_fee_replay_gross_sum_overflow.rs
+1 tests/audit_a2_permanent_delegate_unread_mint.rs
+8 tests/audit_a3_authority_handover_primary.rs
+6 tests/audit_a3_authority_handover_sibling.rs
+1 tests/audit_a3_community_tier_self_asserted.rs
+1 tests/audit_a3_l1_report_truthfulness.rs
+6 tests/audit_a3_manifest_lint.rs
+2 tests/audit_a3_non_ascii_program_id_panics.rs
+4 tests/audit_a3_protocol_plugin_disarms_drainer.rs
+5 tests/audit_a3_quarantine_primary_only.rs
+3 tests/audit_a3_registry_replay_rollback.rs
+4 tests/audit_a3_unknown_instruction_confidence.rs
+4 tests/audit_flooding.rs
+19 tests/audit_review_r2_r3_intent_cannot_clear_danger.rs
+6 tests/audit_w22_grant_route.rs
+52 tests/extreme_adversarial.rs
+2 tests/fuzz_seeds_reach_their_targets.rs
+8 tests/l2_l4_l5_hard_gate.rs
+15 tests/l4_state_diff_gate.rs
+8 tests/quarantine_gate.rs
+14 tests/r30_declared_effects.rs
+6 tests/r30_declared_effects_census.rs
+3 tests/r30_detector_isolation.rs
+3 tests/r30_low_decode_manifests.rs
+5 tests/r30_registry_manifest_breaks.rs
+5 tests/r30_token2022_both_sides.rs
+6 tests/redteam_gate_bypass.rs
+8 tests/round12_runtime_sanitize.rs
+11 tests/round19_binding_and_ownership.rs
+4 tests/round19_real_traffic_shapes.rs
+29 tests/round19_v1_transactions.rs
+19 tests/round20_transfer_fee.rs
+44 tests/round21_open_list.rs
+29 tests/round22_remaining.rs
+18 tests/round29_state_diff.rs
+11 tests/wire_format_bounds.rs
+# not in this leg: tests/audit_2026_10_20_simulation_gate.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/audit_2026_10_20_startup_refusals.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/audit_a2_deep_inner_instructions_abort.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/audit_a2_shadow_takes_refused_requests.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/audit_a4_dashboard_scan_blocks_runtime.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/audit_a4_l8_no_deadline.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/audit_a4_l8_witness_alarm_primary_unavailable.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/audit_a4_l8_witness_processed_agrees.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/audit_a4_profile_400_not_audited.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/audit_a4_profile_override_not_on_trail.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/audit_a4_slow_headers_hold_connections.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/audit_a4_xff_multiple_header_lines.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/audit_review_f10_l8_bytes_keep_their_budget.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/audit_review_r1_l8_needs_chain_bytes.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/audit_w21_connection_lifetime.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/audit_w23_not_executable_executed.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/evading_the_fixes.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/l8_execution_reconciliation.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/l8_live_mainnet.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/rm1_program_upgrade_detection.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/round10_attribution.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/round10_rpc_decompression.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/round12_rpc_equivocation.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/round17_remediations.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/round19_observed_execution.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/round19_what_one_observation_is.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/round29_rpc_client.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/rpc_budget.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/rpc_influence_bounds.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/rpc_secret_redaction.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/rpc_simulation_contract.rs (needs the rpc feature: no test runs without it)
+# not in this leg: tests/rpc_trust_boundary.rs (needs the rpc feature: no test runs without it)
