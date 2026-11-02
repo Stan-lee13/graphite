@@ -312,6 +312,7 @@ Anything less is an error.
   - Holdout and regression splits: unchanged.
 - **Censuses:** see §3.4. Attributed in the tests, and in `docs/audit-r40/declaration-rewrites.json` `census`.
 - **Attack fixtures:** `real_exploit_tests`, `real_onchain_exploits`, `exploit_corpus_tests`, `novel_attacks` and `real_world_attacks` all pass unchanged.
+  - Correction (audit A007): for the first three, "pass unchanged" showed less than it seems. At the time they asserted mostly `!approved` (or `confidence <= 0.55`) under TradingBot on a fresh engine, which approves nothing, and `real_onchain_exploits` turned any `verify()` error into a block. So their passing showed that nothing had become approvable, not that their detectors still fired. Only `novel_attacks` and `real_world_attacks` asserted causes then (Round 29 harness). Since A007, all five run through `tests/attack_harness`. Each blocked case asserts its cause with `assert_blocked_by`: the Risk Engine pattern, the failed layer, or the unknown-protocol token. The blocked cases on known programs are re-checked on an engine with earned evidence, and that same engine approves a benign transfer (the positive controls). The corpus loop asserts every entry's cause on both engines.
   - While the work was in progress, three of them (`test_novel_cross_prog_012`/`017`, `test_real_fake_swap_045`) were still blocked but lost L4 as a cause. The Orca lines had dropped the "debit"/"credit" words that L4's no-diff structural check reads.
   - Fixed by adding named "debits …/credits …" lines. Now checked by the validator and the Round 40 test (B-R3).
 
@@ -376,7 +377,7 @@ All Rust runs used `CARGO_TARGET_DIR=/home/user/manifests-target CARGO_INCREMENT
 | `cargo test --locked --no-default-features --lib` (final) | **530 passed**, 0 failed, 4 ignored |
 | `cargo test --test round40_swap_declarations` | 3 passed (new file) |
 | `cargo test --test round39_decision_campaigns` | 19 passed (18 Round 39 tests, one with re-pinned rows, plus the new `round40_a_rewritten_pool_swap_with_a_skim_is_never_executable`) |
-| `real_exploit_tests`, `real_onchain_exploits`, `exploit_corpus_tests`, `novel_attacks`, `real_world_attacks` | 15, 17, 3, 102, 102 passed — unchanged |
+| `real_exploit_tests`, `real_onchain_exploits`, `exploit_corpus_tests`, `novel_attacks`, `real_world_attacks` | 15, 17, 3, 102, 102 passed — unchanged. For the first three this checked only that nothing was approved, not the cause (see the §5 correction, audit A007). Since A007 they assert causes: 15, 17 and 4 tests (a corpus positive control was added). |
 | `round38_sibling_skims`, `round38_create_funding`, `round38_unscoped_authority` | 12, 4, 7 passed. Every other Round 38 suite also passes, in the full default run. |
 | `GRAPHITE_REGENERATE_CORPUS=1 cargo test --test regression_corpus corpus_persists_and_reloads_identically` | corpus rewritten: 12,967 fixtures |
 | `GRAPHITE_MAINNET_VERDICTS_OUT=… cargo test --test mainnet_conformance the_committed_mainnet_blocks…` on a copy of `1ae2066` and on this tree | 1 row differs (§5) |

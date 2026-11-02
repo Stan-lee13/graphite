@@ -562,8 +562,11 @@ async function swapUnder(policy: SpendPolicy, rpc: ReturnType<typeof swapLedger>
 }
 
 test("spend policy: a swap within the cap, measured on the transaction, goes to the Core", async () => {
-  // Spends 1 SOL less one lamport, fee included, against a cap of 1 SOL.
-  const h = await swapUnder({ maxTransferLamports: BigInt(SOL) }, swapLedger(10 * SOL - SOL + 1));
+  // The route spends 1 SOL (its in_amount) plus the 5,000-lamport fee, against
+  // a cap of exactly that. Round 41 (D-2): until then this test's cap was 1 SOL
+  // and it passed only because the simulation (1 SOL less one lamport) was
+  // counted instead of the route's own amount — the gap the next test pins.
+  const h = await swapUnder({ maxTransferLamports: BigInt(SOL + 5_000) }, swapLedger(10 * SOL - SOL + 1));
   try {
     const outcome = await h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet));
     assert.equal(outcome.executed, false, "the loopback Core blocked; the policy only narrows");
@@ -590,6 +593,61 @@ test("spend policy: a swap taking more lamports than the cap is refused before t
       assert.match((e as Error).message, /1000005000 lamports out of the wallet/);
       return true;
     });
+    assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 0, "the Core was never asked");
+  } finally {
+    await h.close();
+  }
+});
+
+// Round 41 (external review D-2): the cap bounds what the route's own bytes
+// spend, not only what the guard's RPC says the simulation spent. A lying (or
+// stale) RPC reports the wallet unchanged but for the fee, and a credit that
+// clears the route's minimum; the route still spends its `in_amount`.
+test("spend policy: a SOL-input swap is held to its route's amount when the simulation shows less leaving", async () => {
+  // The route spends 1 SOL (its in_amount); the simulation says only the fee left.
+  const h = await swapUnder({ maxTransferLamports: BigInt(SOL / 2) }, swapLedger(10 * SOL - 5_000));
+  try {
+    await assert.rejects(h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet)), (e: unknown) => {
+      assert.ok(e instanceof SpendPolicyRefusal, String(e));
+      assert.match((e as Error).message, /1000005000 lamports out of the wallet/);
+      return true;
+    });
+    assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 0, "the Core was never asked");
+  } finally {
+    await h.close();
+  }
+});
+
+test("spend policy: a token-input swap is refused under a lamport cap even when the simulation shows none leaving", async () => {
+  // "Swap 5 USDC for SOL": the route spends 5 USDC; the simulation shows the
+  // USDC account untouched. A lamport cap cannot price USDC, so it is refused
+  // whatever the simulation says.
+  const h = await harness({
+    spendPolicy: { maxTransferLamports: 100n * BigInt(SOL) },
+    rpc: swapLedger(
+      10 * SOL - 5_000,
+      { mint: USDC, before: 5_000_000n, after: 5_000_000n },
+      { mint: WSOL, amount: 150_000_000n },
+    ),
+  });
+  h.ai.answer.set("POST /parse", {
+    status: 200,
+    body: {
+      intent_type: "swap",
+      raw_natural_language: "Swap 5 USDC for SOL",
+      confidence_of_parse: 0.99,
+      extracted_parameters: { input_token: "USDC", output_token: "SOL", amount: "5" },
+    },
+  });
+  try {
+    await assert.rejects(
+      h.agent.executeSwap("Swap 5 USDC for SOL", jupiterPayload(h.wallet, { amountIn: 5_000_000n })),
+      (e: unknown) => {
+        assert.ok(e instanceof SpendPolicyRefusal, String(e));
+        assert.match((e as Error).message, /spends 5000000 of token EPjF/);
+        return true;
+      },
+    );
     assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 0, "the Core was never asked");
   } finally {
     await h.close();

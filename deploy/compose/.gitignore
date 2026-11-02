@@ -1,2 +1,6 @@
 # Host configuration with secrets (RPC URLs embed provider keys).
 graphite.env
+# Caddy's ACME account, certificates and autosaved config (Audit A067: bind
+# mounts owned by 10002); host state, never committed.
+caddy-data/
+caddy-config/

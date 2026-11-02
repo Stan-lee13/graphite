@@ -170,6 +170,20 @@ func (c *Client) httpClient() *http.Client {
 	return newHTTPClient()
 }
 
+// clientView is Client without its methods, so Format can print it.
+type clientView Client
+
+// Format prints the client with its APIKey redacted (Audit A060): a
+// `log.Printf("%+v", client)` at startup, a %#v or a panic dump wrote the
+// operator's Bearer key. Every verb prints the same redacted view.
+func (c Client) Format(f fmt.State, verb rune) {
+	v := clientView(c)
+	if v.APIKey != "" {
+		v.APIKey = "<redacted>"
+	}
+	fmt.Fprintf(f, fmt.FormatString(f, verb), v)
+}
+
 // NewClientWithAPIKey creates a client for a secured Core deployment. The key
 // is sent as `Authorization: Bearer <key>` on every authenticated request.
 func NewClientWithAPIKey(baseURL, apiKey string) *Client {
@@ -336,8 +350,12 @@ type VerificationInput struct {
 	// with VerifyTransactionDigest. JSON array of bytes, NOT base64 (serde
 	// Vec<u8>).
 	SignedTransaction ByteArray `json:"signed_transaction,omitempty"`
-	// TransactionInstructions is the Phase 2 COMPLETE instruction list (2+
-	// entries trigger multi-instruction mass-drain pattern analysis).
+	// TransactionInstructions lists every OTHER top-level instruction of the
+	// transaction, never the primary (which the fields above describe). The
+	// Core matches each entry to one of the artifact's non-primary
+	// instructions; a declaration of the primary matches nothing and fails L2.
+	// Each entry is risk-assessed, and the multi-instruction pattern analysis
+	// runs over the primary and these.
 	TransactionInstructions []TransactionInstruction `json:"transaction_instructions,omitempty"`
 	// CpiTrace is the Phase 2 hierarchical CPI trace tree of the primary
 	// instruction (depth 0 = root).
@@ -670,9 +688,9 @@ var ExecutionDecisions = []string{
 // approved; risk Clear; policy "Approved"; scope artifact_bound with a digest
 // and Simulated; UnobservedCodes present, naming every Unobserved entry, and
 // all inherent; layers reported and none "failed". Otherwise an approval is
-// analysis_only; a refusal whose findings are all VerificationIncomplete is
-// inconclusive; every other refusal is blocked. Missing fields never make a
-// verdict executable.
+// analysis_only; a refusal whose findings are all VerificationIncomplete, with
+// no layer but L3, L7 or L8 failed, is inconclusive; every other refusal is
+// blocked. Missing fields never make a verdict executable.
 func (r *VerificationResult) ComputeExecutionDecision() string {
 	if r == nil {
 		return DecisionBlocked
@@ -684,6 +702,15 @@ func (r *VerificationResult) ComputeExecutionDecision() string {
 		}
 		for _, x := range f {
 			if x.Pattern != "VerificationIncomplete" {
+				return DecisionBlocked
+			}
+		}
+		// Audit A086: a failed L1/L2/L4/L5/L6 refuses on its own and no
+		// retry passes it; only L3, L7 and L8 may fail beside missing
+		// evidence.
+		for _, l := range r.Layers {
+			if l.Status == "failed" && !strings.HasPrefix(l.Layer, "L3_") &&
+				!strings.HasPrefix(l.Layer, "L7_") && !strings.HasPrefix(l.Layer, "L8_") {
 				return DecisionBlocked
 			}
 		}

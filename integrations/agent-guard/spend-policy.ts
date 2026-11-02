@@ -142,6 +142,37 @@ export function spendPolicyFromEnv(env: Record<string, string | undefined> = pro
  * M6): no per-transaction cap, and no explicit `allowUncapped`.
  */
 export function assertSpendPolicyUsable(policy: SpendPolicy): void {
+  // Audit A049/A055: a policy passed in code is held to the types the
+  // environment reader produces. A bigint compared with NaN or "1e8" is
+  // never greater, so a cap of the wrong type was a cap of nothing.
+  if (typeof policy !== "object" || policy === null) {
+    throw new Error("[Graphite] spendPolicy is not an object. REFUSING TO START.");
+  }
+  for (const name of ["maxTransferLamports", "maxTotalLamports"] as const) {
+    const v: unknown = policy[name];
+    if (v !== undefined && (typeof v !== "bigint" || v < 0n)) {
+      throw new Error(
+        `[Graphite] spendPolicy.${name} ${typeof v === "string" ? JSON.stringify(v) : String(v)} ` +
+          "is not a non-negative bigint of lamports. REFUSING TO START.",
+      );
+    }
+  }
+  if (policy.allowUncapped !== undefined && typeof policy.allowUncapped !== "boolean") {
+    throw new Error(`[Graphite] spendPolicy.allowUncapped ${JSON.stringify(policy.allowUncapped)} is not a boolean. REFUSING TO START.`);
+  }
+  const allowed: unknown = policy.allowedDestinations;
+  if (allowed !== undefined) {
+    if (!Array.isArray(allowed)) {
+      throw new Error("[Graphite] spendPolicy.allowedDestinations is not a list of base58 addresses. REFUSING TO START.");
+    }
+    for (const a of allowed) {
+      if (typeof a !== "string" || !BASE58_ADDRESS.test(a)) {
+        throw new Error(
+          `[Graphite] spendPolicy.allowedDestinations has ${JSON.stringify(a)}, which is not a base58 address. REFUSING TO START.`,
+        );
+      }
+    }
+  }
   if (policy.maxTransferLamports === undefined && policy.allowUncapped !== true) {
     throw new Error(
       "[Graphite] no per-transaction cap is set. A request a model was talked into moves whatever it names; " +
@@ -157,6 +188,18 @@ export function assertSpendPolicyUsable(policy: SpendPolicy): void {
       throw new Error("[Graphite] spendWindowSeconds is set without maxTotalLamports, so it bounds nothing. REFUSING TO START.");
     }
   }
+}
+
+/**
+ * A copy of `policy` that no later change to the caller's object reaches
+ * (Audit A049): frozen, with its own frozen destination list. Taken before
+ * the policy is checked, so what is checked is what is enforced.
+ */
+export function frozenSpendPolicy(policy: SpendPolicy): Readonly<SpendPolicy> {
+  if (typeof policy !== "object" || policy === null) return policy;
+  const copy: SpendPolicy = { ...policy };
+  if (Array.isArray(policy.allowedDestinations)) copy.allowedDestinations = Object.freeze([...policy.allowedDestinations]);
+  return Object.freeze(copy);
 }
 
 /** The startup line that states the spend policy in force (Round 29, M6). */

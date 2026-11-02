@@ -121,11 +121,13 @@ pub struct VerificationInput {
     /// simulation will use `instruction_data` as a minimal payload.
     #[serde(default)]
     pub signed_transaction: Option<Vec<u8>>,
-    /// Phase 2: the COMPLETE list of instructions in the transaction,
-    /// including the primary instruction (whose fields above are the focused
-    /// view). When empty (the default, backward compatible), verification is
-    /// single-instruction. When 2+, the multi-instruction pattern analysis
-    /// layer detects coordinated mass-drain patterns across them.
+    /// Phase 2: every OTHER top-level instruction of the transaction — never
+    /// the primary, whose fields above describe it (audit A011: L2 matches
+    /// these against the artifact's instructions other than the located
+    /// primary, so a declaration of the primary matches nothing and fails
+    /// L2). When empty (the default), the transaction is the primary alone.
+    /// Each entry is risk-assessed as a secondary instruction, and the
+    /// multi-instruction pattern analysis runs over the primary and these.
     #[serde(default)]
     pub transaction_instructions: Vec<crate::tx_pattern_analysis::TransactionInstruction>,
     /// Phase 2: the hierarchical CPI trace tree of the primary instruction.
@@ -201,9 +203,23 @@ fn build_rpc_state_diff(
     artifact_account_universe: Option<(usize, usize)>,
     artifact_accounts_undescribed: Option<Vec<String>>,
 ) -> StateDiff {
+    // Round 41 (D-25): an account holding no lamports does not exist. The
+    // simulator reports every account the transaction loads from the
+    // executed transaction's own account list, so an account the transaction
+    // closed — SPL Token's `CloseAccount` zeroes its lamports, assigns it to
+    // the System program and reallocates it to nothing — or one it named
+    // that never existed comes back as an account holding zero lamports, not
+    // as `null`, and the runtime removes it when the transaction commits.
+    // Read as an account, it showed every closure as an owner reassignment
+    // to the System program (`UndeclaredOwnerReassignment`), the wallet's
+    // own wSOL account created and closed inside the transaction as a System
+    // account (so its SOL as the wallet's loss: live run 41147736944 row 100,
+    // the plain D-20 shape), and a closed wSOL account as no longer the
+    // wallet's (D-22). Nothing of it survives the transaction — no balance,
+    // no data, no authority — so it is read as what it is: absent.
     let snap =
         |a: &Option<crate::rpc_client::AccountState>, key: &str| -> Option<AccountSnapshot> {
-            a.as_ref().map(|s| {
+            a.as_ref().filter(|s| s.lamports > 0).map(|s| {
                 AccountSnapshot::from_raw(key, s.lamports, &s.owner, &s.data)
                     .with_executable(s.executable)
             })
@@ -266,6 +282,7 @@ fn build_rpc_state_diff(
         token2022_mints: Default::default(),
         transaction_accounts: None,
         transaction_privileges: None,
+        top_level_instructions: None,
     }
 }
 
@@ -853,6 +870,57 @@ fn observed_cpi_callees(
     Some(out)
 }
 
+/// Every callee the simulator reported, with the top-level instruction it ran
+/// under (Round 41, D-21): `(top-level index, program)`, repeats kept. Read
+/// from the response's own grouping (`innerInstructions[].index`), in the
+/// form the RPC sent it, else from the compiled form. `None` — never a
+/// shorter list — when neither was readable, a program cannot be placed in
+/// the account list, or a group names a top-level instruction the message
+/// does not have.
+#[cfg(feature = "rpc")]
+fn callees_by_top_level(
+    message: Option<&crate::tx_artifact::ArtifactMessage>,
+    sim: &crate::rpc_client::SimulationResult,
+) -> Option<Vec<(usize, String)>> {
+    use crate::rpc_client::InnerAccountRef;
+    let message = message?;
+    if !message.lookups.is_empty() && sim.loaded_addresses.is_none() {
+        return None;
+    }
+    let mut keys: Vec<&str> = message.static_keys.iter().map(String::as_str).collect();
+    if let Some(l) = sim.loaded_addresses.as_ref() {
+        keys.extend(l.writable.iter().map(String::as_str));
+        keys.extend(l.readonly.iter().map(String::as_str));
+    }
+    let placed = |top: u8, program: Option<String>| -> Option<(usize, String)> {
+        let top = usize::from(top);
+        (top < message.instructions.len()).then_some(())?;
+        Some((top, program?))
+    };
+    match (sim.inner_reported.as_ref(), sim.inner_instructions.as_ref()) {
+        (Some(reported), _) => reported
+            .iter()
+            .map(|ix| {
+                let program = match &ix.program {
+                    InnerAccountRef::Index(i) => keys.get(usize::from(*i)).map(|k| k.to_string()),
+                    InnerAccountRef::Address(a) => Some(a.clone()),
+                };
+                placed(ix.top_level_index, program)
+            })
+            .collect(),
+        (None, Some(inner)) => inner
+            .iter()
+            .map(|ix| {
+                let program = keys
+                    .get(usize::from(ix.program_id_index))
+                    .map(|k| k.to_string());
+                placed(ix.top_level_index, program)
+            })
+            .collect(),
+        (None, None) => None,
+    }
+}
+
 /// Every Token-2022 instruction the simulator executed, in execution order,
 /// with its accounts resolved (Round 21).
 ///
@@ -1193,7 +1261,7 @@ fn observed_cpi_tree_of(
     let mut items = flat.into_iter().peekable();
     Some(CpiTraceNode {
         program_id: top.program_id.clone(),
-        instruction_discriminator: hex::encode(&top.data[..top.data.len().min(8)]),
+        instruction_discriminator: dispatch_selector(&top.program_id, &top.data),
         depth: 0,
         account_addresses: top.accounts.iter().flatten().cloned().collect(),
         children: nest(&mut items, 1),
@@ -1331,6 +1399,10 @@ fn instruction_accounts_for_comparison(
 struct SiblingCoverage {
     undescribed: Vec<(usize, String)>,
     unmatched_declarations: usize,
+    /// Of the unmatched declarations, those that describe the located
+    /// primary itself (audit A011): `transaction_instructions` lists only the
+    /// other instructions, and the failure says so.
+    describing_primary: usize,
     /// Sibling account positions that arrive through a lookup table the
     /// pipeline could not resolve. Round 17 (F-15-05): these used to be
     /// wildcards — a declaration "described" them whatever it wrote there —
@@ -1371,6 +1443,12 @@ impl SiblingCoverage {
                 "{} declared instruction(s) match nothing in these bytes",
                 self.unmatched_declarations
             ));
+            if self.describing_primary > 0 {
+                parts.push(format!(
+                    "{} of them describe the primary instruction itself: transaction_instructions lists only the OTHER instructions — do not declare the primary there",
+                    self.describing_primary
+                ));
+            }
         }
         if self.unresolved_positions > 0 {
             parts.push(format!(
@@ -1410,9 +1488,23 @@ fn sibling_coverage(
         }
     }
 
+    let describing_primary = match message.instructions.get(primary) {
+        Some(actual) => {
+            let actual_accounts = instruction_accounts_for_comparison(message, actual, lookups);
+            declared
+                .iter()
+                .zip(&spent)
+                .filter(|(decl, used)| {
+                    !**used && declaration_describes(decl, actual, &actual_accounts)
+                })
+                .count()
+        }
+        None => 0,
+    };
     SiblingCoverage {
         undescribed,
         unmatched_declarations: spent.iter().filter(|used| !**used).count(),
+        describing_primary,
         unresolved_positions,
         matched,
     }
@@ -1451,7 +1543,10 @@ fn siblings_keyed_on_their_bytes(
     message: &crate::tx_artifact::ArtifactMessage,
     coverage: &SiblingCoverage,
     declared: &[crate::tx_pattern_analysis::TransactionInstruction],
-) -> Vec<crate::tx_pattern_analysis::TransactionInstruction> {
+) -> (
+    Vec<crate::tx_pattern_analysis::TransactionInstruction>,
+    Vec<bool>,
+) {
     declared
         .iter()
         .enumerate()
@@ -1463,22 +1558,51 @@ fn siblings_keyed_on_their_bytes(
                 .flatten()
                 .and_then(|i| message.instructions.get(i))
             else {
-                return decl.clone();
+                return (decl.clone(), false);
             };
-            // An instruction with no data names no instruction; leaving the
-            // declaration alone keeps `assess_secondary_instructions`'
+            // An instruction with no data names no instruction, unless its
+            // program dispatches empty data to one (Round 41, D-26: the
+            // associated token program's `Create`). Otherwise the declaration
+            // is left alone, which keeps `assess_secondary_instructions`'
             // empty-discriminator fail-closed arm reachable rather than
-            // quietly turning it into an empty string here.
-            if actual.data.is_empty() {
-                return decl.clone();
-            }
-            crate::tx_pattern_analysis::TransactionInstruction {
-                instruction_discriminator: hex::encode(&actual.data[..actual.data.len().min(8)]),
-                ..decl.clone()
+            // quietly turning it into an empty string here; it is marked as
+            // empty IN THE BYTES, so a manifest whose instruction is
+            // explicitly the empty-data one (a memo) can describe it.
+            match dispatch_selector(&actual.program_id, &actual.data) {
+                selector if selector.is_empty() => (decl.clone(), true),
+                selector => (
+                    crate::tx_pattern_analysis::TransactionInstruction {
+                        instruction_discriminator: selector,
+                        ..decl.clone()
+                    },
+                    false,
+                ),
             }
         })
-        .collect()
+        .unzip()
 }
+
+/// The selector a top-level instruction's program dispatches on, read from
+/// its data: the first eight bytes, hex — except that the associated token
+/// account program dispatches EMPTY data to `Create`, which its manifest
+/// describes as `00` (Round 41, D-26). `spl-associated-token-account`'s
+/// processor: empty input is `Create`; otherwise a Borsh tag, `0` `Create`,
+/// `1` `CreateIdempotent`, `2` `RecoverNested`. Every other program's empty
+/// data stays empty, and names no instruction.
+fn dispatch_selector(program_id: &str, data: &[u8]) -> String {
+    if data.is_empty() && program_id == crate::intent_binding::ATA_PROGRAM {
+        return "00".to_string();
+    }
+    hex::encode(&data[..data.len().min(8)])
+}
+
+/// Audit A082: how far after a transaction's `blockTime` a verdict may have
+/// been recorded and still be the one that governed it. `blockTime` is the
+/// cluster's stake-weighted estimate, in whole seconds; a verification is
+/// recorded before the transaction it approves is signed, so honest drift is
+/// the estimate's error. A verdict recorded later than this cannot have been
+/// consulted before execution.
+pub const L8_BLOCK_TIME_TOLERANCE_SECS: u64 = 10;
 
 /// The wall-clock budget ONE verification may spend talking to an RPC.
 ///
@@ -1692,6 +1816,19 @@ pub enum ExecutionReconciliation {
     /// the decision that governed the wallet, and no other layer can detect
     /// that because it happens entirely outside the verification request.
     BlockedButExecuted,
+    /// **Graphite approved this transaction for analysis only, and it was
+    /// signed and executed** (Audit A010, D-45). Since Round 30 only
+    /// `decision == executable_approved` permits signing; an `analysis_only`
+    /// or `inconclusive` verdict says what Graphite could not observe (no
+    /// simulation, the request's amount not bound to the bytes). A
+    /// discrepancy unless a signing event for that verification named the
+    /// residuals its signer's operator accepted (`accepted_unobserved`, the
+    /// agent guard's accepted-residual path), which is then attributed here
+    /// rather than paged. Until D-45 this read as `ApprovedAndExecuted`.
+    NotExecutableButExecuted {
+        decision: String,
+        accepted_unobserved: Vec<String>,
+    },
     /// Blocked, and correctly never landed.
     BlockedAndNotExecuted,
     /// The chain has no record of this signature yet: still pending, dropped,
@@ -1734,7 +1871,14 @@ impl ExecutionReconciliation {
     /// executed. `RecordedForDifferentBytes` is not one (audit 2026-10-20,
     /// F5 — see the variant).
     pub fn is_discrepancy(&self) -> bool {
-        matches!(self, Self::BlockedButExecuted)
+        match self {
+            Self::BlockedButExecuted => true,
+            Self::NotExecutableButExecuted {
+                accepted_unobserved,
+                ..
+            } => accepted_unobserved.is_empty(),
+            _ => false,
+        }
     }
 }
 
@@ -2199,6 +2343,7 @@ fn verification_scope(
     simulated: bool,
     simulation_error: Option<&str>,
     diff_built: bool,
+    diff_empty: bool,
     privileges: PrivilegeSource,
     lookups: Option<Result<usize, String>>,
     instruction_located: bool,
@@ -2255,6 +2400,18 @@ fn verification_scope(
                 r.push(
                     UnobservedCode::NoStateDiff,
                     "the transaction was simulated but no pre/post state diff was built, so what it actually changes was not compared against the manifest",
+                );
+            } else if diff_empty {
+                // Round 41 (external review D-1, D-29): a simulation reporting
+                // that nothing the transaction can write changed. A transaction
+                // the chain runs always changes something — at least its fee
+                // payer's lamports — so an effect-free simulation is not a
+                // measurement of what these bytes do. It used to leave L4
+                // Inconclusive, which no rule refused; a lying RPC returning
+                // the pre-state as the post-state took L4 out of the decision.
+                r.push(
+                    UnobservedCode::NoStateDiff,
+                    "the transaction was simulated, but its pre/post state diff shows no account it can write changing — a transaction the chain runs always changes something, so an effect-free simulation is not evidence of what it does and nothing was compared against the manifest",
                 );
             }
             // What the pipeline actually did, rather than this function's
@@ -2453,7 +2610,13 @@ fn binding_instructions(
             };
             (
                 match &input.instruction_data {
-                    Some(data) if input.transaction_instructions.len() <= 1 => Ok(vec![
+                    // Audit A011: `transaction_instructions` lists the
+                    // OTHER instructions, never the primary. This guard
+                    // read it as the complete list (`len() <= 1`), so one
+                    // declared sibling was bound as if it did not exist and
+                    // two made the request unbound. Any sibling carries no
+                    // data here, so the binding cannot read it: unbound.
+                    Some(data) if input.transaction_instructions.is_empty() => Ok(vec![
                         crate::intent_binding::Ix {
                             program_id: input.program_id.clone(),
                             accounts: input.account_addresses.clone(),
@@ -2493,8 +2656,9 @@ pub enum ExecutionDecision {
     /// Useful as analysis; never a reason to sign.
     AnalysisOnly,
     /// Refused because required evidence could not be obtained (every risk
-    /// finding is `VerificationIncomplete`): the RPC was unavailable, timed
-    /// out or answered incompletely. A retry may succeed — or be refused.
+    /// finding is `VerificationIncomplete`, and no layer but L3, L7 or L8
+    /// failed): the RPC was unavailable, timed out or answered incompletely.
+    /// A retry may succeed — or be refused.
     Inconclusive,
     /// Refused on what the pipeline found. The default, so a record with no
     /// decision is never read as permission.
@@ -2525,12 +2689,23 @@ impl ExecutionDecision {
 /// (`program_semantics`, `inner_instructions`) and the codes naming every
 /// `unobserved` entry; no layer `Failed`. Otherwise an approval is
 /// `AnalysisOnly`; a refusal whose risk findings are all
-/// `VerificationIncomplete` is `Inconclusive`; every other refusal is
-/// `Blocked`.
+/// `VerificationIncomplete`, with no layer but L3, L7 or L8 `Failed`, is
+/// `Inconclusive` (audit A086); every other refusal is `Blocked`.
 pub fn execution_decision(result: &VerificationResult) -> ExecutionDecision {
     if !result.approved {
         let findings = &result.risk_verdict.findings;
+        // Audit A086: a Failed L1, L2, L4, L5 or L6 is not a risk finding and
+        // refuses on its own (an undescribed sibling, a contradiction, an
+        // intent/class mismatch, a policy threshold); no retry passes it. Only
+        // the simulation layer (L3), the risk layer that the missing evidence
+        // itself fails (L7) and L8 may be Failed for the refusal to be
+        // `Inconclusive`.
+        let only_evidence_layers_failed = result.layers.iter().all(|l| {
+            l.status != LayerStatus::Failed
+                || ["L3_", "L7_", "L8_"].iter().any(|p| l.layer.starts_with(p))
+        });
         return if !findings.is_empty()
+            && only_evidence_layers_failed
             && findings
                 .iter()
                 .all(|f| f.pattern == "VerificationIncomplete")
@@ -2732,7 +2907,7 @@ impl PipelineLayerResult {
 }
 
 /// File name of the semantic-graph snapshot inside the data directory.
-const SEMANTIC_GRAPH_FILENAME: &str = "semantic_graph.json";
+pub(crate) const SEMANTIC_GRAPH_FILENAME: &str = "semantic_graph.json";
 
 /// The name of the lock file one process holds on its data directory.
 pub const DATA_DIR_LOCK: &str = "graphite.lock";
@@ -4183,6 +4358,9 @@ impl GraphiteCore {
             bytes_sources.push((w, status.slot, status.success, "the witness"));
         }
         let mut chain_transaction_sha256: Option<String> = None;
+        // Audit A082: when the bound bytes' source states it, when the
+        // transaction executed.
+        let mut chain_block_time: Option<i64> = None;
         for (client, status_slot, status_success, who) in bytes_sources {
             let fetched = within_budget(&budget, client.get_chain_transaction(signature))
                 .await
@@ -4206,7 +4384,10 @@ impl GraphiteCore {
                         }
                     }
                     match crate::tx_artifact::bound_artifact_sha256(&tx.bytes, signature) {
-                        Ok(digest) => chain_transaction_sha256 = Some(digest),
+                        Ok(digest) => {
+                            chain_transaction_sha256 = Some(digest);
+                            chain_block_time = tx.block_time;
+                        }
                         Err(e) => {
                             tracing::warn!(
                                 "L8: chain bytes for {signature} are not bound to it: {e}"
@@ -4261,6 +4442,19 @@ impl GraphiteCore {
             Some(log) => {
                 let log = log.clone();
                 let digest = chain_transaction_sha256.clone();
+                // Audit A082: the latest instant a verdict could have been
+                // recorded and still governed this execution — the block
+                // time, with `L8_BLOCK_TIME_TOLERANCE_SECS` for the cluster's
+                // clock estimate.
+                let governing_cutoff =
+                    chain_block_time
+                        .and_then(|t| u64::try_from(t).ok())
+                        .map(|t| {
+                            crate::durable::rfc3339_utc(
+                                t.saturating_add(L8_BLOCK_TIME_TOLERANCE_SECS),
+                                999,
+                            )
+                        });
                 let audit_trail_id = keys.audit_trail_id.map(str::to_owned);
                 let transaction_sha256 = keys.transaction_sha256.map(str::to_owned);
                 let content_hash = keys.content_hash.map(str::to_owned);
@@ -4268,8 +4462,23 @@ impl GraphiteCore {
                     let mut cited_for_other_bytes: Option<AuditRecord> = None;
                     let mut recorded_verdicts: Option<RecordedVerdicts> = None;
                     let (found, attribution) = if let Some(digest) = &digest {
-                        let found =
-                            log.find_verification(VerificationKey::TransactionSha256(digest));
+                        // Audit A082: the verdict that governed the execution,
+                        // not the latest. Anyone with verify access could
+                        // re-verify a landed transaction's bytes (refused,
+                        // under a stricter profile or a wrong amount) and the
+                        // latest record — that refusal — paged the operator
+                        // with `BlockedButExecuted`. With the block time,
+                        // only verdicts recorded by then are candidates;
+                        // later ones are in `recorded_verdicts` alone.
+                        let found = match &governing_cutoff {
+                            Some(cutoff) => log.find_verification_recorded_by(
+                                VerificationKey::TransactionSha256(digest),
+                                cutoff,
+                            ),
+                            None => {
+                                log.find_verification(VerificationKey::TransactionSha256(digest))
+                            }
+                        };
                         let (approved, refused) =
                             log.count_verifications(VerificationKey::TransactionSha256(digest));
                         if approved + refused > 0 {
@@ -4305,7 +4514,38 @@ impl GraphiteCore {
                     } else {
                         (None, ExecutionAttribution::None)
                     };
-                    (found, attribution, recorded_verdicts, cited_for_other_bytes)
+                    // D-45: the residuals a signer named for this
+                    // verification, when it was approved but not executable.
+                    let accepted: Vec<String> = match &found {
+                        Some(r) if r.not_executable_decision().is_some() => {
+                            let mut codes: Vec<String> = Vec::new();
+                            for e in log.lifecycle_history(crate::durable::LifecycleKey {
+                                audit_trail_id: Some(&r.audit_trail_id),
+                                ..Default::default()
+                            }) {
+                                if e.event_type == crate::durable::LifecycleEvent::Signing
+                                    && !e.observed_by_graphite
+                                    && e.audit_trail_id.as_deref()
+                                        == Some(r.audit_trail_id.as_str())
+                                {
+                                    for c in e.accepted_unobserved {
+                                        if !codes.contains(&c) {
+                                            codes.push(c);
+                                        }
+                                    }
+                                }
+                            }
+                            codes
+                        }
+                        _ => Vec::new(),
+                    };
+                    (
+                        found,
+                        attribution,
+                        recorded_verdicts,
+                        cited_for_other_bytes,
+                        accepted,
+                    )
                 });
                 Some(scan.await)
             }
@@ -4313,27 +4553,28 @@ impl GraphiteCore {
         // A scan that did not complete is an internal failure, and L8 does not
         // answer "nothing on record" for a trail it could not read.
         let mut trail_unread: Option<String> = None;
-        let (recorded, attribution, recorded_verdicts, cited_for_other_bytes) = match lookup {
-            None => (None, ExecutionAttribution::None, None, None),
-            Some(Ok(found)) => found,
-            // A panic inside the scan is re-raised, so the server answers 500
-            // (CatchPanicLayer) rather than a verdict built on a trail it did
-            // not read.
-            Some(Err(join)) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
-            // Audit 2026-10-20 (F19): a scan that was CANCELLED (the runtime
-            // shutting down) panicked here, turning an orderly shutdown into a
-            // crash. It is the same "the trail was not read" — answered as
-            // `Unavailable` with the reason, never as "nothing on record".
-            Some(Err(join)) => {
-                tracing::error!(
-                    "L8: the audit trail lookup for {signature} did not complete: {join}"
-                );
-                trail_unread = Some(format!(
+        let (recorded, attribution, recorded_verdicts, cited_for_other_bytes, accepted_unobserved) =
+            match lookup {
+                None => (None, ExecutionAttribution::None, None, None, Vec::new()),
+                Some(Ok(found)) => found,
+                // A panic inside the scan is re-raised, so the server answers 500
+                // (CatchPanicLayer) rather than a verdict built on a trail it did
+                // not read.
+                Some(Err(join)) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
+                // Audit 2026-10-20 (F19): a scan that was CANCELLED (the runtime
+                // shutting down) panicked here, turning an orderly shutdown into a
+                // crash. It is the same "the trail was not read" — answered as
+                // `Unavailable` with the reason, never as "nothing on record".
+                Some(Err(join)) => {
+                    tracing::error!(
+                        "L8: the audit trail lookup for {signature} did not complete: {join}"
+                    );
+                    trail_unread = Some(format!(
                     "the audit trail lookup did not complete ({join}), so the recorded verdict could not be read"
                 ));
-                (None, ExecutionAttribution::None, None, None)
-            }
-        };
+                    (None, ExecutionAttribution::None, None, None, Vec::new())
+                }
+            };
 
         // What the caller said, against what was resolved. A disagreement
         // is reported, never used to change the answer.
@@ -4476,6 +4717,14 @@ impl GraphiteCore {
                     // Any sighting, at any commitment, from either source:
                     // a blocked transaction in a block is the gate bypassed.
                     ExecutionReconciliation::BlockedButExecuted
+                } else if let Some(decision) = rec.not_executable_decision() {
+                    // D-45: approved for analysis, never for signing. Like a
+                    // blocked one, any sighting says the client signed
+                    // against the decision.
+                    ExecutionReconciliation::NotExecutableButExecuted {
+                        decision,
+                        accepted_unobserved: accepted_unobserved.clone(),
+                    }
                 } else if let Some(why) = &chain_inconsistent {
                     ExecutionReconciliation::Unavailable {
                         reason: format!("the RPC contradicts itself about this signature: {why}"),
@@ -4778,6 +5027,14 @@ impl GraphiteCore {
     /// Errors when the program has no record or is not currently quarantined.
     pub fn lift_program_quarantine(&self, program_id: &str) -> Result<(), VerificationError> {
         self.lift_program_quarantine_durably(program_id).map(|_| ())
+    }
+
+    /// Whether [`Self::lift_program_quarantine_durably`] would lift
+    /// `program_id` (it is known and quarantined), with nothing changed.
+    pub fn check_quarantine_liftable(&self, program_id: &str) -> Result<(), VerificationError> {
+        self.graph()
+            .check_liftable(program_id)
+            .map_err(VerificationError::SemanticGraph)
     }
 
     /// `lift_program_quarantine`, reporting whether the lift reached disk.
@@ -5614,7 +5871,10 @@ impl GraphiteCore {
     /// evidence, else Unknown. A graph entry whose tier was genuinely EARNED
     /// (operator-seeded Behavior evidence, or a quarantine downgrade) is
     /// respected — forcibly capping an earned tier at HeuristicInferred would
-    /// violate P7. P6's low confidence ceiling still applies.
+    /// violate P7. P6's low confidence ceiling still applies: the verdict's
+    /// confidence is capped at the unknown-protocol ceiling whenever a
+    /// top-level program has no manifest (`cap_unmanifested_confidence`,
+    /// audit A014).
     ///
     /// SECURITY (G4 / P7): the request-body `behavior_evidence` is read on
     /// neither path. It is caller-controlled JSON: a caller could fabricate
@@ -5680,7 +5940,13 @@ impl GraphiteCore {
             LayerStatus::Passed,
         );
         let confidence = compute_confidence(&signals, tier)
-            .map(|c| apply_unknown_protocol_ceiling(tier, c.confidence))
+            .map(|mut c| {
+                // Audit A014 (P6): as the verdict path caps it.
+                if manifest.is_none() {
+                    cap_unmanifested_confidence(&mut c);
+                }
+                apply_unknown_protocol_ceiling(tier, c.confidence)
+            })
             .unwrap_or(0.0);
         (tier, confidence)
     }
@@ -5795,7 +6061,7 @@ impl GraphiteCore {
                         allowed_cpis: ix.allowed_cpis.clone(),
                         expected_account_count: Some(ix.accounts.len()),
                         variable_accounts: ix.variable_accounts,
-                        manifest_risk_class: ix.security_class().to_string(),
+                        manifest_risk_class: m.verdict_class(ix).to_string(),
                         manifest_found: true,
                     },
                     None => {
@@ -5916,6 +6182,7 @@ impl GraphiteCore {
         &self,
         effective_instructions: &[crate::tx_pattern_analysis::TransactionInstruction],
         trace_origin_range: &std::ops::Range<usize>,
+        empty_in_bytes: &std::collections::BTreeSet<usize>,
         every_close_refunds_its_authority: bool,
         declared_intent: &str,
         artifact: Option<(
@@ -5990,26 +6257,38 @@ impl GraphiteCore {
                     ));
                     continue;
                 }
-                let reason = format!(
+                // Round 41 (D-26): the bytes show this instruction with no
+                // data, and its program's manifest describes exactly that —
+                // an instruction declared with an empty discriminator (a
+                // memo). It is that instruction, judged as any other below.
+                let described_empty = empty_in_bytes.contains(&idx)
+                    && self
+                        .registry
+                        .get(&ix.program_id)
+                        .and_then(|m| m.instruction_for(""))
+                        .is_some_and(|i| i.discriminator.is_empty());
+                if !described_empty {
+                    let reason = format!(
                     "secondary instruction #{idx} (program {}) was DECLARED by the caller with an \
                      empty discriminator \u{2014} the instruction cannot be verified and a declared \
                      instruction has no reason to omit it (P12 fail-closed)",
                     ix.program_id
                 );
-                verdict = match verdict {
-                    RiskVerdict::Passed => RiskVerdict::Blocked {
-                        pattern: crate::risk_engine::RiskPattern::UnexpectedCpi,
-                        reason,
-                    },
-                    RiskVerdict::Blocked {
-                        pattern: existing,
-                        reason: prior,
-                    } => RiskVerdict::Blocked {
-                        pattern: existing,
-                        reason: format!("{prior} | {reason}"),
-                    },
-                };
-                continue;
+                    verdict = match verdict {
+                        RiskVerdict::Passed => RiskVerdict::Blocked {
+                            pattern: crate::risk_engine::RiskPattern::UnexpectedCpi,
+                            reason,
+                        },
+                        RiskVerdict::Blocked {
+                            pattern: existing,
+                            reason: prior,
+                        } => RiskVerdict::Blocked {
+                            pattern: existing,
+                            reason: format!("{prior} | {reason}"),
+                        },
+                    };
+                    continue;
+                }
             }
             let risk_ctx =
                 self.instruction_risk_context(&ix.program_id, &ix.instruction_discriminator);
@@ -6087,12 +6366,10 @@ impl GraphiteCore {
             // `SyncNative` — carry the `inert` class and are not unclassed.
             // A CPI-trace node keeps the observation-limit treatment above.
             if !trace_origin_range.contains(&idx) {
-                if let Some(def) = self
-                    .registry
-                    .get(&ix.program_id)
-                    .and_then(|m| m.instruction_for(&ix.instruction_discriminator))
-                    .filter(|def| def.security_class().is_empty())
-                {
+                if let Some(def) = self.registry.get(&ix.program_id).and_then(|m| {
+                    m.instruction_for(&ix.instruction_discriminator)
+                        .filter(|def| m.verdict_class(def).is_empty())
+                }) {
                     if let Err(why) = Self::intent_describes_instruction_in(
                         &self.registry,
                         declared_intent,
@@ -6598,8 +6875,12 @@ impl GraphiteCore {
         // judged as the undescribed instruction they are, never as the one the
         // label names. Only a request with no data at all falls back to the
         // label, and that request is descriptive.
+        // Audit A087: the same dispatch rule as every other instruction
+        // (D-26): the ATA program's empty data is its `Create` ("00"). The raw
+        // bytes made an honest legacy create, as the primary, an undescribed
+        // instruction while the same bytes as a sibling were `Create`.
         let effective_discriminator = match input.instruction_data.as_deref() {
-            Some(data) => hex::encode(&data[..data.len().min(8)]),
+            Some(data) => dispatch_selector(&input.program_id, data),
             None => input.instruction_discriminator.clone(),
         };
 
@@ -6754,6 +7035,10 @@ impl GraphiteCore {
         // which the execution boundary refuses.
         let mut siblings_by_bytes: Option<Vec<crate::tx_pattern_analysis::TransactionInstruction>> =
             None;
+        // Round 41 (D-26): which of those the bytes show with empty data.
+        let mut siblings_empty_in_bytes: Vec<bool> = Vec::new();
+        // Audit A043: the message index each declaration matched.
+        let mut siblings_message_index: Vec<Option<usize>> = Vec::new();
         let l2_result = match (&artifact_parse_error, artifact_message.as_ref()) {
             (None, None) => l2_result,
             (Some(e), _) => {
@@ -6820,11 +7105,14 @@ impl GraphiteCore {
                             )
                         });
                         if let Some(coverage) = &coverage {
-                            siblings_by_bytes = Some(siblings_keyed_on_their_bytes(
+                            let (keyed, empty) = siblings_keyed_on_their_bytes(
                                 message,
                                 coverage,
                                 &input.transaction_instructions,
-                            ));
+                            );
+                            siblings_by_bytes = Some(keyed);
+                            siblings_empty_in_bytes = empty;
+                            siblings_message_index = coverage.matched.clone();
                         }
                         match c.matched_instruction {
                             None if c.same_program_and_data > 1 => PipelineLayerResult::new(
@@ -7257,7 +7545,7 @@ impl GraphiteCore {
                             }
                             crate::intent_grants::GrantOutcome::Ungrounded(why) => {
                                 ungrounded_grant = Some(why);
-                                i.security_class().to_string()
+                                m.verdict_class(i).to_string()
                             }
                             crate::intent_grants::GrantOutcome::Unbounded { class, reason } => {
                                 unbounded_withdrawal = Some(reason);
@@ -7270,7 +7558,7 @@ impl GraphiteCore {
                                     &declared_intent,
                                     &input.account_addresses,
                                 );
-                                i.security_class().to_string()
+                                m.verdict_class(i).to_string()
                             }
                         },
                     ),
@@ -7566,7 +7854,7 @@ impl GraphiteCore {
                     .enumerate()
                     .filter(|(k, _)| *k != primary)
                     .flat_map(|(_, ix)| {
-                        let disc = hex::encode(&ix.data[..ix.data.len().min(8)]);
+                        let disc = dispatch_selector(&ix.program_id, &ix.data);
                         self.registry
                             .find_instruction(&ix.program_id, &disc)
                             .map(|def| {
@@ -7720,7 +8008,7 @@ impl GraphiteCore {
         // excuse. Conflating the two let an attacker declare a dangerous
         // instruction with an empty discriminator and skip every structural
         // risk check — see `assess_secondary_instructions`.
-        let (effective_instructions, trace_origin_range) = {
+        let (effective_instructions, trace_origin_range, empty_in_bytes) = {
             // Execution order: the primary instruction runs first, its CPI
             // callees execute during it (pre-order flatten), then the
             // remaining top-level instructions. Ordering matters to the AAT
@@ -7749,7 +8037,19 @@ impl GraphiteCore {
                     .clone()
                     .unwrap_or_else(|| input.transaction_instructions.clone()),
             );
-            (v, trace_start..trace_end)
+            // Round 41 (D-26): the effective indexes of the siblings the
+            // bytes show with empty data (none without the bytes).
+            let empty_in_bytes: std::collections::BTreeSet<usize> = if siblings_by_bytes.is_some() {
+                siblings_empty_in_bytes
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| **e)
+                    .map(|(d, _)| trace_end + d)
+                    .collect()
+            } else {
+                std::collections::BTreeSet::new()
+            };
+            (v, trace_start..trace_end, empty_in_bytes)
         };
 
         // P0-3 fix (2026-09-05 audit): risk-assess every SECONDARY
@@ -7764,6 +8064,7 @@ impl GraphiteCore {
             .assess_secondary_instructions(
                 &effective_instructions,
                 &trace_origin_range,
+                &empty_in_bytes,
                 closes.every_close_refunds_its_authority,
                 &input.proposed_intent.intent_type,
                 artifact_message
@@ -7793,9 +8094,45 @@ impl GraphiteCore {
             risk_verdict
         };
 
-        if effective_instructions.len() >= 2 {
+        // Audit A043: the order-sensitive rules (an Approve BEFORE the
+        // Transfer that spends its account, ...) read the order the bytes
+        // execute in, not the order the request declared its siblings in:
+        // with the bytes, every instruction at its message index — the
+        // primary at its located index, its declared CPI trace during it.
+        // Without the bytes the declared order is all there is.
+        let pattern_instructions: Vec<crate::tx_pattern_analysis::TransactionInstruction> =
+            match (primary_instruction_index, siblings_by_bytes.as_ref()) {
+                (Some(primary), Some(_))
+                    if siblings_message_index.len()
+                        == effective_instructions.len() - trace_origin_range.end =>
+                {
+                    let mut keyed: Vec<(
+                        usize,
+                        usize,
+                        &crate::tx_pattern_analysis::TransactionInstruction,
+                    )> = Vec::with_capacity(effective_instructions.len());
+                    keyed.push((primary, 0, &effective_instructions[0]));
+                    for (k, t) in effective_instructions[trace_origin_range.clone()]
+                        .iter()
+                        .enumerate()
+                    {
+                        keyed.push((primary, 1 + k, t));
+                    }
+                    for (d, sibling) in effective_instructions[trace_origin_range.end..]
+                        .iter()
+                        .enumerate()
+                    {
+                        let at = siblings_message_index[d].unwrap_or(usize::MAX);
+                        keyed.push((at, d, sibling));
+                    }
+                    keyed.sort_by_key(|(at, sub, _)| (*at, *sub));
+                    keyed.into_iter().map(|(_, _, ix)| ix.clone()).collect()
+                }
+                _ => effective_instructions.clone(),
+            };
+        if pattern_instructions.len() >= 2 {
             pattern_findings.extend(crate::tx_pattern_analysis::analyze_multi_instruction(
-                &effective_instructions,
+                &pattern_instructions,
             ));
         }
         if let Some(trace) = &input.cpi_trace {
@@ -8033,6 +8370,10 @@ impl GraphiteCore {
         // or an index the account list cannot place — unknown, never empty.
         #[cfg_attr(not(feature = "rpc"), allow(unused_mut, unused_variables))]
         let mut observed_cpi_programs: Option<Vec<String>> = None;
+        // The same callees with the top-level instruction each ran under
+        // (Round 41, D-21). `None` when that could not be read.
+        #[cfg_attr(not(feature = "rpc"), allow(unused_mut, unused_variables))]
+        let mut observed_cpi_callers: Option<Vec<(usize, String)>> = None;
         // The primary instruction's CPI tree as the simulator executed it
         // (Round 19, F-19-22). `None` without a clean simulation, a located
         // instruction, or a readable inner-instruction report.
@@ -8367,6 +8708,8 @@ impl GraphiteCore {
                                 sim_res.loaded_addresses.as_ref(),
                                 sim_res.inner_program_indexes.as_deref(),
                             );
+                            observed_cpi_callers =
+                                callees_by_top_level(artifact_message.as_ref(), &sim_res);
                             observed_cpi_tree = match (
                                 artifact_message.as_ref(),
                                 located_index,
@@ -8845,6 +9188,31 @@ impl GraphiteCore {
                                                 sim_res.loaded_addresses.as_ref(),
                                             )
                                         });
+                                    // Round 41 (D-20): the top-level
+                                    // instructions, every account resolved
+                                    // — all of them or none.
+                                    diff.top_level_instructions =
+                                        artifact_message.as_ref().and_then(|m| {
+                                            m.instructions
+                                                .iter()
+                                                .map(|ix| {
+                                                    crate::tx_artifact::resolve_instruction_accounts(
+                                                        m,
+                                                        ix,
+                                                        resolved_lookups
+                                                            .as_ref()
+                                                            .and_then(|r| r.as_ref().ok()),
+                                                    )
+                                                    .map(|accounts| {
+                                                        crate::state_diff::TopLevelInstruction {
+                                                            program_id: ix.program_id.clone(),
+                                                            accounts,
+                                                            data: ix.data.clone(),
+                                                        }
+                                                    })
+                                                })
+                                                .collect::<Option<Vec<_>>>()
+                                        });
                                     if let Some(message) = artifact_message.as_ref() {
                                         diff.token2022_executed = token2022_executed(
                                             message,
@@ -8959,7 +9327,7 @@ impl GraphiteCore {
                             program_id: input.program_id.clone(),
                             simulation_usage: usage.clone(),
                             baseline: baseline.clone(),
-                            divergence_threshold: 2.0,
+                            divergence_threshold: crate::simulation_integrity::DIVERGENCE_THRESHOLD,
                         },
                     ) {
                         Ok(result) => result,
@@ -9095,13 +9463,72 @@ impl GraphiteCore {
                     }
                     None => true,
                 });
+                // Round 41 (D-21): a callee the simulator saw ONLY under other
+                // top-level instructions, each of whose own manifest
+                // instruction declares it in `allowed_cpis`, is that
+                // instruction's call, not the located one's. The set was
+                // judged against the PRIMARY's root and allowed CPIs: an
+                // honest 1-lamport System transfer beside an ATA
+                // `CreateIdempotent` for a Token-2022 mint was refused as
+                // `AuthorityHijack` ("token program from untrusted root
+                // '11111111'") for the ATA program's own declared Token-2022
+                // CPI (live mainnet run 41120603876). Each such sibling's
+                // executed calls are still judged as its own below (W14). A
+                // callee seen under the primary, under a sibling whose
+                // instruction does not declare it, under an unmanifested
+                // program, or whose caller could not be read, is judged here
+                // exactly as before.
+                if let (Some(callers), Some(message), Some(primary)) = (
+                    observed_cpi_callers.as_ref(),
+                    artifact_message.as_ref(),
+                    located_index,
+                ) {
+                    let declared_by = |top: usize, callee: &str| {
+                        top != primary
+                            && message.instructions.get(top).is_some_and(|ix| {
+                                self.registry
+                                    .get(&ix.program_id)
+                                    .and_then(|m| {
+                                        m.instruction_for(&dispatch_selector(
+                                            &ix.program_id,
+                                            &ix.data,
+                                        ))
+                                    })
+                                    .is_some_and(|d| d.allowed_cpis.iter().any(|c| c == callee))
+                            })
+                    };
+                    undeclared.retain(|p| {
+                        let under: Vec<usize> = callers
+                            .iter()
+                            .filter(|(_, c)| c == p)
+                            .map(|(top, _)| *top)
+                            .collect();
+                        let theirs = !under.is_empty() && under.iter().all(|t| declared_by(*t, p));
+                        if theirs {
+                            let mut at = under.clone();
+                            at.sort();
+                            at.dedup();
+                            risk_warnings.push(format!(
+                                "observed CPI {p}: made only under top-level instruction(s) {at:?}, whose own manifest instruction declares it — judged as theirs, not the located instruction's"
+                            ));
+                        }
+                        !theirs
+                    });
+                }
                 if undeclared.is_empty() {
                     (risk_summary, risk_warnings)
                 } else {
                     let detail = assess_with_warnings_in(
                         &RiskAssessmentInput {
-                            verified_self_refund_close: false,
-                            writable_extra_accounts: None,
+                            // Audit A013: the facts the first assessment read
+                            // from the bytes, not their absence. With None,
+                            // Checks 3/3b fell back to the whole account
+                            // count, and a primary whose remaining accounts
+                            // are read-only (Round 21) was refused as a
+                            // drainer for making one undeclared CPI.
+                            verified_self_refund_close: primary_instruction_index
+                                .is_some_and(|p| closes.refunding.contains(&p)),
+                            writable_extra_accounts,
                             program_id: input.program_id.clone(),
                             accounts: input.account_addresses.clone(),
                             cpi_targets: undeclared.clone(),
@@ -9260,8 +9687,10 @@ impl GraphiteCore {
                     let Some(top) = message.instructions.get(*index) else {
                         continue;
                     };
-                    let ctx =
-                        self.instruction_risk_context(&top.program_id, &hex::encode(&top.data));
+                    let ctx = self.instruction_risk_context(
+                        &top.program_id,
+                        &dispatch_selector(&top.program_id, &top.data),
+                    );
                     let mut callees: Vec<String> = Vec::new();
                     let mut stack: Vec<&crate::tx_pattern_analysis::CpiTraceNode> =
                         tree.children.iter().collect();
@@ -9269,21 +9698,48 @@ impl GraphiteCore {
                         callees.push(n.program_id.clone());
                         stack.extend(n.children.iter());
                     }
+                    // Audit A012: the compositional-drain rule (R-5) on what
+                    // this instruction executed, repeats kept — as the
+                    // primary's tree is judged above. It ran on the primary
+                    // only, so the same execution passed as a sibling.
+                    if let Some(RiskVerdict::Blocked { pattern, reason }) =
+                        crate::risk_engine::compositional_drain_in_execution(
+                            &top.program_id,
+                            &[],
+                            &callees,
+                        )
+                    {
+                        summary.status = "Blocked".to_string();
+                        summary.findings.push(RiskFinding {
+                            pattern: format!("{pattern:?}"),
+                            reason: format!(
+                                "top-level instruction #{index} (program {}) executed: {reason}",
+                                top.program_id
+                            ),
+                        });
+                    }
                     callees.sort();
                     callees.dedup();
                     callees.retain(|c| *c != top.program_id);
-                    let cpi_blocked = if ctx.manifest_found {
-                        crate::risk_engine::unexpected_cpi_target(&callees, &ctx.allowed_cpis)
-                            .or_else(|| {
-                                crate::risk_engine::token_cpi_from_untrusted_root(
-                                    &top.program_id,
-                                    &callees,
-                                    &ctx.allowed_cpis,
-                                )
-                            })
+                    // Round 41 full-codebase audit: an UNMANIFESTED sibling
+                    // was skipped here, so its executed token CPI was judged
+                    // only against the primary's root — a trusted route's —
+                    // and passed whenever the caller left it undeclared. It
+                    // is an unknown protocol: judged with no allowed CPI,
+                    // which Checks 1 and 1b already fail closed on.
+                    let allowed: &[String] = if ctx.manifest_found {
+                        &ctx.allowed_cpis
                     } else {
-                        None
+                        &[]
                     };
+                    let cpi_blocked = crate::risk_engine::unexpected_cpi_target(&callees, allowed)
+                        .or_else(|| {
+                            crate::risk_engine::token_cpi_from_untrusted_root(
+                                &top.program_id,
+                                &callees,
+                                allowed,
+                            )
+                        });
                     if let Some(RiskVerdict::Blocked { pattern, reason }) = cpi_blocked {
                         summary.status = "Blocked".to_string();
                         summary.findings.push(RiskFinding {
@@ -9340,8 +9796,8 @@ impl GraphiteCore {
         // declared siblings and CPIs, the declared trace, the artifact's own
         // top-level instructions and, with RPC, every callee the simulator
         // executed.
-        // Roadmap R-M1: has a manifested program this transaction invokes been
-        // redeployed, or had its upgrade authority changed, since Graphite
+        // Roadmap R-M1: has a program this transaction invokes (manifested,
+        // or holding evidence: audit A014) been redeployed, or had its upgrade authority changed, since Graphite
         // last saw it? Read from the loader (two batched header reads, under
         // the RPC budget). An answer that cannot be read records nothing and
         // changes nothing, and is the `program_deployments` residual (Round
@@ -9362,7 +9818,17 @@ impl GraphiteCore {
                     observed_cpi_tree.as_ref(),
                 )
                 .into_iter()
-                .filter(|p| registry.get(p).is_some())
+                // Audit A014: an UNMANIFESTED program with evidence on
+                // record (an operator seed, a census import, a simulation
+                // baseline) takes its tier from that evidence, so its
+                // deployment is read like a manifested one's: a redeploy
+                // withdraws evidence about code that no longer runs.
+                .filter(|p| {
+                    registry.get(p).is_some() || {
+                        let graph = self.graph();
+                        graph.get(p).is_some() || graph.get_simulation_baseline(p).is_some()
+                    }
+                })
                 .collect();
                 programs.sort();
                 programs.dedup();
@@ -9631,6 +10097,22 @@ impl GraphiteCore {
             }) {
                 diff_declared.push(crate::state_diff::lamport_amount_line(&from, lamports));
             }
+            // Round 41 (D-20): what the located instruction spends, read from
+            // the BYTES (the located instruction of the artifact, never the
+            // request's description), where it is an exact-in swap the Core
+            // decodes. It bounds the wrapped SOL L4 may count as the swap's
+            // declared debit rather than the wallet's loss.
+            if let Some((spend, from)) = primary_instruction_index
+                .and_then(|i| artifact_message.as_ref()?.instructions.get(i))
+                .and_then(
+                    |ix| match crate::intent_binding::decode_swap(&ix.program_id, &ix.data) {
+                        Some(Ok(decoded)) => Some((decoded.amount_in, decoded.input_account)),
+                        _ => None,
+                    },
+                )
+            {
+                diff_declared.push(crate::state_diff::swap_spend_line(spend, from));
+            }
         }
         let diff_declared = &diff_declared;
         let l4_result = match (observed_diff.as_ref(), caller_diff.as_ref()) {
@@ -9809,6 +10291,13 @@ impl GraphiteCore {
             signers: &signers,
             program_id: &input.program_id,
             owner: grant_owner.as_deref(),
+            // D-39: the located instruction; with no artifact the described
+            // instruction is the only one `binding_instructions` builds.
+            located: if artifact_message.is_some() {
+                primary_instruction_index
+            } else {
+                Some(0)
+            },
         };
         let bind_request = || {
             crate::intent_binding::bind(&crate::intent_binding::BindingInput {
@@ -9877,6 +10366,51 @@ impl GraphiteCore {
             }
             crate::intent_binding::Binding::Bound(_)
             | crate::intent_binding::Binding::NotApplicable => risk_summary,
+        };
+
+        // Audit A039: Checks 10a/10b judged a token transfer's destination
+        // TOKEN ACCOUNT, which is derived from its owner and never carries the
+        // owner's vanity shape. Every token transfer the bytes make is judged
+        // again by its destination's OWNER, read from Graphite's own
+        // simulated state.
+        let risk_summary = {
+            let mut summary = risk_summary;
+            if let (Ok(ixs), Some(diff)) = (instructions.as_deref(), binding_diff) {
+                for ix in ixs {
+                    let discriminator = hex::encode(&ix.data[..ix.data.len().min(8)]);
+                    let Some(movement) =
+                        crate::tx_pattern_analysis::value_movement(&ix.program_id, &discriminator)
+                    else {
+                        continue;
+                    };
+                    let Some(destination) = ix.accounts.get(movement.destination) else {
+                        continue;
+                    };
+                    let owners: std::collections::BTreeSet<&str> = diff
+                        .deltas
+                        .iter()
+                        .filter(|d| d.pubkey == *destination)
+                        .flat_map(|d| [d.before.as_ref(), d.after.as_ref()])
+                        .flatten()
+                        .filter_map(|s| s.token.as_ref().map(|t| t.owner.as_str()))
+                        .collect();
+                    for owner in owners {
+                        if let Some(RiskVerdict::Blocked { pattern, reason }) =
+                            crate::risk_engine::token_destination_owner_verdict(owner)
+                        {
+                            summary.status = "Blocked".to_string();
+                            summary.findings.push(RiskFinding {
+                                pattern: format!("{pattern:?}"),
+                                reason: format!(
+                                    "{reason} (destination {destination}, program {})",
+                                    ix.program_id
+                                ),
+                            });
+                        }
+                    }
+                }
+            }
+            summary
         };
 
         // L5: Semantic Verification
@@ -10030,8 +10564,36 @@ impl GraphiteCore {
             // agreed". Only a Failed L5 is PENALIZED; only a Passed one earns.
             l5_result.status,
         );
-        let confidence_result = compute_confidence(&signals, trust_tier)
+        let mut confidence_result = compute_confidence(&signals, trust_tier)
             .map_err(|e| VerificationError::Confidence(e.to_string()))?;
+        // Audit A014 (P6): a program with no manifest is an unknown protocol
+        // whatever evidence its graph record holds. That evidence may raise
+        // its TIER (P7), but no manifest says what this instruction does, so
+        // the verdict's confidence stays under the unknown-protocol ceiling.
+        // Every top-level program counts, as for the tier.
+        let unmanifested_top_level: Option<String> = if !manifest_found {
+            Some(input.program_id.clone())
+        } else {
+            input
+                .transaction_instructions
+                .iter()
+                .map(|ix| ix.program_id.as_str())
+                .chain(
+                    artifact_message
+                        .iter()
+                        .flat_map(|m| m.instructions.iter().map(|ix| ix.program_id.as_str())),
+                )
+                .find(|p| self.registry.get(p).is_none())
+                .map(str::to_string)
+        };
+        if let Some(program) = &unmanifested_top_level {
+            if cap_unmanifested_confidence(&mut confidence_result) {
+                risk_warnings.push(format!(
+                    "confidence capped at {} (P6): {program} has no manifest, so it is an unknown protocol whatever evidence its record holds",
+                    crate::confidence_engine::ceilings::UNKNOWN_OR_HEURISTIC_MAX
+                ));
+            }
+        }
 
         // Defense-in-depth: apply the same tier-based ceiling a second time.
         // compute_confidence() already caps at the tier ceiling (0.55 for Unknown),
@@ -10651,6 +11213,7 @@ impl GraphiteCore {
                     simulated,
                     simulation_error,
                     observed_diff.is_some(),
+                    observed_diff.as_ref().is_some_and(|d| d.is_empty()),
                     privilege_source,
                     resolved_lookups
                         .as_ref()
@@ -10824,6 +11387,23 @@ impl GraphiteCore {
 /// (the body of `GraphiteCore::program_trust_tier`, see there; a free
 /// function since Round 40 so `standalone_standing` reads the same rule with
 /// a record that is not yet appended).
+/// Audit A014 (Constitution P6): a program with no manifest never reports
+/// more than the unknown-protocol ceiling, whatever tier its earned or
+/// operator-seeded evidence gives it. Returns whether the cap lowered it.
+fn cap_unmanifested_confidence(result: &mut crate::confidence_engine::ConfidenceResult) -> bool {
+    let ceiling = crate::confidence_engine::ceilings::UNKNOWN_OR_HEURISTIC_MAX;
+    if result.ceiling_applied > ceiling {
+        result.ceiling_applied = ceiling;
+    }
+    if result.confidence > ceiling {
+        result.confidence = ceiling;
+        result.ceiling_triggered = true;
+        true
+    } else {
+        false
+    }
+}
+
 fn verdict_program_tier(
     manifest: Option<&crate::manifest::ProtocolManifest>,
     record: Option<&Behavior>,

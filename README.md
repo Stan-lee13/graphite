@@ -58,7 +58,7 @@ nothing is ever signed before the verdict.
 
 | Claim | Evidence |
 |---|---|
-| It behaves on real traffic | 48,855 executed mainnet transactions from four days, run through the whole pipeline on their real bytes: 0 parse failures, 0 verify errors, every changed verdict attributed ([round report](docs/round24-the-intent-is-the-class-2026-10-03.md); samples by slot list and SHA-256 in [`tools/mainnet-sample/SAMPLES.md`](tools/mainnet-sample/SAMPLES.md)). On a real mainnet RPC (Round 40, after `graphite evidence import-census`), **27 of 28** new, never-signed honest transfers built from accounts that had just transferred were `executable_approved` (21/21 System, 6/7 SPL Token; the refusal would have failed on chain), with 0 server errors over 200 replayed transactions ([report](docs/evidence/live-mainnet/run-40839253280.md); a replay of other people's transactions is not an approval rate, and no swap was measured) |
+| It behaves on real traffic | 48,855 executed mainnet transactions from four days, run through the whole pipeline on their real bytes: 0 parse failures, 0 verify errors, every changed verdict attributed ([round report](docs/round24-the-intent-is-the-class-2026-10-03.md); samples by slot list and SHA-256 in [`tools/mainnet-sample/SAMPLES.md`](tools/mainnet-sample/SAMPLES.md)). On a real mainnet RPC (Round 40, after `graphite evidence import-census`), **27 of 28** new, never-signed honest transfers built from accounts that had just transferred were `executable_approved` (21/21 System, 6/7 SPL Token; the refusal would have failed on chain), with 0 server errors over 200 replayed transactions ([report](docs/evidence/live-mainnet/run-40839253280.md); a replay of other people's transactions is not an approval rate). Round 41, after fixing the false refusals its own live runs found (D-19 to D-26): **36 of 36** honest transfers and **2 of 2** re-quoted honest Jupiter v6 swaps `executable_approved` ([report](docs/evidence/live-mainnet/run-41155961160.md); two swaps is a small sample, and an earlier run's four Jupiter routes through Pump AMM are still refused unbound) |
 | You can rerun it, offline | two of those blocks (2,284 transactions) are committed and run on every `cargo test`: the verdict file's SHA-256 is pinned and equals the full measurement's for the same rows, so the same input gives the same output on your machine (`tests/mainnet_conformance.rs`, [`SAMPLES.md`](tools/mainnet-sample/SAMPLES.md)) |
 | Its fixes are real | every security fix has a test that fails without it; through Round 28 each fix was also reverted once to prove its test catches it ([`AUDIT/01-findings.md`](AUDIT/01-findings.md), break log). Round 29's fixes were not all reverted that way, and [its report](docs/round29-the-audit-remediated-2026-10-21.md) says which were |
 | It parses what the network runs | a runtime oracle compares Graphite's parser with the Anza SDK's decoder and `sanitize` on ~628,500 frames per CI seed: never looser |
@@ -108,7 +108,7 @@ WITH GRAPHITE:
                                     If any check fails → BLOCKED. Period.
 ```
 
-This is not a simulation. This is not advisory. Graphite is a **deterministic verification gate** — if Graphite blocks, the transaction is not submitted.
+This is not a simulation. This is not advisory. Graphite is a **deterministic verification gate**: a client that follows its decision does not submit what it blocks, and L8 detects one that did.
 
 ---
 
@@ -371,7 +371,7 @@ unauthenticated instance — and even then only on a loopback address.
 | `GRAPHITE_CONNECTION_LIFETIME_SECS` | `120` | The longest one connection may stay open, keep-alive included. Must be greater than `0`. |
 | `GRAPHITE_RATE_LIMIT` | `30` | Per-IP token bucket, requests/second. Returns `429` when exceeded. |
 | `GRAPHITE_CORS_ORIGINS` | *(denied)* | Comma-separated allowed browser origins. Default denies all cross-origin browser calls; server-to-server clients are unaffected. `*`, and anything that is not an origin, refuses to start. |
-| `GRAPHITE_DATA_DIR` | `./graphite-data` | Durability: semantic-graph snapshot (trust tiers + earned simulation baselines) and append-only `audit.jsonl` written after every verification, reloaded on restart. **The server probes this directory for writability at startup and refuses to boot if it cannot write** — it never serves traffic with no audit trail (P9) — and holds an exclusive lock on `graphite.lock` so a second server on the same directory refuses to start (Round 12). |
+| `GRAPHITE_DATA_DIR` | `./graphite-data` | Durability: semantic-graph snapshot (trust tiers + earned simulation baselines) and append-only `audit.jsonl` written after every verification, reloaded on restart. **The server probes this directory for writability at startup and refuses to boot if it cannot write** — it never serves traffic with no audit trail (P9) — and holds an exclusive lock on `graphite.lock` so a second server on the same directory refuses to start (Round 12). Set but empty or blank, it refuses to start (server and CLI alike), rather than meaning the working directory to one and `./graphite-data` to the other. |
 | `GRAPHITE_RPC_URL` | *(off)* | Attaches a Solana RPC client — live L3: `simulateTransaction` runs and real compute usage feeds the trusted baseline accumulator. Validated at startup (http/https only, no fragment; a plaintext non-loopback endpoint is warned about; link-local, cloud-metadata, unspecified, multicast and broadcast addresses refuse to start, and since Round 30 a host name is re-checked against them each time it resolves) and redirects are never followed. Usually embeds a provider API key; Graphite redacts endpoint URLs from every error and log line it surfaces, but treat the value as a secret. |
 | `GRAPHITE_RPC_WITNESS_URL` | *(off)* | A second, independent RPC that L8 asks about inclusion (Round 12). An approved transaction is reported `ApprovedAndExecuted` only when both endpoints place the signature in the same slot with the same outcome; either endpoint's sighting of a BLOCKED transaction raises `BlockedButExecuted`. Must differ from `GRAPHITE_RPC_URL`. Without it, `/health` says `inclusion_witness: false` and every reconciliation carries `inclusion_witness: null`. |
 | `GRAPHITE_TRUST_PROXY` | `0` | Number of **trusted reverse-proxy hops** in front of the server, for per-IP rate limiting: `0`–`255`, or `true` (= 1) / `false`; anything else refuses to start. `0` ignores `X-Forwarded-For` entirely (correct whenever clients can reach the server directly). Set it to the real number of proxies you control — the client IP is counted that many entries from the *right*, because proxies append the peer they observed and the left end is whatever the caller claimed. Over-counting re-opens the spoofing bypass. A header too short for the hop count, or malformed at the client's position, puts the request in one shared "unattributed" bucket — never the proxy's own. Requires `GRAPHITE_TRUSTED_PROXIES` when ≥ 1. |
@@ -383,7 +383,7 @@ unauthenticated instance — and even then only on a loopback address.
 | `GRAPHITE_L8_HIGH_ASSURANCE` | `0` | `1` (Round 30): L8 states nothing about what the chain holds unless an independent witness agrees (reported `Unavailable` with the reason; the `BlockedButExecuted` alarm is never withheld). Startup refuses unless both RPC URLs are https, the witness is judged independent of the primary (host, registrable domain, resolved addresses), and the two provider names below are set and differ. |
 | `GRAPHITE_RPC_PROVIDER`, `GRAPHITE_RPC_WITNESS_PROVIDER` | *(unset)* | The operator's attestation of who runs each RPC (e.g. the company names), required and compared under `GRAPHITE_L8_HIGH_ASSURANCE=1`; logged at startup, never compared to the URLs. |
 | `GRAPHITE_AUDIT_KEY_FILE` | *(unset: corruption-evident)* | Round 30. A file holding at least 32 bytes as hex, mode 600 or stricter, outside `GRAPHITE_DATA_DIR`: every audit record's chain link then carries an HMAC-SHA256 under it, and the trail is tamper-evident against anyone without the key. A keyed trail refuses to continue without a key. Rotation: `docs/ops/keys.md`. |
-| `GRAPHITE_AUDIT_ANCHOR_DIR` | *(unset)* | Round 30. A directory outside `GRAPHITE_DATA_DIR` where a checkpoint of the chain's head is written at every rotation; kept on storage the server cannot rewrite, a checkpoint is what shows a dropped tail or a restored older backup (`graphite audit verify --checkpoint`). Failed writes are counted on `/health` and `/metrics`. |
+| `GRAPHITE_AUDIT_ANCHOR_DIR` | *(unset)* | Round 30. A directory outside `GRAPHITE_DATA_DIR` where a checkpoint of the chain's head is written at every rotation; kept on storage the server cannot rewrite, a checkpoint is what shows a dropped tail or a restored older backup (`graphite audit verify --checkpoint`). Failed writes are counted at `/metrics` and listed in `/health`'s `degraded_reasons`. |
 | `GRAPHITE_LOG_FORMAT` | *(text)* | `json` emits structured logs for aggregators. Level via `RUST_LOG` (default `info`). |
 | `GRAPHITE_AUDIT_ROTATE_BYTES` | `67108864` (64 MiB) | Rotate the active audit file at this size, bounding disk growth and the dashboard's per-poll scan cost. `0` disables rotation, which leaves the active file and its in-memory indexes unbounded (a startup warning says so). |
 | `GRAPHITE_AUDIT_MAX_ARCHIVES` | `0` (keep all) | Rotated archives to retain. The default keeps the complete audit trail (P9); set a limit only if you accept that the oldest history is deleted. |
@@ -399,7 +399,7 @@ unauthenticated instance — and even then only on a loopback address.
 | `GRAPHITE_SIGNER_KEY_FILE` | *(unset)* | CLI only: file holding the ed25519 key (64 hex chars) that signs a `graphite registry submit`. Preferred over the deprecated `--signer-key`, which exposes the key in shell history and the process list. |
 
 **Every variable is parsed strictly.** `GRAPHITE_MAX_CONCURRENT` and
-`GRAPHITE_MAX_CONNECTIONS` must be greater than `0`; `GRAPHITE_MAX_CONNECTIONS_PER_IP`,
+`GRAPHITE_MAX_CONNECTIONS` must be from `1` to `1000000`; `GRAPHITE_MAX_CONNECTIONS_PER_IP`,
 `GRAPHITE_AUDIT_ROTATE_BYTES` and `GRAPHITE_AUDIT_MAX_ARCHIVES` at least `0`;
 `GRAPHITE_ALLOW_PERMISSIVE_PROFILES`, `GRAPHITE_ALLOW_DURABLE_NONCE`, the three
 Round 32 opt-outs (`GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS`,
@@ -437,7 +437,9 @@ on this) and `graphite_execution_chain_bytes_rejected_total` (the RPC returned
 bytes that are not the signature's: a faulty or hostile RPC). `GET /health` is open for
 load balancers, exempt from rate limiting and load shedding, and reports `degraded` with a
 `degraded_reasons` list (`audit_writes_failed`, `audit_rotation_failed`, `audit_disabled`,
-`graph_snapshot_failed`, `simulation_baseline_frozen`) and `frozen_baseline_count`; the
+`graph_snapshot_failed`, `simulation_baseline_frozen`) and `frozen_baseline_count`, and
+no counter or size (they stepped with every verdict, and `/health` answers anyone; the
+counters, sizes and `graphite_audit_chain_head_seq` are here at `/metrics`); the
 frozen programs themselves are listed at the authenticated `GET /api/frozen-baselines`
 — a verdict that cannot be recorded is refused with
 `503`, and every other durability failure is counted here so a node quietly
@@ -667,7 +669,7 @@ choose the join). The keys are cross-checked against the chain's answer and
 any disagreement is reported in `caller_keys_disagree` — a record you cite
 whose bytes the chain contradicts is `NoVerificationOnRecord` plus a
 `caller_keys_disagree` entry, never a discrepancy (only `BlockedButExecuted`
-is). `getTransaction` is asked at the configured commitment (`confirmed` at
+and an unaccepted `NotExecutableButExecuted` are). `getTransaction` is asked at the configured commitment (`confirmed` at
 least), so chain-byte attribution works once a transaction is confirmed. Without the chain's
 bytes the most exact key you supplied decides, and `content_hash` alone is
 ambiguous by construction: it names every transaction carrying that
@@ -677,7 +679,11 @@ The SAK bridge makes this call itself after every verified execution, and
 records its `signing` and `submission` on the trail around it (`POST
 /audit/event`); each such row carries `verdict_on_record`, what the trail said
 about the hash when the report arrived, and a report against a blocked verdict
-is counted at `/metrics` and logged at ERROR.
+is counted at `/metrics` and logged at ERROR. Since Round 41 (Audit A010) a
+verdict approved for analysis only reads `not_executable`, never `approved`; a
+report against one is counted and logged at ERROR too, unless it names the
+residuals its operator accepted (`accepted_unobserved`, which the agent guard
+sends when it signs under `GRAPHITE_ACCEPT_UNOBSERVED`).
 
 The field to watch is `reconciliation`. `ApprovedAndExecuted` and
 `BlockedAndNotExecuted` are the gate being obeyed. `ApprovedButFailedOnChain` is
@@ -687,7 +693,13 @@ Graphite refused the transaction and it landed anyway, so the gate was bypassed
 rather than obeyed — an integration ignoring the verdict, a key used out of
 band, or an override. It sets `discrepancy: true`, logs at ERROR, and goes on
 the append-only trail. Nothing inside a verification request can ever detect it,
-because it happens entirely outside one.
+because it happens entirely outside one. **`NotExecutableButExecuted`**
+(Round 41, Audit A010) is its sibling: Graphite approved the transaction for
+analysis only (`analysis_only`, `inconclusive`), which never permitted signing,
+and it landed. It is a discrepancy unless a signing event for that verification
+named the residuals its operator accepted, and then it carries them, so the
+execution is attributed rather than paged. It used to read
+`ApprovedAndExecuted`.
 
 Without an RPC endpoint, or with one that will not answer, the result is
 `Unavailable` with the endpoint redacted. An unavailable check reports that it

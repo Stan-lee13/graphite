@@ -28,6 +28,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 const WHIRLPOOL: &str = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc";
+/// An upgradeable program with no manifest (audit A014), served by the mock
+/// loader exactly as WHIRLPOOL is.
+const UNMANIFESTED: &str = "Fore1gnProgram11111111111111111111111111111";
 
 fn key(byte: u8) -> String {
     bs58::encode([byte; 32]).into_string()
@@ -91,7 +94,7 @@ impl Loader {
         let values: Vec<serde_json::Value> = addresses
             .iter()
             .map(|a| {
-                let data = if a == WHIRLPOOL {
+                let data = if a == WHIRLPOOL || a == UNMANIFESTED {
                     let mut d = 2u32.to_le_bytes().to_vec();
                     d.extend([0x44u8; 32]);
                     d
@@ -113,7 +116,7 @@ impl Loader {
                     "lamports": 1_141_440,
                     "owner": owner,
                     "data": [b64(data), "base64"],
-                    "executable": a == WHIRLPOOL,
+                    "executable": a == WHIRLPOOL || a == UNMANIFESTED,
                     "rentEpoch": 0,
                 })
             })
@@ -431,4 +434,83 @@ async fn the_last_deployment_seen_survives_a_restart() {
     );
     drop(core);
     let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Audit A014: deployments were read only for MANIFESTED programs, but an
+/// unmanifested program still takes its tier from its graph record, and
+/// `graphite evidence seed` accepts one ("(no manifest)"). After its upgrade
+/// authority redeployed, the evidence kept counting: no deployment read, no
+/// `ProgramEvidenceWithdrawn`, no residual. A program with evidence on record
+/// has its deployment read and its evidence withdrawn on a redeploy, manifest
+/// or not.
+#[tokio::test]
+async fn an_unmanifested_program_with_evidence_loses_it_when_redeployed() {
+    use graphite_core::confidence_engine::TrustTier;
+    use graphite_core::semantic_graph_store::{Behavior, BehaviorEvidence};
+    assert!(load_seed_manifests().get(UNMANIFESTED).is_none());
+    let loader = Loader::new();
+    let mut core = core_with(&loader);
+    core.seed_behavior(Behavior {
+        program_id: UNMANIFESTED.to_string(),
+        version: "1.0.0".to_string(),
+        expected_state_changes: vec![],
+        allowed_cpis: vec![],
+        trust_tier: TrustTier::Unknown,
+        evidence: BehaviorEvidence {
+            has_signed_manifest: false,
+            community_verified_count: 2,
+            battle_tested_tx_count: 1000,
+            simulation_match_count: 0,
+        },
+        quarantined: false,
+        quarantine_reason: None,
+        first_manifest_unvalidated: false,
+    })
+    .expect("seeded");
+    let mut request = input();
+    request.program_id = UNMANIFESTED.to_string();
+    let seeded_tier = core.verify_async(&request).await.unwrap().trust_tier;
+    assert_ne!(
+        seeded_tier,
+        format!("{:?}", TrustTier::Unknown),
+        "control: the seed counts"
+    );
+    assert!(
+        loader.slices.lock().unwrap().contains(&45),
+        "the unmanifested program's deployment was never read"
+    );
+
+    loader.deploy_slot.store(200, Ordering::SeqCst);
+    let r = core.verify_async(&request).await.unwrap();
+    assert!(
+        r.program_upgrades
+            .iter()
+            .any(|u| u.program_id == UNMANIFESTED
+                && u.previous_deploy_slot == 100
+                && u.deploy_slot == 200),
+        "the redeploy of an unmanifested program with evidence was not seen: {:?} | {}",
+        r.program_upgrades,
+        r.summary
+    );
+    let after = core.verify_async(&request).await.unwrap();
+    assert_eq!(
+        after.trust_tier,
+        format!("{:?}", TrustTier::Unknown),
+        "evidence about replaced code still counts: {}",
+        after.summary
+    );
+    assert!(!after.is_executable());
+
+    // A deployment that cannot be read is the residual, as for a manifested
+    // program.
+    *loader.broken.lock().unwrap() = true;
+    let unread = core.verify_async(&request).await.unwrap();
+    assert!(
+        unread
+            .scope
+            .unobserved_codes()
+            .contains(&UnobservedCode::ProgramDeployments),
+        "{:?}",
+        unread.scope.unobserved_codes()
+    );
 }

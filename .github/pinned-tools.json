@@ -247,6 +247,22 @@
       ]
     },
     {
+      "name": "buildkit (release image builder)",
+      "use": "release.yml: the BuildKit daemon docker/setup-buildx-action runs, which resolves the Dockerfile's digest-pinned FROMs and writes every layer of the published image (Audit A006). Pinned by tag and index digest; the default, moby/buildkit:buildx-stable-1, is a moving tag. Re-pin the digest with the tag (docker buildx imagetools inspect moby/buildkit:<tag>).",
+      "version": "v0.34.1",
+      "reviewed": "2026-11-02",
+      "source": { "github": "moby/buildkit" },
+      "pinned_in": [
+        { "file": ".github/workflows/release.yml", "text": "image=moby/buildkit:v0.34.1@sha256:99368f3e46177c6405b9740e4461d91cee004128daeecca78d4ceac50ec1da5c" }
+      ],
+      "consistent": [
+        {
+          "files": [".github/workflows/*.yml"],
+          "pattern": "image=moby/buildkit:(\\S+?)@"
+        }
+      ]
+    },
+    {
       "name": "debian snapshot (runtime image apt layer)",
       "use": "Dockerfile: the runtime image's ca-certificates (and its openssl dependency) come from this dated snapshot.debian.org archive, not the moving bookworm archive (Round 38, D-8). Re-pin it at least every max_age_days: a stale snapshot is a stale CA trust store and stale openssl. Dependabot's docker entry moves the base digest, not this.",
       "version": "20261021T000000Z",
@@ -254,7 +270,8 @@
       "source": { "none": "a dated snapshot; age only" },
       "pinned_in": [
         { "file": "Dockerfile", "text": "http://snapshot.debian.org/archive/debian/20261021T000000Z" },
-        { "file": "Dockerfile", "text": "http://snapshot.debian.org/archive/debian-security/20261021T000000Z" }
+        { "file": "Dockerfile", "text": "http://snapshot.debian.org/archive/debian-security/20261021T000000Z" },
+        { "file": "Dockerfile", "text": "snapshot=\"2026-10-21T00:00:00Z\"" }
       ],
       "consistent": [
         {

@@ -51,3 +51,15 @@ test("every view polls /manifests (4.6 MB) at the one slow interval", () => {
   assert.ok(polls >= 2, "the Programs and Call graph views both poll /manifests");
   assert.ok(MANIFESTS_POLL_MS >= 300_000);
 });
+
+test("Audit A062: a /metrics that stopped answering is never drawn clear from its last read", async () => {
+  const { readBypassNow } = await import("./figures.ts");
+  const zero = new Map(BYPASS_COUNTERS.map((c) => [c, 0] as [string, number]));
+  assert.equal(readBypassNow(zero, false).state, "clear");
+  assert.equal(readBypassNow(zero, true).state, "stale");
+  // Counters only grow: a stale non-zero is still the alarm.
+  const hit = new Map(zero);
+  hit.set(BYPASS_COUNTERS[0], 1);
+  assert.equal(readBypassNow(hit, true).state, "alarm");
+  assert.equal(readBypassNow(null, true).state, "unread");
+});

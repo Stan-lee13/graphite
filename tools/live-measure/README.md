@@ -63,9 +63,21 @@ Inputs (all optional):
   signature slot (`wire.build_legacy`), and verified with the intent
   `transfer` and the amount, recipient and asset stated. The report gives the
   decisions and every non-executable one's reasons. This is the approval-path
-  measurement; the replay of other people's transactions is not one. No
-  honest swap is built: it would need a route and pool accounts the runner
-  would have to invent.
+  measurement; the replay of other people's transactions is not one. Round
+  41: each transfer is first simulated by the RPC, and one the chain would
+  reject now is counted as *not built* (a 1-lamport transfer into an account
+  under the rent minimum is rebuilt once with the original's amount).
+- **Honest swaps** (Round 41, `--swaps N`, `honest_swaps.py`) — up to N
+  executed direct swaps on a venue the Core decodes, signed by their own fee
+  payer beside nothing but Compute Budget, an ATA create, wrapping or
+  unwrapping its own SOL or a memo, are rebuilt: same wallet, pool accounts,
+  lookup tables and amount in, a fresh blockhash, signatures zeroed, the
+  minimum output re-quoted (simulated with a minimum of 1, the wallet's
+  output accounts read before and after, the minimum set 50 bps under the
+  quote; legacy, v0 and v1 frames patched in place), and verified with the
+  intent `swap` and `slippage_bps` 100. No route or pool is invented: each
+  swap keeps the one its wallet chose. A refused swap is printed with its
+  instructions, its findings and what its request left unbound.
 - **Signer debits beyond the fee** — every verdict naming
   `UndeclaredSignerLamportDebit` / `SignerLamportsOutsideDeclaredDebit` is
   printed with Graphite's figure, the signature count, the compute-unit price

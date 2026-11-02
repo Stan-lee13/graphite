@@ -32,7 +32,16 @@ pub struct VerificationEvent {
     pub protocol_name: String,
     pub instruction_name: String,
     pub instruction_discriminator: String,
+    /// Whether the pipeline refused it. NOT whether it may be signed: an
+    /// analysis_only verdict is approved. Gate on `executable`.
     pub approved: bool,
+    /// The verdict's execution decision, by its wire name
+    /// (`executable_approved`, `analysis_only`, `inconclusive`, `blocked`).
+    /// Audit A044: the stream carried `approved` alone, so every
+    /// analysis_only or inconclusive-adjacent approval read as signable.
+    pub decision: String,
+    /// Whether the verdict permits signing (`VerificationResult::is_executable`).
+    pub executable: bool,
     pub confidence: f64,
     pub trust_tier: String,
     pub risk_status: String,
@@ -53,6 +62,8 @@ impl VerificationEvent {
             instruction_name: r.instruction_name.clone(),
             instruction_discriminator: r.transaction.instruction_discriminator.clone(),
             approved: r.approved,
+            decision: r.decision.as_str().to_string(),
+            executable: r.is_executable(),
             confidence: r.confidence,
             trust_tier: r.trust_tier.clone(),
             risk_status: r.risk_verdict.status.clone(),

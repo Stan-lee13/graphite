@@ -45,6 +45,40 @@ export function jupiterRouteData(
   ];
 }
 
+/**
+ * Jupiter v6 `route_v2` / `shared_accounts_route_v2` (Round 41, D-23), the
+ * on-chain IDL's layout: [id], in_amount, quoted_out_amount, slippage_bps u16,
+ * platform_fee_bps u16, positive_slippage_bps u16, then the route plan (one
+ * RaydiumClmm step at 10,000 bps unless `rawPlan` replaces it, count included).
+ */
+export function jupiterRouteV2Data(
+  o: {
+    amountIn?: bigint;
+    quotedOut?: bigint;
+    slippageBps?: number;
+    platformFeeBps?: number;
+    positiveSlippageBps?: number;
+    shared?: boolean;
+    rawPlan?: number[];
+    trailing?: number[];
+  } = {},
+): number[] {
+  const head = Buffer.from(o.shared ? "d19853937cfed8e9" : "bb64facc31c4af14", "hex");
+  const fees = Buffer.alloc(6);
+  fees.writeUInt16LE(o.slippageBps ?? 50, 0);
+  fees.writeUInt16LE(o.platformFeeBps ?? 0, 2);
+  fees.writeUInt16LE(o.positiveSlippageBps ?? 0, 4);
+  return [
+    ...head,
+    ...(o.shared ? [0] : []),
+    ...u64(o.amountIn ?? 1_000_000_000n),
+    ...u64(o.quotedOut ?? 150_000_000n),
+    ...fees,
+    ...(o.rawPlan ?? [1, 0, 0, 0, 26, 0x10, 0x27, 0, 1]),
+    ...(o.trailing ?? []),
+  ];
+}
+
 /** `<8-byte selector> amount_in u64 minimum_amount_out u64` (CPMM swap_base_input, DLMM swap). */
 export function inMinData(selectorHex: string, amountIn: bigint, minOut: bigint): number[] {
   return [...Buffer.from(selectorHex, "hex"), ...u64(amountIn), ...u64(minOut)];

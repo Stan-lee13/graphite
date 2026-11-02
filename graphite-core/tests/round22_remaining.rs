@@ -1137,6 +1137,39 @@ mod runtime_writability {
         );
     }
 
+    /// Audit A091: the keys agave once reserved only behind
+    /// `add_new_reserved_account_keys` and `enable_secp256r1_precompile` are
+    /// reserved unconditionally (`ReservedAccount::new_active` in
+    /// agave-reserved-account-keys 4.3.2 and 4.4.0, the version
+    /// `tools/inner-instruction-oracle/Cargo.lock` pins): the runtime demotes
+    /// each whatever the header says, and so does Graphite. Reported writable,
+    /// a manifest declaring one read-only was refused as a privilege mismatch
+    /// the runtime never exhibits.
+    #[test]
+    fn the_keys_agave_now_reserves_unconditionally_are_not_writable() {
+        for id in [
+            "AddressLookupTab1e1111111111111111111111111",
+            "ComputeBudget111111111111111111111111111111",
+            "Ed25519SigVerify111111111111111111111111111",
+            "LoaderV411111111111111111111111111111111111",
+            "KeccakSecp256k11111111111111111111111111111",
+            "Secp256r1SigVerify1111111111111111111111111",
+            "ZkE1Gama1Proof11111111111111111111111111111",
+            "ZkTokenProof1111111111111111111111111111111",
+            "SysvarEpochRewards1111111111111111111111111",
+            "SysvarLastRestartS1ot1111111111111111111111",
+            "Sysvar1111111111111111111111111111111111111",
+        ] {
+            let reserved = key(id);
+            let w = writable(&frame(&[PROGRAM, reserved, OTHER], &[]));
+            assert_eq!(w, vec![b58(&PAYER), b58(&OTHER)], "{id}");
+        }
+        // Not reserved at all: the incinerator stays writable.
+        let incinerator = key("1nc1nerator11111111111111111111111111111111");
+        let w = writable(&frame(&[PROGRAM, incinerator], &[]));
+        assert!(w.contains(&b58(&incinerator)), "{w:?}");
+    }
+
     /// With the upgradeable loader among the accounts, the runtime leaves an
     /// invoked program writable (it may be upgraded) — so does Graphite.
     #[test]

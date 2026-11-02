@@ -79,6 +79,15 @@ done
 archive="$1"
 data="${2%/}"
 bin="${GRAPHITE_BIN:-graphite}"
+# Audit A066: under systemd's DynamicUser, StateDirectory= keeps the data in
+# /var/lib/private/graphite and /var/lib/graphite is a symlink to it. Moving
+# the symlink aside and putting a real directory in its place made the next
+# start fail (STATE_DIRECTORY). Restore at the target; the symlink stays.
+if [ -L "$data" ]; then
+  target="$(readlink -f -- "$data")"
+  echo "restore: $data is a symlink; restoring at its target $target (the symlink is kept)"
+  data="$target"
+fi
 
 if [ -e "$data/graphite.lock" ] && ! flock -n -E 75 "$data/graphite.lock" true 2>/dev/null; then
   echo "restore: a server holds $data/graphite.lock; stop it first" >&2

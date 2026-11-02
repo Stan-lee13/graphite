@@ -495,7 +495,7 @@ test("state: replay keeps unresolved submissions, drops releases and reservation
   s.release(released);
   s.markUnresolved("transfer:x:1", "sig1", 99, 1);
   s.markUnresolved("transfer:y:1", "sig2", 99, 1);
-  s.markResolved("transfer:y:1");
+  s.markResolved("transfer:y:1", "sig2");
   s.close();
   assert.ok(old);
   const r = GuardState.open(stateFile, { retainSince: 5_000 });

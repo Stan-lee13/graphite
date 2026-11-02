@@ -5,7 +5,8 @@
 // Round 29 (audit 2026-10-20, D6): the key used to live in localStorage
 // unconditionally — on disk, for every later visitor to this browser profile
 // and for any script that ever runs on this origin. It now lives in
-// sessionStorage (this tab, gone when the tab closes) unless the operator
+// sessionStorage (this browser session; a browser may restore it with a
+// reopened tab or session, Audit A093) unless the operator
 // ticks "Remember on this device", which is the only path to localStorage.
 // The Core address is not a secret and stays in localStorage.
 //

@@ -32,6 +32,14 @@ pub fn verify(input: &VerificationInput) -> VerificationResult {
 
 pub fn verify_with(core: &GraphiteCore, input: &VerificationInput) -> VerificationResult {
     match core.verify(input) {
+        // Audit A014 (P6): on every engine — seeded and earned evidence
+        // included — a program with no manifest stays under the
+        // unknown-protocol confidence ceiling. Checked on every verdict the
+        // harness hands back, not only where a case names the token.
+        Ok(r) if r.unknown_protocol && r.confidence > 0.55 => panic!(
+            "an unmanifested program reached confidence {} (tier {}), over the P6 ceiling: {}",
+            r.confidence, r.trust_tier, r.summary
+        ),
         Ok(r) => r,
         Err(e) => panic!(
             "verify() returned an error, not a verdict: {e}. An error is not a block; \
@@ -79,6 +87,10 @@ pub fn expect_input_refused(input: &VerificationInput, contains: &str) -> Verifi
 /// - `risk:<Pattern>`   every Risk Engine finding;
 /// - `layer:<Layer>`    every pipeline layer whose status is `Failed`;
 /// - `unknown_protocol` the program has no manifest (the P6 ceiling applies);
+/// - `undescribed_instruction` the program has a manifest that does not
+///   describe the instruction called: the verdict takes the Unknown tier
+///   (A3-04), which no built-in profile admits, whatever evidence the
+///   program has earned (audit A075);
 /// - `evidence_ceiling` no detector fired and no structural layer failed: the
 ///   policy layer refused it because the evidence on record does not lift
 ///   its confidence or tier over the profile's bar.
@@ -94,6 +106,12 @@ pub fn block_reasons(r: &VerificationResult) -> Vec<String> {
     }
     if r.unknown_protocol {
         out.push("unknown_protocol".to_string());
+    }
+    // The rule's effect, not only its trigger: the verdict took the Unknown
+    // tier, so deleting the rule makes a case that asserts this fail.
+    if r.manifest_found && r.instruction_name == "unknown_instruction" && r.trust_tier == "Unknown"
+    {
+        out.push("undescribed_instruction".to_string());
     }
     // Nothing but the policy layer refused it: no detector fired, and the
     // verdict is a block only because the confidence or tier the evidence
@@ -115,6 +133,13 @@ pub fn block_reasons(r: &VerificationResult) -> Vec<String> {
 }
 
 /// The verdict is a block, and every one of `expected` is among its causes.
+///
+/// Audit A075: `["evidence_ceiling"]` alone says no detector and no rule
+/// refused the input, only the evidence on record. A case that asserts it
+/// while a rule did refuse it (an undescribed instruction's Unknown tier)
+/// passes with that rule deleted; it must name the rule. And a case that is
+/// refused for want of evidence alone says so with its earned-evidence twin
+/// (`assert_approved_with_earned_evidence`).
 pub fn assert_blocked_by(r: &VerificationResult, expected: &[&str]) {
     assert!(
         !r.approved,
@@ -122,6 +147,13 @@ pub fn assert_blocked_by(r: &VerificationResult, expected: &[&str]) {
         r.summary
     );
     let have = block_reasons(r);
+    if expected == ["evidence_ceiling"] {
+        assert!(
+            !have.iter().any(|h| h == "undescribed_instruction"),
+            "asserted as refused for want of evidence alone, but its manifest does not              describe the instruction (the Unknown tier, A3-04): assert              \"undescribed_instruction\" (causes {have:?}): {}",
+            r.summary
+        );
+    }
     for e in expected {
         assert!(
             have.iter().any(|h| h == e),
@@ -236,6 +268,16 @@ pub fn assert_approved_with_earned_evidence(input: &VerificationInput) {
         block_reasons(&r),
         r.summary
     );
+}
+
+/// Audit A075: the case is refused because its program's manifest does not
+/// describe the instruction called (the Unknown tier, A3-04), not for want of
+/// evidence: an engine that has earned evidence for the program refuses it
+/// for the same reason. With the rule deleted, the seeded engine approves it
+/// and this fails.
+pub fn assert_undescribed_even_with_earned_evidence(input: &VerificationInput) {
+    let r = verify_seeded(input);
+    assert_blocked_by(&r, &["undescribed_instruction"]);
 }
 
 /// Discovery aid for maintainers: with `GRAPHITE_ATTACK_DISCOVER=1`, print

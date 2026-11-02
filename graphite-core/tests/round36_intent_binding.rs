@@ -11,8 +11,9 @@
 
 use graphite_core::confidence_engine::TrustTier;
 use graphite_core::intent_binding::{
-    bind, bind_withdrawal, decode_swap, wallet_effect, Binding, BindingInput, Ix, JupiterPayload,
-    WithdrawalContext, JUPITER_SWAP_VARIANTS, JUPITER_V6, NATIVE_MINT, RAYDIUM_CPMM,
+    bind, bind_withdrawal, decode_swap, wallet_effect, Binding, BindingInput, Ix,
+    WithdrawalContext, JUPITER_CANDIDATE_SWAPS, JUPITER_SWAP_VARIANTS, JUPITER_V6, NATIVE_MINT,
+    RAYDIUM_CPMM,
 };
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
@@ -99,6 +100,13 @@ fn account(lamports: u64) -> String {
 
 /// A loopback cluster whose simulation of the corpus transfer is clean.
 fn cluster() -> String {
+    cluster_with(false)
+}
+
+/// `hollow`: the simulation reports every account exactly as the pre-state
+/// read it, the balances unchanged and no fee — a complete, successful
+/// simulation of a transaction that did nothing (external review D-1).
+fn cluster_with(hollow: bool) -> String {
     let listener = Arc::new(TcpListener::bind("127.0.0.1:0").unwrap());
     let addr = listener.local_addr().unwrap();
     let server = Arc::clone(&listener);
@@ -133,13 +141,23 @@ fn cluster() -> String {
                         .map(|a| a.len())
                         .unwrap_or(0);
                     let post: Vec<String> = (0..count)
-                        .map(|i| account(if i == 0 { 998_995_000 } else { 2_000_000 }))
+                        .map(|i| match (hollow, i) {
+                            (true, 0) => account(1_000_000_000),
+                            (true, _) => account(1_000_000),
+                            (false, 0) => account(998_995_000),
+                            (false, _) => account(2_000_000),
+                        })
                         .collect();
+                    let (fee, post_balances) = if hollow {
+                        (0, "1000000000,1000000,1")
+                    } else {
+                        (5000, "998995000,2000000,1")
+                    };
                     let complete = |err: &str, accounts: &str| {
                         format!(
                             r#"{{"jsonrpc":"2.0","id":1,"result":{{"context":{{"slot":1}},"value":{{
-                                "err":{err},"logs":[],"unitsConsumed":150,"fee":5000,
-                                "preBalances":[1000000000,1000000,1],"postBalances":[998995000,2000000,1],
+                                "err":{err},"logs":[],"unitsConsumed":150,"fee":{fee},
+                                "preBalances":[1000000000,1000000,1],"postBalances":[{post_balances}],
                                 "innerInstructions":[],"loadedAddresses":{{"writable":[],"readonly":[]}},
                                 {accounts}"returnData":null}}}}}}"#
                         )
@@ -264,6 +282,44 @@ async fn a_bound_transfer_is_executable() {
     );
 }
 
+/// Round 41 (external review D-1, decision D-29): a simulation that reports
+/// nothing changed — every account as the pre-state read it, no fee — left
+/// L4 Inconclusive, which no rule refused, so the control above stayed
+/// executable on it. A transaction the chain runs always changes something,
+/// so an effect-free simulation is not evidence: the verdict says the diff
+/// showed nothing and is never executable.
+#[tokio::test]
+async fn an_effect_free_simulation_is_never_executable() {
+    let core = core_at(&cluster_with(true));
+    let r = core
+        .verify_async(&request(params("0.002", &recipient(), "SOL"), true))
+        .await
+        .unwrap();
+    assert_ne!(
+        r.decision,
+        ExecutionDecision::ExecutableApproved,
+        "{} {:?}",
+        r.summary,
+        r.scope.unobserved()
+    );
+    assert!(!r.is_executable());
+    assert!(
+        r.scope
+            .unobserved_codes()
+            .contains(&UnobservedCode::NoStateDiff),
+        "{:?}",
+        r.scope.unobserved()
+    );
+    assert!(
+        r.scope
+            .unobserved()
+            .iter()
+            .any(|u| u.contains("no account it can write changing")),
+        "{:?}",
+        r.scope.unobserved()
+    );
+}
+
 /// Executable on Round 35: the request asks for 0.003 SOL.
 #[tokio::test]
 async fn a_wrong_amount_is_blocked() {
@@ -363,6 +419,64 @@ fn a_described_wrong_amount_is_blocked_without_an_rpc() {
         "{}",
         control.summary
     );
+}
+
+/// Audit A011: `transaction_instructions` holds the OTHER top-level
+/// instructions, never the primary (L2's `sibling_coverage` skips the located
+/// primary, and the agent guard sends siblings only). The descriptive binding
+/// read it as the complete list and bound on the primary alone whenever it
+/// held at most one entry, so ONE declared sibling was bound as if it did not
+/// exist while TWO made the request unbound. Any declared sibling leaves a
+/// descriptive request unbound (`intent_parameters`): nothing carries its
+/// data.
+#[test]
+fn a_described_transaction_with_one_declared_sibling_is_unbound() {
+    use graphite_core::tx_pattern_analysis::TransactionInstruction;
+    let sibling = |to: &str| TransactionInstruction {
+        program_id: SYSTEM.to_string(),
+        instruction_discriminator: "02000000".to_string(),
+        account_addresses: vec![payer_b58(), to.to_string()],
+        cpi_targets: vec![],
+    };
+    use graphite_core::account_resolution::RealAccountMeta;
+    // The payer signs: the described transfer's signer is known.
+    let described = || {
+        let mut input = request(params("0.002", &recipient(), "SOL"), false);
+        input.real_account_metas = vec![
+            RealAccountMeta {
+                is_signer: true,
+                is_writable: true,
+            },
+            RealAccountMeta {
+                is_signer: false,
+                is_writable: true,
+            },
+        ];
+        input
+    };
+    let control = GraphiteCore::new().verify(&described()).unwrap();
+    assert!(
+        !control
+            .scope
+            .unobserved_codes()
+            .contains(&UnobservedCode::IntentParameters),
+        "control: the lone described transfer binds: {:?}",
+        control.scope.unobserved_codes()
+    );
+    for n in [1usize, 2] {
+        let mut input = described();
+        input.transaction_instructions = (0..n).map(|_| sibling(STRANGER)).collect();
+        let r = GraphiteCore::new().verify(&input).unwrap();
+        assert!(
+            r.scope
+                .unobserved_codes()
+                .contains(&UnobservedCode::IntentParameters),
+            "{n} declared sibling(s): bound on the primary alone: {:?} | {}",
+            r.scope.unobserved_codes(),
+            r.summary
+        );
+        assert_ne!(r.decision, ExecutionDecision::ExecutableApproved);
+    }
 }
 
 // ─── The binding, instruction by instruction ────────────────────────────────
@@ -990,39 +1104,45 @@ fn a_jupiter_route_is_decoded_to_its_own_minimum() {
         decode_swap(JUPITER_V6, &fee).unwrap().is_err(),
         "platform fee"
     );
+    // Round 41 (D-23, D-27): the table is the on-chain IDL's 204 variants; the
+    // first tag past it is refused (62 was the first past the old table).
     let mut bad_variant = d.clone();
-    bad_variant[12] = 62;
+    bad_variant[12] = JUPITER_SWAP_VARIANTS.len() as u8;
+    assert!(decode_swap(JUPITER_V6, &bad_variant).unwrap().is_err());
+    bad_variant[12] = 255;
     assert!(decode_swap(JUPITER_V6, &bad_variant).unwrap().is_err());
 }
 
-/// The Core's Jupiter variant table is the agent guard's, entry by entry.
+/// One of the guard's payload tables (`name`), row by row.
+fn guard_table(ts: &str, name: &str) -> Vec<Vec<String>> {
+    let head = format!("{name}: readonly (readonly string[])[] = [");
+    let start = ts.find(&head).unwrap_or_else(|| panic!("{head}")) + head.len();
+    let body = &ts[start..start + ts[start..].find("\n];").unwrap()];
+    body.lines()
+        .map(|l| l.split("//").next().unwrap().trim().trim_end_matches(','))
+        .filter(|l| !l.is_empty())
+        .map(|l| serde_json::from_str::<Vec<String>>(l).unwrap_or_else(|e| panic!("{l}: {e}")))
+        .collect()
+}
+
+/// The Core's Jupiter payload tables are the agent guard's, entry by entry
+/// (Round 41: the Swap and CandidateSwap tables of the on-chain IDL).
 #[test]
 fn the_jupiter_variant_table_matches_the_guards() {
     let ts = include_str!("../../integrations/agent-guard/swap-instructions.ts");
-    let start = ts
-        .find("JUPITER_SWAP_VARIANTS: readonly JupiterSwapPayload[] = [")
-        .unwrap();
-    let body = &ts[start..ts[start..].find("];").unwrap() + start];
-    let guard: Vec<&str> = body
-        .lines()
-        .skip(1)
-        .flat_map(|l| l.split("//").next().unwrap().split(','))
-        .map(|s| s.trim().trim_matches('"'))
-        .filter(|s| !s.is_empty())
-        .collect();
-    let core: Vec<&str> = JUPITER_SWAP_VARIANTS
-        .iter()
-        .map(|v| match v {
-            JupiterPayload::Unit => "unit",
-            JupiterPayload::Bool => "bool",
-            JupiterPayload::Side => "side",
-            JupiterPayload::U64U64 => "u64u64",
-            JupiterPayload::U32 => "u32",
-            JupiterPayload::Clone => "clone",
-            JupiterPayload::WhirlpoolV2 => "whirlpoolV2",
-        })
-        .collect();
-    assert_eq!(core, guard);
+    let core = |t: &[&[&str]]| -> Vec<Vec<String>> {
+        t.iter()
+            .map(|v| v.iter().map(|s| s.to_string()).collect())
+            .collect()
+    };
+    assert_eq!(
+        core(&JUPITER_SWAP_VARIANTS),
+        guard_table(ts, "JUPITER_SWAP_VARIANTS")
+    );
+    assert_eq!(
+        core(&JUPITER_CANDIDATE_SWAPS),
+        guard_table(ts, "JUPITER_CANDIDATE_SWAPS")
+    );
 }
 
 #[test]
@@ -1066,6 +1186,7 @@ fn a_withdrawal_minimum_is_held_to_what_was_simulated() {
         program_id: RAYDIUM_CPMM,
         // Round 39: what rides beside it is held to the grant's owner.
         owner: Some(WALLET),
+        located: None,
     };
     let bind_withdrawal =
         |i: &str, m: &[(&str, u64, String)], p, d| bind_withdrawal(i, m, p, d, &none);

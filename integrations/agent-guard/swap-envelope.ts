@@ -71,6 +71,17 @@ export function maxPriorityFeeLamports(config: SwapEnvelopeConfig): bigint {
 
 /** Refuse to start on an envelope outside its bounds. */
 export function assertSwapEnvelopeUsable(config: SwapEnvelopeConfig): void {
+  // Audit A049/A055: the types the environment reader produces, or refuse.
+  if (typeof config !== "object" || config === null) {
+    throw new Error("[Graphite] swapEnvelope is not an object. REFUSING TO START.");
+  }
+  const unitPrice: unknown = config.computeUnitPriceMicroLamports;
+  if (unitPrice !== undefined && typeof unitPrice !== "bigint") {
+    throw new Error(`[Graphite] swap compute-unit price ${JSON.stringify(unitPrice)} is not a bigint of micro-lamports. REFUSING TO START.`);
+  }
+  if (config.createOutputAta !== undefined && typeof config.createOutputAta !== "boolean") {
+    throw new Error(`[Graphite] swapEnvelope.createOutputAta ${JSON.stringify(config.createOutputAta)} is not a boolean. REFUSING TO START.`);
+  }
   const limit = config.computeUnitLimit;
   if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_COMPUTE_UNIT_LIMIT)) {
     throw new Error(

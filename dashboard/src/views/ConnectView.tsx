@@ -1,10 +1,11 @@
 // Where the console gets its Core, and the key that unlocks it.
 //
-// A Graphite Core has exactly one key, chosen by whoever starts it. There is
-// no sign-up and no key service: the operator generates a secret, starts the
-// Core with it, and hands it to each tool that will call the Core — this
-// console, the agent kit, the CLI. This screen is where the console receives
-// its copy, and it proves the copy works before anything depends on it.
+// A Graphite Core's keys are chosen by whoever starts it. There is no sign-up
+// and no key service: the operator generates secrets, starts the Core with
+// them, and hands each tool the key it needs. The console's is the read-only
+// key (GRAPHITE_READ_API_KEY, Round 30, K-11; Audit A061): it opens the
+// console's routes and nothing that writes. This screen is where the console
+// receives it, and it proves the key works before anything depends on it.
 
 import { useRef, useState, type FormEvent } from "react";
 import { Check, Eye, EyeOff, X } from "lucide-react";
@@ -150,8 +151,9 @@ export function ConnectView({ keyNotNeeded }: { keyNotNeeded: boolean }) {
                   </span>
                 ) : (
                   <>
-                    The value of <code translate="no">GRAPHITE_API_KEY</code> on the Core. Sent only as a bearer
-                    header, never written to a URL.
+                    The value of <code translate="no">GRAPHITE_READ_API_KEY</code> on the Core: the read-only
+                    key, which opens only what this console reads. Sent only as a bearer header, never written
+                    to a URL.
                   </>
                 )}
               </p>
@@ -166,7 +168,7 @@ export function ConnectView({ keyNotNeeded }: { keyNotNeeded: boolean }) {
                 <span className="field-help">
                   {remember
                     ? "Kept in this browser's localStorage until you forget it. Anyone who can use this browser profile, and any script that runs on this origin, can read it."
-                    : "Kept for this tab only (sessionStorage) and gone when the tab closes."}
+                    : "Kept for this browser session only (sessionStorage). A browser may restore it with a reopened tab or a restored session, so on a shared machine use Forget key before you leave."}
                 </span>
               </span>
             </label>
@@ -218,12 +220,16 @@ export function ConnectView({ keyNotNeeded }: { keyNotNeeded: boolean }) {
               <li>
                 <strong>The Core starts with it.</strong> The Core refuses to start without a key unless it
                 is told, by name, to run keyless on loopback:
-                <pre translate="no">{`GRAPHITE_API_KEY=<the secret>\nGRAPHITE_CORS_ORIGINS=https://console.example`}</pre>
+                <pre translate="no">{`GRAPHITE_API_KEY=<the verify secret>\nGRAPHITE_READ_API_KEY=<a second secret>\nGRAPHITE_CORS_ORIGINS=https://console.example`}</pre>
               </li>
               <li>
-                <strong>Every caller gets a copy.</strong> This console, the agent kit and the CLI all send
-                the same key as <code translate="no">Authorization: Bearer</code>. Every route except{" "}
-                <code translate="no">/health</code> requires it.
+                <strong>Each caller gets the key it needs.</strong> This console and Prometheus get the
+                read key: it opens <code translate="no">/metrics</code>, <code translate="no">/manifests</code>{" "}
+                and <code translate="no">/api/*</code>, and nothing that writes. The agent kit and the CLI get
+                the verify key, which also submits verifications and records lifecycle events on the audit
+                trail. Give this console the verify key only for a Core started without a read key. Both are
+                sent as <code translate="no">Authorization: Bearer</code>; every route except{" "}
+                <code translate="no">/health</code> requires one.
               </li>
             </ol>
           </Section>

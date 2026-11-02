@@ -13,7 +13,8 @@
 //! registry's evidence — in the manifest in force and in the graph record,
 //! the two sources `program_trust_tier` takes the verdict's tier from — not
 //! as a special case in the verdict. The first upgrade replayed against the
-//! fixtures the first version pinned lifts it.
+//! fixtures the first version pinned lifts it — from Round 41 (D-30), only an
+//! upgrade from reviewers who did not write those fixtures.
 //!
 //! The seeded built-in manifests are not registry submissions: they create
 //! no registry record, carry no flag, and keep their tier.
@@ -180,9 +181,50 @@ fn a_first_manifest_reaches_the_verdict_capped_and_its_validated_upgrade_does_no
         "HeuristicInferred"
     );
 
-    // Benign: the upgrade, replayed against the fixture v1 pinned, earns
-    // what its signature earns.
-    let v2 = signed(manifest(PROGRAM, "1.1.0", Some("1.0.0")), &reviewer);
+    // Round 41 (D-30): the same reviewer's upgrade replays only the fixture
+    // that reviewer wrote, so the verdict stays capped.
+    let mut same = engine.clone();
+    let mut same_store = store.clone();
+    let v2_same = signed(manifest(PROGRAM, "1.1.0", Some("1.0.0")), &reviewer);
+    let corpus = corpus_for(&gate, &v2_same, &ping);
+    same.submit(&mut same_store, v2_same, Some((&corpus, &gate)))
+        .unwrap();
+    assert_eq!(verdict_tier(&same, None, &ping), "HeuristicInferred");
+    assert_eq!(
+        verdict_tier(&same, Some(&same_store), &ping),
+        "HeuristicInferred"
+    );
+
+    // Benign: the upgrade from another reviewer, replayed against the
+    // fixture v1 pinned, earns what its signature earns.
+    let second = SigningKey::from_bytes(&[41u8; 32]);
+    engine
+        .register_reviewer(
+            &bs58::encode(second.verifying_key().to_bytes()).into_string(),
+            1_000,
+        )
+        .unwrap();
+    // A028 (audit 2026-11): a relabel — v1's instructions under a new
+    // label — replays v1's fixture against the same surface and validates
+    // nothing, whoever signs it: still capped.
+    let relabel = signed(manifest(PROGRAM, "1.1.0", Some("1.0.0")), &second);
+    let corpus = corpus_for(&gate, &relabel, &ping);
+    let mut relabelled = engine.clone();
+    let mut relabelled_store = store.clone();
+    relabelled
+        .submit(&mut relabelled_store, relabel, Some((&corpus, &gate)))
+        .unwrap();
+    assert_eq!(
+        verdict_tier(&relabelled, Some(&relabelled_store), &ping),
+        "HeuristicInferred"
+    );
+    // The upgrade proper describes one more instruction.
+    let mut upgraded = manifest(PROGRAM, "1.1.0", Some("1.0.0"));
+    let mut pong = upgraded.instructions[0].clone();
+    pong.name = "pong".to_string();
+    pong.discriminator = "02".to_string();
+    upgraded.instructions.push(pong);
+    let v2 = signed(upgraded, &second);
     let corpus = corpus_for(&gate, &v2, &ping);
     engine
         .submit(&mut store, v2, Some((&corpus, &gate)))

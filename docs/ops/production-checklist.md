@@ -36,16 +36,16 @@ and `gh` authenticated as a repository admin.
   Hand the auditors [`docs/audit-handoff/`](../audit-handoff/README.md): scope, threat model, build and test
   steps, the invariants and the tests that hold each, the known residuals, the questions, and the commit.
   Publish their report and the fixes before item 10.
-- [ ] **4. Keep or relax the Round 32 refusal defaults.** Since Round 32 a signer's loss under an
+- [x] **4. Keep or relax the Round 32 refusal defaults.** **Decided (Round 40, by the technical lead under the owner's delegation of 2026-10-25): kept at `0`** — `docs/audit/TECHNICAL_LEAD_DECISIONS.md`, RESIDUAL_RISK §2. Since Round 32 a signer's loss under an
   unreadable declaration (`GRAPHITE_ALLOW_UNREADABLE_VALUE_DECLARATIONS`), W19
   (`GRAPHITE_ALLOW_SIGNER_LAMPORTS_OUTSIDE_DECLARED_DEBIT`) and an unbounded granted withdrawal
   (`GRAPHITE_ALLOW_UNBOUNDED_WITHDRAWALS`) are refused by default; each variable set to `1` restores
   the old behaviour and is logged at startup. Measured cost: W19 refused 1 of 200 replayed live mainnet
   transactions (0.5%). Run `.github/workflows/live-mainnet.yml` against your traffic profile; leave all
   three at `0` unless the measured false refusals are a cost you choose over the protection.
-- [ ] **5. Decide R-M9** (Constitution P12 vs. the drainer heuristic), the default of
+- [x] **5. Decide R-M9** — **decided (Round 40): R-M9 kept with its reasoning; upgrade quarantine stays opt-in; no automatic self-heal quarantine** (RESIDUAL_RISK §2) (Constitution P12 vs. the drainer heuristic), the default of
   `GRAPHITE_QUARANTINE_ON_UPGRADE` (`.env.example`), and the self-heal threshold (R-P10).
-- [ ] **6. Dependabot majors.** Round 31 took every update except, with reasons: the oracle's
+- [x] **6. Dependabot majors.** **Decided: the holds stand** (the four PRs below closed unmerged; `.github/dependency-holds.json` and `.github/dependabot.yml` record why; re-open one only with its paired bump and the oracles re-run). Routine patch PRs (#57, #58, #59 on 2026-10-29) are not holds: merge them when green. Round 31 took every update except, with reasons: the oracle's
   `solana-transaction`/`solana-message` 6 and `bincode` 3 (`graphite-core/CHANGELOG.md`),
   `@solana/web3.js` 1.x, `@types/node` 22.x. Each stays an explicit decision; close or re-open the
   corresponding Dependabot PRs to match. The pull requests named as owner items so far:
@@ -63,7 +63,7 @@ and `gh` authenticated as a repository admin.
 - [ ] **7. Assurance budgets.** After the first scheduled run of the weekly mutation and coverage jobs on
   the hosted runners: Actions → the run → read the measured scores; replace the three provisional
   mutation-score floors (each at 0.60) with measured ones in a PR.
-- [ ] **8. Benchmark review before any public claim.** `cargo run --release --locked --features cli -- benchmark --json`
+- [x] **8. Benchmark review before any public claim.** **Reviewed 2026-10-31** (Round 41, `graphite benchmark --json`, `deterministic_sha256` `2ab774d6…8a95`): holdout 38 rows, 37 of 37 exploits refused, the one benign Jupiter swap refused offline (precision 0.974, false-refusal rate on n=1); the README quotes exactly these with that caveat. `cargo run --release --locked --features cli -- benchmark --json`
   (in `graphite-core/`): the holdout is 38 rows and every offline approval is `analysis_only`; say so
   next to any number quoted.
 
@@ -158,7 +158,7 @@ Exactly what to apply, in order:
 ## Release (owner)
 
 - [ ] **10a. A `release` environment** — R2 above. `.github/workflows/release.yml`'s publish job runs in it.
-- [ ] **10b. Rehearse.** Actions → Release → Run workflow (on `main`). Every build, the two-build
+- [x] **10b. Rehearse.** **Done 2026-10-31**: run 41190904785 (dispatch on the PR #61 head `1e89824`, whose `release.yml` is `main`'s): both builds, "The two builds are identical", both SBOMs, the image smoke test and "the archived image ships build a's binary, byte for byte" passed; publish skipped. Re-run on `main` after PR #61 merges, before tagging. Actions → Release → Run workflow (on `main`). Every build, the two-build
   reproducibility comparison, both SBOMs, the image smoke test and SHA256SUMS run; nothing is pushed,
   attested or released. Read the `reproducible` job: it fails if the two builds differ.
 - [x] **10c. The crate does not go to crates.io — decided (Round 40).** `graphite-core/Cargo.toml`
@@ -207,8 +207,21 @@ Pick one form: `deploy/compose/docker-compose.prod.yml` or `deploy/systemd/` (bo
   `/etc/graphite/audit.key` (root, 600; systemd hands it over as a credential). Leave the admin key
   empty unless someone uses `/admin/*`. Give the dashboard and Prometheus the **read** key only.
   Rotation: `deploy/scripts/rotate-keys.sh` and [keys.md](keys.md).
+- [ ] **9b-console. How the console reaches the Core (Audit A063).** Not through the edge: by design
+  it answers `/health` 404 and forwards only the routes a remote caller needs, so a browser's CORS
+  preflight (every keyed request has one) gets Caddy's 404, and the console's connection test fails
+  on `/health`. Reach the Core on loopback over SSH instead, with the console served from the
+  operator's machine and its origin in `GRAPHITE_CORS_ORIGINS`:
+  systemd: `ssh -L 7331:127.0.0.1:7331 <host>`, then point the console at `http://127.0.0.1:7331`.
+  Compose publishes no Core port; add a host-loopback one in a local override (never in the
+  production file, whose hardening check refuses it), e.g. `docker-compose.override.yml` with
+  `services: { graphite: { ports: ["127.0.0.1:7331:7331"] } }`, then the same tunnel. The same port
+  is what `deploy/scripts/health-textfile.sh` needs on a compose host (its default URL).
 - [ ] **9c. The audit MAC key off the data volume** — done by both forms; check after start:
-  `curl -s localhost:7331/health | jq .audit.integrity` is `"tamper_evident"`.
+  `curl -s localhost:7331/health | jq .audit.integrity` is `"tamper_evident"`. Compose publishes no
+  Core port, so there use the loopback override of 9b-console, or
+  `docker compose exec graphite graphite healthcheck --strict` (exit 0 only when healthy and not
+  degraded; Audit A078). Every `/health` check below reads the same way.
   Keep a copy of the key off the host (a password manager or HSM-backed vault), separately from backups.
 - [ ] **9d. Checkpoints to WORM storage.** Create an S3 bucket with Object Lock enabled (it can only be
   enabled at creation): `aws s3api create-bucket --bucket <b> --object-lock-enabled-for-bucket …`.

@@ -201,8 +201,10 @@ def sweep_blocks(n_blocks, spacing, wanted):
     cheap way, and it is drawn from whole blocks rather than from one
     program's own signature list.
 
-    Returns {program_id: (Counter(leading_8_bytes), anchor_event_count,
-             transactions_seen)}.
+    Returns ({program_id: (Counter(leading_8_bytes), anchor_event_count,
+             transactions_seen)}, blocks_read, tip, (lowest_slot_read,
+             highest_slot_read)). Audit A073: the slot range dates the decode
+    evidence, so the import can bind it to the deployment it describes.
     """
     tip = rpc("getSlot", [{"commitment": "finalized"}])
     if not isinstance(tip, int):
@@ -210,6 +212,7 @@ def sweep_blocks(n_blocks, spacing, wanted):
         raise SystemExit("getSlot returned no slot; the block sweep cannot be placed")
     out = {p: [Counter(), 0, 0] for p in wanted}
     blocks = 0
+    lo = hi = None
     for i in range(n_blocks):
         slot = tip - 80 - i * spacing
         blk = rpc(
@@ -221,6 +224,8 @@ def sweep_blocks(n_blocks, spacing, wanted):
         if not blk:
             continue
         blocks += 1
+        lo = slot if lo is None else min(lo, slot)
+        hi = slot if hi is None else max(hi, slot)
         for tx in blk["transactions"]:
             meta = tx.get("meta") or {}
             if meta.get("err"):
@@ -252,10 +257,10 @@ def sweep_blocks(n_blocks, spacing, wanted):
         print(f"  block sweep {blocks}/{i+1} slot {slot} "
               f"({sum(1 for v in out.values() if sum(v[0].values()) >= MIN_DECODED_INSTRUCTIONS)}"
               f"/{len(out)} programs already at the sample floor)", flush=True)
-    return out, blocks, tip
+    return out, blocks, tip, (lo, hi)
 
 
-def decode_census(pid, sigs, manifest, sample_size, prior=None):
+def decode_census(pid, sigs, manifest, sample_size, prior=None, sweep_range=(None, None)):
     """Resolve real observed instructions against the manifest.
 
     `prior` is what the block sweep already saw for this program. The
@@ -278,11 +283,16 @@ def decode_census(pid, sigs, manifest, sample_size, prior=None):
     unavailable = 0
     events = 0
     from_blocks = 0
+    # Audit A073: the slots the decode sample came from (the sweep's range
+    # when it contributed anything, and each fallback transaction's slot).
+    slots = []
     if prior is not None:
         heads, events, txs_used = prior
         for head, n in heads.items():
             observed[head] += n
         from_blocks = sum(heads.values())
+        if from_blocks and sweep_range[0] is not None:
+            slots += [sweep_range[0], sweep_range[1]]
     needed = 0 if sum(observed.values()) >= MIN_DECODED_INSTRUCTIONS else sample_size
     for sig in sigs[:needed]:
         requested += 1
@@ -318,6 +328,8 @@ def decode_census(pid, sigs, manifest, sample_size, prior=None):
             observed[head] += 1
         if hit:
             txs_used += 1
+            if isinstance(tx.get("slot"), int):
+                slots.append(tx["slot"])
     # Resolve ONCE, over everything observed from either source, so the two
     # paths cannot disagree about what the manifest can name.
     for head, n in observed.items():
@@ -335,6 +347,8 @@ def decode_census(pid, sigs, manifest, sample_size, prior=None):
         "instructions_from_block_sweep": from_blocks,
         "decode_applicable": decodable,
         "instructions_observed": total,
+        "oldest_slot": min(slots) if slots else None,
+        "newest_slot": max(slots) if slots else None,
         "instructions_named_by_manifest": sum(matched.values()),
         "decode_rate": ((sum(matched.values()) / total) if total else None) if decodable else None,
         "instructions_by_name": dict(matched.most_common()),
@@ -375,6 +389,7 @@ def main():
 
     targets = args.program_ids or list(manifests)
     block_obs = {}
+    sweep_range = (None, None)
     cache = Path(args.sweep_cache) if args.sweep_cache else None
     raw = json.loads(cache.read_text(encoding="utf-8")) if (args.blocks and cache and cache.exists()) else None
     # Round 29 (audit 2026-10-20, LOW-6): a cached sweep used to be reused
@@ -387,9 +402,11 @@ def main():
         and isinstance(raw.get("swept_at_unix"), int)
         and time.time() - raw["swept_at_unix"] <= args.sweep_max_age
         and set(targets) <= set(raw.get("programs", {}))
+        and isinstance(raw.get("slot_range"), list)
     )
     if reusable:
         block_obs = {p: [Counter(v[0]), v[1], v[2]] for p, v in raw["programs"].items()}
+        sweep_range = tuple(raw["slot_range"])
         print(f"reusing the block sweep cached in {cache} "
               f"({raw['blocks']} blocks up to slot {raw.get('tip_slot')}, "
               f"{int(time.time() - raw['swept_at_unix'])} s old, {len(block_obs)} programs)", flush=True)
@@ -398,11 +415,12 @@ def main():
             print(f"the block sweep cached in {cache} is stale or does not cover this run; re-reading",
                   flush=True)
         print(f"sweeping {args.blocks} finalized blocks for decode evidence", flush=True)
-        block_obs, swept, tip = sweep_blocks(args.blocks, args.block_spacing, set(targets))
+        block_obs, swept, tip, sweep_range = sweep_blocks(args.blocks, args.block_spacing, set(targets))
         if cache:
             cache.write_text(json.dumps({
                 "blocks": swept,
                 "tip_slot": tip,
+                "slot_range": list(sweep_range),
                 "swept_at_unix": int(time.time()),
                 "programs": {p: [dict(v[0]), v[1], v[2]] for p, v in block_obs.items()},
             }, indent=1), encoding="utf-8")
@@ -444,7 +462,7 @@ def main():
         if pid in block_obs:
             heads, ev, seen = block_obs[pid]
             prior = (heads, ev, seen)
-        dec = decode_census(pid, sigs, manifest, args.sample, prior)
+        dec = decode_census(pid, sigs, manifest, args.sample, prior, sweep_range)
         rec = {
             "program_id": pid,
             "manifest": fname,

@@ -290,6 +290,28 @@ test("an accepted residual executes and is named on the lifecycle", async () => 
   assert.equal(fakes.submitted.length, 1);
 });
 
+test("Audit A010: a verdict signed under accepted residuals names them on the signing, and a not_executable record is that verdict", async () => {
+  for (const on of ["not_executable", "approved"] as VerdictOnRecord[]) {
+    // A Round 41 Core says not_executable; an earlier one says approved.
+    const fakes = new Fakes();
+    fakes.verdictOnRecord = on;
+    const bound = build();
+    const lc = await run(fakes, bound, verdict(bound, [...INHERENT, "no_state_diff"]), new ResidualPolicy(["no_state_diff"]));
+    assert.equal(fakes.submitted.length, 1, on);
+    const signing = fakes.events.find((e) => e.event_type === "signing");
+    assert.deepEqual(signing?.accepted_unobserved, ["no_state_diff"], on);
+    assert.equal(lc.verdictOnRecordAtSigning, on);
+  }
+  // An executable approval names nothing, and a not_executable record is
+  // not the verdict this process holds.
+  const fakes = new Fakes();
+  fakes.verdictOnRecord = "not_executable";
+  const bound = build();
+  await assert.rejects(run(fakes, bound, verdict(bound)), /"not_executable", not the approval/);
+  assert.equal(fakes.events.find((e) => e.event_type === "signing")?.accepted_unobserved, undefined);
+  assert.equal(fakes.submitted.length, 0);
+});
+
 test("a verdict that is not an approval never reaches the policy", async () => {
   const fakes = new Fakes();
   const bound = build();

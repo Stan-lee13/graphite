@@ -77,6 +77,7 @@ fn diff(before_allowance: u64, after_allowance: u64) -> StateDiff {
         token2022_mints: Default::default(),
         transaction_accounts: None,
         transaction_privileges: None,
+        top_level_instructions: None,
     }
 }
 

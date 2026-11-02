@@ -13,7 +13,8 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { ElicitRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { GraphiteGuard } from "../agent-guard/guard.js";
 import { BLOCKED_VERDICT, mockApprovingCore, mockRpc, mockService, throwawayWallet } from "../agent-guard/loopback-mocks.js";
-import { createGraphiteMcpServer, parseConfirmation, type Confirmation } from "./graphite-mcp.js";
+import { createGraphiteMcpServer, describeForPerson, parseConfirmation, type Confirmation } from "./graphite-mcp.js";
+import type { ConfirmationSummary } from "../agent-guard/guard.js";
 
 const DEST = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
 const REQUEST = `Transfer 1.5 SOL to ${DEST}`;
@@ -61,7 +62,11 @@ async function services(opts: { approve?: boolean } = {}) {
 async function connect(
   guard: GraphiteGuard,
   confirmation: Confirmation,
-  person?: (message: string) => { action: "accept" | "decline" | "cancel"; content?: Record<string, unknown> },
+  person?: (
+    message: string,
+  ) =>
+    | { action: "accept" | "decline" | "cancel"; content?: Record<string, unknown> }
+    | Promise<{ action: "accept" | "decline" | "cancel"; content?: Record<string, unknown> }>,
 ) {
   const server = createGraphiteMcpServer(guard, { confirmation });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
@@ -144,12 +149,43 @@ test("M7: a person approves the RESOLVED transaction — destination, amount, ef
     assert.match(shown, new RegExp(`to ${DEST}`));
     assert.match(shown, /Program: 11111111111111111111111111111111/);
     assert.match(shown, /Simulated effect on the wallet/);
-    assert.match(shown, /Graphite: APPROVED, risk Clear/);
+    assert.match(shown, /Graphite: APPROVED \(executable_approved\), risk Clear/);
     assert.match(shown, /transaction [0-9a-f]{64}/);
     // Asked after the verdict, before anything was signed or sent.
     const sends = s.rpc.calls.filter((x) => x.method === "sendTransaction");
     assert.equal(sends.length, 1);
     await c.close();
+  } finally {
+    await s.close();
+  }
+});
+
+test("Audit A004: a call the client cancels while the person is asked is not signed or sent", async () => {
+  const s = await services({ approve: true });
+  try {
+    const guard = await s.guard(2_000_000_000n);
+    const cancel = new AbortController();
+    // The client gives up (its user pressed stop, or its 60 s timeout fired)
+    // while the person is still being asked; the person then says yes.
+    const c = await connect(guard, "elicit", async () => {
+      cancel.abort();
+      await new Promise((r) => setTimeout(r, 100));
+      return { action: "accept", content: { approve: true } };
+    });
+    try {
+      await assert.rejects(
+        c.client.callTool({ name: "graphite_transfer_sol", arguments: { request: REQUEST } }, undefined, { signal: cancel.signal }),
+      );
+      // Let the server finish whatever it would still have done.
+      await new Promise((r) => setTimeout(r, 500));
+      assert.equal(c.asked.length, 1);
+      assert.equal(s.rpc.calls.filter((x) => x.method === "sendTransaction").length, 0, "nothing sent");
+      for (const call of s.rpc.calls) assert.notEqual(call.signed, true, `${call.method} carried a signature`);
+      assert.equal(s.core.calls.filter((x) => x.method === "POST /audit/event").length, 0, "no signing on the trail");
+    } finally {
+      await c.close();
+      guard.close();
+    }
   } finally {
     await s.close();
   }
@@ -190,8 +226,11 @@ test("a client that cannot ask a person is refused before anything is built", as
   const s = await services({ approve: true });
   try {
     const c = await connect(await s.guard(2_000_000_000n), "elicit");
-    const out = result(await c.client.callTool({ name: "graphite_transfer_sol", arguments: { request: REQUEST } }));
-    assert.equal(out.refusedBy, "person");
+    const r = await c.client.callTool({ name: "graphite_transfer_sol", arguments: { request: REQUEST } });
+    const out = result(r);
+    // Audit A057: nobody was asked, so it is not a person's refusal.
+    assert.equal(out.refusedBy, "confirmation-unavailable");
+    assert.equal(r.isError, true);
     assert.match(out.reason ?? "", /cannot ask a person/);
     assert.equal(s.core.calls.filter((x) => x.method === "POST /verify").length, 0);
     assert.equal(s.rpc.calls.length, 0);
@@ -337,7 +376,12 @@ test("Round 39: only a boolean true from the person approves — a string, a num
       try {
         const out = result(await c.client.callTool({ name: "graphite_transfer_sol", arguments: { request: REQUEST } }));
         assert.equal(out.executed, false, JSON.stringify(content));
-        assert.ok(out.refusedBy === "person" || out.refusedBy === "error", `${JSON.stringify(content)}: ${JSON.stringify(out)}`);
+        // Audit A057: an answer the SDK rejects as not matching the form is a
+        // confirmation that failed, not a person's refusal.
+        assert.ok(
+          out.refusedBy === "person" || out.refusedBy === "confirmation-unavailable" || out.refusedBy === "error",
+          `${JSON.stringify(content)}: ${JSON.stringify(out)}`,
+        );
       } finally {
         await c.close();
         guard.close();
@@ -345,6 +389,138 @@ test("Round 39: only a boolean true from the person approves — a string, a num
     }
     assert.equal(s.rpc.calls.filter((x) => x.method === "sendTransaction").length, 0);
     assert.equal(s.core.calls.filter((x) => x.method === "POST /audit/event").length, 0, "nothing signed");
+  } finally {
+    await s.close();
+  }
+});
+
+// Round 41 (external review D-8): a verdict signed only because this
+// deployment accepted its residuals by name is analysis_only, not
+// executable_approved; the person is not told it was simply "APPROVED".
+test("D-8: a verdict signed under accepted residuals is shown as analysis only, not APPROVED", () => {
+  const summary = (acceptedUnobserved: string[], decision?: "executable_approved" | "analysis_only"): ConfirmationSummary => ({
+    kind: "transfer",
+    request: "Send 1 SOL",
+    wallet: "W1111111111111111111111111111111",
+    transactionSha256: "a".repeat(64),
+    programId: "11111111111111111111111111111111",
+    destination: "D1111111111111111111111111111111",
+    lamports: "1000000000",
+    sol: "1",
+    walletEffect: { solOutLamports: "1000005000", tokens: [] },
+    verdict: {
+      approved: true,
+      confidence: 0.6,
+      risk: "Clear",
+      auditTrailId: "t",
+      unobservedCodes: acceptedUnobserved,
+      acceptedUnobserved,
+      decision: decision ?? (acceptedUnobserved.length > 0 ? "analysis_only" : "executable_approved"),
+    },
+  });
+  const residual = describeForPerson(summary(["no_state_diff"]));
+  assert.doesNotMatch(residual, /Graphite: APPROVED/);
+  assert.match(residual, /Graphite: ANALYSIS ONLY \(not executable_approved;/);
+  assert.match(residual, /accepted by this deployment: no_state_diff/);
+  assert.match(describeForPerson(summary([])), /Graphite: APPROVED \(executable_approved\), risk Clear/);
+  // Audit A058: the decision itself decides the word.
+  assert.doesNotMatch(describeForPerson(summary([], "analysis_only")), /Graphite: APPROVED/);
+});
+
+// Audit A056: every line of the wallet effect says its direction. The SOL line
+// is "out" (negative = received); a token line was a bare signed number of
+// the opposite convention.
+test("A056: each token line of the wallet effect says whether the tokens are spent or received", () => {
+  const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const WSOL = "So11111111111111111111111111111111111111112";
+  const shown = describeForPerson({
+    kind: "swap",
+    request: "swap 5 USDC for SOL",
+    wallet: "W1111111111111111111111111111111",
+    transactionSha256: "a".repeat(64),
+    programId: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+    swap: {
+      route: "jupiter route",
+      input: { token: "USDC", mint: USDC, amountIn: "5000000" },
+      output: { token: "SOL", mint: WSOL, minimumOut: "1", simulatedOut: "49000000", deliveredAs: "wrapped_sol" },
+      maxSlippageBps: 50,
+      priceFloor: "none",
+    },
+    walletEffect: { solOutLamports: "-49000000", tokens: [{ mint: USDC, delta: "-5000000" }, { mint: WSOL, delta: "7" }] },
+    verdict: {
+      approved: true,
+      confidence: 0.6,
+      risk: "Clear",
+      auditTrailId: "t",
+      unobservedCodes: [],
+      acceptedUnobserved: [],
+      decision: "executable_approved",
+    },
+  });
+  assert.match(shown, new RegExp(`${USDC}: spent 5000000 base units`));
+  assert.match(shown, new RegExp(`${WSOL}: received 7 base units`));
+  assert.doesNotMatch(shown, /-5000000 base units/);
+});
+
+/** A client with exactly these capabilities, whose elicitation handler (if any) is `answer`. */
+async function connectWith(
+  guard: GraphiteGuard,
+  capabilities: Record<string, unknown>,
+  answer?: () => Promise<{ action: "accept"; content: Record<string, unknown> }>,
+) {
+  const server = createGraphiteMcpServer(guard, { confirmation: "elicit" });
+  const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "test", version: "0" }, { capabilities });
+  if (answer) client.setRequestHandler(ElicitRequestSchema, answer);
+  await Promise.all([server.connect(serverSide), client.connect(clientSide)]);
+  return { client, close: () => Promise.all([client.close(), server.close()]) };
+}
+
+// Audit A057: a client that declares only URL-mode elicitation cannot answer
+// the form this server sends; it passed the pre-check, and the Core verified
+// before the confirmation failed. And no failure to confirm is a person's
+// refusal: nobody answered.
+test("A057: a client that cannot answer a form is refused before anything is built, and not as a person's refusal", async () => {
+  const s = await services({ approve: true });
+  try {
+    const guard = await s.guard(2_000_000_000n);
+    const c = await connectWith(guard, { elicitation: { url: {} } });
+    try {
+      const r = await c.client.callTool({ name: "graphite_transfer_sol", arguments: { request: REQUEST } });
+      const out = result(r);
+      assert.equal(out.executed, false);
+      assert.equal(out.refusedBy, "confirmation-unavailable");
+      assert.equal(r.isError, true);
+      assert.equal(s.core.calls.filter((x) => x.method === "POST /verify").length, 0, "nothing was verified");
+      assert.equal(s.rpc.calls.length, 0, "nothing was built");
+    } finally {
+      await c.close();
+      guard.close();
+    }
+  } finally {
+    await s.close();
+  }
+});
+
+test("A057: a confirmation that fails (the client errs) is reported as unavailable, not as a person who declined", async () => {
+  const s = await services({ approve: true });
+  try {
+    const guard = await s.guard(2_000_000_000n);
+    const c = await connectWith(guard, { elicitation: {} }, async () => {
+      throw new Error("the client's UI crashed");
+    });
+    try {
+      const r = await c.client.callTool({ name: "graphite_transfer_sol", arguments: { request: REQUEST } });
+      const out = result(r);
+      assert.equal(out.executed, false);
+      assert.equal(out.refusedBy, "confirmation-unavailable", JSON.stringify(out));
+      assert.equal(r.isError, true);
+      assert.equal(s.rpc.calls.filter((x) => x.method === "sendTransaction").length, 0);
+      for (const call of s.rpc.calls) assert.notEqual(call.signed, true, `${call.method} carried a signature`);
+    } finally {
+      await c.close();
+      guard.close();
+    }
   } finally {
     await s.close();
   }

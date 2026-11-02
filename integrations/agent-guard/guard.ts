@@ -60,6 +60,8 @@ import {
   MAX_RPC_TIMEOUT_MS,
   RpcTransportRefusal,
   resolveRpcTimeoutMs,
+  sealedConnection,
+  sealInheritedMethods,
 } from "./rpc-transport.js";
 export { BoundedConnection, DEFAULT_RPC_TIMEOUT_MS, MAX_RPC_TIMEOUT_MS, RpcTransportRefusal };
 // Round 30: what the guard can build, as data, and the refusal for the rest.
@@ -110,6 +112,7 @@ import {
   assertSwapAllowed,
   assertTransferAllowed,
   describeSpendPolicy,
+  frozenSpendPolicy,
   spendPolicyFromEnv,
   DEFAULT_SPEND_WINDOW_SECONDS,
   SpendLedger,
@@ -134,6 +137,7 @@ import {
   assertSwapEconomics,
   assertSwapPolicyUsable,
   describeSwapPolicy,
+  frozenSwapPolicy,
   swapPolicyFromEnv,
   type SwapEconomics,
   type SwapPolicy,
@@ -150,6 +154,7 @@ import {
 export { swapEnvelopeFromEnv, type SwapEnvelopeConfig };
 import {
   ConfirmationDeclined,
+  ConfirmationUnavailable,
   DEFAULT_CONFIRM_TIMEOUT_MS,
   DEFAULT_MAX_VERDICT_AGE_MS,
   MAX_MAX_VERDICT_AGE_MS,
@@ -159,6 +164,7 @@ import {
 } from "./execution-lifecycle.js";
 export {
   ConfirmationDeclined,
+  ConfirmationUnavailable,
   DEFAULT_CONFIRM_TIMEOUT_MS,
   DEFAULT_MAX_VERDICT_AGE_MS,
   MAX_MAX_VERDICT_AGE_MS,
@@ -174,6 +180,15 @@ export { AuditBind };
 
 // Graphite TS SDK
 import { GraphiteClient, assertSecureBaseUrl } from "../../sdk/typescript/src/client.js";
+
+/**
+ * The guard's Core client (Audit A048): a `GraphiteClient` whose methods are
+ * its own, frozen. `GraphiteClient.prototype` is any importer's to change;
+ * a `verify` or `recordLifecycleEvent` replaced there does not reach the
+ * client the guard verifies with and records the lifecycle through.
+ */
+class GuardGraphiteClient extends GraphiteClient {}
+sealInheritedMethods(GuardGraphiteClient);
 import { ResidualPolicy, ResidualPolicyRefusal } from "./residual-policy.js";
 export { ResidualPolicyRefusal };
 import { executeBoundTransaction, type ExecutionLifecycle, type SubmitConnection } from "./execution-lifecycle.js";
@@ -271,7 +286,7 @@ export function parseTransactionVersion(value: string | undefined): BridgeTransa
 
 // Round 19 (F-19-C6) / A5-07: the environment names, and the refusal of the
 // legacy ones, live in a dependency-free module the dev scripts share.
-import { LEGACY_ENV_NAMES, assertNoLegacyEnvNames } from "./env-names.js";
+import { LEGACY_ENV_NAMES, assertNoLegacyEnvNames, assertNoMisspeltGuardEnvNames } from "./env-names.js";
 export { LEGACY_ENV_NAMES, assertNoLegacyEnvNames };
 
 /**
@@ -519,10 +534,25 @@ export interface ConfirmationSummary {
     auditTrailId: string;
     transactionSha256?: string;
     unobservedCodes: string[];
-    /** Residuals the deployment's policy accepted for this execution. */
+    /**
+     * Residuals the deployment's policy accepted for this execution. Not
+     * empty exactly when `decision` is `analysis_only`.
+     */
     acceptedUnobserved: string[];
+    /**
+     * Audit A058: the execution decision this signing would act on.
+     * `approved` is the Core's flag, which an `analysis_only` verdict carries
+     * too; `executable_approved` is the decision that needs no residual
+     * accepted by name, and `analysis_only` one signed only because this
+     * deployment accepted the residuals in `acceptedUnobserved`. A hook that
+     * shows a person "approved" must show this.
+     */
+    decision: "executable_approved" | "analysis_only";
   };
 }
+
+/** What the residual policy decided, as the confirmation hook is told it (Audit A058). */
+type Decided = { acceptedUnobserved: string[]; decision: "executable_approved" | "analysis_only" };
 
 /** Per-call options for `executeTransfer` / `executeSwap`. */
 export interface ExecuteOptions {
@@ -532,6 +562,27 @@ export interface ExecuteOptions {
    * `true` aborts with `ConfirmationDeclined`; nothing is signed or sent.
    */
   confirm?: (summary: ConfirmationSummary) => Promise<boolean>;
+  /**
+   * The caller's cancellation (Audit A004): an MCP request's `extra.signal`,
+   * a Vercel tool's `abortSignal`. Aborted before signing, nothing is signed
+   * or sent (`RequestCancelled`); aborted after the signing is recorded and
+   * before the bytes leave, nothing is sent. Once the bytes have left, the
+   * execution runs to its end: a cancellation cannot recall them, and
+   * dropping its result would leave the caller to spend again.
+   */
+  signal?: AbortSignal;
+}
+
+/**
+ * The caller cancelled the request before its bytes left this process
+ * (Audit A004). Nothing was sent; if the signing was already recorded, the
+ * trail shows a signing with no submission.
+ */
+export class RequestCancelled extends Error {
+  constructor(label: string, stage: string) {
+    super(`[Graphite] ${label}: the request was cancelled ${stage}. Nothing was sent.`);
+    this.name = "RequestCancelled";
+  }
 }
 
 /**
@@ -814,6 +865,8 @@ export class GraphiteGuard {
     // Before any default is applied: a legacy variable name must not quietly
     // become "use localhost" (Round 19, F-19-C6).
     assertNoLegacyEnvNames();
+    // Audit A053: and a misspelt protective setting is not silently absent.
+    assertNoMisspeltGuardEnvNames();
     const privateKey = config?.privateKey ?? process.env.SOLANA_PRIVATE_KEY;
     // Round 29 (M8): the key is read once, here; it does not stay in the
     // environment of a process that loads frameworks, plugins and model tools.
@@ -857,11 +910,15 @@ export class GraphiteGuard {
 
     // Limits and swap rules are read before anything is contacted: a
     // malformed or missing one is a startup error, never an absent bound.
-    const spendPolicy = config?.spendPolicy ?? spendPolicyFromEnv();
+    // Audit A049: copied and frozen first, then checked, so what was checked
+    // and logged is what every execution reads; a later change to the
+    // caller's object reaches nothing.
+    const spendPolicy = frozenSpendPolicy(config?.spendPolicy ?? spendPolicyFromEnv());
     assertSpendPolicyUsable(spendPolicy);
-    const swapPolicy = config?.swapPolicy ?? swapPolicyFromEnv();
+    const swapPolicy = frozenSwapPolicy(config?.swapPolicy ?? swapPolicyFromEnv());
     assertSwapPolicyUsable(swapPolicy);
-    const swapEnvelope = config?.swapEnvelope ?? swapEnvelopeFromEnv();
+    const rawEnvelope = config?.swapEnvelope ?? swapEnvelopeFromEnv();
+    const swapEnvelope = typeof rawEnvelope === "object" && rawEnvelope !== null ? Object.freeze({ ...rawEnvelope }) : rawEnvelope;
     assertSwapEnvelopeUsable(swapEnvelope);
 
     const confirmTimeoutMs = config?.confirmTimeoutMs ?? DEFAULT_CONFIRM_TIMEOUT_MS;
@@ -888,9 +945,11 @@ export class GraphiteGuard {
       : ResidualPolicy.fromEnv();
 
     const signer = await walletSignerFrom(privateKey);
-    const connection = connectionWithoutRedirects(rpcUrl, rpcTimeoutMs);
+    // Audit A048: the connection the guard decides on and submits with has
+    // methods of its own, frozen; `getConnection()` hands out another.
+    const connection = sealedConnection(rpcUrl, { timeoutMs: rpcTimeoutMs });
 
-    const graphite = new GraphiteClient({ baseUrl: graphiteCoreUrl, apiKey: graphiteApiKey });
+    const graphite = new GuardGraphiteClient({ baseUrl: graphiteCoreUrl, apiKey: graphiteApiKey });
     try { await graphite.health(); } catch {
       throw new Error(`Graphite Core not reachable at ${graphiteCoreUrl}. Start: GRAPHITE_API_KEY=... cargo run --release -- server`);
     }
@@ -1194,7 +1253,7 @@ export class GraphiteGuard {
     }
     if (!prior) return;
     const landed = (status: SignatureStatus) => {
-      this.#state.markResolved(key);
+      this.#state.markResolved(key, prior.signature);
       if (status.err === null) {
         throw new PriorSubmissionUnresolved(
           `[Graphite] the last submission of this same request, ${prior.signature}, LANDED (its send had failed ` +
@@ -1253,7 +1312,7 @@ export class GraphiteGuard {
    */
   #returnReservationOf(key: string, prior: UnresolvedSubmission): void {
     if (prior.reservation !== undefined) this.#state.release(prior.reservation);
-    this.#state.markResolved(key);
+    this.#state.markResolved(key, prior.signature);
   }
 
   /**
@@ -1275,10 +1334,14 @@ export class GraphiteGuard {
       for (const [key, prior] of this.#state.unresolvedEntries()) {
         if (prior.reservation === undefined || this.#inFlight.has(key)) continue;
         try {
-          if (await this.#cannotLand(prior)) {
-            this.#returnReservationOf(key, prior);
-            returned += 1;
-          }
+          if (!(await this.#cannotLand(prior))) continue;
+          // Audit A046/A052: asked about a copy, across RPC round trips. A
+          // call for the same request may meanwhile have settled it and
+          // recorded a newer submission, which may still land: only the
+          // record asked about is settled, and not while its request runs.
+          if (this.#inFlight.has(key) || this.#state.unresolved(key)?.signature !== prior.signature) continue;
+          this.#returnReservationOf(key, prior);
+          returned += 1;
         } catch {
           // The RPC could not say: it stays counted.
         }
@@ -1334,14 +1397,19 @@ export class GraphiteGuard {
     key: string,
     reservation: SpendReservation,
     verdictRequestedAt: number,
-    confirm?: (acceptedUnobserved: string[]) => Promise<boolean>,
+    confirm?: (decided: Decided) => Promise<boolean>,
+    signal?: AbortSignal,
   ): Promise<ExecutionLifecycle> {
+    const notCancelled = (stage: string) => {
+      if (signal?.aborted) throw new RequestCancelled(label, stage);
+    };
     // The whole path — policy, signing, the lifecycle events, submission,
     // confirmation, L8 — is `executeBoundTransaction`, in that order. See
     // execution-lifecycle.ts for why each step sits where it does.
     try {
       // Round 34: open, and still holding the wallet, before signing.
       this.#assertMaySpend();
+      notCancelled("before anything was signed");
       const lifecycle = await executeBoundTransaction({
         bound,
         verification,
@@ -1355,21 +1423,38 @@ export class GraphiteGuard {
         // Round 35 (F-017): the verdict's age, checked immediately before
         // the digest is recomputed and the bytes signed.
         verdictAge: { requestedAt: verdictRequestedAt, maxMs: this.#maxVerdictAgeMs },
-        ...(confirm ? { confirm: ({ acceptedUnobserved }) => confirm(acceptedUnobserved) } : {}),
+        ...(confirm ? { confirm: ({ acceptedUnobserved, decision }) => confirm({ acceptedUnobserved, decision }) } : {}),
         // Round 34: again before signing, after the confirmation, which can
         // take minutes; the guard can be closed or lose its lock meanwhile.
-        beforeSign: () => this.#assertMaySpend(),
+        beforeSign: () => {
+          this.#assertMaySpend();
+          // Audit A004: a confirmation can take minutes, and the caller may
+          // have given up on the request meanwhile.
+          notCancelled("before signing");
+        },
         // And as the last step before the bytes leave (the signing is
         // recorded on the trail in between). A refusal here sends nothing.
         // Round 38 (G2-4): with the reservation that pays for it, so that it
         // can be returned once the chain says this submission cannot land.
         beforeSubmit: (signature) => {
           this.#assertMaySpend();
+          notCancelled("after signing, before the bytes left");
           this.#state.markUnresolved(key, signature, bound.lastValidBlockHeight, Date.now(), reservation.id);
         },
       });
       reservation.commit();
-      if (lifecycle.confirmed) this.#state.markResolved(key);
+      if (lifecycle.confirmed) {
+        // Audit A047: the transaction is confirmed on chain. A record that
+        // cannot be settled (the guard closed while it was polled, a write
+        // that failed) is reported on the outcome, never in place of it: the
+        // record stays held, so a repeat asks the RPC before anything is built.
+        try {
+          this.#state.markResolved(key, lifecycle.signature);
+        } catch (e) {
+          lifecycle.stateRecordError = e instanceof Error ? e.message : String(e);
+          console.warn(`[Graphite] ${label}: ${lifecycle.signature} confirmed, but its record could not be settled: ${lifecycle.stateRecordError}`);
+        }
+      }
       return lifecycle;
     } catch (e) {
       if (e instanceof SubmissionOutcomeUnknown) {
@@ -1378,8 +1463,16 @@ export class GraphiteGuard {
       } else {
         reservation.release();
         // Round 38 (G2-4): the RPC was never reached, so the submission
-        // `beforeSubmit` recorded never happened.
-        if (e instanceof SubmissionNotSent) this.#state.markResolved(key);
+        // `beforeSubmit` recorded never happened. Audit A047: a record that
+        // cannot be settled stays held (a repeat asks the RPC first) and
+        // does not replace the error that says nothing was sent.
+        if (e instanceof SubmissionNotSent) {
+          try {
+            this.#state.markResolved(key, e.signature);
+          } catch (stateError) {
+            console.warn(`[Graphite] ${label}: the unsent submission's record could not be settled: ${stateError instanceof Error ? stateError.message : String(stateError)}`);
+          }
+        }
       }
       throw e;
     }
@@ -1445,7 +1538,7 @@ export class GraphiteGuard {
     });
   }
 
-  #verdictSummary(verification: VerificationResult, acceptedUnobserved: string[]): ConfirmationSummary["verdict"] {
+  #verdictSummary(verification: VerificationResult, { acceptedUnobserved, decision }: Decided): ConfirmationSummary["verdict"] {
     const scope = verification.scope;
     return {
       approved: verification.approved,
@@ -1455,6 +1548,7 @@ export class GraphiteGuard {
       ...(scope?.kind === "artifact_bound" ? { transactionSha256: scope.transaction_sha256 } : {}),
       unobservedCodes: [...(scope?.unobserved_codes ?? [])],
       acceptedUnobserved: [...acceptedUnobserved],
+      decision,
     };
   }
 
@@ -1602,7 +1696,7 @@ export class GraphiteGuard {
       // requires the digest Graphite approved.
 
       const confirm = options.confirm
-        ? async (acceptedUnobserved: string[]) => {
+        ? async (decided: Decided) => {
             const effect = await this.#simulator.measureWalletEffect({ wire: bound.artifactBytes, wallet: this.#walletPublicKey });
             return options.confirm!(deepFreeze({
               kind: "transfer",
@@ -1614,13 +1708,13 @@ export class GraphiteGuard {
               lamports: grounded.lamports.toString(),
               sol: lamportsAsSol(grounded.lamports),
               walletEffect: effectForSummary(effect),
-              verdict: this.#verdictSummary(verification, acceptedUnobserved),
+              verdict: this.#verdictSummary(verification, decided),
             }));
           }
         : undefined;
       console.log("[Graphite] Transfer approved + AuditBind verified — executing...");
       handedOff = true;
-      const lifecycle = await this.#signSubmitAndConfirm(bound, verification, "transfer", key, reservation, verdictRequestedAt, confirm);
+      const lifecycle = await this.#signSubmitAndConfirm(bound, verification, "transfer", key, reservation, verdictRequestedAt, confirm, options.signal);
       console.log(`[Solana] ${lifecycle.confirmed ? "Confirmed" : "Submitted (not confirmed)"}: ${lifecycle.signature}`);
       return { executed: true, verifiedExecution: true, verification, signature: lifecycle.signature, lifecycle };
     } finally {
@@ -1811,12 +1905,23 @@ export class GraphiteGuard {
     // per signature plus its priority fee), read from its bytes.
     const swapFee = transactionFee(boundSwap.messageBytes);
     const measuredOutflow = (effect.solOut > 0n ? effect.solOut : 0n) + maxPriorityFeeLamports(this.#swapEnvelope);
-    const outflowLamports = measuredOutflow > swapFee.totalLamports ? measuredOutflow : swapFee.totalLamports;
+    // Round 41 (external review D-2): the route's own bytes bound what it
+    // spends, as the stated amount bounds a transfer (`#transferOutflow`); the
+    // simulation is the guard's RPC's word and only ever raises the figure. A
+    // simulation showing less leaving than the route's in_amount no longer
+    // fits a larger swap under the cap, and a non-SOL input is always a token
+    // a lamport cap cannot price.
+    const nativeInput = groundedSwap.input.mint === NATIVE_MINT;
+    const routeOutflow = nativeInput ? decoded.amountIn + swapFee.totalLamports : swapFee.totalLamports;
+    const outflowLamports = measuredOutflow > routeOutflow ? measuredOutflow : routeOutflow;
+    const spentTokens = [...effect.tokenDelta]
+      .filter(([, delta]) => delta < 0n)
+      .map(([mint, delta]) => ({ mint, amount: -delta }));
     assertSwapAllowed(this.#spendPolicy, {
       lamports: outflowLamports,
-      tokens: [...effect.tokenDelta]
-        .filter(([, delta]) => delta < 0n)
-        .map(([mint, delta]) => ({ mint, amount: -delta })),
+      tokens: nativeInput
+        ? spentTokens
+        : [{ mint: groundedSwap.input.mint, amount: decoded.amountIn }, ...spentTokens],
     });
     assertSwapEffectMatches(groundedSwap, effect);
     const economics: SwapEconomics = assertSwapEconomics({
@@ -1871,7 +1976,7 @@ export class GraphiteGuard {
       console.log("[Graphite] Swap payload bound to AuditBind (instruction data + full account list).");
 
       const confirm = options.confirm
-        ? (acceptedUnobserved: string[]) =>
+        ? (decided: Decided) =>
             options.confirm!(deepFreeze({
               kind: "swap",
               request: naturalLanguage,
@@ -1895,7 +2000,7 @@ export class GraphiteGuard {
                     : `${economics.floor.baseUnits} base units (${economics.floor.source})`,
               },
               walletEffect: effectForSummary(effect),
-              verdict: this.#verdictSummary(verification, acceptedUnobserved),
+              verdict: this.#verdictSummary(verification, decided),
             }))
         : undefined;
       // `boundSwap` holds the instruction built from this same payload before
@@ -1903,7 +2008,7 @@ export class GraphiteGuard {
       // would reintroduce the copy-versus-original gap one level down.
       console.log("[Graphite] Swap approved + AuditBind verified — submitting the bound transaction...");
       handedOff = true;
-      const lifecycle = await this.#signSubmitAndConfirm(boundSwap, verification, "swap", key, reservation, verdictRequestedAt, confirm);
+      const lifecycle = await this.#signSubmitAndConfirm(boundSwap, verification, "swap", key, reservation, verdictRequestedAt, confirm, options.signal);
       console.log(`[Solana] ${lifecycle.confirmed ? "Confirmed" : "Submitted (not confirmed)"}: ${lifecycle.signature}`);
       return { executed: true, verifiedExecution: true, verification, signature: lifecycle.signature, lifecycle };
     } finally {

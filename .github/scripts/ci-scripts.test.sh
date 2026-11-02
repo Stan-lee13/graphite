@@ -615,6 +615,9 @@ grep -q $'\x1b' "$T/cargo-colour.log" && ok "the coloured log fixture carries AN
 expect 0 "a coloured cargo log still names each binary at its floor" "${TC[@]}" cargo "$T/cargo-colour.log" 52 "$T/allow.txt" "$T/floors.txt"
 grep -v 'tests/alpha.rs' "$T/cargo.log" | grep -v '^test result: ok\. 7 passed' >"$T/cargo-noalpha.log"
 expect 1 "a listed binary missing from the log fails" "${TC[@]}" cargo "$T/cargo-noalpha.log" 40 "$T/allow.txt" "$T/floors.txt"
+# Audit A094: and says so ("did not run"), not "ran more than once".
+out="$("${TC[@]}" cargo "$T/cargo-noalpha.log" 40 "$T/allow.txt" "$T/floors.txt" 2>&1 || true)"
+grep -q "tests/alpha.rs' (floor 7) did not run" <<<"$out" && ok "a listed binary missing from the log is named as not run" || bad "missing-binary message: $out"
 expect 1 "a floors file that does not exist fails" "${TC[@]}" cargo "$T/cargo.log" 52 "$T/allow.txt" "$T/no-floors.txt"
 printf '# nothing listed\n' >"$T/floors-empty.txt"
 expect 1 "a floors file that lists no binary fails (empty is not 'no floor')" "${TC[@]}" cargo "$T/cargo.log" 52 "$T/allow.txt" "$T/floors-empty.txt"
@@ -801,8 +804,16 @@ if not re.search(r'test-count\.sh cargo "\$RUNNER_TEMP/cargo-test-\$LEG\.log" "\
     sys.exit("the test step does not pass .github/test-floors/rust-$LEG.txt as test-count.sh's 5th argument")
 tests = sorted(f for f in os.listdir(os.path.join(root, "graphite-core/tests")) if f.endswith(".rs"))
 patterns = ["round3*.rs", "round4*.rs", "ai_layer_isolation.rs", "docs_*.rs", "*exploit*.rs", "*attack*.rs", "mainnet_conformance.rs", "regression_corpus.rs"]
+# Audit A008: and the suites the audit hand-off names as holding an invariant
+# (I-4 l2/l4 gates, I-8 rpc_*, I-10 startup refusals, I-11 request bounds,
+# I-13 upgrades), every earlier round's and audit's regression suite, the
+# hand-written adversarial suites, and the fuzz seeds' own check.
+patterns += ["round1*.rs", "round2*.rs", "audit_*.rs", "l2_*.rs", "l4_*.rs", "l8_*.rs", "rpc_*.rs",
+             "ai_cannot_approve.rs", "adversarial_*.rs", "extreme_adversarial.rs", "redteam_*.rs",
+             "evading_the_fixes.rs", "wire_format_bounds.rs", "rm1_*.rs", "quarantine_gate.rs", "r30_*.rs",
+             "fuzz_seeds_*.rs"]
 security = {f"tests/{f}" for f in tests if any(fnmatch.fnmatch(f, p) for p in patterns)}
-if len(security) < 35:
+if len(security) < 120:
     sys.exit(f"only {len(security)} security suites matched: the patterns no longer find them")
 for leg in [l["leg"] for l in job["strategy"]["matrix"]["include"]]:
     path = os.path.join(root, f".github/test-floors/rust-{leg}.txt")
@@ -856,6 +867,86 @@ for needle in ("npm ci --ignore-scripts", "npm run typecheck", "npm test", "test
 if "agent-guard-windows" not in jobs["ci-gate"]["needs"]:
     sys.exit("ci-gate does not need it")
 PY
+
+echo "== every action every workflow uses is pinned to a commit (Round 41, external review C-10)"
+# The agent-guard-windows case above checked one job; this holds every job of
+# every workflow, so a floating tag cannot be added anywhere unnoticed.
+cat >"$T/pins.py" <<'PY'
+import glob, os, re, sys, yaml
+bad = []
+for wf in sorted(glob.glob(os.path.join(sys.argv[1], "*.yml"))):
+    doc = yaml.safe_load(open(wf))
+    for name, job in (doc.get("jobs") or {}).items():
+        refs = [job["uses"]] if "uses" in job else []
+        refs += [s["uses"] for s in job.get("steps") or [] if "uses" in s]
+        for ref in refs:
+            if not (ref.startswith("./") or re.fullmatch(r"[\w.-]+/[\w./-]+@[0-9a-f]{40}", ref)):
+                bad.append(f"{os.path.basename(wf)} {name}: {ref}")
+if bad:
+    sys.exit("not pinned to a commit:\n" + "\n".join(bad))
+PY
+expect 0 "every uses: in .github/workflows is owner/repo@<40-hex sha> or a local action" python3 -I "$T/pins.py" "$root/.github/workflows"
+mkdir -p "$T/wf-tag"
+cp "$root/.github/workflows/ci.yml" "$T/wf-tag/ci.yml"
+sed -i '0,/uses: actions\/checkout@[0-9a-f]\{40\}/s//uses: actions\/checkout@v4/' "$T/wf-tag/ci.yml"
+expect 1 "a workflow using actions/checkout@v4 is refused" python3 -I "$T/pins.py" "$T/wf-tag"
+
+echo "== every committed fuzz seed fits the max_len its target runs with (Audit A002)"
+cat >"$T/seedlen.py" <<'PY'
+import os, sys, yaml
+wf, seeds, targets = sys.argv[1], sys.argv[2], sys.argv[3]
+job = yaml.safe_load(open(wf))["jobs"]["fuzz"]
+runs = "\n".join(s.get("run", "") for s in job["steps"])
+if runs.count("-max_len=${{ matrix.max_len }}") != 2:
+    sys.exit("the smoke and the long run do not both take -max_len from the matrix")
+lens = {e["target"]: int(e["max_len"]) for e in job["strategy"]["matrix"]["include"]}
+have = sorted(f[:-3] for f in os.listdir(targets) if f.endswith(".rs"))
+if sorted(lens) != have:
+    sys.exit(f"the fuzz matrix runs {sorted(lens)}; fuzz_targets holds {have}")
+bad = []
+for t, n in lens.items():
+    d = os.path.join(seeds, t)
+    files = sorted(os.listdir(d)) if os.path.isdir(d) else []
+    if not files:
+        bad.append(f"{t}: no committed seeds")
+    for f in files:
+        size = os.path.getsize(os.path.join(d, f))
+        if size > n:
+            bad.append(f"{t}/{f}: {size} bytes, past -max_len={n}; libFuzzer reads only its first {n}")
+if bad:
+    sys.exit("\n".join(bad))
+PY
+fz="$root/graphite-core/fuzz"
+expect 0 "each target's seeds are at most its matrix max_len, and the matrix runs every target" python3 -I "$T/seedlen.py" "$root/.github/workflows/assurance.yml" "$fz/seeds" "$fz/fuzz_targets"
+mkdir -p "$T/wf-seedlen"
+sed 's/{ target: manifest_json, max_len: 65536 }/{ target: manifest_json, max_len: 4096 }/' "$root/.github/workflows/assurance.yml" >"$T/wf-seedlen/assurance.yml"
+expect 1 "manifest_json at -max_len=4096 is refused: its whole-manifest seeds would be cut" python3 -I "$T/seedlen.py" "$T/wf-seedlen/assurance.yml" "$fz/seeds" "$fz/fuzz_targets"
+
+echo "== every BuildKit daemon a workflow sets up is pinned by digest (Audit A006)"
+cat >"$T/buildkit.py" <<'PY'
+import glob, os, re, sys, yaml
+bad, seen = [], 0
+for wf in sorted(glob.glob(os.path.join(sys.argv[1], "*.yml"))):
+    doc = yaml.safe_load(open(wf))
+    for name, job in (doc.get("jobs") or {}).items():
+        for s in job.get("steps") or []:
+            if not s.get("uses", "").startswith("docker/setup-buildx-action@"):
+                continue
+            seen += 1
+            w = s.get("with") or {}
+            opts = str(w.get("driver-opts", ""))
+            if w.get("driver") != "docker-container" or not re.search(r"(^|\n|,)image=moby/buildkit:[\w.-]+@sha256:[0-9a-f]{64}($|\n|,)", opts):
+                bad.append(f"{os.path.basename(wf)} {name}: driver={w.get('driver')!r} driver-opts={opts!r}")
+if bad:
+    sys.exit("BuildKit not pinned by digest:\n" + "\n".join(bad))
+if seen == 0:
+    sys.exit("no setup-buildx-action step found: the release builds its image with one")
+PY
+expect 0 "every setup-buildx-action step runs moby/buildkit:<tag>@sha256:<64 hex> on the docker-container driver" python3 -I "$T/buildkit.py" "$root/.github/workflows"
+mkdir -p "$T/wf-buildkit"
+cp "$root/.github/workflows/release.yml" "$T/wf-buildkit/release.yml"
+sed -i 's/image=moby\/buildkit:\([^@]*\)@sha256:[0-9a-f]\{64\}/image=moby\/buildkit:buildx-stable-1/' "$T/wf-buildkit/release.yml"
+expect 1 "a BuildKit image taken by tag alone is refused" python3 -I "$T/buildkit.py" "$T/wf-buildkit"
 
 echo "== graphite-core is not published to crates.io (Round 40, checklist 10c)"
 expect 0 "Cargo.toml says publish = false and no workflow runs cargo publish" python3 -I - "$root" <<'PY'

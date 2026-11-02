@@ -186,7 +186,9 @@ pub const HIGH_RISK_CLASSES: &[&str] = &[
 /// declares (with `transfer`), so an unclassed swap can be declared only as a
 /// swap — and then held to the swap standard (Check 8, FakeSwap). Classing
 /// them `transfer` let a TRANSFER intent declare a swap, skipping that
-/// standard; the manifests leave them unclassed for that reason.
+/// standard. The seed manifests did class 81 of them `transfer` (audit
+/// A029), so the rule is enforced where the class is read,
+/// [`ProtocolManifest::verdict_class`], not left to the data.
 ///
 /// `approve` declares NO class, on purpose (Round 29, audit 2026-10-20: the
 /// audit observed an approve intent can never pass L5, and that is the
@@ -244,7 +246,35 @@ pub fn intent_declares_class(canonical_intent: &str, security_class: &str) -> Op
         .map(|(_, classes)| classes.contains(&security_class))
 }
 
+/// Whether an instruction NAME names a swap or a route (audit A029): `swap`
+/// or `route` anywhere in it, case-insensitive (`swap_base_input`,
+/// `sharedAccountsRoute`, `two_hop_swap`).
+pub fn names_a_swap(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n.contains("swap") || n.contains("route")
+}
+
 impl ProtocolManifest {
+    /// The security class the verdict reads for `def`, an instruction of
+    /// this manifest: [`InstructionDef::security_class`], except that a
+    /// swap-family instruction (its name names a swap or a route) of a
+    /// swap-category program that the manifest classes `transfer` is
+    /// UNCLASSED (`""`), as the rule beside `INTENT_DECLARES` states (audit
+    /// A029). The seed data classed 81 such instructions `transfer` — Orca
+    /// Whirlpools `swap`, Raydium CLMM `swap`, Raydium CPMM
+    /// `swap_base_input`, Meteora DLMM `swap2` among them — so a TRANSFER
+    /// intent cleared L5 and Check 9b on a swap and skipped the swap standard
+    /// (Check 8). The rule is applied here, where the class is read, so it
+    /// holds whatever a manifest says. A stricter class is never lowered.
+    pub fn verdict_class<'a>(&self, def: &'a InstructionDef) -> &'a str {
+        let class = def.security_class();
+        if self.protocol.category == "swap" && class == "transfer" && names_a_swap(&def.name) {
+            ""
+        } else {
+            class
+        }
+    }
+
     /// The instruction a call with this discriminator (hex, from the bytes)
     /// is: the first whose declared discriminator the input starts with, or,
     /// for a program described by ONE instruction with no discriminator — the
@@ -965,6 +995,10 @@ impl ManifestRegistry {
     }
 }
 
+/// The longest discriminator a manifest may declare, in bytes: the selector
+/// width the Core reads from an instruction's data (A031).
+pub const MAX_DISCRIMINATOR_BYTES: usize = 8;
+
 /// The runtime's manifest validation — every rule a manifest must satisfy to
 /// be loaded, seed or not. The one validator: the community registry runs it
 /// on every submission too (Round 29, audit 2026-10-20, MR-5), so a reviewer
@@ -992,6 +1026,20 @@ pub fn validate_manifest(manifest: &ProtocolManifest) -> Result<(), ManifestErro
             if !v.is_empty() && !(v.starts_with("https://") || v.starts_with("http://")) {
                 return Err(ManifestError::Invalid(format!(
                     "protocol.{field} {v:?} is not an http(s) URL"
+                )));
+            }
+        }
+        // Round 41 full-codebase audit: names identify instructions to a
+        // reviewer (`graphite protocol diff` pairs them by name). Two
+        // instructions under one name let an upgrade add a whole new one —
+        // its own discriminator, accounts and CPIs — while the diff read "no
+        // instruction-level changes".
+        let mut names = std::collections::HashSet::new();
+        for ix in &manifest.instructions {
+            if !names.insert(ix.name.as_str()) {
+                return Err(ManifestError::Invalid(format!(
+                    "instruction name '{}' appears more than once; each instruction needs its own name",
+                    ix.name
                 )));
             }
         }
@@ -1035,6 +1083,17 @@ pub fn validate_manifest(manifest: &ProtocolManifest) -> Result<(), ManifestErro
                 return Err(ManifestError::Invalid(format!(
                     "instruction '{}' has no discriminator, and only a program with a single instruction can be described that way",
                     ix.name
+                )));
+            }
+            // A031 (audit 2026-11): the Core reads a selector from at most
+            // the first 8 bytes of the data (`dispatch_selector`), so a
+            // longer discriminator never matches a call; it is refused
+            // before the prefix-ambiguity check below compares every pair.
+            if ix.discriminator.len() > 2 * MAX_DISCRIMINATOR_BYTES {
+                return Err(ManifestError::Invalid(format!(
+                    "instruction '{}' has a discriminator of {} hex characters; a selector is at most {MAX_DISCRIMINATOR_BYTES} bytes",
+                    ix.name,
+                    ix.discriminator.len()
                 )));
             }
             if !ix.discriminator.is_empty() {

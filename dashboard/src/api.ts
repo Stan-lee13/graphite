@@ -201,26 +201,17 @@ export interface Health {
   frozen_baseline_count?: number;
   /** Programs found redeployed since last seen (R-M1). */
   program_upgrades?: { detected?: number; quarantine_on_upgrade?: boolean };
+  /** Since audit A018, no counter and no size: those are at /metrics. */
   audit?: {
     enabled: boolean;
-    writes_ok?: number;
-    writes_failed?: number;
-    active_bytes?: number;
-    archive_count?: number;
-    rotations_ok?: number;
-    rotations_failed?: number;
     /** Round 30 (G-07): what the trail's integrity rests on. */
     integrity?: "tamper_evident" | "corruption_evident";
-    chain_head_seq?: number | null;
-    anchors_failed?: number;
   };
   /** Round 30 (G-08): whether the witness is another provider, and whether
    *  every L8 conclusion needs it. */
   l8_assurance?: { witness_independent?: boolean | null; high_assurance?: boolean };
   graph_persistence?: {
     enabled: boolean;
-    snapshots_ok?: number;
-    snapshots_failed?: number;
     last_error?: string | null;
   };
 }

@@ -1,0 +1,9 @@
+# Executed mainnet transactions whose decoded-program instructions the
+# `idl-refresh` workflow prints (Round 41). These four are the honest
+# SOL -> Token-2022 Jupiter v6 routes through Pump AMM that live run
+# 41154452231 refused with the request left unbound (rows 173, 1264, 1304,
+# 1359); their route bytes say which Swap variant they use.
+2mocNT82c3XihTF2nZCdeTZcDratKBWFNcvPMTykwYe447sg4x2pvbPr2qXAiyQVf1Bn9aiTkjLGpH34TdFEsyfs
+Rq2s2BN3yxoQih1sVQGZwVkspPBpdKJjY3CokCLsrTU7dvdQLGeA8iEZ8zWapNSWA3gAw3tUPepttcNaVHXcgMs
+41xH3Tm3JorLXn8QGSi5y7SXoaak3zK3WFF2V9HQfe3cG8Qz6RTJ3D3pt8fxuAPmV99s8AJaCJiS77ydrt7mNhng
+5p9X6Nq3voQ8ZhSYGbKdcFzdrg3dDuzmBtXbRHSDzDGYPUfRRzJ1mrFDU6gDcqs1BUnZ6sJFNj3rAh6RYXkoB46o

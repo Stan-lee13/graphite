@@ -666,7 +666,13 @@ fn assess_impl(
             if !discriminator.is_empty() {
                 let declared = discriminator.as_str();
                 let selector = normalize_discriminator(pattern.discriminator);
-                if declared.len() < selector.len() && selector.starts_with(declared) {
+                // A strict prefix: `selector` begins with `declared` and goes
+                // on. (Equal text never reaches here: `disc_matches` above has
+                // already refused it.)
+                if selector
+                    .strip_prefix(declared)
+                    .is_some_and(|rest| !rest.is_empty())
+                {
                     return Ok(RiskVerdict::Blocked {
                         pattern: pattern.pattern,
                         reason: format!(
@@ -1755,7 +1761,35 @@ fn detect_system_account_impersonation(
         .cloned()
 }
 
-/// The account a fund movement takes value FROM, when the list reaches it.
+/// Audit A039: Checks 10a and 10b on the OWNER of a token transfer's
+/// destination account. The checks above judge the account the instruction
+/// names, which for an SPL Token or Token-2022 transfer is a token account
+/// derived from its owner: it never carries the owner's vanity shape, and is
+/// never itself a native address. `owner` is read from state (the pipeline's
+/// own simulated diff); the same rules judge it.
+pub fn token_destination_owner_verdict(owner: &str) -> Option<RiskVerdict> {
+    if UNSPENDABLE_ADDRESSES.contains(&owner) {
+        return Some(RiskVerdict::Blocked {
+            pattern: RiskPattern::UnspendableDestination,
+            reason: format!(
+                "Unspendable destination: the destination token account is owned by {owner}, which no one can sign for — tokens sent there are locked permanently"
+            ),
+        });
+    }
+    if owner.len() >= 32
+        && (owner.ends_with(&"1".repeat(VANITY_TRAILING_ONES)) || owner.starts_with("Compu"))
+    {
+        return Some(RiskVerdict::Blocked {
+            pattern: RiskPattern::Impersonation,
+            reason: format!(
+                "System-account impersonation: fund movement to a token account owned by {owner}, whose address shape impersonates an official system account (vanity run of trailing 1s or Compu prefix)"
+            ),
+        });
+    }
+    None
+}
+
+/// The account a fund movement takes value FROM, when the list reaches it./// The account a fund movement takes value FROM, when the list reaches it.
 fn fund_movement_source<'a>(
     program_id: &str,
     discriminator: &str,
@@ -1787,6 +1821,73 @@ mod tests {
     const WALLET_A: &str = "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU";
     const WALLET_B: &str = "DuFgLf6zzf2N9v3iT4NrkdTPDSD2xK52CCnx6Ag2ckTP";
     const MINT: &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
+    /// Round 41 (Assurance run 41195462495, risk_engine shard 0/12): no test
+    /// read what `short_id` returns, so replacing it with "" or "xyzzy"
+    /// survived. A refusal names the programs it is about by this prefix.
+    #[test]
+    fn short_id_is_the_first_eight_characters() {
+        assert_eq!(short_id(WALLET_A), "9RGFwSry");
+        assert_eq!(short_id(MINT), "EPjFWdd5");
+        assert_eq!(short_id("12345678"), "12345678");
+        assert_eq!(short_id("abc"), "abc");
+        assert_eq!(short_id(""), "");
+        // By character, never by byte (A1-03/A3-09): nine two-byte
+        // characters give eight of them, and nothing panics.
+        assert_eq!(short_id("ééééééééé"), "éééééééé");
+    }
+
+    /// Round 41 (Assurance run 41195462495, risk_engine shard 1/12): an
+    /// empty discriminator on a program whose risky selectors include an
+    /// authority hand-over is refused AS that hand-over. Flipping the
+    /// `AuthorityHijack` comparison survived: the Token program's next entry
+    /// (CloseAccount, a Drainer) still blocked, under the wrong pattern.
+    #[test]
+    fn an_empty_discriminator_on_a_hand_over_program_is_refused_as_one() {
+        for program in [
+            TOKEN_PROGRAM_ID,
+            TOKEN_2022_PROGRAM_ID,
+            "11111111111111111111111111111111",
+        ] {
+            let v = assess(&input(program, "", &[WALLET_A, WALLET_B], "transfer")).unwrap();
+            assert_eq!(
+                pattern_of(&v),
+                Some(RiskPattern::AuthorityHijack),
+                "{program}"
+            );
+            let RiskVerdict::Blocked { reason, .. } = v else {
+                unreachable!()
+            };
+            assert!(
+                reason.contains("empty discriminator"),
+                "{program}: {reason}"
+            );
+        }
+    }
+
+    /// Round 41 (Assurance run 41195462495, risk_engine shard 10/12): the
+    /// `close` arm of `program_supports_intent` had no test of its own, so
+    /// flipping either token-program comparison, or joining them with `&&`,
+    /// survived. A close intent is served by exactly the two token programs
+    /// and Jupiter DCA; any other program is a mismatch (fail-closed).
+    #[test]
+    fn close_is_served_by_the_token_programs_and_jupiter_dca_only() {
+        for program in [
+            TOKEN_PROGRAM_ID,
+            TOKEN_2022_PROGRAM_ID,
+            "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M",
+        ] {
+            assert!(program_supports_intent(program, "close"), "{program}");
+        }
+        for program in [
+            "11111111111111111111111111111111",
+            "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+            "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+            WALLET_A,
+        ] {
+            assert!(!program_supports_intent(program, "close"), "{program}");
+        }
+    }
 
     fn input(program: &str, disc: &str, accounts: &[&str], intent: &str) -> RiskAssessmentInput {
         RiskAssessmentInput {
@@ -2235,6 +2336,27 @@ mod tests {
         );
     }
 
+    /// Audit A039: a token account's OWNER is judged by 10a/10b's rules.
+    #[test]
+    fn a_token_destinations_owner_is_judged_by_10a_and_10b() {
+        assert!(matches!(
+            token_destination_owner_verdict("iBGtY2LBEmTiVrmPCgHRGdCPZJcDEmmkDxbLhV11111"),
+            Some(RiskVerdict::Blocked {
+                pattern: RiskPattern::Impersonation,
+                ..
+            })
+        ));
+        assert!(matches!(
+            token_destination_owner_verdict(SYSTEM_PROGRAM_ID),
+            Some(RiskVerdict::Blocked {
+                pattern: RiskPattern::UnspendableDestination,
+                ..
+            })
+        ));
+        assert_eq!(token_destination_owner_verdict(WALLET_A), None);
+        assert_eq!(token_destination_owner_verdict(WALLET_B), None);
+    }
+
     /// ISA variant: a transfer to a "Compu..."-prefixed vanity address must
     /// also be blocked (mimics ComputeBudget1111...).
     #[test]
@@ -2243,12 +2365,21 @@ mod tests {
             verified_self_refund_close: false,
             writable_extra_accounts: None,
             program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
+            // Audit A039: the real TransferChecked layout [source, mint,
+            // destination, authority]. With two accounts the destination slot
+            // was missing and the rule passed only through its judge-every-
+            // account fallback.
             accounts: vec![
                 "DuFgLf6zzf2N9v3iT4NrkdTPDSD2xK52CCnx6Ag2ckTP".to_string(),
+                MINT.to_string(),
                 "CompuV3LmCTW7AGGnM6YBftCJkKP3ZKkK1fCAY8L7eM1".to_string(),
+                WALLET_A.to_string(),
             ],
             cpi_targets: vec![],
-            expected_state_changes: vec![],
+            expected_state_changes: vec![
+                "debits accounts.source by data.amount".to_string(),
+                "credits accounts.destination by data.amount".to_string(),
+            ],
             allowed_cpis: vec![],
             instruction_discriminator: "0c00000000000000".to_string(), // transferChecked
             expected_account_count: None,

@@ -19,12 +19,28 @@ and baselines earned since the last good snapshot exist only in memory.
 2. Free space on the volume's filesystem (`df -h` on the host; `docker system
    df` for images and build cache). Never delete anything under the data
    volume to make room: it is the audit trail.
-3. If `GRAPHITE_AUDIT_MAX_ARCHIVES` is `0` (keep every archive, the default),
-   move old `audit.jsonl.<stamp>-<seq>` archives to off-host storage
-   (backup-restore.md) rather than deleting them; their indexes under
-   `audit.jsonl-index/` are rebuilt when needed.
+3. Do not move or delete audit archives by hand while the server runs. Since
+   Round 38, a trail whose oldest record is above seq 0 with no prune record
+   naming it is a break: `graphite audit verify` exits 1, `backup.sh` keeps
+   nothing ("nothing kept"), `graphite audit checkpoint` and so
+   `anchor-checkpoints.sh` write nothing, and L8 no longer finds the verdicts
+   in the archives that left (Audit A009). If archives must go to make room:
+   1. Take an off-host backup first, while `graphite audit verify` still exits
+      0 (backup-restore.md); it is the only copy of the records that leave.
+   2. Either set `GRAPHITE_AUDIT_MAX_ARCHIVES` to the number to keep, so the
+      writer prunes at its next rotation and records the prune itself; or, with
+      the server stopped (step 1's warning applies: free space any other way
+      first if a snapshot failed), move the oldest archives off the volume and
+      run `graphite audit acknowledge-prune --data-dir <dir> --key-file <current
+      key>` once, which records where the trail starts now (keys.md, "Pruning
+      and prune records").
+   3. Confirm `graphite audit verify` exits 0 before restarting, and that the
+      next `backup.sh` run and checkpoint succeed.
+
+   Indexes under `audit.jsonl-index/` are rebuilt when needed.
 4. The failure counters do not reset while the process runs. Once writes
-   succeed again, confirm new records land (`writes_ok` rising on `/health`),
+   succeed again, confirm new records land (`graphite_audit_writes_ok_total` rising at the keyed
+   `/metrics`; `/health` carries no counters since audit A018),
    then restart during a quiet moment to clear `degraded`.
 5. Record the window in which verdicts were refused.
 
@@ -34,10 +50,12 @@ and baselines earned since the last good snapshot exist only in memory.
 (rebuilt), an archive that could not be read, or a record that failed to read
 back; `/metrics` read errors; a dashboard total that went backwards.
 
-**Meaning:** the audit trail is corruption-evident (lengths and SHA-256 of
-archives are checked when indexed; records are read back and matched). It is
-not tamper-proof against someone who can write to the volume: such a person
-can rewrite a file and its index consistently.
+**Meaning:** every record is hash-chained; lengths and SHA-256 of archives are
+checked when indexed, and records are read back and matched. With
+`GRAPHITE_AUDIT_KEY_FILE` the chain links and the archive indexes are MAC'd,
+so the trail is tamper-evident against anyone without the key (Round 30,
+Round 38). Without a key it is corruption-evident only: someone who can write
+the volume can rewrite a file and its index consistently (Audit A096).
 
 1. Stop writes from going anywhere unexpected: snapshot the volume as it is now
    (backup-restore.md, cold backup) before touching anything.
@@ -124,11 +142,17 @@ Exit codes:
 | Code | Meaning | Action |
 | --- | --- | --- |
 | 0 | reconciled | none |
-| 1 | **DISCREPANCY: a transaction Graphite blocked executed anyway** | security incident (below) |
+| 1 | **DISCREPANCY: a transaction Graphite blocked executed anyway** (`BlockedButExecuted`), or one it approved for analysis only executed with no accepted residual named on its signing (`NotExecutableButExecuted`, Round 41) | security incident (below) |
 | 3 | unavailable (no RPC answer, no audit trail, configuration error) | retry; RPC runbook above |
 | 4 | the RPC returned bytes not bound to the signature | treat the primary RPC as faulty or hostile; switch provider |
 | 5 | the primary RPC contradicted itself about the signature | same as 4 |
 | 6 | the witness disagreed, or could not be asked | compare providers by hand; do not trust either alone |
+
+`NotExecutableButExecuted` that names `accepted_unobserved` exits 0: the
+signer's operator accepted those residuals (the agent guard's
+`GRAPHITE_ACCEPT_UNOBSERVED`). Check that the codes are ones this deployment
+meant to accept. The alert `GraphiteLifecycleOnNotExecutable` pages on the
+same case at signing time.
 
 A transaction that never finalizes is not a Graphite fault: check the
 blockhash expiry and the fee market, and never re-submit a different build of

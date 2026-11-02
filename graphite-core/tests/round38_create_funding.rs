@@ -580,6 +580,95 @@ async fn a_transfer_to_someone_else_beside_a_creation_is_not_executable() {
     );
 }
 
+/// Round 41 audit (`create` binding): the rent of what a creation makes is
+/// the attacker's choice of size, so rent alone is no bound. A 1 MiB account
+/// another program owns, funded with exactly its rent (7.3 SOL), under a
+/// `create` that states no amount: the wallet's SOL lands in an account the
+/// attacker's program controls. Before Round 41 this was
+/// `executable_approved` (rent was never counted as a transfer).
+#[tokio::test]
+async fn a_large_account_another_program_owns_funded_with_its_rent_is_not_executable() {
+    let (c, ixs) = create(rent(1 << 20), 1 << 20, FOREIGN);
+    let r = verify(c, OWNER, &ixs, 0, "create", None).await;
+    record("1 MiB foreign, rent only", &r);
+    assert_ne!(
+        r.decision,
+        ExecutionDecision::ExecutableApproved,
+        "{}",
+        risk(&r)
+    );
+    assert!(
+        risk(&r).contains("IntentMismatch"),
+        "the binding does not name it: {}",
+        risk(&r)
+    );
+}
+
+/// The same with the System program as owner: whoever holds the new
+/// account's key (the transaction's builder) can reassign it and take what it
+/// holds, so a large System-owned creation is a transfer too.
+#[tokio::test]
+async fn a_large_system_owned_account_funded_with_its_rent_is_not_executable() {
+    let (c, ixs) = create(rent(1 << 20), 1 << 20, SYSTEM);
+    let r = verify(c, OWNER, &ixs, 0, "create", None).await;
+    record("1 MiB system, rent only", &r);
+    assert_ne!(
+        r.decision,
+        ExecutionDecision::ExecutableApproved,
+        "{}",
+        risk(&r)
+    );
+}
+
+/// The boundary: ordinary created accounts (a token account's 165 bytes, a
+/// mint's 82, nonce 80, stake 200, Metaplex metadata 679) are at most 1 KiB,
+/// and their rent needs no stated amount; one byte more and it does.
+#[tokio::test]
+async fn rent_is_the_creations_own_up_to_one_kib() {
+    let (c, ixs) = create(rent(1024), 1024, FOREIGN);
+    let r = verify(c, OWNER, &ixs, 0, "create", None).await;
+    record("1024 foreign", &r);
+    assert_eq!(
+        r.decision,
+        ExecutionDecision::ExecutableApproved,
+        "{}",
+        risk(&r)
+    );
+    let (c, ixs) = create(rent(1025), 1025, FOREIGN);
+    let r = verify(c, OWNER, &ixs, 0, "create", None).await;
+    record("1025 foreign", &r);
+    assert_ne!(
+        r.decision,
+        ExecutionDecision::ExecutableApproved,
+        "{}",
+        risk(&r)
+    );
+}
+
+/// The control: a large creation whose cost the request states in full.
+#[tokio::test]
+async fn a_large_account_whose_cost_the_request_states_is_executable() {
+    let (c, ixs) = create(rent(1 << 20), 1 << 20, FOREIGN);
+    let r = verify(c, OWNER, &ixs, 0, "create", sol_request("7.29897984")).await;
+    record("1 MiB foreign, stated", &r);
+    assert_eq!(
+        r.decision,
+        ExecutionDecision::ExecutableApproved,
+        "{}",
+        risk(&r)
+    );
+    // One lamport short of what it funds is a mismatch.
+    let (c, ixs) = create(rent(1 << 20), 1 << 20, FOREIGN);
+    let r = verify(c, OWNER, &ixs, 0, "create", sol_request("7.298979839")).await;
+    record("1 MiB foreign, stated one short", &r);
+    assert_ne!(
+        r.decision,
+        ExecutionDecision::ExecutableApproved,
+        "{}",
+        risk(&r)
+    );
+}
+
 // Round 40 (bootstrap): the same tests after `graphite evidence import-census`,
 // under the built-in Gaming profile (tests/round40_imported/mod.rs).
 imported_twins!(
@@ -587,4 +676,8 @@ imported_twins!(
     an_account_funded_far_beyond_its_rent_is_not_executable,
     an_account_funded_with_the_amount_the_request_states_is_executable,
     a_transfer_to_someone_else_beside_a_creation_is_not_executable,
+    a_large_account_another_program_owns_funded_with_its_rent_is_not_executable,
+    a_large_system_owned_account_funded_with_its_rent_is_not_executable,
+    rent_is_the_creations_own_up_to_one_kib,
+    a_large_account_whose_cost_the_request_states_is_executable,
 );

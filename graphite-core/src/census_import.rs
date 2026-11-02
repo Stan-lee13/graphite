@@ -250,6 +250,20 @@ pub fn verify_census_document(doc: &Value) -> Vec<String> {
                 "volume.oldest_slot / newest_slot are missing or out of order (the measurement cannot be dated)",
             )),
         }
+        // Audit A073: the decode sample's own window, recorded since Round 41.
+        // Absent (an older census) is allowed and bound by the volume window;
+        // present, it must be a well-ordered pair.
+        let decode_window = (
+            p["decode"].get("oldest_slot"),
+            p["decode"].get("newest_slot"),
+        );
+        match decode_window {
+            (None, None) => {}
+            (Some(o), Some(n)) if o.as_u64().zip(n.as_u64()).is_some_and(|(o, n)| o <= n) => {}
+            _ => problems.push(at(
+                "decode.oldest_slot / newest_slot are malformed or out of order (the decode sample cannot be dated)",
+            )),
+        }
         let observed = p["decode"]["instructions_observed"].as_u64().unwrap_or(0);
         let meets = p["identity"]["executable"].as_bool() == Some(true)
             && p["volume"]["successful_transactions_counted"]
@@ -418,8 +432,16 @@ fn plan_one(
         return Err(format!("below the bar: {}", short.join("; ")));
     }
 
-    let oldest_slot = p["volume"]["oldest_slot"].as_u64().unwrap_or(0);
+    let volume_oldest_slot = p["volume"]["oldest_slot"].as_u64().unwrap_or(0);
     let newest_slot = p["volume"]["newest_slot"].as_u64().unwrap_or(0);
+    // Audit A073: the decode rate is evidence about the code that ran when
+    // its sample was taken, which can be before the volume window began (the
+    // block sweep is read first, or reused from a cache). The stale check
+    // binds on the OLDER of the two windows; a census that records no decode
+    // window (before Round 41) is bound by its volume window, as it was.
+    let oldest_slot = p["decode"]["oldest_slot"]
+        .as_u64()
+        .map_or(volume_oldest_slot, |d| d.min(volume_oldest_slot));
     if let Some(d) = core.observed_deployment(id) {
         if d.deploy_slot > oldest_slot {
             return Err(format!(

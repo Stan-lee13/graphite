@@ -51,6 +51,102 @@ tests:
                 Graphite refused. Find the record with `graphite execution` and the
                 agent's own logs; docs/ops/incidents.md.
 
+  # Audit A065: a caught panic pages; request timeouts open a ticket after
+  # ten minutes of them.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_handler_panics_total{instance="core:7331", job="graphite"}'
+        values: '0 0 1 1 1 1'
+      - series: 'graphite_request_timeouts_total{instance="core:7331", job="graphite"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: GraphiteHandlerPanics
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: GraphiteHandlerPanics
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "A request handler panicked (core:7331)"
+              description: The panic was caught and answered 500; no verdict and no audit row exist for it. Read the server log for the panic message.
+      - eval_time: 5m
+        alertname: GraphiteRequestTimeouts
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: GraphiteRequestTimeouts
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "Requests are reaching the request timeout (core:7331)"
+              description: Answered 408 with no verdict. A slow RPC (see the RPC alerts) or a host out of CPU.
+
+  # Audit A068: a probe that cannot reach /health, or has stopped writing.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_health_up{instance="node:9100", job="node"}'
+        values: '1 1 0 0 0 0 0 0 0 0'
+      - series: 'node_textfile_mtime_seconds{file="/var/lib/node_exporter/textfile/graphite_health.prom", instance="node:9100", job="node"}'
+        values: '0 60 120 180 240 300 300 300 300 300 300 300 300'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: GraphiteHealthProbeDown
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: GraphiteHealthProbeDown
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              instance: node:9100
+              job: node
+            exp_annotations:
+              summary: "The /health textfile probe cannot reach the Core (node:9100)"
+              description: deploy/scripts/health-textfile.sh writes graphite_health_up 0, so GraphiteDegraded cannot fire. Point GRAPHITE_HEALTH_URL at the Core.
+      - eval_time: 5m
+        alertname: GraphiteHealthProbeStale
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: GraphiteHealthProbeStale
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              file: /var/lib/node_exporter/textfile/graphite_health.prom
+              instance: node:9100
+              job: node
+            exp_annotations:
+              summary: "The /health textfile has not been rewritten for 5 minutes (node:9100)"
+              description: The health-textfile timer has stopped; degraded reasons are not being read.
+
+  # Audit A010 (D-45): a report against a verdict that was not executable.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_lifecycle_events_on_not_executable_total{instance="core:7331", job="graphite"}'
+        values: '0 0 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: GraphiteLifecycleOnNotExecutable
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: GraphiteLifecycleOnNotExecutable
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "A lifecycle event was reported for a verdict that was not executable (core:7331)"
+              description: >-
+                An agent reported signing/submission/confirmation of a transaction
+                Graphite approved for analysis only, without naming accepted
+                residuals. Find the record with `graphite execution` and the
+                agent's own logs; docs/ops/incidents.md.
+
   # Audit: disabled pages after a minute; failing writes page; an unkeyed
   # trail is a ticket only while the trail exists.
   - interval: 1m

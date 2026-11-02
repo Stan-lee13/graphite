@@ -110,6 +110,14 @@ export interface ExecutionLifecycle {
   /** L8's answer, when the reconciliation call succeeded. */
   reconciliation?: ExecutionCheckResult;
   reconciliationError?: string;
+  /**
+   * Audit A047: set by the guard when the transaction confirmed but its
+   * unresolved-submission record could not be settled (the guard was closed
+   * while it was polled, or the state file could not be written). The
+   * transaction went out and confirmed all the same; the record stays held,
+   * so a repeat of the request asks the RPC before anything is built.
+   */
+  stateRecordError?: string;
 }
 
 export interface ExecuteParams {
@@ -144,7 +152,7 @@ export interface ExecuteParams {
    * signed. The guard passes a summary of the resolved transaction to the
    * caller's hook through this.
    */
-  confirm?: (decided: { acceptedUnobserved: UnobservedCode[] }) => Promise<boolean>;
+  confirm?: (decided: { acceptedUnobserved: UnobservedCode[]; decision: "executable_approved" | "analysis_only" }) => Promise<boolean>;
   /**
    * How long `confirm` may take, in milliseconds (default
    * `DEFAULT_CONFIRM_TIMEOUT_MS`). A confirmation that has not answered by
@@ -227,6 +235,19 @@ export class ConfirmationDeclined extends Error {
   constructor(label: string, why: string) {
     super(`[Graphite] ${label}: not confirmed (${why}). Nothing was signed or sent.`);
     this.name = "ConfirmationDeclined";
+  }
+}
+
+/**
+ * No answer came back (Audit A057): the hook threw (a client that cannot
+ * show the question, a transport that failed, its own timeout) or did not
+ * answer in time. Still a `ConfirmationDeclined` — nothing was signed or
+ * sent — but not a person's refusal, and not reported as one.
+ */
+export class ConfirmationUnavailable extends ConfirmationDeclined {
+  constructor(label: string, why: string) {
+    super(label, why);
+    this.name = "ConfirmationUnavailable";
   }
 }
 
@@ -357,7 +378,7 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
   if (p.confirm) {
     const timeoutMs = p.confirmTimeoutMs ?? DEFAULT_CONFIRM_TIMEOUT_MS;
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
-      throw new ConfirmationDeclined(label, `the confirmation timeout ${String(timeoutMs)} is not a positive integer of milliseconds`);
+      throw new ConfirmationUnavailable(label, `the confirmation timeout ${String(timeoutMs)} is not a positive integer of milliseconds`);
     }
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timedOut = new Promise<"timeout">((resolve) => {
@@ -365,13 +386,16 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
     });
     let answer: unknown;
     try {
-      answer = await Promise.race([p.confirm({ acceptedUnobserved: [...decision.accepted] }), timedOut]);
+      answer = await Promise.race([
+        p.confirm({ acceptedUnobserved: [...decision.accepted], decision: decision.decision }),
+        timedOut,
+      ]);
     } catch (e) {
-      throw new ConfirmationDeclined(label, `the confirmation failed: ${message(e)}`);
+      throw new ConfirmationUnavailable(label, `the confirmation failed: ${message(e)}`);
     } finally {
       clearTimeout(timer);
     }
-    if (answer === "timeout") throw new ConfirmationDeclined(label, `no answer within ${timeoutMs} ms`);
+    if (answer === "timeout") throw new ConfirmationUnavailable(label, `no answer within ${timeoutMs} ms`);
     // Exactly `true`: "yes", 1 or an object is not a confirmation.
     if (answer !== true) throw new ConfirmationDeclined(label, "declined");
   }
@@ -409,6 +433,9 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
       transaction_sha256: scope.transaction_sha256,
       reported_by: p.reportedBy,
       detail: `digest ${scope.transaction_sha256}`,
+      // Audit A010: a verdict signed under residuals this deployment
+      // accepts says which, so L8 attributes it instead of paging.
+      ...(decision.accepted.length > 0 ? { accepted_unobserved: [...decision.accepted] } : {}),
     });
   } catch (e) {
     throw new Error(
@@ -427,7 +454,15 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
         "not by the exact audit_trail_id this bridge supplied. NOT submitting.",
     );
   }
-  if (signing.verdict_on_record !== "approved") {
+  // Audit A010: a Core from Round 41 reports a verdict approved for
+  // analysis only as `not_executable`; an earlier one as `approved`. Either
+  // is this process's verdict only when this process signed it under the
+  // residuals it accepted; an executable approval must read `approved`.
+  const onRecord =
+    verification.decision === "executable_approved" || decision.accepted.length === 0
+      ? ["approved"]
+      : ["approved", "not_executable"];
+  if (!onRecord.includes(signing.verdict_on_record)) {
     // The server that verified this transaction is not the server whose
     // trail was just consulted, or the trail changed under us. Either way
     // the approval in hand is not the approval on record.

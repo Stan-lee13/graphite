@@ -80,7 +80,7 @@ case "$format" in
           fail "per-binary floors $floors: bad line '$line'"
         fi
         listed=$((listed + 1))
-        got=$(printf '%s\n' "$per_binary" | awk -F'\t' -v b="$f_bin" '$2 == b { print $1; n++ } END { if (n != 1) print "x" n }' | tail -n 1)
+        got=$(printf '%s\n' "$per_binary" | awk -F'\t' -v b="$f_bin" '$2 == b { print $1; n++ } END { if (n != 1) print "x" n + 0 }' | tail -n 1)
         case "$got" in
           x0) fail "test binary '$f_bin' (floor $f_min) did not run" ;;
           x*) fail "test binary '$f_bin' ran more than once" ;;

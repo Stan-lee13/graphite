@@ -97,7 +97,7 @@ bounds hold whatever it writes:
   instructions the guard decodes are built (Jupiter v6 `route`/`shared_accounts_route`,
   Orca Whirlpools, Raydium CPMM/CLMM/AMM v4, Meteora DLMM); the route's own minimum
   output must be within the allowed slippage of the simulated output and meet a price
-  floor — the request's stated minimum or the operator's `GRAPHITE_SWAP_MIN_RATES`.
+  floor — the request's stated minimum and the operator's `GRAPHITE_SWAP_MIN_RATES`, each that is set (the request can raise the operator's floor, never lower it).
   With neither, the swap is refused unless `GRAPHITE_SWAP_ALLOW_UNPRICED=1`.
 - **A person approves every fund-moving call by default** (`needsApproval: true`, above).
 

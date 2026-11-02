@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -398,5 +399,101 @@ func TestHealthAndManifestsRefuseAMalformed200(t *testing.T) {
 		if _, err := NewClient(serve(t, http.StatusOK, body).URL).ListManifests(); err == nil {
 			t.Errorf("manifests %s: must be refused", body)
 		}
+	}
+}
+
+// Audit A005: walkJSON recursed with no depth limit and copied the whole
+// parent path at every level, so a ~50 KB body of nested brackets held
+// gigabytes and the fatal out-of-memory or stack overflow killed the
+// process. A body nested deeper than maxJSONDepth is refused as an invalid
+// response, quickly and without the quadratic path.
+func TestDeeplyNestedBodyIsRefusedNotFatal(t *testing.T) {
+	for _, open := range []string{"[", `{"a":`} {
+		body := []byte(strings.Repeat(open, 200_000))
+		start := time.Now()
+		err := checkNoFoldedDuplicates(body)
+		if err == nil || !strings.Contains(err.Error(), "nested deeper") {
+			t.Fatalf("%q x 200000: got %v, want a depth refusal", open, err)
+		}
+		if d := time.Since(start); d > 2*time.Second {
+			t.Fatalf("%q x 200000 took %v", open, d)
+		}
+		var v map[string]any
+		if err := decodeStrict(body, &v, "verdict", func(any) string { return "" }); err == nil || !errors.Is(err, ErrInvalidResponse) {
+			t.Fatalf("decodeStrict: %v", err)
+		}
+	}
+}
+
+func TestNestingUpToTheLimitStillWalksAndNamesThePath(t *testing.T) {
+	ok := strings.Repeat("[", maxJSONDepth) + strings.Repeat("]", maxJSONDepth)
+	if err := checkNoFoldedDuplicates([]byte(ok)); err != nil {
+		t.Fatalf("depth %d: %v", maxJSONDepth, err)
+	}
+	over := strings.Repeat("[", maxJSONDepth+1) + strings.Repeat("]", maxJSONDepth+1)
+	if err := checkNoFoldedDuplicates([]byte(over)); err == nil {
+		t.Fatalf("depth %d accepted", maxJSONDepth+1)
+	}
+	// The duplicate-key error still names where it is.
+	err := checkNoFoldedDuplicates([]byte(`{"a":[0,{"b":{"x":1,"X":2}}]}`))
+	if err == nil || !strings.Contains(err.Error(), "$.a[1].b:") {
+		t.Fatalf("path: %v", err)
+	}
+}
+
+// Audit A010: a verdict approved for analysis only is reported as
+// not_executable, and its execution is a discrepancy unless its signer named
+// the residuals it accepted.
+func TestNotExecutableVerdictsAndTheirExecutions(t *testing.T) {
+	event := &LifecycleEventInput{EventType: LifecycleSigning, ContentHash: "48c65c638aceb5de", AuditTrailID: "gr-x", AcceptedUnobserved: []string{"not_simulated"}}
+	body := strings.Replace(receiptJSON("signing"), `"approved"`, `"not_executable"`, 1)
+	body = strings.Replace(body, `"prior_events_on_record":0`, `"prior_events_on_record":0,"accepted_unobserved":["not_simulated"]`, 1)
+	r, err := NewClient(serve(t, http.StatusOK, body).URL).RecordLifecycleEvent(event)
+	if err != nil || r.VerdictOnRecord != VerdictOnRecordNotExecutable || len(r.AcceptedUnobserved) != 1 {
+		t.Fatalf("a not_executable receipt must be accepted: %+v %v", r, err)
+	}
+	if b, _ := json.Marshal(event); !strings.Contains(string(b), `"accepted_unobserved":["not_simulated"]`) {
+		t.Fatalf("the input must carry accepted_unobserved: %s", b)
+	}
+	in := &ExecutionCheckInput{Signature: signature, AuditTrailID: "gr-x"}
+	unaccepted := `{"NotExecutableButExecuted":{"decision":"analysis_only","accepted_unobserved":[]}}`
+	accepted := `{"NotExecutableButExecuted":{"decision":"analysis_only","accepted_unobserved":["not_simulated"]}}`
+	for _, ok := range []struct {
+		rec  string
+		disc bool
+	}{{unaccepted, true}, {accepted, false}} {
+		r, err := NewClient(serve(t, http.StatusOK, executionJSON(ok.rec, ok.disc)).URL).VerifyExecution(in)
+		if err != nil || r.Discrepancy != ok.disc || r.ReconciliationVariant() != "NotExecutableButExecuted" {
+			t.Fatalf("%s: %+v %v", ok.rec, r, err)
+		}
+	}
+	for name, body := range map[string]string{
+		"unaccepted, alarm dropped": executionJSON(unaccepted, false),
+		"accepted, alarm raised":    executionJSON(accepted, true),
+		"no decision":               executionJSON(`{"NotExecutableButExecuted":{}}`, true),
+	} {
+		if _, err := NewClient(serve(t, http.StatusOK, body).URL).VerifyExecution(in); err == nil {
+			t.Errorf("%s: must be refused", name)
+		}
+	}
+}
+
+// Audit A060: printing a configured client never prints its Bearer key.
+func TestPrintingAClientNeverPrintsItsKey(t *testing.T) {
+	const key = "graphite-secret-key-0123456789abcdef"
+	c := NewClientWithAPIKey("https://graphite.example", key)
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s"} {
+		for _, v := range []any{c, *c} {
+			out := fmt.Sprintf(verb, v)
+			if strings.Contains(out, key) {
+				t.Fatalf("%s of %T prints the key: %s", verb, v, out)
+			}
+			if !strings.Contains(out, "graphite.example") {
+				t.Fatalf("%s of %T no longer says which server: %s", verb, v, out)
+			}
+		}
+	}
+	if out := fmt.Sprintf("%+v", NewClient("https://graphite.example")); strings.Contains(out, "redacted") {
+		t.Fatalf("a client with no key claims one: %s", out)
 	}
 }

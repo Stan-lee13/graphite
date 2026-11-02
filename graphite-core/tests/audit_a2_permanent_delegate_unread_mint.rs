@@ -106,6 +106,7 @@ fn a_token2022_transfer_under_an_unread_mint_is_not_certified() {
         token2022_mints: Default::default(),
         transaction_accounts: None,
         transaction_privileges: None,
+        top_level_instructions: None,
     };
     let accts = vec![
         account(SIGNER, true, true),

@@ -588,6 +588,28 @@ impl SemanticGraphStore {
         Ok(())
     }
 
+    /// Whether [`Self::lift_quarantine`] would lift `program_id`: its
+    /// refusals, with nothing changed. The server records a lift on the
+    /// audit trail BEFORE applying it (audit A017), so it asks this first:
+    /// a lift the graph refuses must not be on the trail.
+    pub fn check_liftable(&self, program_id: &str) -> Result<(), SemanticGraphError> {
+        self.liftable(program_id).map(|_| ())
+    }
+
+    fn liftable(&self, program_id: &str) -> Result<&Behavior, SemanticGraphError> {
+        let latest = self
+            .get(program_id)
+            .ok_or_else(|| SemanticGraphError::NotFound {
+                program_id: program_id.to_string(),
+            })?;
+        if !latest.quarantined {
+            return Err(SemanticGraphError::InvalidRecord {
+                reason: format!("program {program_id} is not quarantined"),
+            });
+        }
+        Ok(latest)
+    }
+
     /// Lift an active quarantine (ARCHITECTURE.md 3.8), the deliberate
     /// counterpart to `quarantine()`.
     ///
@@ -601,19 +623,7 @@ impl SemanticGraphStore {
     /// would otherwise append a confusing no-op record to an audit trail whose
     /// value is that every entry means something.
     pub fn lift_quarantine(&mut self, program_id: &str) -> Result<(), SemanticGraphError> {
-        let latest = self
-            .get(program_id)
-            .ok_or_else(|| SemanticGraphError::NotFound {
-                program_id: program_id.to_string(),
-            })?
-            .clone();
-
-        if !latest.quarantined {
-            return Err(SemanticGraphError::InvalidRecord {
-                reason: format!("program {program_id} is not quarantined"),
-            });
-        }
-
+        let latest = self.liftable(program_id)?.clone();
         self.push_behavior(Behavior {
             trust_tier: compute_trust_tier_for(&latest.evidence, latest.first_manifest_unvalidated),
             quarantined: false,

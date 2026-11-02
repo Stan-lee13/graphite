@@ -66,11 +66,26 @@ export function describeForPerson(s: ConfirmationSummary): string {
   }
   lines.push(`Program: ${s.programId}`, "", "Simulated effect on the wallet (these exact bytes):");
   lines.push(`  SOL out: ${s.walletEffect.solOutLamports} lamports (fee and rent included; negative = received)`);
-  for (const t of s.walletEffect.tokens) lines.push(`  ${t.mint}: ${t.delta} base units`);
+  // Audit A056: a token's delta is positive when received, the opposite of
+  // the SOL line's sign; each line says which, in words.
+  for (const t of s.walletEffect.tokens) {
+    const spent = t.delta.startsWith("-");
+    lines.push(`  ${t.mint}: ${spent ? "spent" : "received"} ${spent ? t.delta.slice(1) : t.delta} base units`);
+  }
   const v = s.verdict;
+  // Round 41 (external review D-8): an approval that reached this question
+  // only because the deployment accepted its residuals by name is
+  // analysis_only, not executable_approved, and is called that. Audit A058:
+  // from the decision itself; anything but executable_approved with nothing
+  // accepted is not called APPROVED.
+  const decision = !v.approved
+    ? "NOT APPROVED"
+    : v.decision !== "executable_approved" || v.acceptedUnobserved.length > 0
+      ? "ANALYSIS ONLY (not executable_approved; signed only under residuals this deployment accepts)"
+      : "APPROVED (executable_approved)";
   lines.push(
     "",
-    `Graphite: ${v.approved ? "APPROVED" : "NOT APPROVED"}, risk ${v.risk}, confidence ${v.confidence}`,
+    `Graphite: ${decision}, risk ${v.risk}, confidence ${v.confidence}`,
     `  audit trail ${v.auditTrailId}${v.transactionSha256 ? `, transaction ${v.transactionSha256}` : ""}`,
     `  not observed: ${v.unobservedCodes.join(", ") || "none"}` +
       (v.acceptedUnobserved.length > 0 ? `; accepted by this deployment: ${v.acceptedUnobserved.join(", ")}` : ""),
@@ -114,25 +129,38 @@ export function createGraphiteMcpServer(guard: GraphiteGuard, options: { confirm
    * Whether this call can be confirmed at all: with confirmation required, a
    * client that cannot elicit is refused before anything is built. Returns
    * null when the call may proceed.
+   *
+   * Audit A057: the question is a form, so the client must answer forms
+   * (the SDK reads a bare `elicitation: {}` as forms only); a client that
+   * declares URL-mode elicitation alone passed, and the transaction was
+   * built and verified before the question failed. Nobody was asked, so the
+   * refusal is not a person's.
    */
   function confirmable(): GraphiteToolResult | null {
     if (options.confirmation === "none") return null;
-    if (!server.server.getClientCapabilities()?.elicitation) {
+    if (!server.server.getClientCapabilities()?.elicitation?.form) {
       return {
         executed: false,
-        refusedBy: "person",
+        refusedBy: "confirmation-unavailable",
         reason:
-          "this MCP client cannot ask a person to confirm (no elicitation capability), and the server is " +
+          "this MCP client cannot ask a person to confirm (no form elicitation capability), and the server is " +
           "configured to require confirmation (GRAPHITE_MCP_CONFIRMATION=elicit). Not executed.",
       };
     }
     return null;
   }
 
-  /** The guard's confirmation hook: ask the person about the resolved transaction. */
-  function hook(): { confirm?: (summary: ConfirmationSummary) => Promise<boolean> } {
-    if (options.confirmation === "none") return {};
+  /**
+   * The guard's per-call options: the request's cancellation (Audit A004: a
+   * cancelled or client-timed-out call was still signed and sent, its result
+   * dropped by the SDK, and a retry spent again) and the confirmation hook,
+   * which asks the person about the resolved transaction under the same
+   * signal.
+   */
+  function hook(signal: AbortSignal): { signal: AbortSignal; confirm?: (summary: ConfirmationSummary) => Promise<boolean> } {
+    if (options.confirmation === "none") return { signal };
     return {
+      signal,
       confirm: async (summary) => {
         const answer = await server.server.elicitInput({
           message: describeForPerson(summary),
@@ -141,7 +169,7 @@ export function createGraphiteMcpServer(guard: GraphiteGuard, options: { confirm
             properties: { approve: { type: "boolean", title: "Approve", description: "Sign and send this transaction" } },
             required: ["approve"],
           },
-        });
+        }, { signal });
         return answer.action === "accept" && answer.content?.approve === true;
       },
     };
@@ -180,11 +208,11 @@ export function createGraphiteMcpServer(guard: GraphiteGuard, options: { confirm
       inputSchema: { request: z.string().min(1).max(500) },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     },
-    async ({ request }) => {
+    async ({ request }, extra) => {
       const refused = confirmable();
       if (refused) return asContent(refused);
       try {
-        return asContent(toolResultOf(await guard.executeTransfer(request, hook())));
+        return asContent(toolResultOf(await guard.executeTransfer(request, hook(extra.signal))));
       } catch (e) {
         return asContent(toolRefusalOf(e));
       }
@@ -210,11 +238,11 @@ export function createGraphiteMcpServer(guard: GraphiteGuard, options: { confirm
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     },
-    async ({ request, route }) => {
+    async ({ request, route }, extra) => {
       const refused = confirmable();
       if (refused) return asContent(refused);
       try {
-        return asContent(toolResultOf(await guard.executeSwap(request, route satisfies BoundInstructionPayload, hook())));
+        return asContent(toolResultOf(await guard.executeSwap(request, route satisfies BoundInstructionPayload, hook(extra.signal))));
       } catch (e) {
         return asContent(toolRefusalOf(e));
       }

@@ -12,6 +12,30 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+/// The most base58 characters `bytes` bytes can need (Round 41 audit):
+/// ceil(n · log 256 / log 58) ≤ n · 1.3658 + 1 — 44 for a 32-byte key, 88
+/// for a 64-byte signature. A leading zero byte spells as one `1`, which is
+/// fewer. Base58 decoding is quadratic in its input, so every string that
+/// arrives from a caller or an RPC is held to this before it is decoded.
+pub const fn max_base58_len(bytes: usize) -> usize {
+    bytes * 13_658 / 10_000 + 1
+}
+
+/// The longest base58 spelling of a 32-byte key.
+pub const MAX_PUBKEY_BASE58_LEN: usize = max_base58_len(32);
+
+/// The longest base58 spelling of a 64-byte signature.
+pub const MAX_SIGNATURE_BASE58_LEN: usize = max_base58_len(64);
+
+/// `s` decoded, if it is base58 no longer than `max_bytes` bytes can spell;
+/// a longer string is refused without being decoded (Round 41 audit).
+pub fn decode_base58_bounded(s: &str, max_bytes: usize) -> Option<Vec<u8>> {
+    if s.len() > max_base58_len(max_bytes) {
+        return None;
+    }
+    bs58::decode(s).into_vec().ok()
+}
+
 #[derive(Debug, Clone, Error)]
 pub enum SolanaTypeError {
     #[error("invalid base58: {0}")]
@@ -110,6 +134,16 @@ impl Pubkey {
     }
 
     pub fn from_base58(s: &str) -> Result<Self, SolanaTypeError> {
+        // Round 41 audit: base58 decoding is quadratic in the input, and a
+        // caller's string (an extracted parameter, a program id) reached it
+        // unbounded — a 1 MiB string pinned a worker for minutes. A 32-byte
+        // key is at most 44 characters; anything longer is refused first.
+        if s.len() > MAX_PUBKEY_BASE58_LEN {
+            return Err(SolanaTypeError::InvalidBase58(format!(
+                "{} characters; a 32-byte key is at most {MAX_PUBKEY_BASE58_LEN}",
+                s.len()
+            )));
+        }
         let decoded = bs58::decode(s)
             .into_vec()
             .map_err(|e| SolanaTypeError::InvalidBase58(e.to_string()))?;
@@ -183,6 +217,36 @@ pub fn create_program_address(
 ) -> Result<Pubkey, SolanaTypeError> {
     check_seed_limits(seeds)?;
     program_address(seeds, bump, program_id).ok_or(SolanaTypeError::OnCurve)
+}
+
+/// Solana's `Pubkey::create_with_seed(base, seed, owner)` (Round 41, D-24):
+/// `sha256(base || seed || owner)`. Refused as the runtime refuses it: a seed
+/// over `MAX_SEED_LEN` bytes or not UTF-8 (the System program's seed is a
+/// `String`), or an owner whose last bytes are the PDA marker
+/// (`IllegalOwner`). The address the System program's `CreateAccountWithSeed`
+/// creates; a caller checks the instruction's account against it rather than
+/// trusting the slot.
+pub fn create_with_seed(
+    base: &Pubkey,
+    seed: &[u8],
+    owner: &Pubkey,
+) -> Result<Pubkey, SolanaTypeError> {
+    if seed.len() > MAX_SEED_LEN || std::str::from_utf8(seed).is_err() {
+        return Err(SolanaTypeError::SeedLimit(format!(
+            "a {}-byte seed is over the runtime's {MAX_SEED_LEN}-byte limit or not UTF-8",
+            seed.len()
+        )));
+    }
+    if owner.as_bytes().ends_with(PDA_MARKER) {
+        return Err(SolanaTypeError::SeedLimit(
+            "the owner ends with the PDA marker (IllegalOwner)".to_string(),
+        ));
+    }
+    let mut hasher = Sha256::new();
+    hasher.update(base.as_bytes());
+    hasher.update(seed);
+    hasher.update(owner.as_bytes());
+    Ok(Pubkey(hasher.finalize().into()))
 }
 
 /// The off-curve address for these seeds and bump, or `None` on the curve.
@@ -312,6 +376,37 @@ impl Instruction {
 mod tests {
     use super::*;
 
+    /// Round 41 audit: a caller's string reached the quadratic base58
+    /// decoder unbounded. A key is refused by its length before decoding;
+    /// the bound is exact for 32-byte keys and 64-byte signatures.
+    #[test]
+    fn base58_is_refused_by_length_before_it_is_decoded() {
+        assert_eq!(MAX_PUBKEY_BASE58_LEN, 44);
+        assert_eq!(MAX_SIGNATURE_BASE58_LEN, 88);
+        // The longest real spellings fit the bounds.
+        assert_eq!(bs58::encode([0xffu8; 32]).into_string().len(), 44);
+        assert_eq!(bs58::encode([0xffu8; 64]).into_string().len(), 88);
+        for n in [1usize, 31, 32, 33, 64, 1232, 10 * 1024] {
+            let longest = bs58::encode(vec![0xffu8; n]).into_string().len();
+            assert!(longest <= max_base58_len(n), "{n}: {longest}");
+            assert!(decode_base58_bounded(&"2".repeat(max_base58_len(n) + 1), n).is_none());
+        }
+        let key = "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU";
+        assert!(Pubkey::from_base58(key).is_ok());
+        // 45 characters: refused for its length, not decoded and measured.
+        let long = format!("{key}1");
+        match Pubkey::from_base58(&long) {
+            Err(SolanaTypeError::InvalidBase58(m)) => assert!(m.contains("at most 44"), "{m}"),
+            other => panic!("{other:?}"),
+        }
+        // A megabyte of base58 is refused at once.
+        let huge = "2".repeat(1 << 20);
+        let t = std::time::Instant::now();
+        assert!(Pubkey::from_base58(&huge).is_err());
+        assert!(decode_base58_bounded(&huge, 10 * 1024).is_none());
+        assert!(t.elapsed() < std::time::Duration::from_secs(1));
+    }
+
     /// R30: the Round 29 fix (bump 0 is never tried) had no test, because no
     /// real seed exercises it. The search is driven with a derivation whose
     /// off-curve bumps are chosen: Solana's `try_find_program_address` runs
@@ -379,6 +474,26 @@ mod tests {
         assert!(!Pubkey::SPL_TOKEN.is_system_program());
         assert!(!Pubkey::TOKEN_2022.is_system_program());
         assert_eq!(Pubkey::default(), Pubkey::SYSTEM_PROGRAM);
+    }
+
+    /// Round 41 (D-24): `create_with_seed` is sha256(base || seed || owner),
+    /// checked against a vector computed independently (Python `hashlib`),
+    /// and refuses what the runtime refuses.
+    #[test]
+    fn create_with_seed_is_the_runtimes_derivation() {
+        let base = Pubkey::from_base58("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU").unwrap();
+        let token = Pubkey::from_base58("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
+        assert_eq!(
+            create_with_seed(&base, b"graphite-r41", &token)
+                .unwrap()
+                .to_base58(),
+            "6jaXAL75hshJMYhzBxZexV9CbN4kKXirAadoBV5WqCGd"
+        );
+        assert!(create_with_seed(&base, &[b'a'; 33], &token).is_err());
+        assert!(create_with_seed(&base, &[0xff], &token).is_err());
+        let mut marker = [7u8; 32];
+        marker[11..].copy_from_slice(PDA_MARKER);
+        assert!(create_with_seed(&base, b"x", &Pubkey(marker)).is_err());
     }
 
     /// `create_program_address` with the bump `find_program_address` found

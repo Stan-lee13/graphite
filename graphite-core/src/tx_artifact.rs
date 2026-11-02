@@ -718,9 +718,8 @@ pub fn bound_artifact_sha256(
     let malformed = || SignatureBindingError::SignatureMalformed {
         signature: signature.to_string(),
     };
-    let decoded = bs58::decode(signature)
-        .into_vec()
-        .map_err(|_| malformed())?;
+    let decoded =
+        crate::solana_types::decode_base58_bounded(signature, 64).ok_or_else(malformed)?;
     let expected: [u8; 64] = decoded.as_slice().try_into().map_err(|_| malformed())?;
 
     // The frame must parse in full, which also guarantees that every declared
@@ -745,9 +744,7 @@ pub fn bound_artifact_sha256(
     }
 
     let fee_payer = message.fee_payer.clone();
-    let key_bytes: [u8; 32] = bs58::decode(&fee_payer)
-        .into_vec()
-        .ok()
+    let key_bytes: [u8; 32] = crate::solana_types::decode_base58_bounded(&fee_payer, 32)
         .and_then(|v| v.as_slice().try_into().ok())
         .ok_or_else(|| SignatureBindingError::FeePayerKeyInvalid {
             fee_payer: fee_payer.clone(),
@@ -1030,53 +1027,62 @@ pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseE
 /// Keys the runtime never lets a transaction write, whatever its header says:
 /// the entries of agave's reserved-account-key set that are active with no
 /// feature gate (`ReservedAccount::new_active` in agave's
-/// `reserved-account-keys`).
+/// `reserved-account-keys`), in the order agave lists them.
 ///
-/// FEATURE-GATED KEYS ARE LEFT WRITABLE, on purpose. agave reserves these
-/// only behind a feature (`ReservedAccount::new_pending`):
-///
-/// - behind `add_new_reserved_account_keys`: the AddressLookupTable,
-///   ComputeBudget, Ed25519, LoaderV4, Secp256k1, ZkElGamalProof and
-///   ZkTokenProof programs, the EpochRewards and LastRestartSlot sysvars, and
-///   the Sysvar owner id (`Sysvar1111111111111111111111111111111111111`);
-/// - behind `enable_secp256r1_precompile`: the Secp256r1 program.
-///
-/// Whether a cluster demotes them depends on a feature the bytes do not show.
-/// Left out, such a key reads as writable when its header says so — the
-/// stricter reading: Graphite may call a key writable that the runtime
-/// demotes, never the reverse. What changes when a feature activates on
-/// mainnet: nothing becomes unsafe (the runtime only gets stricter than this
-/// list), but `writable` then over-reports those keys, and a key reported
-/// writable that a manifest declares read-only is refused as a privilege
-/// mismatch. On activation, move the ids here (in the same order agave
-/// lists them) and rerun the runtime oracle, whose `always_reserved` set
-/// must move with them.
+/// Audit A091 (2026-11): agave-reserved-account-keys 4.3.2 and 4.4.0 (4.4.0
+/// is the version `tools/inner-instruction-oracle/Cargo.lock` pins) list
+/// every key that used to be reserved only behind a feature —
+/// `add_new_reserved_account_keys` (the AddressLookupTable, ComputeBudget,
+/// Ed25519, LoaderV4, Secp256k1, ZkElGamalProof and ZkTokenProof programs,
+/// the EpochRewards and LastRestartSlot sysvars, and the Sysvar owner id)
+/// and `enable_secp256r1_precompile` (the Secp256r1 program) — as
+/// `new_active`: the features were activated and their gates removed, so the
+/// runtime demotes them unconditionally. They were left writable here while
+/// gated, the stricter reading; once active that over-reported them, and a
+/// manifest declaring one read-only was refused as a privilege mismatch the
+/// runtime never exhibits. A key agave adds behind a new feature
+/// (`new_pending`) stays out of this list, writable, until that feature is
+/// active and agave lists it with `new_active`.
 ///
 /// The runtime oracle (`tools/runtime-oracle`) checks this list and the
 /// demotion against the crates' own `is_maybe_writable`, and checks that
 /// every program and sysvar id the id crate defines is classified as either
-/// always reserved or not.
+/// always reserved or not; its `always_reserved` set moves with this list.
 const ALWAYS_DEMOTED_KEYS: &[&str] = &[
-    "Config1111111111111111111111111111111111111",
-    "Feature111111111111111111111111111111111111",
-    "NativeLoader1111111111111111111111111111111",
-    "Stake11111111111111111111111111111111111111",
-    "StakeConfig11111111111111111111111111111111",
-    "Vote111111111111111111111111111111111111111",
-    "11111111111111111111111111111111",
+    // builtin programs
+    "AddressLookupTab1e1111111111111111111111111",
     "BPFLoader2111111111111111111111111111111111",
     "BPFLoader1111111111111111111111111111111111",
     UPGRADEABLE_LOADER,
+    "ComputeBudget111111111111111111111111111111",
+    "Config1111111111111111111111111111111111111",
+    "Ed25519SigVerify111111111111111111111111111",
+    "Feature111111111111111111111111111111111111",
+    "LoaderV411111111111111111111111111111111111",
+    "KeccakSecp256k11111111111111111111111111111",
+    "Secp256r1SigVerify1111111111111111111111111",
+    "StakeConfig11111111111111111111111111111111",
+    "Stake11111111111111111111111111111111111111",
+    "11111111111111111111111111111111",
+    "Vote111111111111111111111111111111111111111",
+    "ZkE1Gama1Proof11111111111111111111111111111",
+    "ZkTokenProof1111111111111111111111111111111",
+    // sysvars
     "SysvarC1ock11111111111111111111111111111111",
+    "SysvarEpochRewards1111111111111111111111111",
     "SysvarEpochSchedu1e111111111111111111111111",
     "SysvarFees111111111111111111111111111111111",
     "Sysvar1nstructions1111111111111111111111111",
+    "SysvarLastRestartS1ot1111111111111111111111",
     "SysvarRecentB1ockHashes11111111111111111111",
     "SysvarRent111111111111111111111111111111111",
     "SysvarRewards111111111111111111111111111111",
     "SysvarS1otHashes111111111111111111111111111",
     "SysvarS1otHistory11111111111111111111111111",
     "SysvarStakeHistory1111111111111111111111111",
+    // other
+    "NativeLoader1111111111111111111111111111111",
+    "Sysvar1111111111111111111111111111111111111",
 ];
 
 const UPGRADEABLE_LOADER: &str = "BPFLoaderUpgradeab1e11111111111111111111111";
@@ -2177,6 +2183,137 @@ pub fn check_durable_nonce(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Round 41 (Assurance run 41195462495, tx_artifact shard 14/17): the
+    /// legacy/v0 Compute Budget reading had 13 surviving mutants, because no
+    /// test read the heap rule, the price, the loaded-accounts limit, the
+    /// retired `RequestUnits` or the exact too-short boundary. Each case
+    /// below is the runtime's rule for one instruction.
+    mod compute_budget_rules {
+        use super::*;
+
+        fn cb(data: &[u8]) -> ArtifactInstruction {
+            ArtifactInstruction {
+                program_id: COMPUTE_BUDGET_PROGRAM.to_string(),
+                accounts: vec![],
+                account_indexes: vec![],
+                data: data.to_vec(),
+            }
+        }
+
+        fn other() -> ArtifactInstruction {
+            ArtifactInstruction {
+                program_id: SYSTEM_PROGRAM.to_string(),
+                accounts: vec![],
+                account_indexes: vec![],
+                data: vec![2, 0, 0, 0],
+            }
+        }
+
+        fn read(ixs: Vec<ArtifactInstruction>) -> ComputeBudgetRequest {
+            compute_budget_request(&ArtifactMessage {
+                version: None,
+                static_keys: vec![],
+                fee_payer: String::new(),
+                signers: vec![],
+                writable: vec![],
+                header_writable: vec![],
+                recent_blockhash: String::new(),
+                instructions: ixs,
+                lookups: vec![],
+                v1_config: None,
+            })
+        }
+
+        fn tagged(tag: u8, value: &[u8]) -> Vec<u8> {
+            let mut d = vec![tag];
+            d.extend_from_slice(value);
+            d
+        }
+
+        #[test]
+        fn a_heap_is_a_multiple_of_1024_between_32_and_256_kib() {
+            for heap in [32 * 1024u32, 64 * 1024, 256 * 1024] {
+                let r = read(vec![cb(&tagged(1, &heap.to_le_bytes())), other()]);
+                assert_eq!(r.heap_bytes, Some(heap));
+                assert!(r.problems.is_empty(), "{heap}: {:?}", r.problems);
+            }
+            for heap in [0u32, 16 * 1024, 31 * 1024, 33_000, 257 * 1024, 512 * 1024] {
+                let r = read(vec![cb(&tagged(1, &heap.to_le_bytes())), other()]);
+                assert_eq!(r.heap_bytes, Some(heap));
+                assert_eq!(r.problems.len(), 1, "{heap}: {:?}", r.problems);
+                assert!(r.problems[0].contains("heap"), "{heap}: {:?}", r.problems);
+            }
+        }
+
+        #[test]
+        fn the_limit_the_price_and_the_fee_are_read() {
+            let r = read(vec![
+                cb(&tagged(2, &300_000u32.to_le_bytes())),
+                cb(&tagged(3, &2_500_000u64.to_le_bytes())),
+                other(),
+            ]);
+            assert_eq!(r.compute_unit_limit, Some(300_000));
+            assert_eq!(r.effective_compute_unit_limit, 300_000);
+            assert_eq!(r.compute_unit_price_micro_lamports, Some(2_500_000));
+            // 2.5 lamports per CU x 300,000 CU.
+            assert_eq!(r.priority_fee_lamports, 750_000);
+            assert!(r.problems.is_empty(), "{:?}", r.problems);
+        }
+
+        #[test]
+        fn a_loaded_accounts_limit_of_zero_is_refused_and_any_other_is_read() {
+            let r = read(vec![cb(&tagged(4, &65_536u32.to_le_bytes())), other()]);
+            assert_eq!(r.loaded_accounts_data_size_limit, Some(65_536));
+            assert!(r.problems.is_empty(), "{:?}", r.problems);
+            let r = read(vec![cb(&tagged(4, &0u32.to_le_bytes())), other()]);
+            assert_eq!(r.loaded_accounts_data_size_limit, Some(0));
+            assert_eq!(r.problems.len(), 1, "{:?}", r.problems);
+            assert!(r.problems[0].contains("limit of zero"), "{:?}", r.problems);
+        }
+
+        #[test]
+        fn the_retired_request_units_is_refused() {
+            let r = read(vec![cb(&[0, 1, 2, 3, 4, 5, 6, 7, 8]), other()]);
+            assert_eq!(r.problems.len(), 1, "{:?}", r.problems);
+            assert!(
+                r.problems[0].contains("retired RequestUnits"),
+                "{:?}",
+                r.problems
+            );
+            assert_eq!(r.compute_unit_limit, None);
+            assert_eq!(r.heap_bytes, None);
+        }
+
+        #[test]
+        fn exactly_long_enough_is_read_one_byte_short_is_refused_longer_is_read() {
+            // SetComputeUnitPrice needs 9 bytes; SetComputeUnitLimit needs 5.
+            let price = tagged(3, &7u64.to_le_bytes());
+            let r = read(vec![cb(&price), other()]);
+            assert_eq!(r.compute_unit_price_micro_lamports, Some(7));
+            assert!(r.problems.is_empty(), "{:?}", r.problems);
+
+            let r = read(vec![cb(&price[..8]), other()]);
+            assert_eq!(r.compute_unit_price_micro_lamports, None);
+            assert_eq!(r.problems.len(), 1, "{:?}", r.problems);
+            assert!(r.problems[0].contains("too short"), "{:?}", r.problems);
+
+            // Trailing bytes are ignored, as agave's decoder ignores them.
+            let mut long = price.clone();
+            long.extend_from_slice(&[9, 9, 9]);
+            let r = read(vec![cb(&long), other()]);
+            assert_eq!(r.compute_unit_price_micro_lamports, Some(7));
+            assert!(r.problems.is_empty(), "{:?}", r.problems);
+
+            let limit = tagged(2, &50_000u32.to_le_bytes());
+            let r = read(vec![cb(&limit), other()]);
+            assert_eq!(r.compute_unit_limit, Some(50_000));
+            assert!(r.problems.is_empty(), "{:?}", r.problems);
+            let r = read(vec![cb(&limit[..4]), other()]);
+            assert_eq!(r.compute_unit_limit, None);
+            assert!(r.problems[0].contains("too short"), "{:?}", r.problems);
+        }
+    }
 
     fn key(n: u8) -> [u8; 32] {
         [n; 32]

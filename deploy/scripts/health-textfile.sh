@@ -9,8 +9,11 @@
 #
 # Run every minute (cron, or a systemd timer). The file is replaced
 # atomically, so the collector never reads half of it. When /health cannot be
-# reached, graphite_health_up is 0 and no reason series is written: the
-# GraphiteDown alert covers that case, not a stale "healthy".
+# reached, graphite_health_up is 0 and no reason series is written:
+# GraphiteHealthProbeDown alerts on that (GraphiteDown does not: it reads the
+# /metrics scrape, which can still answer), and GraphiteHealthProbeStale on a
+# file this script has stopped rewriting (Audit A068). On a compose host the
+# default URL needs the loopback port of production-checklist 9b-console.
 #
 # Needs: bash, curl, jq.
 set -euo pipefail

@@ -285,7 +285,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(graphite_health_degraded) or vector(0)",
+          "expr": "sum(graphite_health_degraded)",
           "instant": true
         }
       ],

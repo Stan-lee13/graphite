@@ -84,6 +84,24 @@ const LEADING_QUOTING = /^[(\["'`]+/;
 const NEGATION =
   /(?<![0-9A-Za-z])(?:not|no|never|don'?t|dont|do\s+not|won'?t|shouldn'?t|mustn'?t|cancel(?:s|led|ling)?|stop|abort|undo|instead|refrain(?:s|ed|ing)?|hold(?:ing)?\s+off)(?![0-9A-Za-z])|n['\u2019]t(?![0-9A-Za-z])/i;
 
+/**
+ * The longest request text grounded at all (Audit A085). Every accepted form
+ * is one short imperative sentence — the longest, a swap between two mint
+ * addresses with a minimum and a slippage, is about 200 characters — and the
+ * grounding regexes are not linear on long runs of punctuation or spaces:
+ * 64 KiB of them held the guard's event loop for seconds per call.
+ */
+export const MAX_REQUEST_CHARS = 1_000;
+
+function assertRequestLength(input: string): void {
+  if (typeof input !== "string" || input.length > MAX_REQUEST_CHARS) {
+    throw new IntentGroundingError(
+      `The request is ${typeof input === "string" ? `${input.length} characters` : "not text"}; a transaction is ` +
+        `only built from a request of at most ${MAX_REQUEST_CHARS} characters, one plain sentence.`,
+    );
+  }
+}
+
 /** Refuse a request that negates, cancels or withholds what it names. */
 export function assertAffirmative(input: string): void {
   const m = NEGATION.exec(input);
@@ -233,6 +251,7 @@ export function groundTransferIntent(
     | { amount?: unknown; destination?: unknown; input_token?: unknown }
     | undefined,
 ): GroundedTransfer {
+  assertRequestLength(input);
   // A typed address with a stray character is named as such before anything
   // else (A5-02): the grammar would refuse it too, less helpfully.
   addressTokens(input);
@@ -322,6 +341,7 @@ const SWAP_CLASS_LABELS: ReadonlySet<string> = new Set(["swap", "trade", "exchan
  * L3: a subset of the Core's swap set).
  */
 export function groundSwapIntent(input: string, aiIntentType: unknown, programId: unknown): "swap" {
+  assertRequestLength(input);
   if (!SWAP_VERB.test(input)) {
     throw new IntentGroundingError(
       "The request does not ask for a swap: none of swap / trade / exchange / convert / sell / " +
@@ -473,6 +493,7 @@ export function groundSwapRequest(
   input: string,
   params: { amount?: unknown; input_token?: unknown; output_token?: unknown } | undefined,
 ): GroundedSwap {
+  assertRequestLength(input);
   assertAffirmative(input);
   const m = SPEND_FIRST.exec(input) ?? BUY_WITH.exec(input);
   if (!m?.groups) {

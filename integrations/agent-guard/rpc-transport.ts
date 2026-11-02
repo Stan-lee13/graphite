@@ -282,3 +282,40 @@ export class BoundedConnection extends Connection {
     }
   }
 }
+
+/**
+ * Give `sub`'s prototype its own copy of every method and accessor it
+ * inherits (up to `Object.prototype`), then freeze it and `sub` (Audit A048).
+ *
+ * An instance of `sub` then resolves each method on a frozen object that no
+ * other code holds: replacing one on the base class's prototype — reachable
+ * from any instance of the base, e.g. `Object.getPrototypeOf(
+ * guard.getConnection())` — changes what every other instance does, and
+ * nothing that this one does. What a module loaded BEFORE this one did to
+ * those prototypes is out of reach, as patching `crypto.subtle` is.
+ */
+export function sealInheritedMethods(sub: abstract new (...args: never[]) => unknown): void {
+  const target = sub.prototype as object;
+  for (let p = Object.getPrototypeOf(target) as object | null; p !== null && p !== Object.prototype; p = Object.getPrototypeOf(p)) {
+    for (const name of Reflect.ownKeys(p)) {
+      if (name === "constructor" || Object.prototype.hasOwnProperty.call(target, name)) continue;
+      Object.defineProperty(target, name, Object.getOwnPropertyDescriptor(p, name) as PropertyDescriptor);
+    }
+  }
+  Object.freeze(target);
+  Object.freeze(sub);
+}
+
+/**
+ * The guard's own connections (Audit A048): a `BoundedConnection` whose
+ * methods are its own, frozen. The connection `getConnection()` hands out is
+ * a plain `BoundedConnection`; whatever a caller replaces on its prototype
+ * chain does not reach the connection the guard decides on and submits with.
+ */
+class SealedConnection extends BoundedConnection {}
+sealInheritedMethods(SealedConnection);
+
+/** A connection like `BoundedConnection` whose methods no later code can replace (Audit A048). */
+export function sealedConnection(rpcUrl: string, opts: { timeoutMs?: number; maxBytes?: number } = {}): Connection {
+  return new SealedConnection(rpcUrl, opts);
+}

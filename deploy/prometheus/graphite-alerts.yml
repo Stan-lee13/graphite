@@ -40,6 +40,21 @@ groups:
             Graphite refused. Find the record with `graphite execution` and the
             agent's own logs; docs/ops/incidents.md.
 
+      # Audit A010 (D-45): a caller reported signing, submitting or confirming
+      # a transaction Graphite approved for analysis only (never for
+      # signing), naming no residual its operator accepted.
+      - alert: GraphiteLifecycleOnNotExecutable
+        expr: increase(graphite_lifecycle_events_on_not_executable_total[10m]) > 0
+        labels:
+          severity: page
+        annotations:
+          summary: "A lifecycle event was reported for a verdict that was not executable ({{ $labels.instance }})"
+          description: >-
+            An agent reported signing/submission/confirmation of a transaction
+            Graphite approved for analysis only, without naming accepted
+            residuals. Find the record with `graphite execution` and the
+            agent's own logs; docs/ops/incidents.md.
+
       - alert: GraphiteLifecycleSequenceAnomaly
         expr: increase(graphite_lifecycle_sequence_anomalies_total[30m]) > 0
         labels:
@@ -186,6 +201,46 @@ groups:
         annotations:
           summary: "Over 5% of verification requests fail before a verdict ({{ $labels.instance }})"
           description: Malformed requests (422) or verdicts the trail could not record (503).
+
+      # Audit A065 (R39-CB-4's counters): a handler that panics is caught and
+      # answered 500, and never counted as a verify error, so the error-rate
+      # rule reads 0 for a node whose every verification panics.
+      - alert: GraphiteHandlerPanics
+        expr: increase(graphite_handler_panics_total[10m]) > 0
+        labels:
+          severity: page
+        annotations:
+          summary: "A request handler panicked ({{ $labels.instance }})"
+          description: The panic was caught and answered 500; no verdict and no audit row exist for it. Read the server log for the panic message.
+
+      - alert: GraphiteRequestTimeouts
+        expr: increase(graphite_request_timeouts_total[10m]) > 0
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Requests are reaching the request timeout ({{ $labels.instance }})"
+          description: Answered 408 with no verdict. A slow RPC (see the RPC alerts) or a host out of CPU.
+
+      # Audit A068: the textfile probe of /health is the only alert for a
+      # degraded reason with no counter (simulation_baseline_frozen). A probe
+      # that cannot reach /health, or has stopped writing, silences it.
+      - alert: GraphiteHealthProbeDown
+        expr: graphite_health_up == 0
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "The /health textfile probe cannot reach the Core ({{ $labels.instance }})"
+          description: deploy/scripts/health-textfile.sh writes graphite_health_up 0, so GraphiteDegraded cannot fire. Point GRAPHITE_HEALTH_URL at the Core.
+
+      - alert: GraphiteHealthProbeStale
+        expr: time() - node_textfile_mtime_seconds{file=~".*health\\.prom"} > 300
+        labels:
+          severity: ticket
+        annotations:
+          summary: "The /health textfile has not been rewritten for 5 minutes ({{ $labels.instance }})"
+          description: The health-textfile timer has stopped; degraded reasons are not being read.
 
       - alert: GraphiteLoadShedding
         expr: increase(graphite_load_shed_total[10m]) > 0

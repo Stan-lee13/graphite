@@ -48,6 +48,9 @@ fi
 work=$(mktemp -d)
 # A key minted for this run only; it never leaves the runner.
 key="e2e-$(od -An -tx1 -N24 /dev/urandom | tr -d ' \n')"
+# Audit A061: the console runs with the read-only key, the deployment the
+# docs prescribe; only the seeding (which writes verdicts) uses the verify key.
+read_key="e2e-read-$(od -An -tx1 -N24 /dev/urandom | tr -d ' \n')"
 core_pid=""
 preview_pid=""
 cleanup() {
@@ -71,6 +74,7 @@ trap cleanup EXIT
 (
   cd "$work"
   exec env GRAPHITE_API_KEY="$key" \
+    GRAPHITE_READ_API_KEY="$read_key" \
     GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1 \
     GRAPHITE_DATA_DIR="$work/data" \
     GRAPHITE_REGISTRY_STATE="$work/data/registry_state.json" \
@@ -99,7 +103,7 @@ node "$root/dashboard/e2e/seed.mjs" "$core" "$key"
 preview_pid=$!
 wait_for "the console preview" "$preview/"
 
-AXE_CORE_PATH="$axe" node "$root/dashboard/e2e/smoke.mjs" "$preview/" "$core" "$key" | tee "$work/smoke.log"
+AXE_CORE_PATH="$axe" node "$root/dashboard/e2e/smoke.mjs" "$preview/" "$core" "$read_key" | tee "$work/smoke.log"
 # A green exit is necessary, not sufficient: the summary must say axe ran.
 grep -q "clean, axe included$" "$work/smoke.log"
 
@@ -110,5 +114,5 @@ grep -q "clean, axe included$" "$work/smoke.log"
 #    malformed manifest, deep links before the graph answered, the palette
 #    over a detail pane and a refused copy (dashboard/e2e/states.mjs puts its
 #    own fault proxy in front of the Core).
-AXE_CORE_PATH="$axe" node "$root/dashboard/e2e/states.mjs" "$preview/" "$core" "$key" | tee "$work/states.log"
+AXE_CORE_PATH="$axe" node "$root/dashboard/e2e/states.mjs" "$preview/" "$core" "$read_key" | tee "$work/states.log"
 grep -q "clean, axe included$" "$work/states.log"

@@ -384,3 +384,34 @@ test("Round 36 (F-001, GHSA-mrhx-c7xc-m3w5): a model-written oversized route is 
     await s.close();
   }
 });
+
+// Audit A004: the call's abortSignal reaches the guard; a cancelled call is
+// not signed or sent.
+test("A004: a tool call whose abortSignal is aborted signs and sends nothing", async () => {
+  const s = await services();
+  const core = await mockApprovingCore();
+  try {
+    const guard = await GraphiteGuard.create({
+      privateKey: throwawayWallet().secretKeyBase58,
+      rpcUrl: s.rpc.url,
+      graphiteCoreUrl: core.url,
+      aiLayerUrl: s.ai.url,
+      reporter: "vercel-ai",
+      spendPolicy: { maxTransferLamports: 2_000_000_000n },
+    });
+    const cancel = new AbortController();
+    cancel.abort();
+    const tools = graphiteTools(guard, REQUEST_ONLY);
+    const out = (await tools.graphite_transfer_sol.execute!(
+      { request: REQUEST },
+      { abortSignal: cancel.signal, toolCallId: "a004", messages: [], context: undefined as never },
+    )) as { executed: boolean; reason?: string };
+    assert.equal(out.executed, false, JSON.stringify(out));
+    assert.match(out.reason ?? "", /cancelled/);
+    assert.equal(s.rpc.calls.filter((c) => c.method === "sendTransaction").length, 0);
+    for (const c of s.rpc.calls) assert.notEqual(c.signed, true, `${c.method} carried a signature`);
+  } finally {
+    await core.close();
+    await s.close();
+  }
+});

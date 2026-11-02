@@ -144,12 +144,9 @@ impl Binding {
 }
 
 /// One top-level instruction with every account resolved to an address.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Ix {
-    pub program_id: String,
-    pub accounts: Vec<String>,
-    pub data: Vec<u8>,
-}
+/// Round 41: the same type L4 reads (`state_diff::TopLevelInstruction`), so
+/// the binding and L4 read a transaction's instructions alike.
+pub type Ix = crate::state_diff::TopLevelInstruction;
 
 /// What the binding reads.
 pub struct BindingInput<'a> {
@@ -223,7 +220,11 @@ pub fn parse_amount(text: &str, decimals: u8) -> Result<u64, String> {
             "the amount {text} has more decimal places than the asset's {decimals}"
         ));
     }
-    let scale = 10u128.pow(u32::from(decimals));
+    // Audit A040: `decimals` is any u8 (the bytes' decimals byte, or a
+    // mint's), and 10^39 already overflows a u128. No scale means a whole
+    // unit cannot be counted, let alone fit a u64; a pure fraction is still
+    // exactly its own digits.
+    let scale = 10u128.checked_pow(u32::from(decimals));
     let whole: u128 = whole
         .parse()
         .map_err(|_| format!("the amount {text} does not fit in a u64"))?;
@@ -235,13 +236,16 @@ pub fn parse_amount(text: &str, decimals: u8) -> Result<u64, String> {
         0
     } else {
         frac.parse()
-            .map_err(|_| format!("the amount {text} is not a plain decimal"))?
+            .map_err(|_| format!("the amount {text} does not fit in a u64"))?
     };
-    let units = whole
-        .checked_mul(scale)
-        .and_then(|w| w.checked_add(frac))
-        .filter(|u| *u <= u128::from(u64::MAX))
-        .ok_or_else(|| format!("the amount {text} does not fit in a u64"))?;
+    let units = match scale {
+        Some(scale) => whole.checked_mul(scale),
+        None if whole == 0 => Some(0),
+        None => None,
+    }
+    .and_then(|w| w.checked_add(frac))
+    .filter(|u| *u <= u128::from(u64::MAX))
+    .ok_or_else(|| format!("the amount {text} does not fit in a u64"))?;
     if units == 0 {
         return Err(format!("the amount {text} is zero"));
     }
@@ -601,8 +605,72 @@ pub fn bind(input: &BindingInput<'_>) -> Binding {
         // judged where the grant is known; a native stake withdrawal states
         // its lamports instead.
         "withdraw" => bind_stake_withdraw(input),
+        "close" => bind_close(input),
         _ => Binding::NotApplicable,
     }
+}
+
+/// A token-account close is held to its owner (Round 41 full-codebase
+/// audit).
+///
+/// `close` bound nothing. The owner closing their own wSOL account — 10 SOL
+/// wrapped — to their wallet, with a System transfer beside it forwarding
+/// the 10 SOL to an attacker, netted to the rent at L4 and was
+/// `executable_approved`; so was a close sending the lamports to the attacker
+/// directly. Now every top-level SPL Token / Token-2022 `CloseAccount` sends
+/// what it frees to an account its owner keeps, and nothing beside the
+/// closes moves a signer's value to anyone else ([`keeps_value`], with the
+/// closing owners as keepers). A `close` with no token `CloseAccount` — a
+/// program's own close — is judged by its grant, as before.
+fn bind_close(input: &BindingInput<'_>) -> Binding {
+    let Ok(ixs) = input.instructions else {
+        return Binding::NotApplicable;
+    };
+    let closes: Vec<&Ix> = ixs
+        .iter()
+        .filter(|ix| {
+            (ix.program_id == SPL_TOKEN_PROGRAM || ix.program_id == SPL_TOKEN_2022_PROGRAM)
+                && ix.data.first() == Some(&9)
+        })
+        .collect();
+    if closes.is_empty() {
+        return Binding::NotApplicable;
+    }
+    let Some(diff) = input.diff else {
+        return Binding::unbound(
+            "no simulated state diff: where the closed accounts' lamports went was not measured",
+        );
+    };
+    // CloseAccount { }: [account, destination, owner].
+    let mut keepers: Vec<String> = Vec::new();
+    for (i, ix) in closes.iter().enumerate() {
+        let (Some(dest), Some(owner)) = (account(ix, 1), account(ix, 2)) else {
+            return Binding::unbound(format!(
+                "close: CloseAccount {i} names no destination or owner"
+            ));
+        };
+        if !input.signers.contains(&owner) {
+            return Binding::unbound(format!(
+                "close: CloseAccount {i}'s owner {owner} does not sign this transaction"
+            ));
+        }
+        if !keepers.contains(&owner) {
+            keepers.push(owner);
+        }
+        if !kept_by(&dest, &keepers, diff, ixs) {
+            return Binding::mismatch(format!(
+                "close: CloseAccount {i} sends what it frees to {dest}, which is not an account the owner keeps"
+            ));
+        }
+    }
+    if let Err(b) = keeps_value("close", ixs, &closes, &keepers, input.signers, diff, &[]) {
+        return b;
+    }
+    Binding::Bound(format!(
+        "{} token account(s) closed to {}, and nothing beside them moves a signer's value elsewhere",
+        closes.len(),
+        keepers.join(", ")
+    ))
 }
 
 fn need<'p>(value: Option<&'p String>, name: &str, intent: &str) -> Result<&'p str, String> {
@@ -830,6 +898,11 @@ pub struct DecodedSwap {
     pub name: &'static str,
     pub amount_in: u64,
     pub min_out: u64,
+    /// The manifest name of the account `amount_in` is spent FROM (audit
+    /// A026): the route's source token account, Orca's
+    /// `token_owner_account_a` or `_b` as `a_to_b` chooses, the input token
+    /// account of the others. `amount_in` is in that account's mint.
+    pub input_account: &'static str,
 }
 
 /// A strict Borsh reader: every read bounds-checked, `end` requires the data
@@ -903,91 +976,447 @@ impl<'a> Reader<'a> {
     }
 }
 
-/// The argument bytes each Jupiter v6 `Swap` variant carries
-/// (graphite-core/scripts/idls/jupiter.json, variants 0..61). The same table
-/// as `integrations/agent-guard/swap-instructions.ts`
-/// (`JUPITER_SWAP_VARIANTS`); `tests/round36_intent_binding.rs` checks the
-/// two agree.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum JupiterPayload {
-    Unit,
-    Bool,
-    Side,
-    U64U64,
-    U32,
-    Clone,
-    WhirlpoolV2,
-}
-
-use JupiterPayload as J;
-pub const JUPITER_SWAP_VARIANTS: [JupiterPayload; 62] = [
-    J::Unit,
-    J::Unit,
-    J::Unit,
-    J::Unit,
-    J::Unit,
-    J::Unit,
-    J::Unit,
-    J::Unit, // 0-7
-    J::Bool, // 8 Crema
-    J::Unit,
-    J::Unit,
-    J::Unit, // 9-11
-    J::Side, // 12 Serum
-    J::Unit,
-    J::Unit, // 13-14
-    J::Side,
-    J::Side, // 15-16 Aldrin, AldrinV2
-    J::Bool,
-    J::Bool, // 17-18 Whirlpool, Invariant
-    J::Unit,
-    J::Unit, // 19-20
-    J::Bool, // 21 DeltaFi
-    J::Unit, // 22
-    J::Bool, // 23 MarcoPolo
-    J::Side, // 24 Dradex
-    J::Unit,
-    J::Unit, // 25-26
-    J::Side,
-    J::Side,   // 27-28 Openbook, Phoenix
-    J::U64U64, // 29 Symmetry
-    J::Unit,
-    J::Unit,
-    J::Unit, // 30-32
-    J::U32,  // 33 StakeDexSwapViaStake
-    J::Unit,
-    J::Unit,
-    J::Unit,
-    J::Unit,
-    J::Unit,        // 34-38
-    J::Side,        // 39 OpenBookV2
-    J::Unit,        // 40
-    J::Clone,       // 41 Clone
-    J::WhirlpoolV2, // 42
-    J::Unit,
-    J::Unit,
-    J::Unit,
-    J::Unit,
-    J::Unit,
-    J::Unit,
-    J::Unit,
-    J::Unit,
-    J::Unit,
-    J::Unit, // 43-52
-    J::Bool, // 53 Obric
-    J::Unit, // 54
-    J::Bool,
-    J::Bool, // 55-56
-    J::Unit,
-    J::Unit, // 57-58
-    J::Side, // 59 TokenMill
-    J::Unit,
-    J::Unit, // 60-61
+/// The argument bytes each Jupiter v6 `Swap` variant carries, as the
+/// committed ON-CHAIN IDL states them
+/// (`graphite-core/scripts/out/onchain_idls/JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4.json`,
+/// variants 0..203), one Borsh field per token (Round 41, D-23; 188..203
+/// added by D-27 from the IDL deployed on 2026-10-31):
+///
+/// - `bool`, `u8`, `u16`, `u32`, `u64`, `u128`: the scalar (a `bool` is 0 or 1);
+/// - `enumN`: a unit enum with N variants (`Side` is `enum2`), a tag below N;
+/// - `u8xN`, `u64xN`: a fixed array; `bytes`: a `Vec<u8>`;
+/// - `rai`: `RemainingAccountsInfo { slices: Vec<{ accounts_type: u8, length: u8 }> }`;
+/// - `option<T>`: an `Option` (tag 0 or 1) of T;
+/// - `vec<candidate>`: `Vec<CandidateSwap>`; `vec<candidate_bps>`:
+///   `Vec<CandidateSwapWithBps { candidate_swap: CandidateSwap, bps: u32 }>`,
+///   each `CandidateSwap` read from [`JUPITER_CANDIDATE_SWAPS`].
+///
+/// Until Round 41 this table was the 62 variants of `scripts/idls/jupiter.json`,
+/// which agrees with the deployed program only up to variant 40: from 41 on
+/// the deployed enum inserts `StakeDexPrefundWithdrawStakeAndDepositStake`,
+/// the three Sanctum S variants and `RaydiumCP`, so a v1 route through any
+/// later venue was read with the wrong payload and refused as unreadable (its
+/// amounts, the last 19 bytes, could not be misread: the data must end where
+/// the layout ends). The same table as
+/// `integrations/agent-guard/swap-instructions.ts` (`JUPITER_SWAP_VARIANTS`);
+/// `tests/round36_intent_binding.rs` checks the two agree and
+/// `tests/round41_live_false_refusals.rs` checks this one against the IDL.
+pub const JUPITER_SWAP_VARIANTS: [&[&str]; 204] = [
+    &[],                                                     // 0 Saber
+    &[],                                                     // 1 SaberAddDecimalsDeposit
+    &[],                                                     // 2 SaberAddDecimalsWithdraw
+    &[],                                                     // 3 TokenSwap
+    &[],                                                     // 4 Sencha
+    &[],                                                     // 5 Step
+    &[],                                                     // 6 Cropper
+    &[],                                                     // 7 Raydium
+    &["bool"],                                               // 8 Crema
+    &[],                                                     // 9 Lifinity
+    &[],                                                     // 10 Mercurial
+    &[],                                                     // 11 Cykura
+    &["enum2"],                                              // 12 Serum
+    &[],                                                     // 13 MarinadeDeposit
+    &[],                                                     // 14 MarinadeUnstake
+    &["enum2"],                                              // 15 Aldrin
+    &["enum2"],                                              // 16 AldrinV2
+    &["bool"],                                               // 17 Whirlpool
+    &["bool"],                                               // 18 Invariant
+    &[],                                                     // 19 Meteora
+    &[],                                                     // 20 GooseFX
+    &["bool"],                                               // 21 DeltaFi
+    &[],                                                     // 22 Balansol
+    &["bool"],                                               // 23 MarcoPolo
+    &["enum2"],                                              // 24 Dradex
+    &[],                                                     // 25 LifinityV2
+    &[],                                                     // 26 RaydiumClmm
+    &["enum2"],                                              // 27 Openbook
+    &["enum2"],                                              // 28 Phoenix
+    &["u64", "u64"],                                         // 29 Symmetry
+    &[],                                                     // 30 TokenSwapV2
+    &[],                                                     // 31 HeliumTreasuryManagementRedeemV0
+    &[],                                                     // 32 StakeDexStakeWrappedSol
+    &["u32"],                                                // 33 StakeDexSwapViaStake
+    &[],                                                     // 34 GooseFXV2
+    &[],                                                     // 35 Perps
+    &[],                                                     // 36 PerpsAddLiquidity
+    &[],                                                     // 37 PerpsRemoveLiquidity
+    &[],                                                     // 38 MeteoraDlmm
+    &["enum2"],                                              // 39 OpenBookV2
+    &[],                                                     // 40 RaydiumClmmV2
+    &["u32"],                            // 41 StakeDexPrefundWithdrawStakeAndDepositStake
+    &["u8", "bool", "bool"],             // 42 Clone
+    &["u8", "u8", "u32", "u32"],         // 43 SanctumS
+    &["u8", "u32"],                      // 44 SanctumSAddLiquidity
+    &["u8", "u32"],                      // 45 SanctumSRemoveLiquidity
+    &[],                                 // 46 RaydiumCP
+    &["bool", "option<rai>"],            // 47 WhirlpoolSwapV2
+    &[],                                 // 48 OneIntro
+    &[],                                 // 49 PumpWrappedBuy
+    &[],                                 // 50 PumpWrappedSell
+    &[],                                 // 51 PerpsV2
+    &[],                                 // 52 PerpsV2AddLiquidity
+    &[],                                 // 53 PerpsV2RemoveLiquidity
+    &[],                                 // 54 MoonshotWrappedBuy
+    &[],                                 // 55 MoonshotWrappedSell
+    &[],                                 // 56 StabbleStableSwap
+    &[],                                 // 57 StabbleWeightedSwap
+    &["bool"],                           // 58 Obric
+    &[],                                 // 59 FoxBuyFromEstimatedCost
+    &["bool"],                           // 60 FoxClaimPartial
+    &["bool"],                           // 61 SolFi
+    &[],                                 // 62 SolayerDelegateNoInit
+    &[],                                 // 63 SolayerUndelegateNoInit
+    &["enum2"],                          // 64 TokenMill
+    &[],                                 // 65 DaosFunBuy
+    &[],                                 // 66 DaosFunSell
+    &[],                                 // 67 ZeroFi
+    &[],                                 // 68 StakeDexWithdrawWrappedSol
+    &[],                                 // 69 VirtualsBuy
+    &[],                                 // 70 VirtualsSell
+    &["u8", "u8"],                       // 71 Perena
+    &[],                                 // 72 PumpSwapBuy
+    &[],                                 // 73 PumpSwapSell
+    &[],                                 // 74 Gamma
+    &["rai"],                            // 75 MeteoraDlmmSwapV2
+    &[],                                 // 76 Woofi
+    &[],                                 // 77 MeteoraDammV2
+    &[],                                 // 78 MeteoraDynamicBondingCurveSwap
+    &[],                                 // 79 StabbleStableSwapV2
+    &[],                                 // 80 StabbleWeightedSwapV2
+    &["u64"],                            // 81 RaydiumLaunchlabBuy
+    &["u64"],                            // 82 RaydiumLaunchlabSell
+    &[],                                 // 83 BoopdotfunWrappedBuy
+    &[],                                 // 84 BoopdotfunWrappedSell
+    &["enum2"],                          // 85 Plasma
+    &["bool", "u8"],                     // 86 GoonFi
+    &["u64", "bool"],                    // 87 HumidiFi
+    &[],                                 // 88 MeteoraDynamicBondingCurveSwapWithRemainingAccounts
+    &["enum2"],                          // 89 TesseraV
+    &[],                                 // 90 PumpWrappedBuyV2
+    &[],                                 // 91 PumpWrappedSellV2
+    &[],                                 // 92 PumpSwapBuyV2
+    &[],                                 // 93 PumpSwapSellV2
+    &["bool"],                           // 94 Heaven
+    &["bool"],                           // 95 SolFiV2
+    &[],                                 // 96 Aquifer
+    &[],                                 // 97 PumpWrappedBuyV3
+    &[],                                 // 98 PumpWrappedSellV3
+    &[],                                 // 99 PumpSwapBuyV3
+    &[],                                 // 100 PumpSwapSellV3
+    &[],                                 // 101 JupiterLendDeposit
+    &[],                                 // 102 JupiterLendRedeem
+    &["bool", "option<rai>"],            // 103 DefiTuna
+    &["bool"],                           // 104 AlphaQ
+    &[],                                 // 105 RaydiumV2
+    &["bool"],                           // 106 SarosDlmm
+    &["enum2"],                          // 107 Futarchy
+    &[],                                 // 108 MeteoraDammV2WithRemainingAccounts
+    &[],                                 // 109 Obsidian
+    &["enum2"],                          // 110 WhaleStreet
+    &["vec<candidate>", "option<u8>"],   // 111 DynamicV1
+    &[],                                 // 112 PumpWrappedBuyV4
+    &[],                                 // 113 PumpWrappedSellV4
+    &[],                                 // 114 CarrotIssue
+    &[],                                 // 115 CarrotRedeem
+    &["enum2"],                          // 116 Manifest
+    &["bool"],                           // 117 BisonFi
+    &["u64", "bool"],                    // 118 HumidiFiV2
+    &["bool"],                           // 119 PerenaStar
+    &["enum2", "bytes"],                 // 120 JupiterRfqV2
+    &["bool"],                           // 121 GoonFiV2
+    &["u128"],                           // 122 Scorch
+    &["u64x5", "u64"],                   // 123 VaultLiquidUnstake
+    &[],                                 // 124 XOrca
+    &["enum2"],                          // 125 Quantum
+    &["enum2", "u64", "u64"],            // 126 WhaleStreetV2
+    &["bool"],                           // 127 Riptide
+    &[],                                 // 128 RunnerRodeo
+    &["bool"],                           // 129 TaurusFi
+    &[],                                 // 130 Omnipair
+    &[],                                 // 131 MSwap
+    &["enum8"],                          // 132 Hylo
+    &[],                                 // 133 VoltrDeposit
+    &[],                                 // 134 VoltrWithdraw
+    &["u8", "u8", "u32", "u32"],         // 135 SanctumSV2
+    &["bool"],                           // 136 LemmingsFi
+    &[],                                 // 137 ScaleVmmBuy
+    &[],                                 // 138 ScaleVmmSell
+    &[],                                 // 139 ScaleAmmBuy
+    &[],                                 // 140 ScaleAmmSell
+    &["bool"],                           // 141 BisonFiV2
+    &[],                                 // 142 Trends
+    &[],                                 // 143 HumaDeposit
+    &[],                                 // 144 HumaInstantWithdraw
+    &["bool"],                           // 145 Kipseli
+    &["vec<candidate_bps>", "u8", "u8"], // 146 DynamicV2
+    &[],                                 // 147 PumpSwapBuyV3WithCashbackClaim
+    &[],                                 // 148 PumpSwapSellV3WithCashbackClaim
+    &[],                                 // 149 PumpWrappedBuyV4WithCashbackClaim
+    &[],                                 // 150 PumpWrappedSellV4WithCashbackClaim
+    &["bool"],                           // 151 GoonFiV3
+    &["bool"],                           // 152 PumpWrappedBuyV5
+    &["bool"],                           // 153 PumpWrappedSellV5
+    &[],                                 // 154 ZeroFiSwapV2
+    &["enum2", "bool"],                  // 155 BisonFiPredict
+    &[],                                 // 156 ByrealDynamicV3
+    &["u64", "bool"],                    // 157 Flux
+    &[],                                 // 158 VaultLiquidSellLst
+    &["u64"],                            // 159 VaultLiquidBuyLst
+    &["bool"],                           // 160 KipseliV2
+    &["enum2", "u32"],                   // 161 Deriverse
+    &["bool"],                           // 162 Hadron
+    &[],                                 // 163 BinaryFi
+    &["bool"],                           // 164 Metric
+    &["bool"],                           // 165 JupiterLendDexSwap
+    &["bool"],                           // 166 Gatorswap
+    &["bool", "bool"],                   // 167 Flint
+    &["bool"],                           // 168 Denali
+    &[],                                 // 169 PerenaStarV2Deposit
+    &["u8"],                             // 170 PerenaStarV2WithdrawFromExternal
+    &["enum3"],                          // 171 SanctumSols
+    &["enum8"],                          // 172 HyloV2
+    &[],                                 // 173 SanctumPamm
+    &["enum2"],                          // 174 Archer
+    &[],                                 // 175 TrenchWrappedBuy
+    &[],                                 // 176 TrenchWrappedSell
+    &["bool"],                           // 177 BisonFiMarketBacked
+    &["enum2"],                          // 178 TesseraVV2
+    &[],                                 // 179 Stableswap
+    &[],                                 // 180 BinaryFiV2
+    &["bool"],                           // 181 KipseliV3
+    &["enum2"],                          // 182 PerenaStarV2TrancheDeposit
+    &["enum2", "option<u8>"],            // 183 PerenaStarV2TrancheWithdrawFromExternal
+    &["bool"],                           // 184 Quay
+    &["u64", "u8x32", "u8x16", "bool"],  // 185 HumidiFiRouter
+    &["u64", "u64", "u8x32", "u8x16", "bool"], // 186 HumidiFiRouterV2
+    &["bool", "bool"],                   // 187 PumpWrappedBuyV6
+    &[],                                 // 188 HyloRouter
+    &["bool"],                           // 189 Memefun
+    &["u64", "u64", "u64", "u64", "u8x32", "u8x16", "bool"], // 190 HumidiFiRouterV3
+    &["bool", "bool"],                   // 191 PumpWrappedBuyV7
+    &["bool"],                           // 192 PumpWrappedSellV6
+    &["bool"],                           // 193 PumpSwapBuyV4
+    &["bool"],                           // 194 PumpSwapSellV4
+    &[],                                 // 195 ZeroFiSwapV3
+    &["bool"],                           // 196 DenaliV2
+    &["enum2"],                          // 197 QuantumV2
+    &[],                                 // 198 DrFraudsworthSolBuy
+    &["bool"],                           // 199 DrFraudsworthSolSell
+    &[],                                 // 200 DrFraudsworthSplBuy
+    &[],                                 // 201 DrFraudsworthSplSell
+    &[],                                 // 202 DrFraudsworthVaultConvert
+    &["bool"],                           // 203 BisonFiMarketBackedV2
 ];
-const JUPITER_ACCOUNTS_TYPES: u8 = 2;
+
+/// Jupiter v6 `CandidateSwap` (the on-chain IDL, variants 0..19), the venues
+/// a `DynamicV1`/`DynamicV2` step chooses among; tokens as
+/// [`JUPITER_SWAP_VARIANTS`].
+pub const JUPITER_CANDIDATE_SWAPS: [&[&str]; 20] = [
+    &["u64", "bool"],                                        // 0 HumidiFi
+    &["enum2"],                                              // 1 TesseraV
+    &["u64", "bool"],                                        // 2 HumidiFiV2
+    &[],                                                     // 3 RaydiumV2
+    &[],                                                     // 4 RaydiumClmm
+    &["bool"],                                               // 5 Whirlpool
+    &[],                                                     // 6 ZeroFi
+    &["bool"],                                               // 7 BisonFiV2
+    &["bool"],                                               // 8 GoonFiV2
+    &["bool"],                                               // 9 GoonFiV3
+    &["bool", "option<rai>"],                                // 10 WhirlpoolV2
+    &[],                                                     // 11 ZeroFiSwapV2
+    &["bool"],                                               // 12 BisonFiMarketBacked
+    &[],                                                     // 13 RaydiumClmmV2
+    &["enum2"],                                              // 14 TesseraVV2
+    &["u64", "u8x32", "u8x16", "bool"],                      // 15 HumidiFiRouter
+    &["u64", "u64", "u8x32", "u8x16", "bool"],               // 16 HumidiFiRouterV2
+    &["u64", "u64", "u64", "u64", "u8x32", "u8x16", "bool"], // 17 HumidiFiRouterV3
+    &[],                                                     // 18 ZeroFiSwapV3
+    &["bool"],                                               // 19 BisonFiMarketBackedV2
+];
 const WHIRLPOOL_ACCOUNTS_TYPES: u8 = 9;
 const MAX_ROUTE_STEPS: u32 = 32;
 const MAX_REMAINING_SLICES: u32 = 16;
+/// A dynamic step choosing among more candidates than this is not one the
+/// Core has a reason to read (the IDL bounds none; Round 41).
+const MAX_CANDIDATE_SWAPS: u32 = 32;
+/// A `bytes` payload longer than this is refused (Round 41).
+const MAX_SWAP_BYTES: u32 = 1024;
+
+/// Read one Borsh field of a Jupiter `Swap` or `CandidateSwap` payload, by
+/// its token (see [`JUPITER_SWAP_VARIANTS`]). A token this function does not
+/// know is a refusal, never a skip.
+fn jupiter_field(r: &mut Reader<'_>, token: &str, field: &str) -> Result<(), String> {
+    match token {
+        "bool" => {
+            r.bool(field)?;
+        }
+        "u8" => {
+            r.u8(field)?;
+        }
+        "u16" => {
+            r.u16(field)?;
+        }
+        "u32" => {
+            r.u32(field)?;
+        }
+        "u64" => {
+            r.u64(field)?;
+        }
+        "u128" => {
+            r.take(16, field)?;
+        }
+        "u8x16" => {
+            r.take(16, field)?;
+        }
+        "u8x32" => {
+            r.take(32, field)?;
+        }
+        "u64x5" => {
+            r.take(40, field)?;
+        }
+        "bytes" => {
+            let n = r.vec_len(field, MAX_SWAP_BYTES)?;
+            r.take(n as usize, field)?;
+        }
+        "rai" => {
+            let n = r.vec_len(field, MAX_REMAINING_SLICES)?;
+            for _ in 0..n {
+                r.u8(field)?;
+                r.u8(field)?;
+            }
+        }
+        "option<u8>" => {
+            if r.option(field)? {
+                r.u8(field)?;
+            }
+        }
+        "option<rai>" => {
+            if r.option(field)? {
+                jupiter_field(r, "rai", field)?;
+            }
+        }
+        "vec<candidate>" | "vec<candidate_bps>" => {
+            let n = r.vec_len(field, MAX_CANDIDATE_SWAPS)?;
+            for _ in 0..n {
+                let tag = r.u8(field)?;
+                let fields = JUPITER_CANDIDATE_SWAPS.get(usize::from(tag)).ok_or_else(|| {
+                    format!(
+                        "{}: {field} names CandidateSwap variant {tag}, past the committed IDL's {}",
+                        r.what,
+                        JUPITER_CANDIDATE_SWAPS.len()
+                    )
+                })?;
+                for t in *fields {
+                    jupiter_field(r, t, field)?;
+                }
+                if token == "vec<candidate_bps>" {
+                    r.u32(field)?;
+                }
+            }
+        }
+        _ => match token
+            .strip_prefix("enum")
+            .and_then(|n| n.parse::<u8>().ok())
+        {
+            Some(variants) => {
+                let tag = r.u8(field)?;
+                if tag >= variants {
+                    return Err(format!(
+                        "{}: {field} has enum tag {tag}, past its {variants} variants",
+                        r.what
+                    ));
+                }
+            }
+            None => {
+                return Err(format!(
+                    "{}: {field} has a field of type {token}, which the Core does not read",
+                    r.what
+                ))
+            }
+        },
+    }
+    Ok(())
+}
+
+/// One route-plan step's `swap`: its variant tag and every field the IDL
+/// gives that variant.
+fn jupiter_swap_payload(r: &mut Reader<'_>, name: &str) -> Result<(), String> {
+    let tag = r.u8("route_plan.swap")?;
+    let fields = JUPITER_SWAP_VARIANTS.get(usize::from(tag)).ok_or_else(|| {
+        format!(
+            "{name}: a step uses Swap variant {tag}, past the committed on-chain IDL's {}",
+            JUPITER_SWAP_VARIANTS.len()
+        )
+    })?;
+    for token in *fields {
+        jupiter_field(r, token, "route_plan.swap")?;
+    }
+    Ok(())
+}
+
+/// Jupiter v6 `route_v2` / `shared_accounts_route_v2` (Round 41, D-23), as
+/// the committed on-chain IDL lays them out: `[id u8]`, `in_amount u64`,
+/// `quoted_out_amount u64`, `slippage_bps u16`, `platform_fee_bps u16`,
+/// `positive_slippage_bps u16`, then `route_plan: Vec<RoutePlanStepV2 { swap,
+/// bps u16, input_index u8, output_index u8 }>`, every byte read.
+///
+/// As the v1 route: `platform_fee_bps` must be 0 (a fee is taken from the
+/// output the minimum is computed on), `slippage_bps` at most 10,000, and the
+/// minimum is `quoted_out_amount × (10⁴ − slippage_bps) / 10⁴`, rounded down.
+/// `positive_slippage_bps` must be 0 too: nothing committed in this
+/// repository (the IDL carries no documentation for it, and no program
+/// source is pinned) says what it takes or from where, so a route that sets
+/// it is a route whose delivered output the Core cannot bound.
+fn jupiter_route_v2(data: &[u8], shared: bool, name: &'static str) -> Result<DecodedSwap, String> {
+    let mut r = Reader {
+        data,
+        at: 8,
+        what: name,
+    };
+    if shared {
+        r.u8("id")?;
+    }
+    let amount_in = r.u64("in_amount")?;
+    let quoted_out = r.u64("quoted_out_amount")?;
+    let slippage_bps = r.u16("slippage_bps")?;
+    let platform_fee_bps = r.u16("platform_fee_bps")?;
+    let positive_slippage_bps = r.u16("positive_slippage_bps")?;
+    let steps = r.vec_len("route_plan", MAX_ROUTE_STEPS)?;
+    if steps == 0 {
+        return Err(format!("{name}: the route has no steps"));
+    }
+    for _ in 0..steps {
+        jupiter_swap_payload(&mut r, name)?;
+        r.u16("bps")?;
+        r.u8("input_index")?;
+        r.u8("output_index")?;
+    }
+    r.end()?;
+    if slippage_bps > 10_000 {
+        return Err(format!("{name}: slippage_bps {slippage_bps} is over 100%"));
+    }
+    if platform_fee_bps != 0 {
+        return Err(format!(
+            "{name}: platform_fee_bps is {platform_fee_bps}, a fee taken from the output the route's minimum is computed on"
+        ));
+    }
+    if positive_slippage_bps != 0 {
+        return Err(format!(
+            "{name}: positive_slippage_bps is {positive_slippage_bps}; nothing committed says what it takes from the output, so the delivered amount is not bounded by the route's bytes"
+        ));
+    }
+    let min_out = (u128::from(quoted_out) * u128::from(10_000 - slippage_bps) / 10_000) as u64;
+    Ok(DecodedSwap {
+        name,
+        amount_in,
+        min_out,
+        input_account: if shared {
+            "source_token_account"
+        } else {
+            "user_source_token_account"
+        },
+    })
+}
 
 fn remaining_accounts_info(
     r: &mut Reader<'_>,
@@ -1025,44 +1454,7 @@ fn jupiter_route(data: &[u8], shared: bool, name: &'static str) -> Result<Decode
         return Err(format!("{name}: the route has no steps"));
     }
     for _ in 0..steps {
-        let tag = r.u8("route_plan.swap")?;
-        let kind = JUPITER_SWAP_VARIANTS.get(usize::from(tag)).ok_or_else(|| {
-            format!("{name}: a step uses Swap variant {tag}, past the committed IDL's 62")
-        })?;
-        match kind {
-            J::Unit => {}
-            J::Bool => {
-                r.bool("swap")?;
-            }
-            J::Side => {
-                if r.u8("swap.side")? > 1 {
-                    return Err(format!("{name}: a step's Side is not 0 or 1"));
-                }
-            }
-            J::U64U64 => {
-                r.u64("swap")?;
-                r.u64("swap")?;
-            }
-            J::U32 => {
-                r.u32("swap")?;
-            }
-            J::Clone => {
-                r.u8("swap")?;
-                r.bool("swap")?;
-                r.bool("swap")?;
-            }
-            J::WhirlpoolV2 => {
-                r.bool("swap")?;
-                if r.option("swap.remaining_accounts_info")? {
-                    remaining_accounts_info(
-                        &mut r,
-                        "swap.remaining_accounts_info",
-                        JUPITER_ACCOUNTS_TYPES,
-                        false,
-                    )?;
-                }
-            }
-        }
+        jupiter_swap_payload(&mut r, name)?;
         r.u8("percent")?;
         r.u8("input_index")?;
         r.u8("output_index")?;
@@ -1085,6 +1477,11 @@ fn jupiter_route(data: &[u8], shared: bool, name: &'static str) -> Result<Decode
         name,
         amount_in,
         min_out,
+        input_account: if shared {
+            "source_token_account"
+        } else {
+            "user_source_token_account"
+        },
     })
 }
 
@@ -1107,9 +1504,17 @@ fn concentrated(
     } else {
         "is_base_input"
     })?;
-    if a_to_b {
-        r.bool("a_to_b")?;
-    }
+    // Audit A026: Orca's direction decides which owner account is spent
+    // from; its declaration debits both, each under a `when data.a_to_b`.
+    let input_account = if a_to_b {
+        if r.bool("a_to_b")? {
+            "token_owner_account_a"
+        } else {
+            "token_owner_account_b"
+        }
+    } else {
+        "input_token_account"
+    };
     if whirlpool_option && r.option("remaining_accounts_info")? {
         remaining_accounts_info(
             &mut r,
@@ -1128,6 +1533,7 @@ fn concentrated(
         name,
         amount_in: amount,
         min_out: threshold,
+        input_account,
     })
 }
 
@@ -1136,6 +1542,7 @@ fn in_min(
     at: usize,
     name: &'static str,
     dlmm_remaining: bool,
+    input_account: &'static str,
 ) -> Result<DecodedSwap, String> {
     let mut r = Reader {
         data,
@@ -1152,6 +1559,7 @@ fn in_min(
         name,
         amount_in,
         min_out,
+        input_account,
     })
 }
 
@@ -1171,14 +1579,16 @@ pub fn decode_swap(program_id: &str, data: &[u8]) -> Option<Result<DecodedSwap, 
     let decoded = match (program_id, selector.as_str()) {
         (JUPITER_V6, "e517cb977ae3ad2a") => jupiter_route(data, false, "Jupiter v6 route"),
         (JUPITER_V6, "c1209b3341d69c81") => jupiter_route(data, true, "Jupiter v6 shared_accounts_route"),
+        (JUPITER_V6, "bb64facc31c4af14") => jupiter_route_v2(data, false, "Jupiter v6 route_v2"),
+        (JUPITER_V6, "d19853937cfed8e9") => jupiter_route_v2(data, true, "Jupiter v6 shared_accounts_route_v2"),
         (ORCA_WHIRLPOOLS, "f8c69e91e17587c8") => concentrated(data, "Orca Whirlpools swap", true, false),
         (ORCA_WHIRLPOOLS, "2b04ed0b1ac91e62") => concentrated(data, "Orca Whirlpools swapV2", true, true),
         (RAYDIUM_CLMM, "f8c69e91e17587c8") => concentrated(data, "Raydium CLMM swap", false, false),
         (RAYDIUM_CLMM, "2b04ed0b1ac91e62") => concentrated(data, "Raydium CLMM swap_v2", false, false),
-        (RAYDIUM_CPMM, "8fbe5adac41e33de") => in_min(data, 8, "Raydium CPMM swap_base_input", false),
-        (RAYDIUM_AMM_V4, "09") => in_min(data, 1, "Raydium AMM v4 SwapBaseIn", false),
-        (METEORA_DLMM, "f8c69e91e17587c8") => in_min(data, 8, "Meteora DLMM swap", false),
-        (METEORA_DLMM, "414b3f4ceb5b5b88") => in_min(data, 8, "Meteora DLMM swap2", true),
+        (RAYDIUM_CPMM, "8fbe5adac41e33de") => in_min(data, 8, "Raydium CPMM swap_base_input", false, "input_token_account"),
+        (RAYDIUM_AMM_V4, "09") => in_min(data, 1, "Raydium AMM v4 SwapBaseIn", false, "user_source_token_account"),
+        (METEORA_DLMM, "f8c69e91e17587c8") => in_min(data, 8, "Meteora DLMM swap", false, "user_token_in"),
+        (METEORA_DLMM, "414b3f4ceb5b5b88") => in_min(data, 8, "Meteora DLMM swap2", true, "user_token_in"),
         _ => Err(format!(
             "instruction {selector} on {program_id} is not an exact-in swap whose data the Core decodes"
         )),
@@ -1290,7 +1700,19 @@ fn within_slippage(min_out: u64, simulated: i128, bps: u64) -> bool {
 ///   themselves as its close authority, and hands it to the victim: its owner
 ///   field is the victim's, and the attacker closes it to themselves after
 ///   the transaction lands, with whatever SOL was sent into it.
-fn kept_by(account: &str, keepers: &[String], diff: &StateDiff) -> bool {
+///
+/// Round 41 (D-20): an account the simulation observed absent both before
+/// and after the transaction — one that exists only inside it — is a
+/// keeper's when it is that keeper's associated wrapped-SOL account, created
+/// by an associated-token-account instruction of `ixs` for that keeper and
+/// the native mint under SPL Token: the address fixes whose it is, and the
+/// ordinary SOL -> token swap wraps there, the route spends it and
+/// `CloseAccount` returns the rent. It holds nothing at the end, so whatever
+/// left it went somewhere the rest of [`keeps_value`] judges. Round 41
+/// (D-24): or a temporary wSOL account the keeper's own top-level
+/// instructions create and initialize to it, nothing handing it away
+/// (`state_diff::is_transient_own_wsol`).
+fn kept_by(account: &str, keepers: &[String], diff: &StateDiff, ixs: &[Ix]) -> bool {
     if keepers.iter().any(|k| k == account) {
         return true;
     }
@@ -1298,6 +1720,12 @@ fn kept_by(account: &str, keepers: &[String], diff: &StateDiff) -> bool {
     let Some(d) = diff.deltas.iter().find(|d| d.pubkey == account) else {
         return false;
     };
+    if d.before.is_none() && d.after.is_none() {
+        let tx_signers = diff.transaction_privileges.as_ref().map(|p| &p.signers);
+        return keepers
+            .iter()
+            .any(|k| crate::state_diff::is_transient_own_wsol(account, k, ixs, tx_signers));
+    }
     // What the account is once the transaction has run; a closed one is
     // judged by what it was.
     d.after
@@ -1339,7 +1767,7 @@ fn keeps_value(
     diff: &StateDiff,
     mints: &[String],
 ) -> Result<(), Binding> {
-    let own = |a: &str| kept_by(a, keepers, diff);
+    let own = |a: &str| kept_by(a, keepers, diff, ixs);
     let signer = |a: &str| signers.iter().any(|s| s == a);
     for (i, ix) in ixs.iter().enumerate() {
         if route.iter().any(|r| std::ptr::eq(*r, ix)) {
@@ -1670,6 +2098,14 @@ fn bind_swap(input: &BindingInput<'_>) -> Binding {
 
 // ── Account creation (Round 38, R37-7) ──────────────────────────────────────
 
+/// The largest account a `create` may fund with its rent without the request
+/// stating the amount, when the payer does not keep it (Round 41). Ordinary
+/// created accounts fit: an SPL token account is 165 bytes, a mint 82, a
+/// nonce account 80, a stake account 200, Metaplex metadata 679 and a master
+/// edition 282. Anything larger — a program buffer, a 10 MiB data account —
+/// is value the request must state.
+pub const UNSTATED_CREATION_MAX_BYTES: usize = 1_024;
+
 /// A creation is held to the rent of what it creates (Round 38, R37-7).
 ///
 /// `create` bound nothing, and L4 holds a signer's wallet to the located
@@ -1682,6 +2118,15 @@ fn bind_swap(input: &BindingInput<'_>) -> Binding {
 ///   minimum for its size, plus, in all, the SOL amount the request states;
 /// - no other account that is not a signer's own gains lamports, and no
 ///   top-level System or token instruction moves a signer's value to one.
+///
+/// Round 41 (full-codebase audit, R37-7 completed): the size is the
+/// transaction builder's choice too, so rent alone bounds nothing — 7.3 SOL
+/// into a 1 MiB account the attacker's program owns was exactly its rent and
+/// was `executable_approved`. A created account's rent is the creation's own
+/// cost only when the account is the payer's (the bytes and the simulation
+/// show the payer keeping it: [`kept_by`]) or it is no larger than
+/// [`UNSTATED_CREATION_MAX_BYTES`]; otherwise everything it is funded with
+/// counts against the amount the request states.
 fn bind_create(input: &BindingInput<'_>) -> Binding {
     let stated = match input.params.and_then(|p| p.amount.as_ref()) {
         None => 0u64,
@@ -1716,30 +2161,46 @@ fn bind_create(input: &BindingInput<'_>) -> Binding {
     };
     let created =
         |d: &crate::state_diff::AccountDelta| d.lamports_before() == 0 && d.lamports_after() > 0;
+    // The wallet that funds the creation. Round 39 (R39-CORE-DECISION-1): a
+    // co-signer is not it.
+    let payer: Vec<String> = input.signers.first().cloned().into_iter().collect();
     let mut beyond: i128 = 0;
-    let mut largest: Option<(String, i128, usize)> = None;
+    let mut largest: Option<(String, i128, usize, bool)> = None;
     for d in diff.deltas.iter().filter(|d| created(d)) {
         let size = d.after.as_ref().map_or(0, |s| s.data_len);
-        let excess = i128::from(d.lamports_after()) - crate::state_diff::rent_exempt_minimum(size);
+        // Round 41: rent is the creation's own cost only for an account the
+        // payer keeps, or one of an ordinary created account's size.
+        let rent_is_own =
+            size <= UNSTATED_CREATION_MAX_BYTES || kept_by(&d.pubkey, &payer, diff, ixs);
+        let excused = if rent_is_own {
+            crate::state_diff::rent_exempt_minimum(size)
+        } else {
+            0
+        };
+        let excess = i128::from(d.lamports_after()) - excused;
         if excess > 0 {
             beyond += excess;
-            if largest.as_ref().is_none_or(|(_, e, _)| excess > *e) {
-                largest = Some((d.pubkey.clone(), excess, size));
+            if largest.as_ref().is_none_or(|(_, e, _, _)| excess > *e) {
+                largest = Some((d.pubkey.clone(), excess, size, rent_is_own));
             }
         }
     }
     if beyond > i128::from(stated) {
-        let (account, excess, size) = largest.expect("an excess has an account");
-        return Binding::mismatch(format!(
-            "the creation funds {account} with {excess} lamports beyond the rent-exempt minimum for its {size} bytes ({beyond} beyond rent in all; the request states {stated}): lamports put into a new account beyond its rent are a transfer"
-        ));
+        let (account, excess, size, rent_is_own) = largest.expect("an excess has an account");
+        return Binding::mismatch(if rent_is_own {
+            format!(
+                "the creation funds {account} with {excess} lamports beyond the rent-exempt minimum for its {size} bytes ({beyond} beyond rent in all; the request states {stated}): lamports put into a new account beyond its rent are a transfer"
+            )
+        } else {
+            format!(
+                "the creation funds {account}, {size} bytes the wallet does not keep, with {excess} lamports ({beyond} in all; the request states {stated}): an account larger than {UNSTATED_CREATION_MAX_BYTES} bytes that the wallet does not keep is funded with value the request must state, its rent included"
+            )
+        });
     }
-    // What is not a creation: value leaving a signer for anyone else. Round
-    // 39 (R39-CORE-DECISION-1): "anyone else" is anyone the fee payer — the
-    // wallet that funds the creation — does not keep; a co-signer is not it.
-    let payer: Vec<String> = input.signers.first().cloned().into_iter().collect();
+    // What is not a creation: value leaving a signer for anyone else —
+    // anyone the fee payer does not keep.
     let own = |a: &str| {
-        kept_by(a, &payer, diff) || diff.deltas.iter().any(|d| d.pubkey == a && created(d))
+        kept_by(a, &payer, diff, ixs) || diff.deltas.iter().any(|d| d.pubkey == a && created(d))
     };
     for (i, ix) in ixs.iter().enumerate() {
         let moved = if ix.program_id == SYSTEM_PROGRAM {
@@ -1852,10 +2313,15 @@ pub struct WithdrawalContext<'a> {
     /// a required signer of the instruction (Round 39). `None` when no grant
     /// applies, and then nothing is anyone's own.
     pub owner: Option<&'a str>,
+    /// Which of `instructions` is the granted one (Audit W22, D-39). It
+    /// alone is the route: every other instruction, the granted program's
+    /// own included, is a sibling. `None`, or an index that is not an
+    /// instruction of `program_id`, leaves the grant unbound.
+    pub located: Option<usize>,
 }
 
 /// Nothing beside a granted withdrawal takes value from a signer (Round 38,
-/// R37-1): [`keeps_value`] with the withdrawing program's instructions as the
+/// R37-1): [`keeps_value`] with the located withdrawal instruction as the
 /// route and the minimums' recipients' mints as the value to watch.
 ///
 /// Every granted withdrawal, not only the ones with a minimum: a Stake
@@ -1881,8 +2347,8 @@ pub fn withdrawal_keeps_value(
 }
 
 /// Nothing beside a granted operation takes value from its owner (Round 39,
-/// R39-CORE-DECISION-2): [`keeps_value`] with the granted program's
-/// instructions as the route, the grant's owner as the keeper, and as the
+/// R39-CORE-DECISION-2): [`keeps_value`] with the granted instruction (and
+/// since D-39 only it) as the route, the grant's owner as the keeper, and as the
 /// value to watch every mint the owner holds in the diff (and the minimums'
 /// recipients' mints). A mismatch is `IntentMismatch`.
 ///
@@ -1911,10 +2377,20 @@ pub fn grant_keeps_value(
             )))
         }
     };
-    let route: Vec<&Ix> = ixs
-        .iter()
-        .filter(|ix| ix.program_id == beside.program_id)
-        .collect();
+    // Audit W22 (A001, D-39): the route is the granted instruction alone.
+    // Every instruction of the granted program was the route, and every
+    // account any of them named was excused from the gain check: a second
+    // instruction of the same pool program, naming an attacker's pool, took
+    // what the grant paid and nothing saw it.
+    let route: Vec<&Ix> = match beside.located.and_then(|i| ixs.get(i)) {
+        Some(ix) if ix.program_id == beside.program_id => vec![ix],
+        _ if ixs.is_empty() => Vec::new(),
+        _ => {
+            return Err(Binding::unbound(format!(
+                "{instruction}: the granted instruction was not located among the transaction's instructions, so what rides beside it cannot be told from it"
+            )))
+        }
+    };
     let keepers: Vec<String> = beside.owner.map(str::to_string).into_iter().collect();
     let mut mints: Vec<String> = minimums
         .iter()
@@ -2063,6 +2539,67 @@ mod tests {
         assert!(parse_amount("18446744073709551616", 0).is_err());
     }
 
+    /// Audit A026: a decoded swap names the account it spends from. Orca's
+    /// `a_to_b` chooses between its two owner accounts; the others have one
+    /// input slot.
+    #[test]
+    fn a_decoded_swap_names_the_account_it_spends_from() {
+        let orca = |a_to_b: u8| {
+            let mut d = hex::decode("f8c69e91e17587c8").unwrap();
+            d.extend(1_000u64.to_le_bytes());
+            d.extend(900u64.to_le_bytes());
+            d.extend([0u8; 16]);
+            d.push(1);
+            d.push(a_to_b);
+            d
+        };
+        let read = |program: &str, data: &[u8]| decode_swap(program, data).unwrap().unwrap();
+        assert_eq!(
+            read(ORCA_WHIRLPOOLS, &orca(1)).input_account,
+            "token_owner_account_a"
+        );
+        assert_eq!(
+            read(ORCA_WHIRLPOOLS, &orca(0)).input_account,
+            "token_owner_account_b"
+        );
+        let mut cpmm = hex::decode("8fbe5adac41e33de").unwrap();
+        cpmm.extend(1_000u64.to_le_bytes());
+        cpmm.extend(900u64.to_le_bytes());
+        assert_eq!(
+            read(RAYDIUM_CPMM, &cpmm).input_account,
+            "input_token_account"
+        );
+    }
+
+    /// Audit A040: the decimals come from the bytes (a
+    /// `TransferChecked`'s decimals byte) or from a mint, and any u8 is a
+    /// valid mint. `10^decimals` overflowed a u128 from 39 on: a panic in a
+    /// debug build, and in release a scale that wrapped (to 0 from 128 on),
+    /// so "1" of a 200-decimal mint read as some small number of base units
+    /// and was reported bound "exactly as requested". A whole unit of such
+    /// an asset cannot fit a u64; a fraction small enough still can.
+    #[test]
+    fn decimals_past_what_a_u128_scale_holds_are_refused_not_wrapped() {
+        for decimals in [39u8, 40, 64, 128, 200, 255] {
+            assert!(
+                parse_amount("1", decimals).is_err(),
+                "1 unit at {decimals} decimals"
+            );
+            assert!(
+                parse_amount("1.7", decimals).is_err(),
+                "1.7 units at {decimals} decimals"
+            );
+        }
+        // A pure fraction needs no scale: 38 places, the last one 1, at 39
+        // decimals is ten base units, exactly.
+        let ten_base_units = format!("0.{}1", "0".repeat(37));
+        assert_eq!(parse_amount(&ten_base_units, 39), Ok(10));
+        // The same text at 200 decimals is 10^162 base units: no u64 holds it.
+        assert!(parse_amount(&ten_base_units, 200).is_err());
+        // 38 decimals still has a u128 scale; a whole unit does not fit a u64.
+        assert!(parse_amount("1", 38).is_err());
+    }
+
     /// A seed length near `usize::MAX` puts the lamports offset at the very
     /// end of the address space. Reading 8 bytes there overflowed: a panic in
     /// a debug build, a wrapped range — read as "short" only by luck — in
@@ -2147,6 +2684,7 @@ mod tests {
 
     #[test]
     fn jupiter_variant_table_has_every_committed_variant() {
-        assert_eq!(JUPITER_SWAP_VARIANTS.len(), 62);
+        assert_eq!(JUPITER_SWAP_VARIANTS.len(), 204);
+        assert_eq!(JUPITER_CANDIDATE_SWAPS.len(), 20);
     }
 }

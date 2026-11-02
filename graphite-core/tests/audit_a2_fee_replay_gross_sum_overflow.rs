@@ -127,6 +127,7 @@ fn a_gross_above_u64_into_one_account_does_not_panic_the_diff_check() {
         token2022_mints: Default::default(),
         transaction_accounts: None,
         transaction_privileges: None,
+        top_level_instructions: None,
     };
     let accts = vec![
         resolved(SIGNER, true),

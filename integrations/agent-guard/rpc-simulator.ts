@@ -52,6 +52,7 @@ import {
 import {
   BoundedConnection,
   boundedRpcFetch,
+  sealedConnection,
   capturedFetch,
   DEFAULT_RPC_TIMEOUT_MS,
   MAX_RPC_RESPONSE_BYTES,
@@ -184,7 +185,8 @@ export class RpcSimulator {
   #fetch: typeof globalThis.fetch;
   constructor(rpcUrl: string, timeoutMs: number = DEFAULT_RPC_TIMEOUT_MS) {
     this.#rpcUrl = rpcUrl;
-    this.#connection = connectionWithoutRedirects(rpcUrl, timeoutMs);
+    // Audit A048: methods of its own, which no caller can replace.
+    this.#connection = sealedConnection(rpcUrl, { timeoutMs });
     this.#fetch = boundedRpcFetch(rpcUrl, { timeoutMs });
   }
 

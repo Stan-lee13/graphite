@@ -163,7 +163,16 @@ function spelledAsFloat(holder: Record<string, unknown>, key: string): boolean {
  */
 export function parseJsonStrict(text: string): unknown {
   const value: unknown = JSON.parse(text, function (this: unknown, key: string, v: unknown, context?: { source?: string }) {
-    if (typeof v === "number" && typeof context?.source === "string" && /[.eE]/.test(context.source)) {
+    // Audit A059: any number not spelled as a plain non-negative integer
+    // (`-0`, `0.0`, `3e0`, a leading zero) is recorded, so an integer field
+    // refuses it as serde and Go do; and a runtime that gives the reviver no
+    // source text cannot run this check at all, so nothing is read.
+    if (typeof v === "number" && typeof context?.source !== "string") {
+      throw new SyntaxError(
+        "this runtime's JSON.parse gives the reviver no source text (Node 22 or later is required), so a number's spelling cannot be checked; refusing to read the answer",
+      );
+    }
+    if (typeof v === "number" && !/^(0|[1-9][0-9]*)$/.test(context!.source!)) {
       const holder = this as object;
       let keys = SPELLED_AS_FLOAT.get(holder);
       if (keys === undefined) SPELLED_AS_FLOAT.set(holder, (keys = new Set()));
@@ -208,7 +217,9 @@ export async function readJsonBounded(response: Response, maxBytes: number): Pro
     all.set(c, offset);
     offset += c.byteLength;
   }
-  return parseJsonStrict(new TextDecoder("utf-8", { fatal: true }).decode(all));
+  // Audit A059: `ignoreBOM` keeps a leading byte-order mark in the text, where
+  // JSON.parse refuses it, as serde and Go do; the default stripped it.
+  return parseJsonStrict(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(all));
 }
 
 /**
@@ -629,8 +640,11 @@ export function validateLifecycleEventReceipt(value: unknown, sent?: LifecycleEv
     return "`event_type` must be a caller-reported lifecycle stage";
   }
   if (!isString(value.content_hash)) return "`content_hash` must be a string";
-  if (!["approved", "blocked", "not_found"].includes(value.verdict_on_record as string)) {
-    return "`verdict_on_record` must be \"approved\", \"blocked\" or \"not_found\"";
+  if (!["approved", "not_executable", "blocked", "not_found"].includes(value.verdict_on_record as string)) {
+    return "`verdict_on_record` must be \"approved\", \"not_executable\", \"blocked\" or \"not_found\"";
+  }
+  if (value.accepted_unobserved !== undefined && !isStringArray(value.accepted_unobserved)) {
+    return "`accepted_unobserved` must be an array of strings";
   }
   if (!["audit_trail_id", "transaction_sha256", "content_hash"].includes(value.verdict_on_record_key as string)) {
     return "`verdict_on_record_key` must be \"audit_trail_id\", \"transaction_sha256\" or \"content_hash\"";
@@ -660,7 +674,12 @@ const RECONCILIATION_UNIT = [
   "NotFound",
   "NoVerificationOnRecord",
 ];
-const RECONCILIATION_DATA = ["ApprovedButFailedOnChain", "RecordedForDifferentBytes", "Unavailable"];
+const RECONCILIATION_DATA = [
+  "ApprovedButFailedOnChain",
+  "NotExecutableButExecuted",
+  "RecordedForDifferentBytes",
+  "Unavailable",
+];
 const CHAIN_STATUS = ["Confirmed", "UnknownSignature", "Unavailable"];
 
 /** A serde externally-tagged enum value: a unit name, or a one-key object. */
@@ -690,7 +709,16 @@ export function validateExecutionCheckResult(value: unknown, sent?: ExecutionChe
   const reconciliation = variantOf(value.reconciliation, RECONCILIATION_UNIT, RECONCILIATION_DATA);
   if (reconciliation === null) return "`reconciliation` is not an ExecutionReconciliation";
   if (!isBoolean(value.discrepancy)) return "`discrepancy` must be a boolean";
-  const expected = reconciliation === "BlockedButExecuted";
+  // Audit A010: a verdict approved for analysis only that executed is a
+  // discrepancy unless its signer named the residuals it accepted.
+  let expected = reconciliation === "BlockedButExecuted";
+  if (reconciliation === "NotExecutableButExecuted") {
+    const inner = (value.reconciliation as Record<string, unknown>).NotExecutableButExecuted;
+    if (!isObject(inner) || !isString(inner.decision) || !isStringArray(inner.accepted_unobserved)) {
+      return "`reconciliation.NotExecutableButExecuted` must carry a decision and accepted_unobserved";
+    }
+    expected = inner.accepted_unobserved.length === 0;
+  }
   if (value.discrepancy !== expected) {
     return `\`discrepancy\` must be ${expected} for a ${reconciliation} reconciliation`;
   }

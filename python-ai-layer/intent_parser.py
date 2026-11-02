@@ -100,7 +100,9 @@ _RX = {
     # transfers of "５" and "1০" — strings Python's float() reads as 5 and 10.
     "transfer": re.compile(
         r"\b(?:transfer|send|pay)\s+"
-        r"(?:(?P<amount_all>all|entire|my)\s+(?:my\s+)?|(?P<amount>[0-9]+(?:\.[0-9]+)?)\s+)"
+        # Audit A074: "my" is a possessive, not "all": "send my 5 SOL" is 5
+        # SOL, and "send my USDC" states no amount.
+        r"(?:(?P<amount_all>all|entire)\s+(?:my\s+)?|(?:my\s+)?(?P<amount>[0-9]+(?:\.[0-9]+)?)\s+|my\s+)"
         r"(?P<token>[A-Za-z0-9]+)"
         r"(?:\s+(?:to|into)\s+(?P<destination>(?-i:[1-9A-HJ-NP-Za-km-z]{32,44}))"
         r"(?=[.,;:!?)\]'\"]*(?:\s|$)))?",
