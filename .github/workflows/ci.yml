@@ -748,7 +748,7 @@ jobs:
           # The live-server tests skip without a server (the container job
           # runs them against one); nothing else may skip.
           npm test 2>&1 | tee "$RUNNER_TEMP/sdk-ts.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sdk-ts.log" 69 \
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/sdk-ts.log" 70 \
             "$(grep -cE '^live\("' src/live-server.test.ts)"
           # The published package must actually build, and must not ship the
           # test file — dist/ is gitignored, so a broken build config would

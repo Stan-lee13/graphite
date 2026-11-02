@@ -15,6 +15,8 @@ import {
   assertSecureBaseUrl,
   isLoopbackHost,
   resolveTimeoutMs,
+  parseJsonStrict,
+  readJsonBounded,
   validateExecutionCheckResult,
   validateLifecycleEventReceipt,
   validateVerificationResult,
@@ -374,4 +376,34 @@ test("Audit A010: a verdict approved for analysis only is reported as such, and 
     validateExecutionCheckResult({ ...EXECUTION, reconciliation: { NotExecutableButExecuted: {} }, discrepancy: true }) ?? "",
     /must carry a decision/,
   );
+});
+
+test("Audit A059: -0, a float spelling the runtime cannot show, and a BOM are refused as serde and Go refuse them", async () => {
+  const receipt = (prior: string) =>
+    `{"recorded":true,"event_type":"signing","content_hash":"48c65c638aceb5de","verdict_on_record":"approved",` +
+    `"verdict_on_record_key":"audit_trail_id","sequence_anomalies":[],"prior_events_on_record":${prior}}`;
+  assert.equal(validateLifecycleEventReceipt(parseJsonStrict(receipt("0"))), null);
+  assert.equal(validateLifecycleEventReceipt(parseJsonStrict(receipt("3"))), null);
+  for (const bad of ["-0", "-0.0", "0.0", "3e0", "00"]) {
+    let refused = false;
+    try {
+      refused = validateLifecycleEventReceipt(parseJsonStrict(receipt(bad))) !== null;
+    } catch {
+      refused = true;
+    }
+    assert.ok(refused, `${bad} read as a count`);
+  }
+  // A runtime whose JSON.parse reviver gives no source text cannot run the
+  // spelling check, so nothing is read.
+  const original = JSON.parse;
+  JSON.parse = ((text: string, reviver?: (this: unknown, k: string, v: unknown, c?: unknown) => unknown) =>
+    original(text, reviver ? function (this: unknown, k: string, v: unknown) { return reviver.call(this, k, v); } : undefined)) as typeof JSON.parse;
+  try {
+    assert.throws(() => parseJsonStrict(receipt("215.0")), /source text/);
+  } finally {
+    JSON.parse = original;
+  }
+  // A byte-order mark is not JSON.
+  const bom = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode(receipt("0"))]);
+  await assert.rejects(readJsonBounded(new Response(bom), 1 << 20));
 });

@@ -683,6 +683,82 @@ mod upgrades {
         assert!(reason.starts_with(STALE_DEPLOYMENT), "{reason}");
         assert!(core.program_behavior(WHIRLPOOL).is_none());
     }
+
+    /// Audit A073: the decode sample is bound too. A record whose decode
+    /// evidence was taken before a deployment that its volume window
+    /// postdates describes the old code's instructions: the stale check binds
+    /// on the older of the two windows, so it is not imported. Without a
+    /// recorded decode window (every census before Round 41) the volume
+    /// window binds, as before.
+    #[tokio::test]
+    async fn a_decode_sample_older_than_the_deployment_is_stale_even_when_the_volume_is_not() {
+        let deployed = census_slot() - 1_000;
+        let slot = Arc::new(AtomicU64::new(deployed));
+        let mut core = GraphiteCore::new();
+        core.attach_rpc_client(SolanaRpcClient::new(RpcConfig {
+            endpoint: serve(slot.clone()),
+            timeout: std::time::Duration::from_secs(5),
+            max_retries: 0,
+            ..Default::default()
+        }));
+        core.verify_async(&input()).await.unwrap();
+        assert_eq!(
+            core.observed_deployment(WHIRLPOOL).unwrap().deploy_slot,
+            deployed
+        );
+        let census_with_decode_window = |oldest: u64| {
+            let mut d = doc();
+            for p in d["programs"].as_array_mut().unwrap() {
+                if p["program_id"] == WHIRLPOOL {
+                    p["decode"]["oldest_slot"] = serde_json::json!(oldest);
+                    p["decode"]["newest_slot"] = serde_json::json!(census_slot() + 10);
+                }
+            }
+            Census::from_bytes(serde_json::to_vec(&d).unwrap().as_slice()).unwrap()
+        };
+        // The volume window alone: deployed before it began, imported.
+        let plan = ci::plan(
+            &core,
+            &Census::embedded().unwrap(),
+            &[WHIRLPOOL.to_string()],
+        )
+        .unwrap();
+        assert!(
+            plan.imports.iter().any(|i| i.program_id == WHIRLPOOL),
+            "{:?}",
+            plan.skipped
+        );
+        // A decode sample from before that deployment: stale.
+        let plan = ci::plan(
+            &core,
+            &census_with_decode_window(deployed - 5_000),
+            &[WHIRLPOOL.to_string()],
+        )
+        .unwrap();
+        let reason = skip_reason(&plan, WHIRLPOOL);
+        assert!(reason.starts_with(STALE_DEPLOYMENT), "{reason}");
+        // A decode sample from after it: imported.
+        let plan = ci::plan(
+            &core,
+            &census_with_decode_window(deployed + 5),
+            &[WHIRLPOOL.to_string()],
+        )
+        .unwrap();
+        assert!(
+            plan.imports.iter().any(|i| i.program_id == WHIRLPOOL),
+            "{:?}",
+            plan.skipped
+        );
+        // A decode window that is out of order is refused as undatable.
+        let mut d = doc();
+        for p in d["programs"].as_array_mut().unwrap() {
+            if p["program_id"] == WHIRLPOOL {
+                p["decode"]["oldest_slot"] = serde_json::json!(census_slot() + 10);
+                p["decode"]["newest_slot"] = serde_json::json!(census_slot());
+            }
+        }
+        assert!(Census::from_bytes(serde_json::to_vec(&d).unwrap().as_slice()).is_err());
+    }
 }
 
 // ─── Round 40 follow-up: the census is mainnet-beta's, enforced ────────────

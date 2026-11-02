@@ -47,7 +47,7 @@
 6 tests/round39_registry_gate_dilution.rs
 5 tests/round40_surface_conformance.rs
 # Round 40 (bootstrap): the census import and its CLI
-15 tests/round40_census_import.rs
+16 tests/round40_census_import.rs
 5 tests/round40_import_census_cli.rs
 3 tests/round40_cluster_guard.rs
 29 tests/staking_withdrawal_destination.rs

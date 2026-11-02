@@ -163,7 +163,16 @@ function spelledAsFloat(holder: Record<string, unknown>, key: string): boolean {
  */
 export function parseJsonStrict(text: string): unknown {
   const value: unknown = JSON.parse(text, function (this: unknown, key: string, v: unknown, context?: { source?: string }) {
-    if (typeof v === "number" && typeof context?.source === "string" && /[.eE]/.test(context.source)) {
+    // Audit A059: any number not spelled as a plain non-negative integer
+    // (`-0`, `0.0`, `3e0`, a leading zero) is recorded, so an integer field
+    // refuses it as serde and Go do; and a runtime that gives the reviver no
+    // source text cannot run this check at all, so nothing is read.
+    if (typeof v === "number" && typeof context?.source !== "string") {
+      throw new SyntaxError(
+        "this runtime's JSON.parse gives the reviver no source text (Node 22 or later is required), so a number's spelling cannot be checked; refusing to read the answer",
+      );
+    }
+    if (typeof v === "number" && !/^(0|[1-9][0-9]*)$/.test(context!.source!)) {
       const holder = this as object;
       let keys = SPELLED_AS_FLOAT.get(holder);
       if (keys === undefined) SPELLED_AS_FLOAT.set(holder, (keys = new Set()));
@@ -208,7 +217,9 @@ export async function readJsonBounded(response: Response, maxBytes: number): Pro
     all.set(c, offset);
     offset += c.byteLength;
   }
-  return parseJsonStrict(new TextDecoder("utf-8", { fatal: true }).decode(all));
+  // Audit A059: `ignoreBOM` keeps a leading byte-order mark in the text, where
+  // JSON.parse refuses it, as serde and Go do; the default stripped it.
+  return parseJsonStrict(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(all));
 }
 
 /**
