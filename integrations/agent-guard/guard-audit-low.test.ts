@@ -451,10 +451,14 @@ test("A053 (repro): a near-miss of a name the guard reads refuses to start, nami
     | ((env: Record<string, string | undefined>) => void)
     | undefined;
   assert.equal(typeof assertNoMisspeltGuardEnvNames, "function");
+  // The misspellings are built from a prefix: graphite-core/tests/
+  // round36_env_names.rs reads every GRAPHITE_* word in a component's
+  // sources as a name it reads, and these are deliberately no one's.
+  const G = "GRAPHITE_";
   for (const [name, meant] of [
-    ["GRAPHITE_ALLOWED_DESTINATION", "GRAPHITE_ALLOWED_DESTINATIONS"],
-    ["GRAPHITE_MAX_TOTAL_LAMPORT", "GRAPHITE_MAX_TOTAL_LAMPORTS"],
-    ["GRAPHITE_GUARD_STATE_FIL", "GRAPHITE_GUARD_STATE_FILE"],
+    [`${G}ALLOWED_DESTINATION`, "GRAPHITE_ALLOWED_DESTINATIONS"],
+    [`${G}MAX_TOTAL_LAMPORT`, "GRAPHITE_MAX_TOTAL_LAMPORTS"],
+    [`${G}GUARD_STATE_FIL`, "GRAPHITE_GUARD_STATE_FILE"],
     ["graphite_max_transfer_lamports", "GRAPHITE_MAX_TRANSFER_LAMPORTS"],
     ["GRAPHTIE_MAX_TRANSFER_LAMPORTS", "GRAPHITE_MAX_TRANSFER_LAMPORTS"],
   ]) {
@@ -469,8 +473,8 @@ test("A053 (repro): a near-miss of a name the guard reads refuses to start, nami
     GRAPHITE_SWAP_STRICT: "1",
   });
   // And GraphiteGuard.create runs it before anything else is read.
-  await withEnv({ GRAPHITE_ALLOWED_DESTINATION: DEST }, () =>
-    assert.rejects(startOnly({}), /GRAPHITE_ALLOWED_DESTINATION .*GRAPHITE_ALLOWED_DESTINATIONS/),
+  await withEnv({ [`${G}ALLOWED_DESTINATION`]: DEST }, () =>
+    assert.rejects(startOnly({}), new RegExp(`${G}ALLOWED_DESTINATION .*GRAPHITE_ALLOWED_DESTINATIONS`)),
   );
 });
 

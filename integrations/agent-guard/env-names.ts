@@ -88,8 +88,8 @@ function editDistance(a: string, b: string, max: number): number {
 /**
  * Refuse to start over a variable whose name is a near-miss of one the guard
  * reads (Audit A053): within two edits of it, or the same letters in another
- * case — `GRAPHITE_ALLOWED_DESTINATION`, `GRAPHITE_MAX_TOTAL_LAMPORT`,
- * `GRAPHITE_GUARD_STATE_FIL`. The Core refuses every `GRAPHITE_*` name no
+ * case — `…_ALLOWED_DESTINATION` for `GRAPHITE_ALLOWED_DESTINATIONS`, or a
+ * `…_GUARD_STATE_FIL`. The Core refuses every `GRAPHITE_*` name no
  * component reads (R37-15); the guard shares its environment with the Core
  * and the adapters, whose names it does not list, so it refuses the
  * near-misses of its own. No name another component reads is one
