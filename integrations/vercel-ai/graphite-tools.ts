@@ -159,9 +159,11 @@ export function graphiteTools(guard: GraphiteGuard, options: GraphiteToolsOption
           .max(500)
           .describe("The user's request in their own words, naming the SOL amount and the destination address."),
       }),
-      execute: async ({ request }): Promise<GraphiteToolResult> => {
+      // Audit A004: the call's abortSignal reaches the guard, which signs and
+      // sends nothing once it is aborted.
+      execute: async ({ request }, { abortSignal }): Promise<GraphiteToolResult> => {
         try {
-          return toolResultOf(await guard.executeTransfer(request, hook));
+          return toolResultOf(await guard.executeTransfer(request, { ...hook, ...(abortSignal ? { signal: abortSignal } : {}) }));
         } catch (e) {
           return toolRefusalOf(e);
         }
@@ -184,9 +186,14 @@ export function graphiteTools(guard: GraphiteGuard, options: GraphiteToolsOption
           addressLookupTableAddresses: z.array(z.string().min(32).max(44)).max(8).optional(),
         }),
       }),
-      execute: async ({ request, route }): Promise<GraphiteToolResult> => {
+      execute: async ({ request, route }, { abortSignal }): Promise<GraphiteToolResult> => {
         try {
-          return toolResultOf(await guard.executeSwap(request, route satisfies BoundInstructionPayload, hook));
+          return toolResultOf(
+            await guard.executeSwap(request, route satisfies BoundInstructionPayload, {
+              ...hook,
+              ...(abortSignal ? { signal: abortSignal } : {}),
+            }),
+          );
         } catch (e) {
           return toolRefusalOf(e);
         }

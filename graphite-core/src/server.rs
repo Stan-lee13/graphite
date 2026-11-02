@@ -490,6 +490,10 @@ struct Metrics {
     /// transaction Graphite refused. The gate being bypassed, visible at
     /// the report rather than after L8.
     lifecycle_on_blocked: Arc<std::sync::atomic::AtomicU64>,
+    /// Lifecycle events reported against a verdict that was approved but not
+    /// executable (`analysis_only`, `inconclusive`) naming no accepted
+    /// residuals (Audit A010, D-45): a client signing against the decision.
+    lifecycle_on_not_executable: Arc<std::sync::atomic::AtomicU64>,
     /// Lifecycle events reported against a content_hash with no
     /// verification on record anywhere in the trail.
     lifecycle_unverified: Arc<std::sync::atomic::AtomicU64>,
@@ -3446,6 +3450,13 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
             .load(std::sync::atomic::Ordering::Relaxed),
     );
     push(
+        "graphite_lifecycle_events_on_not_executable_total",
+        "Caller-reported lifecycle events against a verdict that was approved but not executable (analysis_only, inconclusive), naming no residuals its operator accepted: a client signing against Graphite's decision (Audit A010). Page on this.",
+        "counter",
+        m.lifecycle_on_not_executable
+            .load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
         "graphite_lifecycle_events_unverified_total",
         "Caller-reported lifecycle events whose content_hash has no verification on record in the trail.",
         "counter",
@@ -3619,6 +3630,11 @@ struct LifecycleEventBody {
     reported_by: Option<String>,
     #[serde(default)]
     detail: Option<String>,
+    /// The residual codes the reporter's operator accepted, when it signed a
+    /// verdict that was not executable (Audit A010, D-45). Each must be a
+    /// code the Core emits; an unknown one is refused (422).
+    #[serde(default)]
+    accepted_unobserved: Vec<crate::verification::UnobservedCode>,
 }
 
 /// Body for `POST /verify/execution`.
@@ -4026,6 +4042,7 @@ async fn execution(
                     )),
                     observed_by_graphite: true,
                     sequence_anomalies: Vec::new(),
+                    accepted_unobserved: Vec::new(),
                 },
             )
             .await
@@ -4324,6 +4341,7 @@ async fn quarantine(
             }),
             observed_by_graphite: true,
             sequence_anomalies: Vec::new(),
+            accepted_unobserved: Vec::new(),
         }
     });
     let (audit_recorded, restored) = {
@@ -4692,12 +4710,45 @@ async fn lifecycle_event(
             ));
         }
     }
+    // Audit A010 (D-45): `approved` alone never permitted signing. A report
+    // against an approval that was not executable is the client signing
+    // against the decision, unless it names the residuals its operator
+    // accepted, which makes it attributable rather than silent.
+    let mut accepted_unobserved: Vec<String> = Vec::new();
+    for c in &body.accepted_unobserved {
+        let c = c.as_str().to_string();
+        if !accepted_unobserved.contains(&c) {
+            accepted_unobserved.push(c);
+        }
+    }
+    let not_executable = found.as_ref().and_then(|r| r.not_executable_decision());
     let verdict_on_record = match &found {
+        Some(_) if not_executable.is_some() => VerdictOnRecord::NotExecutable,
         Some(r) if r.approved => VerdictOnRecord::Approved,
         Some(_) => VerdictOnRecord::Blocked,
         None => VerdictOnRecord::NotFound,
     };
     match verdict_on_record {
+        VerdictOnRecord::NotExecutable if accepted_unobserved.is_empty() => {
+            Metrics::inc(&state.metrics.lifecycle_on_not_executable);
+            tracing_server_error(&format!(
+                "LIFECYCLE REPORT ON A VERDICT THAT WAS NOT EXECUTABLE: {:?} reported by {:?} for content_hash {} whose verdict on record is {} — approved for analysis, never for signing, and the report names no residual its operator accepted",
+                body.event_type,
+                body.reported_by.as_deref().unwrap_or("<unnamed>"),
+                content_hash,
+                not_executable.as_deref().unwrap_or_default()
+            ));
+        }
+        VerdictOnRecord::NotExecutable => {
+            tracing_log(&format!(
+                "lifecycle {:?} reported by {:?} for content_hash {} against a {} verdict, under residuals its operator accepted: {}",
+                body.event_type,
+                body.reported_by.as_deref().unwrap_or("<unnamed>"),
+                content_hash,
+                not_executable.as_deref().unwrap_or_default(),
+                accepted_unobserved.join(", ")
+            ));
+        }
         VerdictOnRecord::Blocked => {
             Metrics::inc(&state.metrics.lifecycle_on_blocked);
             tracing_server_error(&format!(
@@ -4781,6 +4832,7 @@ async fn lifecycle_event(
                 detail,
                 observed_by_graphite: false,
                 sequence_anomalies,
+                accepted_unobserved,
             };
             let recorded = log.append_lifecycle(&record);
             (history.len(), record, recorded)
@@ -4835,6 +4887,7 @@ async fn lifecycle_event(
         "content_hash": record.content_hash,
         "verdict_on_record": verdict_on_record,
         "verdict_on_record_key": verdict_on_record_key,
+        "accepted_unobserved": record.accepted_unobserved,
         "sequence_anomalies": record.sequence_anomalies,
         "prior_events_on_record": prior_events_on_record,
     })))
@@ -7839,6 +7892,72 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Audit A010 (D-45): a report against an approval that was not
+    /// executable reads `not_executable`, not `approved`; it is counted and
+    /// logged unless it names the residuals its operator accepted, which are
+    /// recorded on the row. An unknown code is refused.
+    #[tokio::test]
+    async fn a_report_against_a_verdict_that_was_not_executable_says_so() {
+        let (state, dir) = test_state();
+        let log = state.audit.clone().unwrap();
+        let mut analysis = verification_row("eeeeeeeeeeeeeeee", true);
+        analysis.decision = Some("analysis_only".to_string());
+        analysis.executable = Some(false);
+        assert!(log.append(&analysis));
+        let mut executable = verification_row("ffffffffffffffff", true);
+        executable.decision = Some("executable_approved".to_string());
+        executable.executable = Some(true);
+        assert!(log.append(&executable));
+        let metrics = state.metrics.clone();
+        let app = build_app(state, vec![]);
+        let report = |hash: &str, accepted: serde_json::Value| {
+            serde_json::json!({
+                "event_type": "signing",
+                "content_hash": hash,
+                "reported_by": "bridge",
+                "accepted_unobserved": accepted,
+            })
+        };
+        for (hash, accepted, expect) in [
+            ("eeeeeeeeeeeeeeee", serde_json::json!([]), "not_executable"),
+            (
+                "eeeeeeeeeeeeeeee",
+                serde_json::json!(["not_simulated", "not_simulated"]),
+                "not_executable",
+            ),
+            ("ffffffffffffffff", serde_json::json!([]), "approved"),
+        ] {
+            let (status, body) =
+                post_json(&app, "/audit/event", None, report(hash, accepted)).await;
+            assert_eq!(status, axum::http::StatusCode::OK, "{body}");
+            assert_eq!(body["verdict_on_record"], expect, "{hash}: {body}");
+        }
+        // Only the report naming nothing it accepted is counted.
+        assert_eq!(
+            metrics
+                .lifecycle_on_not_executable
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
+        let contents = std::fs::read_to_string(audit_path(&dir)).unwrap();
+        assert_eq!(
+            contents
+                .matches("\"accepted_unobserved\":[\"not_simulated\"]")
+                .count(),
+            1,
+            "{contents}"
+        );
+        let (status, _) = post_json(
+            &app,
+            "/audit/event",
+            None,
+            report("eeeeeeeeeeeeeeee", serde_json::json!(["whatever_i_like"])),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::UNPROCESSABLE_ENTITY);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Round 10: `verdict_on_record` resolves by the most exact key supplied,
     /// never by a coarser one, and keys that contradict each other are a
     /// refused attestation. A (approved) and B (blocked) share a
@@ -9128,6 +9247,7 @@ Connection: close
             detail: Some("L8 reconciliation: ApprovedAndExecuted".to_string()),
             observed_by_graphite: true,
             sequence_anomalies: Vec::new(),
+            accepted_unobserved: Vec::new(),
         }));
         let app = build_app(state, vec![]);
         let (s, body) = post_json(

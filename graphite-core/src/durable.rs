@@ -1032,6 +1032,31 @@ pub struct AuditRecord {
     pub wallet_profile: Option<String>,
 }
 
+impl AuditRecord {
+    /// The decision when this record is an approval that does NOT permit
+    /// signing (Audit A010, D-45): `executable` false, or a `decision` other
+    /// than `executable_approved`. `None` for an executable approval, for a
+    /// refusal, and for a row written before Round 30 that records neither.
+    pub fn not_executable_decision(&self) -> Option<String> {
+        if !self.approved {
+            return None;
+        }
+        let decided_otherwise = self
+            .decision
+            .as_deref()
+            .is_some_and(|d| d != "executable_approved");
+        if decided_otherwise || self.executable == Some(false) {
+            Some(
+                self.decision
+                    .clone()
+                    .unwrap_or_else(|| "not executable (no decision recorded)".to_string()),
+            )
+        } else {
+            None
+        }
+    }
+}
+
 /// How a verification record is looked up, most exact first.
 ///
 /// `content_hash` is one instruction's projection — program, discriminator,
@@ -1121,8 +1146,14 @@ fn index_keys(r: &AuditRecord) -> Vec<String> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VerdictOnRecord {
-    /// The most recent verification of this hash was an approval.
+    /// The most recent verification of this hash was an executable approval
+    /// (or a row written before Round 30, which records no decision).
     Approved,
+    /// The most recent verification of this hash was approved but NOT
+    /// executable: `analysis_only` or `inconclusive` (Audit A010, D-45). A
+    /// signing against it is the client signing against the decision, unless
+    /// it names the residuals its operator accepted (`accepted_unobserved`).
+    NotExecutable,
     /// The most recent verification of this hash was a block.
     Blocked,
     /// No verification of this hash exists anywhere in the trail.
@@ -1196,6 +1227,13 @@ pub struct LifecycleEventRecord {
     /// row is in order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sequence_anomalies: Vec<String>,
+    /// The residual codes (`scope.unobserved_codes`) the reporter says its
+    /// operator accepted when it signed a verdict that was not executable
+    /// (Audit A010, D-45): the agent guard's `GRAPHITE_ACCEPT_UNOBSERVED`
+    /// path. Caller-attested, like the rest of the row; it makes such a
+    /// signing attributable, and L8 reads it. Empty on every other row.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub accepted_unobserved: Vec<String>,
 }
 
 /// How long after a rotation `lifecycle_history` keeps merging the newest
@@ -1346,6 +1384,12 @@ impl LifecycleEventRecord {
                 .iter()
                 .take(8)
                 .map(|a| bound_detail(a))
+                .collect(),
+            accepted_unobserved: self
+                .accepted_unobserved
+                .iter()
+                .take(crate::verification::UnobservedCode::ALL.len())
+                .map(|a| bound_field(a))
                 .collect(),
         }
     }
@@ -4885,6 +4929,7 @@ mod tests {
             detail: Some(big.clone()),
             observed_by_graphite: false,
             sequence_anomalies: vec![big.clone()],
+            accepted_unobserved: Vec::new(),
         }));
         let on_disk = std::fs::metadata(&path).unwrap().len();
         assert!(
@@ -4920,6 +4965,7 @@ mod tests {
             detail: Some(long_detail.clone()),
             observed_by_graphite: true,
             sequence_anomalies: Vec::new(),
+            accepted_unobserved: Vec::new(),
         }));
         let text = std::fs::read_to_string(&path).unwrap();
         let last = text.lines().last().unwrap();
@@ -5379,6 +5425,7 @@ mod tests {
             detail: None,
             observed_by_graphite: false,
             sequence_anomalies: Vec::new(),
+            accepted_unobserved: Vec::new(),
         }
     }
 

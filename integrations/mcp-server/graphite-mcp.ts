@@ -137,10 +137,17 @@ export function createGraphiteMcpServer(guard: GraphiteGuard, options: { confirm
     return null;
   }
 
-  /** The guard's confirmation hook: ask the person about the resolved transaction. */
-  function hook(): { confirm?: (summary: ConfirmationSummary) => Promise<boolean> } {
-    if (options.confirmation === "none") return {};
+  /**
+   * The guard's per-call options: the request's cancellation (Audit A004: a
+   * cancelled or client-timed-out call was still signed and sent, its result
+   * dropped by the SDK, and a retry spent again) and the confirmation hook,
+   * which asks the person about the resolved transaction under the same
+   * signal.
+   */
+  function hook(signal: AbortSignal): { signal: AbortSignal; confirm?: (summary: ConfirmationSummary) => Promise<boolean> } {
+    if (options.confirmation === "none") return { signal };
     return {
+      signal,
       confirm: async (summary) => {
         const answer = await server.server.elicitInput({
           message: describeForPerson(summary),
@@ -149,7 +156,7 @@ export function createGraphiteMcpServer(guard: GraphiteGuard, options: { confirm
             properties: { approve: { type: "boolean", title: "Approve", description: "Sign and send this transaction" } },
             required: ["approve"],
           },
-        });
+        }, { signal });
         return answer.action === "accept" && answer.content?.approve === true;
       },
     };
@@ -188,11 +195,11 @@ export function createGraphiteMcpServer(guard: GraphiteGuard, options: { confirm
       inputSchema: { request: z.string().min(1).max(500) },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     },
-    async ({ request }) => {
+    async ({ request }, extra) => {
       const refused = confirmable();
       if (refused) return asContent(refused);
       try {
-        return asContent(toolResultOf(await guard.executeTransfer(request, hook())));
+        return asContent(toolResultOf(await guard.executeTransfer(request, hook(extra.signal))));
       } catch (e) {
         return asContent(toolRefusalOf(e));
       }
@@ -218,11 +225,11 @@ export function createGraphiteMcpServer(guard: GraphiteGuard, options: { confirm
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     },
-    async ({ request, route }) => {
+    async ({ request, route }, extra) => {
       const refused = confirmable();
       if (refused) return asContent(refused);
       try {
-        return asContent(toolResultOf(await guard.executeSwap(request, route satisfies BoundInstructionPayload, hook())));
+        return asContent(toolResultOf(await guard.executeSwap(request, route satisfies BoundInstructionPayload, hook(extra.signal))));
       } catch (e) {
         return asContent(toolRefusalOf(e));
       }

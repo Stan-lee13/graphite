@@ -139,11 +139,17 @@ Exit codes:
 | Code | Meaning | Action |
 | --- | --- | --- |
 | 0 | reconciled | none |
-| 1 | **DISCREPANCY: a transaction Graphite blocked executed anyway** | security incident (below) |
+| 1 | **DISCREPANCY: a transaction Graphite blocked executed anyway** (`BlockedButExecuted`), or one it approved for analysis only executed with no accepted residual named on its signing (`NotExecutableButExecuted`, Round 41) | security incident (below) |
 | 3 | unavailable (no RPC answer, no audit trail, configuration error) | retry; RPC runbook above |
 | 4 | the RPC returned bytes not bound to the signature | treat the primary RPC as faulty or hostile; switch provider |
 | 5 | the primary RPC contradicted itself about the signature | same as 4 |
 | 6 | the witness disagreed, or could not be asked | compare providers by hand; do not trust either alone |
+
+`NotExecutableButExecuted` that names `accepted_unobserved` exits 0: the
+signer's operator accepted those residuals (the agent guard's
+`GRAPHITE_ACCEPT_UNOBSERVED`). Check that the codes are ones this deployment
+meant to accept. The alert `GraphiteLifecycleOnNotExecutable` pages on the
+same case at signing time.
 
 A transaction that never finalizes is not a Graphite fault: check the
 blockhash expiry and the fee market, and never re-submit a different build of

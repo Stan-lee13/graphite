@@ -715,8 +715,11 @@ func lifecycleReceiptViolation(value any, sent *LifecycleEventInput) string {
 	if !isStr(r["content_hash"]) {
 		return "`content_hash` must be a string"
 	}
-	if !oneOf(r["verdict_on_record"], VerdictOnRecordApproved, VerdictOnRecordBlocked, VerdictOnRecordNotFound) {
-		return "`verdict_on_record` must be \"approved\", \"blocked\" or \"not_found\""
+	if !oneOf(r["verdict_on_record"], VerdictOnRecordApproved, VerdictOnRecordNotExecutable, VerdictOnRecordBlocked, VerdictOnRecordNotFound) {
+		return "`verdict_on_record` must be \"approved\", \"not_executable\", \"blocked\" or \"not_found\""
+	}
+	if a, has := r["accepted_unobserved"]; has && !isStrArray(a) {
+		return "`accepted_unobserved` must be an array of strings"
 	}
 	if !oneOf(r["verdict_on_record_key"], "audit_trail_id", "transaction_sha256", "content_hash") {
 		return "`verdict_on_record_key` must be \"audit_trail_id\", \"transaction_sha256\" or \"content_hash\""
@@ -769,7 +772,7 @@ func variantName(value any, units, data []string) string {
 
 var (
 	reconciliationUnits = []string{"ApprovedAndExecuted", "BlockedButExecuted", "BlockedAndNotExecuted", "NotFound", "NoVerificationOnRecord"}
-	reconciliationData  = []string{"ApprovedButFailedOnChain", "RecordedForDifferentBytes", "Unavailable"}
+	reconciliationData  = []string{"ApprovedButFailedOnChain", "NotExecutableButExecuted", "RecordedForDifferentBytes", "Unavailable"}
 	chainStatusData     = []string{"Confirmed", "UnknownSignature", "Unavailable"}
 )
 
@@ -796,6 +799,17 @@ func executionResultViolation(value any, sent *ExecutionCheckInput) string {
 	// 2026-10-20 (F5): a cited verdict about other bytes is reported in
 	// caller_keys_disagree, never as an alarm.
 	expected := rec == "BlockedButExecuted"
+	// Audit A010: a verdict approved for analysis only that executed is a
+	// discrepancy unless its signer named the residuals it accepted.
+	if rec == "NotExecutableButExecuted" {
+		outer, _ := asObject(r["reconciliation"])
+		inner, ok := asObject(outer[rec])
+		if !ok || !isStr(inner["decision"]) || !isStrArray(inner["accepted_unobserved"]) {
+			return "`reconciliation.NotExecutableButExecuted` must carry a decision and accepted_unobserved"
+		}
+		accepted, _ := inner["accepted_unobserved"].([]any)
+		expected = len(accepted) == 0
+	}
 	if disc != expected {
 		return fmt.Sprintf("`discrepancy` must be %v for a %s reconciliation", expected, rec)
 	}

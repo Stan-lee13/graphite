@@ -439,3 +439,40 @@ func TestNestingUpToTheLimitStillWalksAndNamesThePath(t *testing.T) {
 		t.Fatalf("path: %v", err)
 	}
 }
+
+// Audit A010: a verdict approved for analysis only is reported as
+// not_executable, and its execution is a discrepancy unless its signer named
+// the residuals it accepted.
+func TestNotExecutableVerdictsAndTheirExecutions(t *testing.T) {
+	event := &LifecycleEventInput{EventType: LifecycleSigning, ContentHash: "48c65c638aceb5de", AuditTrailID: "gr-x", AcceptedUnobserved: []string{"not_simulated"}}
+	body := strings.Replace(receiptJSON("signing"), `"approved"`, `"not_executable"`, 1)
+	body = strings.Replace(body, `"prior_events_on_record":0`, `"prior_events_on_record":0,"accepted_unobserved":["not_simulated"]`, 1)
+	r, err := NewClient(serve(t, http.StatusOK, body).URL).RecordLifecycleEvent(event)
+	if err != nil || r.VerdictOnRecord != VerdictOnRecordNotExecutable || len(r.AcceptedUnobserved) != 1 {
+		t.Fatalf("a not_executable receipt must be accepted: %+v %v", r, err)
+	}
+	if b, _ := json.Marshal(event); !strings.Contains(string(b), `"accepted_unobserved":["not_simulated"]`) {
+		t.Fatalf("the input must carry accepted_unobserved: %s", b)
+	}
+	in := &ExecutionCheckInput{Signature: signature, AuditTrailID: "gr-x"}
+	unaccepted := `{"NotExecutableButExecuted":{"decision":"analysis_only","accepted_unobserved":[]}}`
+	accepted := `{"NotExecutableButExecuted":{"decision":"analysis_only","accepted_unobserved":["not_simulated"]}}`
+	for _, ok := range []struct {
+		rec  string
+		disc bool
+	}{{unaccepted, true}, {accepted, false}} {
+		r, err := NewClient(serve(t, http.StatusOK, executionJSON(ok.rec, ok.disc)).URL).VerifyExecution(in)
+		if err != nil || r.Discrepancy != ok.disc || r.ReconciliationVariant() != "NotExecutableButExecuted" {
+			t.Fatalf("%s: %+v %v", ok.rec, r, err)
+		}
+	}
+	for name, body := range map[string]string{
+		"unaccepted, alarm dropped": executionJSON(unaccepted, false),
+		"accepted, alarm raised":    executionJSON(accepted, true),
+		"no decision":               executionJSON(`{"NotExecutableButExecuted":{}}`, true),
+	} {
+		if _, err := NewClient(serve(t, http.StatusOK, body).URL).VerifyExecution(in); err == nil {
+			t.Errorf("%s: must be refused", name)
+		}
+	}
+}

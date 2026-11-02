@@ -1400,6 +1400,7 @@ fn every_line_the_writer_emits_is_canonical_and_verifies() {
         detail: Some("slot 1\r\n".into()),
         observed_by_graphite: false,
         sequence_anomalies: vec!["x".into()],
+        accepted_unobserved: Vec::new(),
     }));
     close(log);
     for line in lines_of(&path) {
@@ -1727,6 +1728,7 @@ fn a_self_hashed_forgery_in_a_keyed_trail_is_never_read_by_a_reader_with_the_key
             detail: None,
             observed_by_graphite: false,
             sequence_anomalies: Vec::new(),
+            accepted_unobserved: Vec::new(),
         };
         let mut lines = lines_of(&archives[0]);
         let forged = self_hashed_forgery(&lines[0], map_of(&victim), mac, &key);

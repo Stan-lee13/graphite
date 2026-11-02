@@ -667,7 +667,7 @@ choose the join). The keys are cross-checked against the chain's answer and
 any disagreement is reported in `caller_keys_disagree` — a record you cite
 whose bytes the chain contradicts is `NoVerificationOnRecord` plus a
 `caller_keys_disagree` entry, never a discrepancy (only `BlockedButExecuted`
-is). `getTransaction` is asked at the configured commitment (`confirmed` at
+and an unaccepted `NotExecutableButExecuted` are). `getTransaction` is asked at the configured commitment (`confirmed` at
 least), so chain-byte attribution works once a transaction is confirmed. Without the chain's
 bytes the most exact key you supplied decides, and `content_hash` alone is
 ambiguous by construction: it names every transaction carrying that
@@ -677,7 +677,11 @@ The SAK bridge makes this call itself after every verified execution, and
 records its `signing` and `submission` on the trail around it (`POST
 /audit/event`); each such row carries `verdict_on_record`, what the trail said
 about the hash when the report arrived, and a report against a blocked verdict
-is counted at `/metrics` and logged at ERROR.
+is counted at `/metrics` and logged at ERROR. Since Round 41 (Audit A010) a
+verdict approved for analysis only reads `not_executable`, never `approved`; a
+report against one is counted and logged at ERROR too, unless it names the
+residuals its operator accepted (`accepted_unobserved`, which the agent guard
+sends when it signs under `GRAPHITE_ACCEPT_UNOBSERVED`).
 
 The field to watch is `reconciliation`. `ApprovedAndExecuted` and
 `BlockedAndNotExecuted` are the gate being obeyed. `ApprovedButFailedOnChain` is
@@ -687,7 +691,13 @@ Graphite refused the transaction and it landed anyway, so the gate was bypassed
 rather than obeyed — an integration ignoring the verdict, a key used out of
 band, or an override. It sets `discrepancy: true`, logs at ERROR, and goes on
 the append-only trail. Nothing inside a verification request can ever detect it,
-because it happens entirely outside one.
+because it happens entirely outside one. **`NotExecutableButExecuted`**
+(Round 41, Audit A010) is its sibling: Graphite approved the transaction for
+analysis only (`analysis_only`, `inconclusive`), which never permitted signing,
+and it landed. It is a discrepancy unless a signing event for that verification
+named the residuals its operator accepted, and then it carries them, so the
+execution is attributed rather than paged. It used to read
+`ApprovedAndExecuted`.
 
 Without an RPC endpoint, or with one that will not answer, the result is
 `Unavailable` with the endpoint redacted. An unavailable check reports that it

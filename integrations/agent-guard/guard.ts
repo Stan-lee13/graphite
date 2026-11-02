@@ -532,6 +532,27 @@ export interface ExecuteOptions {
    * `true` aborts with `ConfirmationDeclined`; nothing is signed or sent.
    */
   confirm?: (summary: ConfirmationSummary) => Promise<boolean>;
+  /**
+   * The caller's cancellation (Audit A004): an MCP request's `extra.signal`,
+   * a Vercel tool's `abortSignal`. Aborted before signing, nothing is signed
+   * or sent (`RequestCancelled`); aborted after the signing is recorded and
+   * before the bytes leave, nothing is sent. Once the bytes have left, the
+   * execution runs to its end: a cancellation cannot recall them, and
+   * dropping its result would leave the caller to spend again.
+   */
+  signal?: AbortSignal;
+}
+
+/**
+ * The caller cancelled the request before its bytes left this process
+ * (Audit A004). Nothing was sent; if the signing was already recorded, the
+ * trail shows a signing with no submission.
+ */
+export class RequestCancelled extends Error {
+  constructor(label: string, stage: string) {
+    super(`[Graphite] ${label}: the request was cancelled ${stage}. Nothing was sent.`);
+    this.name = "RequestCancelled";
+  }
 }
 
 /**
@@ -1335,13 +1356,18 @@ export class GraphiteGuard {
     reservation: SpendReservation,
     verdictRequestedAt: number,
     confirm?: (acceptedUnobserved: string[]) => Promise<boolean>,
+    signal?: AbortSignal,
   ): Promise<ExecutionLifecycle> {
+    const notCancelled = (stage: string) => {
+      if (signal?.aborted) throw new RequestCancelled(label, stage);
+    };
     // The whole path — policy, signing, the lifecycle events, submission,
     // confirmation, L8 — is `executeBoundTransaction`, in that order. See
     // execution-lifecycle.ts for why each step sits where it does.
     try {
       // Round 34: open, and still holding the wallet, before signing.
       this.#assertMaySpend();
+      notCancelled("before anything was signed");
       const lifecycle = await executeBoundTransaction({
         bound,
         verification,
@@ -1358,13 +1384,19 @@ export class GraphiteGuard {
         ...(confirm ? { confirm: ({ acceptedUnobserved }) => confirm(acceptedUnobserved) } : {}),
         // Round 34: again before signing, after the confirmation, which can
         // take minutes; the guard can be closed or lose its lock meanwhile.
-        beforeSign: () => this.#assertMaySpend(),
+        beforeSign: () => {
+          this.#assertMaySpend();
+          // Audit A004: a confirmation can take minutes, and the caller may
+          // have given up on the request meanwhile.
+          notCancelled("before signing");
+        },
         // And as the last step before the bytes leave (the signing is
         // recorded on the trail in between). A refusal here sends nothing.
         // Round 38 (G2-4): with the reservation that pays for it, so that it
         // can be returned once the chain says this submission cannot land.
         beforeSubmit: (signature) => {
           this.#assertMaySpend();
+          notCancelled("after signing, before the bytes left");
           this.#state.markUnresolved(key, signature, bound.lastValidBlockHeight, Date.now(), reservation.id);
         },
       });
@@ -1620,7 +1652,7 @@ export class GraphiteGuard {
         : undefined;
       console.log("[Graphite] Transfer approved + AuditBind verified — executing...");
       handedOff = true;
-      const lifecycle = await this.#signSubmitAndConfirm(bound, verification, "transfer", key, reservation, verdictRequestedAt, confirm);
+      const lifecycle = await this.#signSubmitAndConfirm(bound, verification, "transfer", key, reservation, verdictRequestedAt, confirm, options.signal);
       console.log(`[Solana] ${lifecycle.confirmed ? "Confirmed" : "Submitted (not confirmed)"}: ${lifecycle.signature}`);
       return { executed: true, verifiedExecution: true, verification, signature: lifecycle.signature, lifecycle };
     } finally {
@@ -1914,7 +1946,7 @@ export class GraphiteGuard {
       // would reintroduce the copy-versus-original gap one level down.
       console.log("[Graphite] Swap approved + AuditBind verified — submitting the bound transaction...");
       handedOff = true;
-      const lifecycle = await this.#signSubmitAndConfirm(boundSwap, verification, "swap", key, reservation, verdictRequestedAt, confirm);
+      const lifecycle = await this.#signSubmitAndConfirm(boundSwap, verification, "swap", key, reservation, verdictRequestedAt, confirm, options.signal);
       console.log(`[Solana] ${lifecycle.confirmed ? "Confirmed" : "Submitted (not confirmed)"}: ${lifecycle.signature}`);
       return { executed: true, verifiedExecution: true, verification, signature: lifecycle.signature, lifecycle };
     } finally {

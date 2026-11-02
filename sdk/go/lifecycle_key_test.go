@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -44,7 +45,7 @@ func TestLifecycleRequestsSendTheKeyUnderBothNames(t *testing.T) {
 		if _, err := c.RecordLifecycleEvent(&ev); err != nil {
 			t.Fatalf("%+v: %v", ev, err)
 		}
-		if ev != given {
+		if !reflect.DeepEqual(ev, given) {
 			t.Errorf("the caller's event is not rewritten: %+v became %+v", given, ev)
 		}
 	}

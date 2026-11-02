@@ -51,6 +51,30 @@ tests:
                 Graphite refused. Find the record with `graphite execution` and the
                 agent's own logs; docs/ops/incidents.md.
 
+  # Audit A010 (D-45): a report against a verdict that was not executable.
+  - interval: 1m
+    input_series:
+      - series: 'graphite_lifecycle_events_on_not_executable_total{instance="core:7331", job="graphite"}'
+        values: '0 0 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: GraphiteLifecycleOnNotExecutable
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: GraphiteLifecycleOnNotExecutable
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              instance: core:7331
+              job: graphite
+            exp_annotations:
+              summary: "A lifecycle event was reported for a verdict that was not executable (core:7331)"
+              description: >-
+                An agent reported signing/submission/confirmation of a transaction
+                Graphite approved for analysis only, without naming accepted
+                residuals. Find the record with `graphite execution` and the
+                agent's own logs; docs/ops/incidents.md.
+
   # Audit: disabled pages after a minute; failing writes page; an unkeyed
   # trail is a ticket only while the trail exists.
   - interval: 1m

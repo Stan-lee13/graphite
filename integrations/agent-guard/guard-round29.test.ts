@@ -33,6 +33,7 @@ import {
   type SpendPolicy,
   type SwapEnvelopeConfig,
   type SwapPolicy,
+  RequestCancelled,
 } from "./guard.js";
 import {
   BLOCKED_VERDICT,
@@ -275,6 +276,36 @@ test("M7: a declined confirmation aborts with nothing signed, recorded or sent; 
       /not confirmed \(the confirmation failed: ui closed\)/,
     );
     assert.equal(h.rpc.calls.filter((c) => c.method === "sendTransaction").length, 0);
+  } finally {
+    await h.close();
+  }
+});
+
+test("Audit A004: a cancelled request is not signed or sent, before or during its confirmation", async () => {
+  const h = await harness({ approve: true });
+  try {
+    const before = new AbortController();
+    before.abort();
+    await assert.rejects(h.agent.executeTransfer(REQUEST, { signal: before.signal }), RequestCancelled);
+    // The client gives up while the person is still being asked, and the
+    // person then says yes: nothing is signed.
+    const during = new AbortController();
+    await assert.rejects(
+      h.agent.executeTransfer(REQUEST, {
+        signal: during.signal,
+        confirm: async () => {
+          during.abort();
+          return true;
+        },
+      }),
+      /cancelled before signing\. Nothing was sent/,
+    );
+    assert.equal(h.rpc.calls.filter((c) => c.method === "sendTransaction").length, 0, "nothing sent");
+    for (const c of h.rpc.calls) assert.notEqual(c.signed, true, `${c.method} carried a signature`);
+    assert.deepEqual(events(h), [], "no signing on the trail: nothing was signed");
+    // A signal that is never aborted changes nothing.
+    const outcome = await h.agent.executeTransfer(REQUEST, { signal: new AbortController().signal });
+    assert.equal(outcome.executed, true);
   } finally {
     await h.close();
   }

@@ -2491,6 +2491,28 @@ fn run_execution(
                  used out of band, or an override. Investigate before trusting the next one."
             );
         }
+        ExecutionReconciliation::NotExecutableButExecuted {
+            decision,
+            accepted_unobserved,
+        } if accepted_unobserved.is_empty() => {
+            println!(
+                "DISCREPANCY: Graphite approved this transaction for analysis only ({}), never\n\
+                 for signing, and it executed. The client signed against the decision, and no\n\
+                 signing event named a residual its operator accepted. Investigate.",
+                t(decision)
+            );
+        }
+        ExecutionReconciliation::NotExecutableButExecuted {
+            decision,
+            accepted_unobserved,
+        } => {
+            println!(
+                "Executed under residuals its signer's operator accepted ({}): Graphite approved it\n\
+                 for analysis only ({}), and the signing event names what was accepted.",
+                t(&accepted_unobserved.join(", ")),
+                t(decision)
+            );
+        }
         ExecutionReconciliation::ApprovedButFailedOnChain { error } => {
             println!(
                 "Approved, then failed on chain ({}). Not a security failure - Graphite verifies\n\
@@ -2726,6 +2748,7 @@ impl OperatorTrail {
             detail: Some(detail),
             observed_by_graphite: true,
             sequence_anomalies: Vec::new(),
+            accepted_unobserved: Vec::new(),
         })
     }
 }

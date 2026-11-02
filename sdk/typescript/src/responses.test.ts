@@ -350,3 +350,28 @@ test("IPv4-mapped loopback is loopback in this SDK, as in Go's", () => {
   }
   assert.equal(isLoopbackHost("[::ffff:7f00:1]"), true);
 });
+
+test("Audit A010: a verdict approved for analysis only is reported as such, and its execution is a discrepancy unless accepted", () => {
+  assert.equal(validateLifecycleEventReceipt({ ...RECEIPT, verdict_on_record: "not_executable" }), null);
+  assert.equal(
+    validateLifecycleEventReceipt({ ...RECEIPT, verdict_on_record: "not_executable", accepted_unobserved: ["not_simulated"] }),
+    null,
+  );
+  assert.match(validateLifecycleEventReceipt({ ...RECEIPT, accepted_unobserved: "not_simulated" }) ?? "", /accepted_unobserved/);
+  const unaccepted = { NotExecutableButExecuted: { decision: "analysis_only", accepted_unobserved: [] } };
+  const accepted = { NotExecutableButExecuted: { decision: "analysis_only", accepted_unobserved: ["not_simulated"] } };
+  assert.equal(validateExecutionCheckResult({ ...EXECUTION, reconciliation: unaccepted, discrepancy: true }), null);
+  assert.match(
+    validateExecutionCheckResult({ ...EXECUTION, reconciliation: unaccepted, discrepancy: false }) ?? "",
+    /must be true for a NotExecutableButExecuted/,
+  );
+  assert.equal(validateExecutionCheckResult({ ...EXECUTION, reconciliation: accepted, discrepancy: false }), null);
+  assert.match(
+    validateExecutionCheckResult({ ...EXECUTION, reconciliation: accepted, discrepancy: true }) ?? "",
+    /must be false for a NotExecutableButExecuted/,
+  );
+  assert.match(
+    validateExecutionCheckResult({ ...EXECUTION, reconciliation: { NotExecutableButExecuted: {} }, discrepancy: true }) ?? "",
+    /must carry a decision/,
+  );
+});

@@ -28,6 +28,10 @@ const (
 // What the trail held for an event's verification when the event was recorded.
 const (
 	VerdictOnRecordApproved = "approved"
+	// VerdictOnRecordNotExecutable means the verification was approved for
+	// analysis only (analysis_only / inconclusive), which never permitted
+	// signing (Audit A010). A Core before Round 41 reports it as approved.
+	VerdictOnRecordNotExecutable = "not_executable"
 	// VerdictOnRecordBlocked means the caller just reported acting on a
 	// transaction Graphite refused.
 	VerdictOnRecordBlocked  = "blocked"
@@ -59,6 +63,13 @@ type LifecycleEventInput struct {
 	ReportedBy string `json:"reported_by,omitempty"`
 	// Detail is free-form, at most 1024 characters.
 	Detail string `json:"detail,omitempty"`
+	// AcceptedUnobserved names the residual codes (Scope.UnobservedCodes) this
+	// signer's operator accepted, when it signs a verdict approved for
+	// analysis only. It makes that signing attributable: L8 reports such an
+	// execution as a discrepancy unless a signing event named them (Audit
+	// A010). Each must be a code the Core emits. A Core before Round 41
+	// ignores the field.
+	AcceptedUnobserved []string `json:"accepted_unobserved,omitempty"`
 }
 
 // LifecycleEventReceipt is the answer to a recorded lifecycle event.
@@ -76,6 +87,8 @@ type LifecycleEventReceipt struct {
 	// "unpreceded: …" or "signature conflict: …". Empty when in order.
 	SequenceAnomalies   []string `json:"sequence_anomalies,omitempty"`
 	PriorEventsOnRecord *uint64  `json:"prior_events_on_record,omitempty"`
+	// AcceptedUnobserved is what the row recorded of the input's (Round 41).
+	AcceptedUnobserved []string `json:"accepted_unobserved,omitempty"`
 }
 
 // ExecutionCheckInput is the body of POST /verify/execution (L8).

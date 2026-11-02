@@ -650,14 +650,25 @@ export interface LifecycleEventInput {
   reported_by?: string;
   /** Free-form, at most 1024 characters. */
   detail?: string;
+  /**
+   * The residual codes this signer's operator accepted, when it signs a
+   * verdict that was approved but not executable (`analysis_only`). Makes
+   * such a signing attributable: `verdict_on_record` is `not_executable`
+   * either way, and L8 pages unless a signing event named them (Audit A010).
+   * A Core before Round 41 ignores the field.
+   */
+  accepted_unobserved?: UnobservedCode[];
 }
 
 /**
  * What the trail held for the event's `content_hash` when the event was
  * recorded — established by Graphite, not reported by the caller. `blocked`
- * means the caller just reported acting on a transaction Graphite refused.
+ * means the caller just reported acting on a transaction Graphite refused;
+ * `not_executable`, on one Graphite approved for analysis only
+ * (`analysis_only` / `inconclusive`), which never permitted signing (Audit
+ * A010; a Core before Round 41 reports such a verdict as `approved`).
  */
-export type VerdictOnRecord = "approved" | "blocked" | "not_found";
+export type VerdictOnRecord = "approved" | "not_executable" | "blocked" | "not_found";
 
 /**
  * Which key `verdict_on_record` was resolved by. `content_hash` means the
@@ -683,6 +694,8 @@ export interface LifecycleEventReceipt {
   sequence_anomalies?: string[];
   /** How many lifecycle rows were already on record for this transaction. */
   prior_events_on_record?: number;
+  /** The `accepted_unobserved` recorded on the row (Round 41; omitted before). */
+  accepted_unobserved?: string[];
 }
 
 /**
@@ -774,7 +787,11 @@ export interface ExecutionCheckResult {
    * carry data. Read `discrepancy` for the decision.
    */
   reconciliation: unknown;
-  /** True for `BlockedButExecuted`: Graphite's decision did not govern. */
+  /**
+   * True for `BlockedButExecuted`, and for `NotExecutableButExecuted` whose
+   * signer named no accepted residual (Audit A010): Graphite's decision did
+   * not govern.
+   */
   discrepancy: boolean;
   recorded_transaction_sha256: string | null;
   attribution: ExecutionAttribution;

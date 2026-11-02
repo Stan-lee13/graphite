@@ -409,6 +409,9 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
       transaction_sha256: scope.transaction_sha256,
       reported_by: p.reportedBy,
       detail: `digest ${scope.transaction_sha256}`,
+      // Audit A010: a verdict signed under residuals this deployment
+      // accepts says which, so L8 attributes it instead of paging.
+      ...(decision.accepted.length > 0 ? { accepted_unobserved: [...decision.accepted] } : {}),
     });
   } catch (e) {
     throw new Error(
@@ -427,7 +430,15 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
         "not by the exact audit_trail_id this bridge supplied. NOT submitting.",
     );
   }
-  if (signing.verdict_on_record !== "approved") {
+  // Audit A010: a Core from Round 41 reports a verdict approved for
+  // analysis only as `not_executable`; an earlier one as `approved`. Either
+  // is this process's verdict only when this process signed it under the
+  // residuals it accepted; an executable approval must read `approved`.
+  const onRecord =
+    verification.decision === "executable_approved" || decision.accepted.length === 0
+      ? ["approved"]
+      : ["approved", "not_executable"];
+  if (!onRecord.includes(signing.verdict_on_record)) {
     // The server that verified this transaction is not the server whose
     // trail was just consulted, or the trail changed under us. Either way
     // the approval in hand is not the approval on record.

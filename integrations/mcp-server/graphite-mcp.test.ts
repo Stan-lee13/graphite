@@ -62,7 +62,11 @@ async function services(opts: { approve?: boolean } = {}) {
 async function connect(
   guard: GraphiteGuard,
   confirmation: Confirmation,
-  person?: (message: string) => { action: "accept" | "decline" | "cancel"; content?: Record<string, unknown> },
+  person?: (
+    message: string,
+  ) =>
+    | { action: "accept" | "decline" | "cancel"; content?: Record<string, unknown> }
+    | Promise<{ action: "accept" | "decline" | "cancel"; content?: Record<string, unknown> }>,
 ) {
   const server = createGraphiteMcpServer(guard, { confirmation });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
@@ -151,6 +155,37 @@ test("M7: a person approves the RESOLVED transaction — destination, amount, ef
     const sends = s.rpc.calls.filter((x) => x.method === "sendTransaction");
     assert.equal(sends.length, 1);
     await c.close();
+  } finally {
+    await s.close();
+  }
+});
+
+test("Audit A004: a call the client cancels while the person is asked is not signed or sent", async () => {
+  const s = await services({ approve: true });
+  try {
+    const guard = await s.guard(2_000_000_000n);
+    const cancel = new AbortController();
+    // The client gives up (its user pressed stop, or its 60 s timeout fired)
+    // while the person is still being asked; the person then says yes.
+    const c = await connect(guard, "elicit", async () => {
+      cancel.abort();
+      await new Promise((r) => setTimeout(r, 100));
+      return { action: "accept", content: { approve: true } };
+    });
+    try {
+      await assert.rejects(
+        c.client.callTool({ name: "graphite_transfer_sol", arguments: { request: REQUEST } }, undefined, { signal: cancel.signal }),
+      );
+      // Let the server finish whatever it would still have done.
+      await new Promise((r) => setTimeout(r, 500));
+      assert.equal(c.asked.length, 1);
+      assert.equal(s.rpc.calls.filter((x) => x.method === "sendTransaction").length, 0, "nothing sent");
+      for (const call of s.rpc.calls) assert.notEqual(call.signed, true, `${call.method} carried a signature`);
+      assert.equal(s.core.calls.filter((x) => x.method === "POST /audit/event").length, 0, "no signing on the trail");
+    } finally {
+      await c.close();
+      guard.close();
+    }
   } finally {
     await s.close();
   }

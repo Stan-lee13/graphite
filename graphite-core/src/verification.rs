@@ -1782,6 +1782,19 @@ pub enum ExecutionReconciliation {
     /// the decision that governed the wallet, and no other layer can detect
     /// that because it happens entirely outside the verification request.
     BlockedButExecuted,
+    /// **Graphite approved this transaction for analysis only, and it was
+    /// signed and executed** (Audit A010, D-45). Since Round 30 only
+    /// `decision == executable_approved` permits signing; an `analysis_only`
+    /// or `inconclusive` verdict says what Graphite could not observe (no
+    /// simulation, the request's amount not bound to the bytes). A
+    /// discrepancy unless a signing event for that verification named the
+    /// residuals its signer's operator accepted (`accepted_unobserved`, the
+    /// agent guard's accepted-residual path), which is then attributed here
+    /// rather than paged. Until D-45 this read as `ApprovedAndExecuted`.
+    NotExecutableButExecuted {
+        decision: String,
+        accepted_unobserved: Vec<String>,
+    },
     /// Blocked, and correctly never landed.
     BlockedAndNotExecuted,
     /// The chain has no record of this signature yet: still pending, dropped,
@@ -1824,7 +1837,14 @@ impl ExecutionReconciliation {
     /// executed. `RecordedForDifferentBytes` is not one (audit 2026-10-20,
     /// F5 — see the variant).
     pub fn is_discrepancy(&self) -> bool {
-        matches!(self, Self::BlockedButExecuted)
+        match self {
+            Self::BlockedButExecuted => true,
+            Self::NotExecutableButExecuted {
+                accepted_unobserved,
+                ..
+            } => accepted_unobserved.is_empty(),
+            _ => false,
+        }
     }
 }
 
@@ -4408,7 +4428,38 @@ impl GraphiteCore {
                     } else {
                         (None, ExecutionAttribution::None)
                     };
-                    (found, attribution, recorded_verdicts, cited_for_other_bytes)
+                    // D-45: the residuals a signer named for this
+                    // verification, when it was approved but not executable.
+                    let accepted: Vec<String> = match &found {
+                        Some(r) if r.not_executable_decision().is_some() => {
+                            let mut codes: Vec<String> = Vec::new();
+                            for e in log.lifecycle_history(crate::durable::LifecycleKey {
+                                audit_trail_id: Some(&r.audit_trail_id),
+                                ..Default::default()
+                            }) {
+                                if e.event_type == crate::durable::LifecycleEvent::Signing
+                                    && !e.observed_by_graphite
+                                    && e.audit_trail_id.as_deref()
+                                        == Some(r.audit_trail_id.as_str())
+                                {
+                                    for c in e.accepted_unobserved {
+                                        if !codes.contains(&c) {
+                                            codes.push(c);
+                                        }
+                                    }
+                                }
+                            }
+                            codes
+                        }
+                        _ => Vec::new(),
+                    };
+                    (
+                        found,
+                        attribution,
+                        recorded_verdicts,
+                        cited_for_other_bytes,
+                        accepted,
+                    )
                 });
                 Some(scan.await)
             }
@@ -4416,27 +4467,28 @@ impl GraphiteCore {
         // A scan that did not complete is an internal failure, and L8 does not
         // answer "nothing on record" for a trail it could not read.
         let mut trail_unread: Option<String> = None;
-        let (recorded, attribution, recorded_verdicts, cited_for_other_bytes) = match lookup {
-            None => (None, ExecutionAttribution::None, None, None),
-            Some(Ok(found)) => found,
-            // A panic inside the scan is re-raised, so the server answers 500
-            // (CatchPanicLayer) rather than a verdict built on a trail it did
-            // not read.
-            Some(Err(join)) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
-            // Audit 2026-10-20 (F19): a scan that was CANCELLED (the runtime
-            // shutting down) panicked here, turning an orderly shutdown into a
-            // crash. It is the same "the trail was not read" — answered as
-            // `Unavailable` with the reason, never as "nothing on record".
-            Some(Err(join)) => {
-                tracing::error!(
-                    "L8: the audit trail lookup for {signature} did not complete: {join}"
-                );
-                trail_unread = Some(format!(
+        let (recorded, attribution, recorded_verdicts, cited_for_other_bytes, accepted_unobserved) =
+            match lookup {
+                None => (None, ExecutionAttribution::None, None, None, Vec::new()),
+                Some(Ok(found)) => found,
+                // A panic inside the scan is re-raised, so the server answers 500
+                // (CatchPanicLayer) rather than a verdict built on a trail it did
+                // not read.
+                Some(Err(join)) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
+                // Audit 2026-10-20 (F19): a scan that was CANCELLED (the runtime
+                // shutting down) panicked here, turning an orderly shutdown into a
+                // crash. It is the same "the trail was not read" — answered as
+                // `Unavailable` with the reason, never as "nothing on record".
+                Some(Err(join)) => {
+                    tracing::error!(
+                        "L8: the audit trail lookup for {signature} did not complete: {join}"
+                    );
+                    trail_unread = Some(format!(
                     "the audit trail lookup did not complete ({join}), so the recorded verdict could not be read"
                 ));
-                (None, ExecutionAttribution::None, None, None)
-            }
-        };
+                    (None, ExecutionAttribution::None, None, None, Vec::new())
+                }
+            };
 
         // What the caller said, against what was resolved. A disagreement
         // is reported, never used to change the answer.
@@ -4579,6 +4631,14 @@ impl GraphiteCore {
                     // Any sighting, at any commitment, from either source:
                     // a blocked transaction in a block is the gate bypassed.
                     ExecutionReconciliation::BlockedButExecuted
+                } else if let Some(decision) = rec.not_executable_decision() {
+                    // D-45: approved for analysis, never for signing. Like a
+                    // blocked one, any sighting says the client signed
+                    // against the decision.
+                    ExecutionReconciliation::NotExecutableButExecuted {
+                        decision,
+                        accepted_unobserved: accepted_unobserved.clone(),
+                    }
                 } else if let Some(why) = &chain_inconsistent {
                     ExecutionReconciliation::Unavailable {
                         reason: format!("the RPC contradicts itself about this signature: {why}"),

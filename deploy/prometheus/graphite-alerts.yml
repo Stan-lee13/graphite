@@ -40,6 +40,21 @@ groups:
             Graphite refused. Find the record with `graphite execution` and the
             agent's own logs; docs/ops/incidents.md.
 
+      # Audit A010 (D-45): a caller reported signing, submitting or confirming
+      # a transaction Graphite approved for analysis only (never for
+      # signing), naming no residual its operator accepted.
+      - alert: GraphiteLifecycleOnNotExecutable
+        expr: increase(graphite_lifecycle_events_on_not_executable_total[10m]) > 0
+        labels:
+          severity: page
+        annotations:
+          summary: "A lifecycle event was reported for a verdict that was not executable ({{ $labels.instance }})"
+          description: >-
+            An agent reported signing/submission/confirmation of a transaction
+            Graphite approved for analysis only, without naming accepted
+            residuals. Find the record with `graphite execution` and the
+            agent's own logs; docs/ops/incidents.md.
+
       - alert: GraphiteLifecycleSequenceAnomaly
         expr: increase(graphite_lifecycle_sequence_anomalies_total[30m]) > 0
         labels:
