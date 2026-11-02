@@ -36,7 +36,9 @@ than pointing the old binary at the new state.
    `docker compose -f docker-compose.prod.yml pull graphite && docker compose -f docker-compose.prod.yml up -d graphite`
    instead of building. Either way it is a stop and a start of the one Core,
    never a rolling update: two Cores cannot share the data volume.
-5. Check: `/health` shows `degraded: false`; one known-good verification
+5. Check: `/health` shows `degraded: false` (production compose, which
+   publishes no Core port: `docker compose -f docker-compose.prod.yml exec
+   graphite graphite healthcheck --strict` exits 0); one known-good verification
    through your client still returns the verdict you expect; the dashboard's
    totals continued from where they were (the trail was read, not restarted).
 
@@ -59,5 +61,8 @@ than pointing the old binary at the new state.
 
 `docker compose up -d` after editing `.env` recreates the container with the
 new environment. Settings are read once at startup, and a malformed value
-refuses to start rather than falling back, so check `docker compose ps` and
-the logs after every change.
+refuses to start rather than falling back (so do a misspelt `GRAPHITE_*` name,
+a value that is not UTF-8 and a blank `GRAPHITE_DATA_DIR`), so check
+`docker compose ps` and the logs after every change. With the production
+compose file, settings go in `deploy/compose/graphite.env` and keys only in
+`deploy/compose/secrets/`: a key in `graphite.env` refuses to start (keys.md).

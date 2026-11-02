@@ -61,6 +61,14 @@ build-from-source stack.
    rides beside the withdrawal: a sibling instruction that skims the payout is refused
    either way (Round 38, R37-1).
 
+   Every setting is strict: the server (and every CLI command) refuses to start
+   on a value it cannot parse, a `GRAPHITE_*` name no Graphite component reads
+   (a misspelling), a name or a variable's value that is not valid UTF-8 (a
+   non-breaking space pasted into `.env` is a common cause), a
+   `GRAPHITE_DATA_DIR` that is set but blank (unset means `./graphite-data`),
+   and a `GRAPHITE_MAX_CONCURRENT` or `GRAPHITE_MAX_CONNECTIONS` outside 1 to
+   1,000,000 (Round 41, audit A035, A036, A088).
+
 3. **Validate, then start.** On a new data volume, import the measured
    census first ([below](#first-start-import-the-measured-census)): it takes
    the data directory's lock, so it runs before the Core does (or with the
@@ -103,8 +111,13 @@ build-from-source stack.
 
 6. **Wire the signals** into your monitoring before taking traffic:
    - `/health` → alert on `degraded: true`; `degraded_reasons` names the cause.
-   - `/metrics` (authenticated) → audit write/rotation failures, snapshot
-     failures, refusals by layer.
+     It answers without a key and carries no audit or snapshot counter
+     (Round 41, audit A018).
+   - `/metrics` (authenticated; the read key is enough) → verdicts approved and
+     blocked, audit write/rotation/anchor failures and the chain head, snapshot
+     failures, L8 discrepancies, lifecycle reports on blocked or
+     analysis-only verdicts, caught panics and timeouts. The alert rules in
+     `deploy/prometheus/graphite-alerts.yml` read these.
    - A periodic `graphite execution` reconciliation for each signed
      transaction (exit codes in incidents.md), run with the server's
      `GRAPHITE_AUDIT_KEY_FILE`: since Round 38 it reads a keyed trail only

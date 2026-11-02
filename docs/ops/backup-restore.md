@@ -22,7 +22,10 @@ DATA="$(docker volume inspect graphite_graphite-data --format '{{.Mountpoint}}')
 
 The volume name is `<project>_graphite-data`; `docker volume ls` shows it
 (`graphite_graphite-data` for the production compose file, whose project name
-is `graphite`). With systemd the directory is `/var/lib/graphite`.
+is `graphite`). With systemd the directory is `/var/lib/graphite`, which
+`DynamicUser=` makes a symlink to `/var/lib/private/graphite`; `restore.sh`
+restores at the symlink's target and keeps the symlink (Audit A066: replacing
+the symlink with a directory broke the next start).
 
 ## Cold backup (consistent; the server is stopped)
 
@@ -95,7 +98,9 @@ backup for anything you plan to restore from.
    belongs in the incident log first. After a lost audit key, add
    `--lost-key <key id>` (keys.md).
 3. Start the Core, then check `docker compose ps` (healthy) and `/health`
-   (`degraded: false`).
+   (`degraded: false`). The production compose file publishes no Core port:
+   `docker compose -f deploy/compose/docker-compose.prod.yml exec graphite
+   graphite healthcheck --strict` exits 0 only when healthy and not degraded.
 4. Note the restore in your incident log: verdicts issued after the backup was
    taken are not in the restored trail.
 

@@ -48,7 +48,8 @@ and baselines earned since the last good snapshot exist only in memory.
 
 **Signal:** server log lines about an archive index that did not check out
 (rebuilt), an archive that could not be read, or a record that failed to read
-back; `/metrics` read errors; a dashboard total that went backwards.
+back; `audit append refused: … Something other than this writer changed …`
+with `audit_writes_failed`; a dashboard total that went backwards.
 
 **Meaning:** every record is hash-chained; lengths and SHA-256 of archives are
 checked when indexed, and records are read back and matched. With
@@ -65,12 +66,24 @@ the volume can rewrite a file and its index consistently (Audit A096).
 3. If it is disk corruption, restore the archive from backup; the index is
    rebuilt on the next read.
 
+**`audit append refused`** (Round 41, Audit A022): the active `audit.jsonl`
+was truncated, replaced, removed or appended to by something other than the
+server (an external log rotation, `copytruncate`, an editor). The server
+refuses every append to it, so verdicts are refused `503`, until it is
+restarted. Never rotate the trail externally: the server rotates it itself
+(`GRAPHITE_AUDIT_ROTATE_BYTES`). Find what changed the file and stop it,
+preserve the volume (step 1), run `graphite audit verify`, then restart; the
+restart resumes the chain from what the trail on disk holds.
+
 ### `graphite audit verify` reports a `TEAR`
 
 A line that is not JSON, that no record after it names, is a break (exit 1)
 (Round 34). A writer from Round 34 on names the partial line a crash left when
-it resumes past it, so this is either a crash a pre-Round-34 writer resumed
-past, or bytes someone added. `verify` lists each one (`TEAR  <file> line L
+it resumes past it, and since Round 41 (Audit A025) it names two or more torn
+lines in a row, left by consecutive crashes, as one span. So this is either a
+crash a pre-Round-34 writer resumed past, a second crash that left only the
+newline of the record that would have named the first, or bytes someone
+added. `verify` lists each one (`TEAR  <file> line L
 (byte N, …)`) and still walks every record after it.
 
 1. Inspect the line (`tail -c +$((N+1)) <file> | head -c 200`). A crash leaves

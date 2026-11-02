@@ -58,12 +58,20 @@ and the "transaction versions in the same sample" line is the 80-block census's 
 `fetch_idl.py` and its `verified_idls.json` output were removed in Round 29: the script
 derived the IDL address with a wrong on-curve test and its output was empty.
 
+`idl_refresh_report.py` (Round 41) is what the read-only `idl-refresh` workflow prints:
+how a freshly fetched on-chain IDL differs from the committed one (instructions, and every
+`Swap` / `CandidateSwap` variant), executed transactions' top-level instruction bytes, and
+each program's last deployment slot and upgrade authority. The workflow moves the committed
+IDL aside before the fetch (Audit A072), so a failed fetch is reported as a failure, not as
+an unchanged IDL. The read-only `census-refresh` workflow re-measures chosen records with
+`battle_tested_census.py --merge`.
+
 ## Assurance (Round 30)
 
 | Tool | What it does |
 |---|---|
 | `mutation_floor.py` | Reads the outcomes file a `cargo mutants` run writes and fails below a mutation-score floor (caught + timeout over tested; unviable excluded; an empty run fails). The weekly job in `.github/workflows/assurance.yml` runs it. |
-| `../fuzz/make_seeds.py` | Regenerates the committed fuzz seed corpora in `fuzz/seeds/` from the committed mainnet blocks, the shipped manifests and hand-built valid layouts. |
+| `../fuzz/make_seeds.py` | Regenerates the committed fuzz seed corpora in `fuzz/seeds/` from the committed mainnet blocks, the shipped manifests and hand-built valid layouts (Round 41: the `swap_decoder` target's mainnet-derived seeds too). Each target runs in `assurance.yml` with its own `-max_len`, and `ci-scripts.test.sh` fails a seed longer than its target's (Audit A002). |
 
 ## Corpus validation (Round 39)
 

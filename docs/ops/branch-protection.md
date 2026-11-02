@@ -127,18 +127,18 @@ red job shows `CI gate` failing and the merge blocked; a collaborator without ad
 
 ## 4. Private vulnerability reporting
 
-Off on 2026-10-25 (`{"enabled": false}`).
+Off on 2026-10-25 (`{"enabled": false}`); read as enabled on 2026-10-30 (`{"enabled": true}`,
+production-checklist.md, item 2). To check it, or to enable it again if it is off:
 
 ```sh
-gh api -X PUT repos/Stan-lee13/graphite/private-vulnerability-reporting
 gh api repos/Stan-lee13/graphite/private-vulnerability-reporting      # {"enabled": true}
+gh api -X PUT repos/Stan-lee13/graphite/private-vulnerability-reporting   # only if it is off
 ```
 
-(Or Settings → Code security → Private vulnerability reporting → Enable.) Then, in one pull
-request, point `.github/ISSUE_TEMPLATE/config.yml`'s security contact link (today:
-`…/blob/main/SECURITY.md`) at `https://github.com/Stan-lee13/graphite/security/advisories/new`, and
-make `SECURITY.md`'s "Reporting a Vulnerability" section (today: an e-mail address only) name the
-private advisory form first and the address as the fallback.
+(Or Settings → Code security → Private vulnerability reporting → Enable.) The repository side is
+done: `.github/ISSUE_TEMPLATE/config.yml`'s security contact link and `SECURITY.md`'s reporting
+section name `https://github.com/Stan-lee13/graphite/security/advisories/new` first, with an e-mail
+address as the fallback.
 
 ## 5. Optional, recommended
 

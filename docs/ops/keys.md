@@ -19,6 +19,14 @@ the dashboard.
 
 1. Generate the new key and stage it in each client's secret store, unused.
 2. Set it in `.env`, then `docker compose up -d` (recreates the container).
+   Production compose: `deploy/scripts/rotate-keys.sh file
+   deploy/compose/secrets/api_key`, then `docker compose -f
+   deploy/compose/docker-compose.prod.yml up -d --force-recreate graphite`.
+   Never put a key in `deploy/compose/graphite.env`: the Core's entrypoint
+   refuses to start when any of the three API keys arrives from the
+   environment (Audit A064). systemd: `rotate-keys.sh env
+   /etc/graphite/graphite.env GRAPHITE_API_KEY`, then `systemctl restart
+   graphite`.
 3. Switch each client to the new key; restart them.
 4. Confirm: the old key now gets `401`; each client's next verification
    succeeds; `/metrics` shows no burst of authentication failures beyond the
@@ -89,6 +97,9 @@ what a rewrite under an invented key id looks like.
    moved the trail from the old key to the new one, a record under the old key
    is a break (`verify` exits 1 even with both keys), no reader reads it, and
    the server refuses to start onto one ("… which this trail retired …").
+   Since Round 41 (Audit A023) a retired key is also never adopted again: a
+   server start or `graphite audit adopt-key` configured with it refuses ("…
+   is one this trail retired when it rotated …"); configure a fresh key.
    Before Round 38 a leaked old key could keep extending the trail after the
    rotation meant to retire it, while `verify` with both keys exited 0.
 4. Verify the whole trail with both keys:
@@ -182,7 +193,7 @@ the same `GRAPHITE_AUDIT_KEY_FILE` for those commands as the server uses.
 | 0 | Nothing failed: every chained record links to the one before it; every MAC under a supplied key verified; when keys are supplied, every chained record is MAC'd under one of them or covered by a key-adoption record; a `--checkpoint` is confirmed (and, when keys are supplied, MAC'd under one of them). |
 | 1 | A break (an edited, inserted, deleted, reordered, copied or non-canonical line; a line that is not a record, including a torn write nothing names — `TEAR`, see incidents.md; an archive that ends without its newline; a MAC that does not verify; a key id that appears with no adoption record, or with none after the trail's first adoption record; a record under a key the chain retired at a rotation; a record of another trail (`trail` id); legacy records before a chain keyed from seq 0 that no adoption record lists, or legacy records that do not match the list an adoption record carries; since Round 38 an oldest record above seq 0 that no prune record names, and a line longer than 8 MiB), or a checkpoint that does not hold (rewritten, truncated, forged). |
 | 2 | The walk could not prove what it was asked to: MACs under a key not supplied that a checked key-adoption record after them covers (an old or lost key not passed), a trail with no chained record, a checkpoint whose records were pruned. |
-| 3 | The trail, a key file or the `--checkpoint` file could not be read (or the trail kept rotating under the walk on every retry). Until Round 38 an unreadable key file or checkpoint exited 1, which reads as a break. |
+| 3 | The trail, a key file or the `--checkpoint` file could not be read (or the trail kept rotating under the walk on every retry), or the environment was refused (a `GRAPHITE_*` name nothing reads, a value that is not UTF-8, a blank `GRAPHITE_DATA_DIR`; Round 41, Audit A034: it exited 1). Until Round 38 an unreadable key file or checkpoint exited 1, which reads as a break. |
 | 4 | Keys were supplied, but something is not covered by them: chained records with no MAC and no key-adoption record, legacy records no checked key-adoption record lists (Round 38), MACs under a key not supplied that no checked key-adoption record after them covers — a trail under none of the keys given, or a head under a key not given (Round 38, T-12; it exited 2) — or a checkpoint with no MAC or under a key not supplied. |
 | 64 | A usage error (Round 38: under `graphite audit` it was clap's 2, the same as "unproven"). |
 
