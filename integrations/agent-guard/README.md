@@ -380,7 +380,7 @@ submitted — and nothing is signed under a residual the operator has not accept
   startup, then held to the environment readers' types (a bigint cap, booleans that are
   booleans, a list of base58 destinations) or refused; changing the caller's object later
   changes nothing. Audit A053: a variable whose name is within two edits of one the guard
-  reads (`GRAPHITE_ALLOWED_DESTINATION`, `GRAPHITE_MAX_TOTAL_LAMPORT`) refuses to start.
+  reads (`GRAPHITE_ALLOWED_DESTINATIONS` without its final S, say) refuses to start.
   Audit A085: a request longer than 1,000 characters is refused before it is grounded. Code loaded into the process BEFORE the guard, or that owns the process, is
   outside what any of this can stop: isolating the key from it takes a separate signing
   process.
