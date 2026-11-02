@@ -9,7 +9,7 @@
  */
 import { PriorSubmissionUnresolved, RequestInFlight, type ExecutionOutcome } from "./guard.js";
 import { UnsupportedCapability, type UnsupportedCapabilityCode } from "./capabilities.js";
-import { ConfirmationDeclined, StaleVerdict, SubmissionOutcomeUnknown } from "./execution-lifecycle.js";
+import { ConfirmationDeclined, ConfirmationUnavailable, StaleVerdict, SubmissionOutcomeUnknown } from "./execution-lifecycle.js";
 import { IntentGroundingError } from "./intent-grounding.js";
 import { ResidualPolicyRefusal } from "./residual-policy.js";
 import { SpendPolicyRefusal } from "./spend-policy.js";
@@ -27,6 +27,9 @@ export interface GraphiteToolResult {
    * could be signed; nothing was signed or sent (Round 35, F-017). Since
    * Round 38 (G2-3) also before it could be sent: then it was signed and the
    * signed bytes dropped, and still nothing was sent.
+   * `confirmation-unavailable` (Audit A057): confirmation was required and
+   * nobody answered — the client cannot ask a person, or the question
+   * failed or timed out. Not a person's refusal; nothing was signed or sent.
    */
   refusedBy?:
     | "spend-policy"
@@ -35,6 +38,7 @@ export interface GraphiteToolResult {
     | "swap-route"
     | "residual-policy"
     | "person"
+    | "confirmation-unavailable"
     | "graphite"
     | "submission-unknown"
     | "duplicate-request"
@@ -148,6 +152,7 @@ export function toolRefusalOf(e: unknown): GraphiteToolResult {
   if (e instanceof IntentGroundingError) return { executed: false, refusedBy: "request-grounding", reason };
   if (e instanceof SwapRouteRefusal) return { executed: false, refusedBy: "swap-route", reason };
   if (e instanceof ResidualPolicyRefusal) return { executed: false, refusedBy: "residual-policy", reason };
+  if (e instanceof ConfirmationUnavailable) return { executed: false, refusedBy: "confirmation-unavailable", reason };
   if (e instanceof ConfirmationDeclined) return { executed: false, refusedBy: "person", reason };
   if (e instanceof StaleVerdict) return { executed: false, refusedBy: "stale-verdict", reason };
   if (e instanceof SubmissionOutcomeUnknown) {

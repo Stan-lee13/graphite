@@ -102,6 +102,7 @@ import {
   openSync,
   readFileSync,
   readSync,
+  realpathSync,
   renameSync,
   statSync,
   unlinkSync,
@@ -109,7 +110,7 @@ import {
 } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { userInfo } from "node:os";
-import { dirname, join, posix, resolve, win32 } from "node:path";
+import { dirname, isAbsolute, join, posix, resolve, win32 } from "node:path";
 
 /** Opened with this, a path that is a symbolic link fails (ELOOP) instead of being followed. */
 const O_NOFOLLOW = fsConstants.O_NOFOLLOW ?? 0;
@@ -393,6 +394,22 @@ function assertLockHeld(lock: HeldLock, what: string): void {
 }
 
 /**
+ * Refuse a lock directory or state file named by a relative path (Audit
+ * A050/A054). It would resolve against the working directory, so two guards
+ * for one wallet started from two directories (a service unit and a shell, a
+ * cron job) would take two locks, each with a full allowance, and a restart
+ * from another directory would open a fresh, empty state file.
+ */
+function assertAbsolute(path: string, what: string): void {
+  if (!isAbsolute(path)) {
+    throw new GuardStateError(
+      `${what} ${JSON.stringify(path)} is not an absolute path: it would resolve against the working directory, ` +
+        "and guards started from different directories would not share it. Name it by its absolute path. REFUSING TO START.",
+    );
+  }
+}
+
+/**
  * Refuse unless `dir` is a real directory (not a symbolic link) owned by
  * `euid` with no access for anyone else (mode 0700). On Windows only the
  * first is checked: there is no uid or mode to compare.
@@ -425,6 +442,48 @@ export function assertPrivateDirectory(dir: string, euid: number | undefined = p
 }
 
 /**
+ * Refuse unless every directory above `dir` — on the path as named and on
+ * the path it resolves to — belongs to this user or root and is writable by
+ * no one else, or is sticky as /tmp is (Audit A051). Whoever can write a
+ * directory on the way can rename the state file's directory away and put
+ * another in its place (a symbolic link, or another directory of this
+ * user's with no state file in it); the next start would replay nothing.
+ */
+function assertNoOtherWriterAbove(dir: string, euid: number): void {
+  const above = new Set<string>();
+  const collect = (from: string) => {
+    for (let d = dirname(from); ; d = dirname(d)) {
+      above.add(d);
+      if (dirname(d) === d) break;
+    }
+  };
+  collect(dir);
+  try {
+    collect(realpathSync(dir));
+  } catch (e) {
+    throw new GuardStateError(`the state file's directory ${dir} could not be resolved: ${(e as Error).message}. REFUSING TO START.`);
+  }
+  for (const d of above) {
+    let st;
+    try {
+      st = statSync(d);
+    } catch (e) {
+      throw new GuardStateError(`${d}, above the state file's directory, could not be read: ${(e as Error).message}. REFUSING TO START.`);
+    }
+    const ownerOk = st.uid === euid || st.uid === 0;
+    const othersWrite = (st.mode & 0o022) !== 0 && (st.mode & 0o1000) === 0;
+    if (!ownerOk || othersWrite) {
+      throw new GuardStateError(
+        `the state file's directory ${dir} lies under ${d}, which is ` +
+          (!ownerOk ? `owned by uid ${st.uid}, not this user (uid ${euid}) or root` : `writable by others (mode 0${(st.mode & 0o7777).toString(8)}) and not sticky`) +
+          ": another user could rename the state file's directory away and put one without the reservations or the " +
+          "unresolved submissions in its place. Keep it under directories only this user (or root) can write. REFUSING TO START.",
+      );
+    }
+  }
+}
+
+/**
  * Refuse a state file another user could rewrite (Round 39, R39-CLIENTS-6).
  *
  * The state file holds what the guard must not forget — the aggregate's
@@ -447,9 +506,14 @@ export function assertPrivateStateLocation(path: string, euid: number | undefine
   const dir = dirname(resolve(path));
   let st;
   try {
-    st = statSync(dir);
+    // Audit A051: the directory itself, not where a symbolic link in its
+    // place points (as for the lock directory).
+    st = lstatSync(dir);
   } catch (e) {
     throw new GuardStateError(`the state file's directory ${dir} could not be read: ${(e as Error).message}. REFUSING TO START.`);
+  }
+  if (st.isSymbolicLink()) {
+    throw new GuardStateError(`the state file's directory ${dir} is a symbolic link. Name the directory itself. REFUSING TO START.`);
   }
   if (!st.isDirectory()) throw new GuardStateError(`the state file's directory ${dir} is not a directory. REFUSING TO START.`);
   const unix = process.platform !== "win32" && euid !== undefined;
@@ -460,6 +524,7 @@ export function assertPrivateStateLocation(path: string, euid: number | undefine
         "Keep it in a directory of this user's that only this user can write. REFUSING TO START.",
     );
   }
+  if (unix) assertNoOtherWriterAbove(dir, euid as number);
   let file;
   try {
     file = lstatSync(path);
@@ -503,6 +568,7 @@ export class WalletLock {
       throw new GuardStateError(`${JSON.stringify(wallet)} is not a base58 public key. REFUSING TO START.`);
     }
     if (dir.trim() === "") throw new GuardStateError(`${GUARD_LOCK_DIR_ENV} is empty. REFUSING TO START.`);
+    assertAbsolute(dir, `the wallet-lock directory (${GUARD_LOCK_DIR_ENV} / walletLockDir)`);
     try {
       // The mode applies to directories this creates; an existing one is
       // checked below, never assumed.
@@ -621,7 +687,14 @@ export function walletLockPlan(
   config: { lockDir?: string; allowSharedWallet?: boolean } = {},
   env: Record<string, string | undefined> = process.env,
 ): WalletLockPlan {
-  let shared = config.allowSharedWallet;
+  let shared: unknown = config.allowSharedWallet;
+  // Audit A049/A055: read by truthiness, the string "false" waived the lock.
+  if (shared !== undefined && typeof shared !== "boolean") {
+    throw new GuardStateError(`allowSharedWallet ${JSON.stringify(shared)} is not a boolean. REFUSING TO START.`);
+  }
+  if (config.lockDir !== undefined && typeof config.lockDir !== "string") {
+    throw new GuardStateError(`walletLockDir ${JSON.stringify(config.lockDir)} is not a path. REFUSING TO START.`);
+  }
   if (shared === undefined) {
     const raw = env[GUARD_ALLOW_SHARED_WALLET_ENV];
     if (raw !== undefined && raw !== "" && raw !== "0" && raw !== "1") {
@@ -629,9 +702,13 @@ export function walletLockPlan(
     }
     shared = raw === "1";
   }
-  if (shared) return { shared: true };
+  if (shared === true) return { shared: true };
   // Round 38 (R37-17): the default reads no variable of the session.
-  return { shared: false, dir: config.lockDir ?? env[GUARD_LOCK_DIR_ENV] ?? defaultWalletLockDir() };
+  const dir = config.lockDir ?? env[GUARD_LOCK_DIR_ENV] ?? defaultWalletLockDir();
+  // Audit A050/A054: refused here, before anything is contacted, as the
+  // default is when the account's home is relative.
+  if (dir.trim() !== "") assertAbsolute(dir, `the wallet-lock directory (${GUARD_LOCK_DIR_ENV} / walletLockDir)`);
+  return { shared: false, dir };
 }
 
 /** Take the lock `plan` names for `wallet` (none, when the operator waived it). */
@@ -663,6 +740,7 @@ export class GuardState {
    */
   static open(path: string, opts: { retainSince?: number } = {}): GuardState {
     if (path.trim() === "") throw new GuardStateError(`${GUARD_STATE_FILE_ENV} is empty. REFUSING TO START.`);
+    assertAbsolute(path, `the state file (${GUARD_STATE_FILE_ENV} / stateFile)`);
     assertPrivateStateLocation(path);
     const state = new GuardState(path);
     state.#lock(`${path}.lock`);
@@ -812,11 +890,23 @@ export class GuardState {
     this.#unresolved.set(key, { signature, lastValidBlockHeight, at, ...(reservation !== undefined ? { reservation } : {}) });
   }
 
-  /** The submission is settled (confirmed, landed and failed, or expired). */
-  markResolved(key: string, at: number = Date.now()): void {
-    if (!this.#unresolved.has(key)) return;
-    this.#unresolved.delete(key);
+  /**
+   * `signature`, recorded under `key`, is settled (confirmed, landed and
+   * failed, or expired).
+   *
+   * Audit A046/A052: only while it is still the submission recorded there.
+   * A caller that read the record before an await may find a newer
+   * submission of the same request in its place, which may still land; that
+   * one stays held.
+   *
+   * Audit A047: the line is written before the record is dropped, so a
+   * write that fails (a closed guard, a full disk) leaves it held: a repeat
+   * asks the RPC first, it is never built blind.
+   */
+  markResolved(key: string, signature: string, at: number = Date.now()): void {
+    if (this.#unresolved.get(key)?.signature !== signature) return;
     this.#append({ v: 1, t: "resolved", key, at });
+    this.#unresolved.delete(key);
   }
 
   /** Record a reservation on the aggregate limit; returns its id. Throws if it cannot be recorded. */

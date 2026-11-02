@@ -141,6 +141,29 @@ export function swapPolicyFromEnv(env: Record<string, string | undefined> = proc
 
 /** Check a configured policy (one passed in code rather than read from the environment). */
 export function assertSwapPolicyUsable(policy: SwapPolicy): void {
+  // Audit A049/A055: read by truthiness, the string "false" was an accepted risk.
+  if (typeof policy !== "object" || policy === null) {
+    throw new Error("[Graphite] swapPolicy is not an object. REFUSING TO START.");
+  }
+  if (typeof policy.allowUnpriced !== "boolean") {
+    throw new Error(`[Graphite] swapPolicy.allowUnpriced ${JSON.stringify(policy.allowUnpriced)} is not a boolean. REFUSING TO START.`);
+  }
+  if (!Array.isArray(policy.minRates)) {
+    throw new Error("[Graphite] swapPolicy.minRates is not a list of price floors. REFUSING TO START.");
+  }
+  for (const r of policy.minRates as unknown[]) {
+    const f = r as Partial<Record<keyof SwapMinRate, unknown>> | null;
+    if (
+      typeof f !== "object" || f === null || typeof f.pair !== "string" || typeof f.rate !== "string" ||
+      typeof f.inMint !== "string" || !BASE58_ADDRESS.test(f.inMint) ||
+      typeof f.outMint !== "string" || !BASE58_ADDRESS.test(f.outMint)
+    ) {
+      throw new Error(
+        `[Graphite] swapPolicy.minRates has ${JSON.stringify(r)}, which is not { pair, inMint, outMint, rate } ` +
+          "with base58 mints and a decimal rate. REFUSING TO START.",
+      );
+    }
+  }
   if (!Number.isSafeInteger(policy.maxSlippageBps) || policy.maxSlippageBps < 0 || policy.maxSlippageBps > SWAP_SLIPPAGE_CEILING_BPS) {
     throw new Error(
       `[Graphite] swapPolicy.maxSlippageBps ${policy.maxSlippageBps} is not an integer from 0 to ${SWAP_SLIPPAGE_CEILING_BPS}. REFUSING TO START.`,
@@ -151,6 +174,18 @@ export function assertSwapPolicyUsable(policy: SwapPolicy): void {
       throw new Error(`[Graphite] swapPolicy rate ${JSON.stringify(r.rate)} for ${r.pair} is not a positive decimal. REFUSING TO START.`);
     }
   }
+}
+
+/** A frozen copy of `policy`, its floors copied too (Audit A049). */
+export function frozenSwapPolicy(policy: SwapPolicy): Readonly<SwapPolicy> {
+  if (typeof policy !== "object" || policy === null) return policy;
+  const copy = { ...policy };
+  if (Array.isArray(policy.minRates)) {
+    copy.minRates = Object.freeze(
+      policy.minRates.map((r) => (typeof r === "object" && r !== null ? Object.freeze({ ...r }) : r)),
+    );
+  }
+  return Object.freeze(copy);
 }
 
 /** The startup line that states the swap policy in force. */

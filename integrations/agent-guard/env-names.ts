@@ -38,6 +38,78 @@ export function assertNoLegacyEnvNames(env: Record<string, string | undefined> =
   }
 }
 
+/**
+ * Every `GRAPHITE_*` name the guard itself reads (Audit A053). Each limit is
+ * read by its exact name, so a misspelt one was simply absent: the guard
+ * started with no allowlist, no aggregate or no state file, and said so only
+ * in its startup line. `guard-audit-low.test.ts` keeps this list equal to the
+ * names the guard's sources read.
+ */
+export const GUARD_ENV_NAMES: readonly string[] = Object.freeze([
+  "GRAPHITE_ACCEPT_UNOBSERVED",
+  "GRAPHITE_AI_LAYER_URL",
+  "GRAPHITE_ALLOWED_DESTINATIONS",
+  "GRAPHITE_ALLOW_UNCAPPED",
+  "GRAPHITE_API_KEY",
+  "GRAPHITE_CORE_URL",
+  "GRAPHITE_GUARD_ALLOW_SHARED_WALLET",
+  "GRAPHITE_GUARD_LOCK_DIR",
+  "GRAPHITE_GUARD_STATE_FILE",
+  "GRAPHITE_MAX_TOTAL_LAMPORTS",
+  "GRAPHITE_MAX_TRANSFER_LAMPORTS",
+  "GRAPHITE_MAX_VERDICT_AGE_MS",
+  "GRAPHITE_RPC_TIMEOUT_MS",
+  "GRAPHITE_SPEND_WINDOW_SECONDS",
+  "GRAPHITE_SWAP_ALLOW_UNPRICED",
+  "GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION",
+  "GRAPHITE_SWAP_COMPUTE_UNIT_LIMIT",
+  "GRAPHITE_SWAP_COMPUTE_UNIT_PRICE",
+  "GRAPHITE_SWAP_CREATE_OUTPUT_ATA",
+  "GRAPHITE_SWAP_MAX_SLIPPAGE_BPS",
+  "GRAPHITE_SWAP_MIN_RATES",
+  "GRAPHITE_TRANSACTION_VERSION",
+  "GRAPHITE_WALLET_PROFILE",
+]);
+
+/** Levenshtein distance, bounded: anything over `max` is `max + 1`. */
+function editDistance(a: string, b: string, max: number): number {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 0; i < a.length; i++) {
+    const cur = [i + 1];
+    for (let j = 0; j < b.length; j++) {
+      cur[j + 1] = Math.min(prev[j] + (a[i] === b[j] ? 0 : 1), prev[j + 1] + 1, cur[j] + 1);
+    }
+    prev = cur;
+  }
+  return Math.min(prev[b.length], max + 1);
+}
+
+/**
+ * Refuse to start over a variable whose name is a near-miss of one the guard
+ * reads (Audit A053): within two edits of it, or the same letters in another
+ * case — `GRAPHITE_ALLOWED_DESTINATION`, `GRAPHITE_MAX_TOTAL_LAMPORT`,
+ * `GRAPHITE_GUARD_STATE_FIL`. The Core refuses every `GRAPHITE_*` name no
+ * component reads (R37-15); the guard shares its environment with the Core
+ * and the adapters, whose names it does not list, so it refuses the
+ * near-misses of its own. No name another component reads is one
+ * (`guard-audit-low.test.ts` checks the Core's lists).
+ */
+export function assertNoMisspeltGuardEnvNames(env: Record<string, string | undefined> = process.env): void {
+  const misspelt: string[] = [];
+  for (const name of Object.keys(env)) {
+    if (env[name] === undefined || GUARD_ENV_NAMES.includes(name)) continue;
+    const upper = name.toUpperCase();
+    const meant = GUARD_ENV_NAMES.find((g) => g === upper || editDistance(upper, g, 2) <= 2);
+    if (meant !== undefined) misspelt.push(`${name} (did you mean ${meant}?)`);
+  }
+  if (misspelt.length === 0) return;
+  throw new Error(
+    `[Graphite] ${misspelt.sort().join(", ")} ${misspelt.length === 1 ? "is" : "are"} set, and the guard reads no such ` +
+      "name: the setting would be silently absent. Correct the name. REFUSING TO START.",
+  );
+}
+
 /** Devnet's genesis hash: the one cluster `devnet-test.ts` may move funds on. */
 export const DEVNET_GENESIS_HASH = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 /** Mainnet-beta's genesis hash, named in the refusal so the mistake is obvious. */

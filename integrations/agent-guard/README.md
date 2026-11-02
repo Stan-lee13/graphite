@@ -220,6 +220,13 @@ submitted — and nothing is signed under a residual the operator has not accept
   the summary also names `transactionSha256`, the digest of exactly the bytes that will be
   signed; it is frozen (a hook that edits it fails); only the value `true` confirms; and
   a hook that has not answered within `confirmTimeoutMs` (default 120 s) is a decline.
+  Audit A057: a hook that throws or does not answer in time throws `ConfirmationUnavailable`
+  (a `ConfirmationDeclined`: nothing signed or sent), reported as `refusedBy:
+  "confirmation-unavailable"`, not `"person"` — nobody answered. Audit A058: the summary's
+  `verdict.decision` is the execution decision (`executable_approved`, or `analysis_only`
+  under residuals accepted by name); `verdict.approved` is the Core's flag, which an
+  `analysis_only` verdict carries too, so a hook that tells a person "approved" reads
+  `decision`.
 - **Only the Core's executable decision is signed, recomputed (Round 30, G-01; Round 34,
   G-5).** `approved` alone never was the gate. The Core must report `decision` and
   `executable`, and the guard recomputes the whole of the Core's rule with the SDK's
@@ -291,7 +298,10 @@ submitted — and nothing is signed under a residual the operator has not accept
     wallet and one user, took two locks and each spent the whole aggregate allowance. No
     session variable moves the default now. An account with no absolute home directory
     refuses to start and asks for `GRAPHITE_GUARD_LOCK_DIR`; a directory the operator names
-    is the operator's to name the same way for every guard of the wallet. Before Round 34 it
+    is the operator's to name the same way for every guard of the wallet, and must be an
+    absolute path (Audit A050/A054): a relative one resolved against each guard's working
+    directory, so two guards started from two directories took two locks. A relative
+    `GRAPHITE_GUARD_STATE_FILE` (or `stateFile`) refuses to start for the same reason. Before Round 34 it
     was `<tmpdir>/graphite-guard`, which systemd-tmpfiles, macOS and Storage Sense empty. The
     directory is created 0700 and must be a real directory (not a symbolic link) owned by the
     guard's user with mode 0700, an existing one included, or the guard refuses to start. A
@@ -333,6 +343,10 @@ submitted — and nothing is signed under a residual the operator has not accept
     directory must now be the guard's user's and writable by no one else (0700 or 0755, not
     group- or world-writable, `/tmp` included), and an existing state file a regular file,
     not a symbolic link, that only the user can write; otherwise the guard refuses to start.
+    Audit A051: the directory itself, not where a symbolic link in its place points, and
+    every directory above it (as named and as resolved) must belong to the user or root and
+    be writable by no one else unless sticky, as `/tmp` is: whoever can write one could
+    rename the state directory away and put another in its place.
     On Windows only the kinds are checked, as for the lock directory.
   - *A crash (Round 39).* A guard SIGKILLed after the submission was recorded as unresolved
     and before it was settled leaves its locks naming a dead pid and its state file intact:
@@ -358,7 +372,16 @@ submitted — and nothing is signed under a residual the operator has not accept
   on the signing path can be replaced; the guard's RPC and AI-layer requests use the
   `fetch` captured when the module loaded; `getConnection()` returns a separate
   connection, not the one the guard decides on; and an unknown `GuardConfig` key refuses to
-  start. Code loaded into the process BEFORE the guard, or that owns the process, is
+  start. Audit A048: the guard's own connections and Core client are instances of private
+  subclasses that carry their own frozen copies of every inherited method, so a method
+  replaced on `BoundedConnection.prototype`, `Connection.prototype` or
+  `GraphiteClient.prototype` after the guard loaded reaches neither. Audit A049/A055: a
+  `spendPolicy`, `swapPolicy` or `swapEnvelope` passed in code is copied and frozen at
+  startup, then held to the environment readers' types (a bigint cap, booleans that are
+  booleans, a list of base58 destinations) or refused; changing the caller's object later
+  changes nothing. Audit A053: a variable whose name is within two edits of one the guard
+  reads (`GRAPHITE_ALLOWED_DESTINATION`, `GRAPHITE_MAX_TOTAL_LAMPORT`) refuses to start.
+  Audit A085: a request longer than 1,000 characters is refused before it is grounded. Code loaded into the process BEFORE the guard, or that owns the process, is
   outside what any of this can stop: isolating the key from it takes a separate signing
   process.
 - **What it does not build is data (Round 30).** `GUARD_CAPABILITIES` (also
@@ -489,8 +512,11 @@ never set; both stay on the type so existing callers compile. `lifecycle` (every
 verified execution) is
 `{ signature, rpcReportedSignature?, acceptedUnobserved, signingRecorded, verdictOnRecordAtSigning,
 submissionRecorded, submissionRecordError?, confirmed, confirmationError?,
-reconciliation?, reconciliationError? }` — read `reconciliation.discrepancy` for L8's
-verdict on what actually landed.
+reconciliation?, reconciliationError?, stateRecordError? }` — read
+`reconciliation.discrepancy` for L8's verdict on what actually landed. `stateRecordError`
+(Audit A047): the transaction confirmed, but its unresolved-submission record could not be
+settled (the guard was closed while it was polled, or the state file could not be written);
+the outcome is still returned, and the record stays held, so a repeat asks the RPC first.
 
 ### Tests and the cross-language corpus
 

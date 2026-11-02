@@ -767,7 +767,7 @@ jobs:
           # Every *.test.ts in the directory, so a test file cannot sit in
           # the repository looking like a gate without ever running.
           npm test 2>&1 | tee "$RUNNER_TEMP/agent-guard.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/agent-guard.log" 356
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/agent-guard.log" 370
           # The guard and the Rust Core are two implementations of one
           # agreement: the guard serializes a transaction and describes its
           # instructions, the Core reads both and decides whether they agree.
@@ -799,7 +799,7 @@ jobs:
           npm ci --ignore-scripts
           npm run typecheck
           npm test 2>&1 | tee "$RUNNER_TEMP/mcp-server.log"
-          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/mcp-server.log" 14
+          bash ../../.github/scripts/test-count.sh tap "$RUNNER_TEMP/mcp-server.log" 17
       - name: SAK adapter typecheck + tests
         working-directory: integrations/solana-agent-kit
         run: |
@@ -913,7 +913,7 @@ jobs:
       - name: Tests
         run: |
           go test -count=1 -v ./... 2>&1 | tee "$RUNNER_TEMP/go-test.log"
-          bash ../../.github/scripts/test-count.sh go "$RUNNER_TEMP/go-test.log" 69
+          bash ../../.github/scripts/test-count.sh go "$RUNNER_TEMP/go-test.log" 70
 
   dashboard:
     name: Dashboard — typecheck, tests + production build
@@ -951,7 +951,7 @@ jobs:
           NODE_OPTIONS: --test-reporter=tap
         run: |
           npm test 2>&1 | tee "$RUNNER_TEMP/dashboard.log"
-          bash ../.github/scripts/test-count.sh tap "$RUNNER_TEMP/dashboard.log" 48
+          bash ../.github/scripts/test-count.sh tap "$RUNNER_TEMP/dashboard.log" 53
       - name: Build
         run: npm run build
       # Round 29 (audit 2026-10-20, D6): what the build ships. No source
@@ -1000,7 +1000,7 @@ jobs:
       - name: Tests
         run: |
           pytest -q 2>&1 | tee "$RUNNER_TEMP/pytest-ai.log"
-          bash ../.github/scripts/test-count.sh pytest "$RUNNER_TEMP/pytest-ai.log" 51
+          bash ../.github/scripts/test-count.sh pytest "$RUNNER_TEMP/pytest-ai.log" 52
       # Round 29 (audit 2026-10-20, M1-M3): the sample fetcher and the
       # row-by-row verifier, against a stand-in endpoint (no network).
       - name: mainnet-sample tool tests
@@ -1278,9 +1278,10 @@ jobs:
           # to a commit and its refusal of a floating tag (external review C-10);
           # 142 with the BuildKit daemon pinned by digest and its refusal of a
           # tag (Audit A006), and every fuzz seed within its target's max_len
-          # and its refusal of a cut seed (Audit A002).
-          if [ -z "$passed" ] || [ "$passed" -lt 142 ]; then
-            echo "::error::ci-scripts tests: ${passed:-no summary} passed, floor 142"; exit 1
+          # and its refusal of a cut seed (Audit A002); 143 with the missing-binary
+          # message (Audit A094).
+          if [ -z "$passed" ] || [ "$passed" -lt 143 ]; then
+            echo "::error::ci-scripts tests: ${passed:-no summary} passed, floor 143"; exit 1
           fi
 
   # Round 30 (G-11): the one check the `main` ruleset requires

@@ -79,7 +79,12 @@ approves is signed and submitted on whatever cluster `SOLANA_RPC_URL` names.
   RESOLVED transaction: destination and amount (or the route's amounts, minimum and price
   floor), the program, the simulated effect on the wallet and the verdict. Nobody is asked
   to approve what the cap or Graphite has already refused, and a decline aborts with
-  nothing signed or sent. A client that cannot elicit is refused before anything is built.
+  nothing signed or sent. A client that cannot answer a form elicitation (none declared,
+  or URL mode only; Audit A057) is refused before anything is built, and that refusal, like
+  a question that failed or timed out, is `refusedBy: "confirmation-unavailable"` with
+  `isError` set — not `"person"`, since nobody answered. Each token line of the wallet effect
+  says `spent` or `received` (Audit A056), and the verdict line reads the execution
+  decision: only `executable_approved` is called APPROVED (Audit A058).
   Running without a person in the loop takes `GRAPHITE_MCP_CONFIRMATION=none`, said
   explicitly.
 - **stdout carries only the protocol.** Every console method that writes to stdout (`log`,
