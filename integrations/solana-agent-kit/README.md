@@ -50,7 +50,9 @@ advisory (through `@solana/spl-token` 0.4; never built, every install runs with
 
 ## Installation
 
-The adapter imports the guard's sources, so install both:
+Neither package is published: `@graphite/sak-integration` and `@graphite/agent-guard` are
+both `"private": true` (Audit A092). The adapter imports the guard's sources by path, so
+install both:
 
 ```bash
 (cd integrations/agent-guard && npm ci --ignore-scripts)
@@ -67,6 +69,7 @@ const agent = await VerifiedSakAgent.create({
   spendPolicy: { maxTransferLamports: 100_000_000n }, // or GRAPHITE_MAX_TRANSFER_LAMPORTS
 });
 
+// The guard's per-call options: { confirm } before signing, { signal } to cancel.
 const outcome = await agent.executeTransfer("Transfer 0.05 SOL to <address>");
 
 // Your own SAK agent, in your own code, on a wallet that cannot sign:

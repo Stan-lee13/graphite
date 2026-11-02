@@ -2,7 +2,9 @@
 
 > **Superseded on 2026-10-31.** The Foundation's form no longer takes a proposal document. The
 > current answers and milestones are in [`application-form-answers.md`](application-form-answers.md);
-> this file is kept as background and its figures are as of 2026-10-26.
+> this file is kept as background. Its figures are as of 2026-10-26, except the live measurements
+> and the round count, updated to 2026-10-31, and the statements re-checked against the code on
+> 2026-11-02.
 
 Solana Foundation, Developer Tooling. Draft of 2026-10-26, prepared from the repository at the head
 of PR #55. Every figure below is taken from a file in the repository, named next to it, and can
@@ -40,8 +42,9 @@ $18,000
   - an operator dashboard;
   - a deployment kit.
 - **Engineering discipline you can check:**
-  - 40 recorded rounds of adversarial review and repair, including three internal deep audits, each
-    answered in the round after (`AUDIT/01-findings.md`, `docs/audit/`).
+  - 41 recorded rounds of adversarial review and repair, including internal audits in Rounds 33,
+    37, 39 and 41, each answered in the round after or in the same round (`AUDIT/01-findings.md`,
+    `docs/audit/`).
   - Every security fix has a test that fails before the fix. Fixes are reverted one at a time to
     show the test catches the reversal (break log B01–B244 in `AUDIT/01-findings.md`).
   - CI holds every test suite to a floor, per test binary for the security suites
@@ -84,7 +87,8 @@ input always gives the same verdict, which anyone can reproduce.
   - binds the approved bytes to the signed bytes;
   - verifies every signature;
   - refuses residual risks the operator has not accepted;
-  - enforces a spend cap measured by simulating the exact transaction;
+  - enforces a spend cap: for a swap, on the larger of the route's own input amount plus the fee
+    and the outflow measured by simulating the exact transaction;
   - records each lifecycle step.
 - **Wallet and backend developers** call one HTTP endpoint or the TypeScript/Go SDK and get, for
   any transaction:
@@ -157,7 +161,8 @@ agent / app ── intent + exact tx bytes ──▶ Graphite Core ──▶ ver
 
 **Technology stack**
 - **Core:** Rust (axum, tokio, reqwest with a guarded resolver).
-- **Clients:** TypeScript SDK, agent guard and adapters on `@solana/kit`; a Go SDK; a Python
+- **Clients:** a TypeScript SDK with no runtime dependencies; the agent guard on `@solana/kit`
+  and `@solana/web3.js` 1.x; MCP, Vercel AI SDK and SolanaAgentKit adapters; a Go SDK; a Python
   advisory layer that cannot override the Core; a React dashboard.
 - **Verification of the verifier:** cargo-fuzz, a runtime-decoder oracle (the Anza SDK), an
   inner-instruction oracle (Agave's parser), and mutation testing.
@@ -247,8 +252,8 @@ amount is paid at the end of the period.
 These come from `docs/CURRENT.md` and `docs/audit/RESIDUAL_RISK_AND_OWNER_GATES.md`.
 
 - **Not independently audited yet.** Every review so far is internal engineering work by the
-  maintainer with AI engineering agents, plus two external reviews answered item by item. The
-  audit is pursued separately from this grant (§4).
+  maintainer with AI engineering agents, plus external reviews answered item by item (two in
+  Rounds 24–25, four AI reviews in Round 41). The audit is pursued separately from this grant (§4).
 - **Not publicly deployed yet.** It runs locally, in Docker and in CI. Milestone 1 deploys it.
 - **Confidence is earned.** A fresh instance approves nothing until it has evidence.
   - One audited command imports the measured mainnet census. After it, a manifested program
@@ -273,9 +278,14 @@ These come from `docs/CURRENT.md` and `docs/audit/RESIDUAL_RISK_AND_OWNER_GATES.
     live runs found were fixed (decisions D-19 to D-26) and the six swap venues' census was
     re-measured, **36 of 36** honest transfers and **2 of 2** honest Jupiter v6 swaps were
     `executable_approved`. Each swap was an executed mainnet swap rebuilt unsigned (same wallet,
-    route and amount, a fresh blockhash) with its minimum output re-quoted by simulation. Two
-    swaps is a small sample; an earlier run's four Jupiter routes through Pump AMM are still
-    refused with the route unbound, which Milestone 2's venue work addresses.
+    route and amount, a fresh blockhash) with its minimum output re-quoted by simulation.
+  - **Across the five runs of 2026-10-31** (reports under `docs/evidence/live-mainnet/`), 147 of
+    148 honest transfers and 12 of 13 honest swaps were `executable_approved`, among them two
+    Jupiter routes through Pump AMM, which an earlier run had refused unbound and which the Core
+    and the guard decode since decision D-27. The two refusals are recorded with their causes (a
+    new transaction shape judged by its program's L3 baseline; a Raydium CPMM swap whose census
+    predated the program's redeploy). Thirteen swaps is a small sample; direct Pump AMM and
+    Meteora DAMM v2 swaps are not decoded, which Milestone 2's venue work addresses.
 - **Real exploits.** 35 mainnet exploit transactions from the public SolPhishHunter dataset
   (arXiv:2505.04094), labelled outside Graphite, are all refused.
 - **Real traffic.**

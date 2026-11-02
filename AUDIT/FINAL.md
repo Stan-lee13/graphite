@@ -41,7 +41,7 @@
   builds are byte-identical; both SBOMs, the image smoke test and the image-ships-build-a check
   passed; nothing was published.
 - **Production checklist**: items 1, 2, 4, 5, 6, 8, 10b, 10c closed with their records; item 7 (measured
-  mutation-score floors) is being measured by Assurance on the PR head.
+  mutation-score floors) is still open (see the next section).
 
 **What this verdict does not say.** It does not say Graphite is production ready or audited. It
 says the code-side work an auditor would ask for is done and evidenced, and that what remains is
@@ -60,13 +60,25 @@ test-first, each with a test that fails on the code before the fix; one (A088) w
 real and was fixed where real. Each is recorded with its test in
 `docs/audit/TECHNICAL_LEAD_DECISIONS.md`, D-39 to D-54. The high (D-39: a grant's route was every
 instruction of its program, so a same-program sibling could skim the grant) and the mediums
-(D-40..D-47, D-50) are summarised at the top of `docs/CURRENT.md`.
+(D-40..D-47, D-50) are summarised at the top of `docs/CURRENT.md`. The same audit's earlier fixes,
+D-31 to D-38 (`graphite-core/CHANGELOG.md`, 2026-11-01), include D-37 (a System `Allocate` of the
+signer's funded wallet was `executable_approved`) and D-38 (a `close` bound nothing).
 
 What it changes about the verdict above: nothing in the release gates (G-4, the independent audit,
 and G-5, a deployment with its own RPC, are still open). The code is stricter in several defaults
 (an unmanifested program capped at 0.55 whatever its evidence; a narrower unauthenticated
 `/health`; more configuration refused at start), and the test floors now cover every suite an
 invariant rests on. The residuals it leaves are RESIDUAL_RISK §3's Round 41 rows.
+
+**State on `main` (2026-11-02).** PR #61 (Round 41) merged into `main` on 2026-11-02 (`9e60f59`);
+CI and Assurance were green on that code. Checklist item 7 is still open: the mutation dispatch,
+Assurance run 41450528699 on `ecd1e15`, found surviving mutants in the `state_diff` and
+`simulation_integrity` shards, and 37 shards were cancelled mid-run for a reason not yet known, so
+no module has a complete score and the floors are still the provisional ones. Checklist item 13
+(STOP-SHIP) is also still open: Round 40 (D-5) promoted seven of the nine medium-confidence
+declaration rewrites with recorded evidence, and SPL Stake Pool `WithdrawSol` and
+`WithdrawSolWithSlippage` still wait for a sign-off. The release is still blocked on G-4, G-5, G-2
+and G-1 as above, and on that sign-off.
 
 # Earlier verdict (2026-10-25, after Round 38), kept as the record of that round
 

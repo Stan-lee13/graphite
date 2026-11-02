@@ -60,9 +60,13 @@ and `gh` authenticated as a repository admin.
   On 2026-10-24 the GitHub API shows all four closed unmerged, by Dependabot (#46 on 2026-10-22,
   the other three on 2026-10-24, after its ignore rules merged). The owner's item: confirm that is
   the decision, and re-open one only together with the paired bump and a re-run of the oracles.
-- [ ] **7. Assurance budgets.** After the first scheduled run of the weekly mutation and coverage jobs on
-  the hosted runners: Actions → the run → read the measured scores; replace the three provisional
-  mutation-score floors (each at 0.60) with measured ones in a PR.
+- [ ] **7. Assurance budgets.** **Open.** No module has a complete mutation score yet. The latest
+  dispatch, Assurance run 41450528699 on `ecd1e15`, found surviving mutants in `state_diff` and
+  `simulation_integrity` shards, and 37 shards were cancelled mid-run for a reason not yet known
+  (`docs/CURRENT.md` lists the shards). The floors are still the provisional ones in
+  `.github/workflows/assurance.yml` (risk engine 0.90; state diff, artifact parser and simulation
+  integrity 0.60). Once a run completes every shard: Actions → the run → read the measured scores;
+  replace the three provisional floors with measured ones in a PR.
 - [x] **8. Benchmark review before any public claim.** **Reviewed 2026-10-31** (Round 41, `graphite benchmark --json`, `deterministic_sha256` `2ab774d6…8a95`): holdout 38 rows, 37 of 37 exploits refused, the one benign Jupiter swap refused offline (precision 0.974, false-refusal rate on n=1); the README quotes exactly these with that caveat. `cargo run --release --locked --features cli -- benchmark --json`
   (in `graphite-core/`): the holdout is 38 rows and every offline approval is `analysis_only`; say so
   next to any number quoted.
@@ -158,7 +162,7 @@ Exactly what to apply, in order:
 ## Release (owner)
 
 - [ ] **10a. A `release` environment** — R2 above. `.github/workflows/release.yml`'s publish job runs in it.
-- [x] **10b. Rehearse.** **Done 2026-10-31**: run 41190904785 (dispatch on the PR #61 head `1e89824`, whose `release.yml` is `main`'s): both builds, "The two builds are identical", both SBOMs, the image smoke test and "the archived image ships build a's binary, byte for byte" passed; publish skipped. Re-run on `main` after PR #61 merges, before tagging. Actions → Release → Run workflow (on `main`). Every build, the two-build
+- [x] **10b. Rehearse.** **Done 2026-10-31**: run 41190904785 (dispatch on the PR #61 head `1e89824`, whose `release.yml` is `main`'s): both builds, "The two builds are identical", both SBOMs, the image smoke test and "the archived image ships build a's binary, byte for byte" passed; publish skipped. PR #61 has merged (`9e60f59`): re-run on `main` before tagging. Actions → Release → Run workflow (on `main`). Every build, the two-build
   reproducibility comparison, both SBOMs, the image smoke test and SHA256SUMS run; nothing is pushed,
   attested or released. Read the `reproducible` job: it fails if the two builds differ.
 - [x] **10c. The crate does not go to crates.io — decided (Round 40).** `graphite-core/Cargo.toml`
@@ -254,7 +258,8 @@ Pick one form: `deploy/compose/docker-compose.prod.yml` or `deploy/systemd/` (bo
   and `deploy/scripts/health-textfile.sh` every minute (`TEXTFILE_DIR=<dir>`); Grafana: Dashboards →
   New → Import → upload `deploy/grafana/graphite-dashboard.json`, pick the Prometheus data source.
   Check: `promtool test rules deploy/prometheus/graphite-alerts.test.yml`; Prometheus → Alerts lists
-  19 rules; stop the Core for three minutes and `GraphiteDown` fires.
+  24 rules; stop the Core for three minutes and `GraphiteDown` fires. Stop the textfile timer for
+  more than five minutes and `GraphiteHealthProbeStale` fires (Audit A068).
 - [ ] **9i. Backups and a restore drill.** Daily:
   `STOP_CMD="systemctl stop graphite" START_CMD="systemctl start graphite" deploy/scripts/backup.sh --key-file <audit key> /var/lib/graphite <backup dir>`
   (compose: `docker compose -f deploy/compose/docker-compose.prod.yml stop graphite` / `start graphite`
@@ -270,24 +275,28 @@ Pick one form: `deploy/compose/docker-compose.prod.yml` or `deploy/systemd/` (bo
   production traffic; until then confidence for programs without history stays at its floor and
   refusals of them are expected. Check progress on `GET /api/graph` (read key).
 - [ ] **12. MMM `updatePool`** stays ungranted until its IDL is in the repository.
-- [ ] **13. Sign off the 9 medium-confidence declaration rewrites — STOP-SHIP (Round 36, F-005).**
+- [ ] **13. Sign off the 2 medium-confidence declaration rewrites — STOP-SHIP (Round 36, F-005).**
   Round 36 rewrote 35 declarations from their IDLs (`docs/audit-r36/declaration-rewrites.json`); 26
-  are `"confidence": "high"`, and 9 are `"confidence": "medium"` — eight because the repository holds
+  were `"confidence": "high"`, and 9 were `"confidence": "medium"` — eight because the repository holds
   no IDL file for them, and Marinade's because its committed IDL (`graphite-core/scripts/idls/marinade.json`)
   carries no docs, so the roles rest on account names: SPL Stake Pool `WithdrawSol`, `WithdrawSolWithSlippage`, `WithdrawStake`,
   `WithdrawStakeWithSlippage`; Marinade `liquidUnstake`; Raydium AMM v4 `SwapBaseIn`, `SwapBaseOut`,
-  `SwapBaseInV2`, `SwapBaseOutV2`. Read each row's `old_lines`, `new_lines`, `idl_source` and
+  `SwapBaseInV2`, `SwapBaseOutV2`. Round 40 (D-5, `docs/audit/TECHNICAL_LEAD_DECISIONS.md`) promoted
+  seven of them to `high` against the committed IDL or the upstream source at a pinned commit; SPL
+  Stake Pool `WithdrawSol` and `WithdrawSolWithSlippage` stay `medium` and are what this item still
+  needs. Read each remaining row's `old_lines`, `new_lines`, `idl_source` and
   `justification` against the program's own interface, and record the sign-off (or the correction)
   in a pull request that changes the row's `confidence`.
   ```sh
   jq -r '.rewrites[] | select(.confidence=="medium") | "\(.manifest) \(.instruction)"' docs/audit-r36/declaration-rewrites.json
-  python3 -I graphite-core/scripts/validate_corpora.py   # lists the nine; fails if one changes without review
+  python3 -I graphite-core/scripts/validate_corpora.py   # lists the two that remain; fails if one changes without review
   ```
 
 ## Running it
 
 - [ ] **A. On-call.** A rota of at least two people with a pager. Route `severity: page` (gate bypassed,
-  lifecycle on a blocked transaction, audit disabled or failing, Core down) to the pager at any hour;
+  lifecycle on a blocked or analysis-only verdict, audit disabled or failing, a caught handler panic,
+  Core down) to the pager at any hour;
   `severity: ticket` to the team's queue. Alertmanager: a route on `severity="page"` to your paging
   receiver, the default to the ticket receiver. Test the route once: `amtool alert add GraphiteTest severity=page`.
 - [ ] **B. Incident response.** The runbooks are [incidents.md](incidents.md); every alert's description

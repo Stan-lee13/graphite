@@ -20,9 +20,13 @@ page under **Artifacts**; the report is also the job summary.
 
 Inputs (all optional):
 
-- mainnet: `rpc_url`, `transactions` (200), `blocks` (2), `pace_seconds`
-  (1.0), `l8_checks` (10), `fresh_transactions` (40), `honest_transfers`
-  (40), `seed_evidence` (false; a labelled PR seeds), `whole_census` (true).
+- mainnet: `rpc_url`, `transactions` (200), `blocks` (4; at least, more are
+  fetched, up to 8, until the sample holds 1,000 transactions), `pace_seconds`
+  (2.0), `l8_checks` (10), `fresh_transactions` (40), `honest_transfers`
+  (40), `honest_swaps` (40), `seed_evidence` (false; a labelled PR seeds),
+  `whole_census` (true). Round 41 raised `blocks` from 2 and `pace_seconds`
+  from 1.0 (the public RPC rate-limited 13 of 38 honest transfers at 1.0); the
+  script's own defaults (`--blocks 2`, `--pace 1.0`) are unchanged.
 - devnet: `rpc_url`, `seed_evidence` (true), `airdrop_lamports` (5×10⁸),
   `cluster` (`devnet`; a labelled PR uses `local-validator`).
 

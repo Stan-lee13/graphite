@@ -28,9 +28,9 @@ What should be stricter, checked, or tested, and why?
 - [ ] CPI Validation
 - [ ] Account Resolution
 - [ ] Transaction artifact / wire-format parser
-- [ ] Execution boundary (signing, L8 attribution, the SAK bridge)
+- [ ] Execution boundary (the agent guard and its adapters, signing, L8 attribution)
 - [ ] Trust-tier evidence (`battle_tested_evidence.json` and the loader gate)
-- [ ] CI / supply chain / container
+- [ ] CI / supply chain / container / deployment kit
 - [ ] Other
 
 ## Current behaviour

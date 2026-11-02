@@ -12,8 +12,9 @@ bytes, the real instruction data, the accounts resolved against the block's own
 `loadedAddresses`, every sibling declared.
 
 ```bash
-python tools/mainnet-sample/fetch_mainnet.py        # writes mainnet_sample.json
-GRAPHITE_MAINNET_SAMPLE=$PWD/mainnet_sample.json \
+python tools/mainnet-sample/fetch_mainnet.py   # writes tools/mainnet-sample/mainnet_sample.json
+cd graphite-core
+GRAPHITE_MAINNET_SAMPLE=$PWD/../tools/mainnet-sample/mainnet_sample.json \
   cargo test --test mainnet_conformance -- --ignored --nocapture
 ```
 
@@ -141,7 +142,8 @@ primary program has a manifest and verifies them one at a time against a real
 RPC — Graphite's own simulation and state reads — 1.5 s apart, read-only:
 
 ```bash
-GRAPHITE_MAINNET_SAMPLE=tools/mainnet-sample/mainnet_sample.json GRAPHITE_MAINNET_RPC_URL=https://api.mainnet-beta.solana.com GRAPHITE_MAINNET_LIVE_LIMIT=40   cargo test --test mainnet_live_rpc -- --ignored --nocapture
+cd graphite-core
+GRAPHITE_MAINNET_SAMPLE=$PWD/../tools/mainnet-sample/mainnet_sample.json GRAPHITE_MAINNET_RPC_URL=https://api.mainnet-beta.solana.com GRAPHITE_MAINNET_LIVE_LIMIT=40   cargo test --test mainnet_live_rpc -- --ignored --nocapture
 ```
 
 On 2026-09-24, 40 transactions (14 legacy, 24 v0, 2 v1): 0 invariant violations,

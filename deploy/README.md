@@ -7,17 +7,17 @@ list is [`docs/ops/production-checklist.md`](../docs/ops/production-checklist.md
 
 | Path | What it is | Checked by |
 |---|---|---|
-| `compose/docker-compose.prod.yml` | Caddy (TLS) + ONE Core (fixed `container_name`, `deploy.replicas: 1`) from a released image pinned by digest (`GRAPHITE_IMAGE` + the required `GRAPHITE_IMAGE_DIGEST`) + the optional AI layer (`--profile ai`); every key a file-backed secret | `docker compose config`, overrides with 2 replicas refused, the hardening read as data |
+| `compose/docker-compose.prod.yml` | Caddy (TLS) + ONE Core (fixed `container_name`, `deploy.replicas: 1`) from a released image pinned by digest (`GRAPHITE_IMAGE` + the required `GRAPHITE_IMAGE_DIGEST`) + the optional AI layer (`--profile ai`); every key a file-backed secret, and the Core's entrypoint refuses to start (exit 78) when a `GRAPHITE_*API_KEY` arrives from the environment (`graphite.env`) instead (Audit A064); Caddy runs as 10002 on 8080/8443 with no capability, published as 80/443 (Audit A067) | `docker compose config`, overrides with 2 replicas refused, the hardening read as data |
 | `systemd/graphite.service` | The Core as a hardened systemd service (`systemd-analyze security`: 1.1), one instance (not a template), behind Caddy on the same host | `systemd-analyze verify`, exposure < 2 |
 | `systemd/graphite-anchor.{service,timer}` | Hourly checkpoint export and off-host anchoring (the server's sandbox; exposure 1.1) | `systemd-analyze verify`, exposure < 1.5 |
 | `systemd/graphite.env.example` | The service's `/etc/graphite/graphite.env` | — |
 | `caddy/Caddyfile` | TLS, HSTS, a 1 MiB body limit (the Core's; since Round 34 a declared `Content-Length` over it is answered 413 at the edge, before anything is proxied), and only `/verify`, `/verify/execution`, `/audit/event` (POST), `/manifests`, `/api/*` (GET) reachable; `/health`, `/metrics`, `/admin/*` answer 404 at the edge | `caddy validate`, `caddy fmt` |
-| `prometheus/graphite-alerts.yml` | 19 alerts on the series the server exports and on `/health`'s degraded reasons | `promtool check rules`, `promtool test rules` (`graphite-alerts.test.yml`: every alert fires in one case and stays quiet in another) |
+| `prometheus/graphite-alerts.yml` | 24 alerts on the series the server exports, on `/health`'s degraded reasons, and on the `/health` textfile probe itself (`GraphiteHealthProbeDown`, `GraphiteHealthProbeStale`; Audit A068) | `promtool check rules`, `promtool test rules` (`graphite-alerts.test.yml`: every alert fires in one case and stays quiet in another) |
 | `prometheus/prometheus.example.yml` | Scrape config with the read key | `promtool check config --syntax-only` |
 | `grafana/graphite-dashboard.json` | Verdicts, refusals, L8, audit trail | every query parsed by promtool; every series exists in `server.rs` |
-| `scripts/health-textfile.sh` | `/health` `degraded_reasons` → `graphite_health_degraded{reason=…}` for node_exporter | `deploy/tests/run.sh` |
+| `scripts/health-textfile.sh` | `/health` `degraded_reasons` → `graphite_health_degraded{reason=…}` for node_exporter, and `graphite_health_up` (0 when `/health` cannot be read) | `deploy/tests/run.sh` |
 | `scripts/backup.sh` | Cold (stop/copy/start) or `--hot` backup; kept only if `graphite audit verify` passes on the copy; `.sha256` and a `.mac` (HMAC-SHA256 of the archive under the audit key) beside it; `--lost-key` after a lost audit key | same |
-| `scripts/restore.sh` | `--anchor-dir` required; a `.sha256` naming the archive itself, then its `.mac` under the current key (`--current-key-file`); verify the unpacked trail and against the newest anchored checkpoint (by content), then swap it in, keeping the old directory; `--lost-key` | same |
+| `scripts/restore.sh` | `--anchor-dir` required; a `.sha256` naming the archive itself, then its `.mac` under the current key (`--current-key-file`); verify the unpacked trail and against the newest anchored checkpoint (by content), then swap it in, keeping the old directory (a `DATA_DIR` that is a symlink, as systemd's `StateDirectory=` makes it, is restored at its target and the symlink kept; Audit A066); `--lost-key` | same |
 | `scripts/anchor-checkpoints.sh` | `graphite audit checkpoint` into the anchor directory; optional upload to an S3 Object-Lock bucket | same (the S3 upload is not exercised: see below) |
 | `scripts/rotate-keys.sh` | New API key in an env file or secret file (keeping the file's owner, or an explicit `UID:GID`), new audit MAC key, verify the trail under every key | same |
 | `tests/run.sh` | All of the above, against a real Core and Caddy on loopback; plus a second Core on a live data directory, SIGTERM with a verdict in flight, a lost audit key, and a full data directory | — |
@@ -56,7 +56,12 @@ everything when it exits. Exit 0 only when every check passed.
   with a hop count and no list.
 - **`/health` and `/metrics` stay private.** Probe and scrape the Core on its
   private address. Operators reach `/admin/*` through an SSH tunnel, or not at
-  all: leave the admin key empty and those routes are disabled.
+  all: leave the admin key empty and those routes are disabled. The compose
+  Core publishes no port: inside the container,
+  `docker compose exec graphite graphite healthcheck --strict`; from the host,
+  a host-loopback port in a local override and an SSH tunnel
+  (production-checklist.md, 9b-console), which is also what the console and
+  `health-textfile.sh` need there.
 - **The audit key and the anchors live outside the data volume.** systemd
   hands the key over as a credential (`LoadCredential=`); compose as a secret
   owned by the image's user (10001). A checkpoint on the same host protects

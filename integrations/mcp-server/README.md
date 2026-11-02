@@ -87,6 +87,12 @@ approves is signed and submitted on whatever cluster `SOLANA_RPC_URL` names.
   decision: only `executable_approved` is called APPROVED (Audit A058).
   Running without a person in the loop takes `GRAPHITE_MCP_CONFIRMATION=none`, said
   explicitly.
+- **A cancelled request is not signed** (Audit A004). Each fund-moving handler passes the
+  request's `extra.signal` to the guard and to the elicitation. A call the client cancelled
+  or timed out (the SDK's default request timeout is 60 s) before the signed bytes leave
+  sends nothing; it used to be signed and sent anyway, its result dropped, and a retry
+  spent again. Once the bytes have
+  left, the execution runs to its end: they cannot be recalled.
 - **stdout carries only the protocol.** Every console method that writes to stdout (`log`,
   `info`, `debug`, `dir`, `table`) is redirected to stderr, the guard's logs included.
 
@@ -99,6 +105,7 @@ npm run typecheck && npm test
 The tests drive the server through the SDK's own `Client`: the tools a client sees and
 their hints, a block that asks nobody, a person approving the resolved transaction (which
 then executes against a loopback Core that approves with the real digests) and declining or
-cancelling (verified, but nothing signed, recorded or sent), a client that cannot elicit,
+cancelling (verified, but nothing signed, recorded or sent), a request the client
+cancelled (nothing signed or sent), a client that cannot elicit,
 the cap, the confirmation setting, and the stdio server started as its own process — which
 shows the guard's logs never reach stdout. (Test counts for every package: [docs/CURRENT.md](../../docs/CURRENT.md#numbers-as-of-this-pages-commit).)

@@ -26,12 +26,15 @@ What these runbooks assume, and what is not provided here:
   and the systemd unit allow exactly one (production-checklist.md, 9g).
   Horizontal scale would need a shared trail and limiter that do not exist.
 - **TLS is terminated in front of the container.** The server speaks plain
-  HTTP/1.1. docker-compose.yml publishes it on host loopback only.
+  HTTP/1.1. docker-compose.yml publishes it on host loopback only;
+  `deploy/compose/docker-compose.prod.yml` publishes only Caddy.
 - **Monitoring, alert routing and on-call are the operator's.** The signals
   exist (`/health` `degraded_reasons`, `/metrics`, `graphite execution` exit
   codes); where they page is a deployment decision.
 - **Releases are built by `.github/workflows/release.yml`** from a `v*` tag:
   a reproducible double build, SBOMs, the image on GHCR by digest, SLSA
   provenance and SBOM attestations, `SHA256SUMS`. Verify with
-  `gh attestation verify` before deploying (production-checklist.md). The
-  pipeline has not yet run on GitHub: the first tag is its first run.
+  `gh attestation verify` before deploying (production-checklist.md). It has
+  been rehearsed by a manual run that publishes nothing (run 41190904785: the
+  two builds byte-identical; production-checklist.md, 10b), and has never run
+  against a real tag.
