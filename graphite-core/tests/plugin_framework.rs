@@ -247,6 +247,23 @@ impl VerifierPlugin for PanicVerifier {
     }
 }
 
+/// The same panic, unwound without the panic hook (`resume_unwind`), so the
+/// run's length does not depend on how long the hook takes to print. With
+/// `RUST_BACKTRACE` set on a loaded machine, `panic!`'s hook symbolises a
+/// backtrace that can outlast the 250 ms plugin deadline, and the run is then
+/// reported as timed out rather than panicked (both fail closed).
+struct UnwindVerifier {
+    manifest: PluginManifest,
+}
+impl VerifierPlugin for UnwindVerifier {
+    fn manifest(&self) -> &PluginManifest {
+        &self.manifest
+    }
+    fn verify(&self, _ctx: &PluginContext) -> PluginVerdict {
+        std::panic::resume_unwind(Box::new("plugin exploded"));
+    }
+}
+
 // ─── P8 structural enforcement ───────────────────────────────────────────────
 
 #[test]
@@ -619,9 +636,44 @@ fn test_panicking_plugin_never_wedges_verification_and_fails_closed() {
         .find(|l| l.layer == "L4_StateVerification")
         .unwrap();
     assert_eq!(l4.status, LayerStatus::Failed);
+    // `panic!` runs the process's panic hook before unwinding; with
+    // RUST_BACKTRACE set on a loaded machine its backtrace can outlast the
+    // plugin deadline, and the run is then reported as timed out. Both are a
+    // block attributed to the plugin by name, which is what this case holds;
+    // the exact "panicked" label is pinned by the hook-free case below.
+    assert!(
+        l4.reason.contains("bomb:panicked") || l4.reason.contains("bomb:timed-out"),
+        "the block must be attributed to the plugin: {}",
+        l4.reason
+    );
+}
+
+#[test]
+fn test_an_unwinding_plugin_is_reported_as_panicked_and_fails_closed() {
+    let mut core = GraphiteCore::new_without_plugins();
+    core.register_plugin(PluginKind::Verifier(Arc::new(UnwindVerifier {
+        manifest: PluginManifest {
+            name: "bomb".into(),
+            version: "1.0.0".into(),
+            author: "test".into(),
+            layer: LayerId::L4StateVerification,
+            review_status: ReviewStatus::Approved,
+            description: String::new(),
+        },
+    })));
+    let r = core
+        .verify(&plain_transfer())
+        .expect("verify must not propagate plugin panic");
+    assert!(!r.approved, "a panicking blocking plugin must fail closed");
+    let l4 = r
+        .layers
+        .iter()
+        .find(|l| l.layer == "L4_StateVerification")
+        .unwrap();
+    assert_eq!(l4.status, LayerStatus::Failed);
     assert!(
         l4.reason.contains("bomb:panicked"),
-        "the block must be attributed to the plugin: {}",
+        "the block must be attributed to the plugin as a panic: {}",
         l4.reason
     );
 }
