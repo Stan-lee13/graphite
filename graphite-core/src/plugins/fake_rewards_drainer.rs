@@ -138,6 +138,21 @@ impl RiskPlugin for FakeRewardsDrainerRiskPlugin {
             return PluginVerdict::NoFinding;
         }
 
+        // Audit A041: a withdrawal or claim an intent grant serves moves
+        // value TO its owner — the Core grounds that (the recipient is the
+        // owner's own key) and holds the value to it, or refuses the
+        // instruction itself. Its manifest's debit names the stake or pool
+        // account, not the user's wallet, so it is not this pattern.
+        let canonical = crate::risk_engine::canonical_intent(&ctx.proposed_intent.intent_type);
+        if crate::intent_grants::grant_for(ctx.program_id, ctx.instruction_name, &canonical)
+            .is_some_and(|g| {
+                g.class == crate::intent_grants::WITHDRAW_TO_OWNER
+                    || g.class == crate::intent_grants::CLAIM_TO_OWNER
+            })
+        {
+            return PluginVerdict::NoFinding;
+        }
+
         let outbound = ctx.expected_state_changes.iter().any(|s| {
             let s = s.to_lowercase();
             OUTBOUND_KEYWORDS.iter().any(|k| s.contains(k))
@@ -293,6 +308,82 @@ mod tests {
             ));
             assert_eq!(v, PluginVerdict::NoFinding, "raw NL '{}'", raw);
         }
+    }
+
+    /// Audit A041: "claim my staking rewards" on a GRANTED withdrawal or
+    /// claim (Stake `Withdraw`, the Stake Pool withdrawals, an AMM's
+    /// withdraw...) was hard-blocked as a fake rewards drainer, because the
+    /// shipped wording debits the stake or pool account — never the user's
+    /// wallet, which the grant holds the value to (`withdraw_to_owner`,
+    /// `claim_to_owner`; the Core grounds those facts or refuses the
+    /// instruction itself). Each such grant's shipped manifest wording, with
+    /// claim wording, is no finding; the same wording under an intent no
+    /// grant serves, and an ungranted debit, still block.
+    #[test]
+    fn a_granted_withdrawal_or_claim_in_claim_wording_is_not_a_fake_reward() {
+        use crate::intent_grants::{CLAIM_TO_OWNER, GRANTS, WITHDRAW_TO_OWNER};
+        let registry = crate::manifest::load_seed_manifests();
+        let p = FakeRewardsDrainerRiskPlugin::new();
+        let mut debiting = 0;
+        for g in GRANTS
+            .iter()
+            .filter(|g| g.class == WITHDRAW_TO_OWNER || g.class == CLAIM_TO_OWNER)
+        {
+            let Some(def) = registry
+                .get(g.program_id)
+                .and_then(|m| m.instructions.iter().find(|i| i.name == g.instruction))
+            else {
+                continue;
+            };
+            let changes: &'static Vec<String> =
+                Box::leak(Box::new(def.expected_state_changes.clone()));
+            let ctx = |intent: &str| {
+                let intent: &'static ProposedIntent = Box::leak(Box::new(ProposedIntent {
+                    intent_type: intent.to_string(),
+                    raw_natural_language: "Claim my staking rewards".to_string(),
+                    confidence_of_parse: 0.9,
+                    extracted_parameters: None,
+                }));
+                PluginContext {
+                    program_id: g.program_id,
+                    protocol_name: "x",
+                    instruction_discriminator: "01",
+                    instruction_name: g.instruction,
+                    proposed_intent: intent,
+                    account_addresses: &[],
+                    cpi_targets: &[],
+                    expected_state_changes: changes,
+                    allowed_cpis: &[],
+                    manifest_found: true,
+                    compute_units: 0,
+                    account_writes: 0,
+                    cpi_hops: 0,
+                }
+            };
+            assert_eq!(
+                p.assess_risk(&ctx(g.intent)),
+                PluginVerdict::NoFinding,
+                "{} {} under its granted intent {:?}: {:?}",
+                g.program_id,
+                g.instruction,
+                g.intent,
+                changes
+            );
+            let debits = changes.iter().any(|s| {
+                let s = s.to_lowercase();
+                s.contains("debit") || s.contains("deduct")
+            });
+            if debits {
+                debiting += 1;
+                assert!(
+                    matches!(p.assess_risk(&ctx("transfer")), PluginVerdict::Block { .. }),
+                    "{} {}: under a transfer intent no grant serves, claim wording on a debit still blocks",
+                    g.program_id,
+                    g.instruction
+                );
+            }
+        }
+        assert!(debiting >= 3, "only {debiting} granted instructions debit");
     }
 
     /// Round 29 (P-1): reward words are matched as words. "reclaim",

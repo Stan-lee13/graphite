@@ -422,3 +422,103 @@ fn structural_gate_verdict_is_deterministic() {
     assert_eq!(a.policy_verdict, b.policy_verdict);
     assert_eq!(a.content_hash, b.content_hash);
 }
+
+/// Audit A029: swap-family instructions on swap programs stay unclassed BY
+/// RULE (manifest.rs), so only a swap intent declares them and they are held
+/// to the swap standard (Check 8). The seed data classes dozens of them
+/// `transfer` (Orca Whirlpools `swap`, Raydium CLMM `swap`, Raydium CPMM
+/// `swap_base_input`, Meteora DLMM `swap2`, ...), so a TRANSFER intent cleared
+/// L5 and Check 9b on them and only the binding stood in the way. The rule is
+/// applied where the class is read: under a transfer intent every one fails
+/// L5, a hard gate; under a swap intent L5 does not fail on the class.
+#[test]
+fn a_transfer_intent_cannot_declare_a_swap_programs_swap() {
+    let registry = graphite_core::manifest::load_seed_manifests();
+    let core = GraphiteCore::new();
+    let mut checked = 0;
+    let mut passed_l5 = Vec::new();
+    for m in registry.list() {
+        if m.protocol.category != "swap" {
+            continue;
+        }
+        for def in &m.instructions {
+            let name = def.name.to_ascii_lowercase();
+            if def.risk_class != "transfer" || !(name.contains("swap") || name.contains("route")) {
+                continue;
+            }
+            let Ok(mut data) = hex::decode(&def.discriminator) else {
+                continue;
+            };
+            data.extend([0u8; 64]);
+            let accounts: Vec<String> = (0..def.accounts.len())
+                .map(|i| {
+                    let mut k = [0u8; 32];
+                    k[0] = 0x5a;
+                    k[1] = i as u8;
+                    bs58::encode(k).into_string()
+                })
+                .collect();
+            for intent in ["transfer", "swap"] {
+                let input = VerificationInput {
+                    proposed_intent: ProposedIntent {
+                        intent_type: intent.to_string(),
+                        raw_natural_language: format!("{intent} please"),
+                        confidence_of_parse: 0.9,
+                        extracted_parameters: None,
+                    },
+                    program_id: m.protocol.program_id.clone(),
+                    protocol_version: "1.0.0".to_string(),
+                    instruction_discriminator: def.discriminator.clone(),
+                    account_addresses: accounts.clone(),
+                    instruction_data: Some(data.clone()),
+                    cpi_targets: vec![],
+                    wallet_profile: WalletProfile::Gaming,
+                    behavior_evidence: Default::default(),
+                    compute_units: 0,
+                    account_writes: 0,
+                    cpi_hops: 0,
+                    signed_transaction: None,
+                    transaction_instructions: vec![],
+                    cpi_trace: None,
+                    uses_versioned_transaction: false,
+                    lookup_table_count: 0,
+                    real_account_metas: vec![],
+                    state_diff: None,
+                };
+                let r = core.verify(&input).expect("a verdict");
+                if r.instruction_name != def.name {
+                    // Another instruction of the manifest owns this selector.
+                    continue;
+                }
+                let l5 = r
+                    .layers
+                    .iter()
+                    .find(|l| l.layer == "L5_SemanticVerification")
+                    .expect("L5 reported");
+                if intent == "transfer" {
+                    checked += 1;
+                    if l5.status != LayerStatus::Failed || r.approved {
+                        passed_l5.push(format!(
+                            "{} {}: L5 {:?}, approved {}",
+                            m.protocol.name, def.name, l5.status, r.approved
+                        ));
+                    }
+                } else {
+                    assert_ne!(
+                        l5.status,
+                        LayerStatus::Failed,
+                        "{} {}: a swap intent must declare a swap: {}",
+                        m.protocol.name,
+                        def.name,
+                        l5.reason
+                    );
+                }
+            }
+        }
+    }
+    assert!(checked >= 40, "only {checked} swap instructions checked");
+    assert!(
+        passed_l5.is_empty(),
+        "a transfer intent declared a swap program's swap: {passed_l5:#?}"
+    );
+}

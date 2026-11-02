@@ -305,6 +305,60 @@ fn the_rule_takes_permission_away_field_by_field() {
         ExecutionDecision::Blocked,
         "a policy or structural refusal"
     );
+
+    // Audit A086: a refusal a retry cannot fix is blocked even when the RPC
+    // also answered incompletely. A Failed L2, L4, L5 or L6 (an undescribed
+    // sibling, a discriminator contradiction, an intent/class mismatch, a
+    // policy threshold) is not a risk finding; it refuses on its own. Only
+    // the simulation layer itself (L3), the risk layer that same finding
+    // fails (L7) and L8 may be Failed beside missing evidence.
+    for failed in [
+        "L1_AccountResolution",
+        "L2_InstructionVerification",
+        "L4_StateVerification",
+        "L5_SemanticVerification",
+        "L6_PolicyVerification",
+    ] {
+        let mut r = base.clone();
+        r.approved = false;
+        r.risk_verdict.status = "Blocked".to_string();
+        r.risk_verdict.findings = vec![RiskFinding {
+            pattern: "VerificationIncomplete".to_string(),
+            reason: "test".to_string(),
+        }];
+        let layer = r
+            .layers
+            .iter_mut()
+            .find(|l| l.layer == failed)
+            .unwrap_or_else(|| panic!("{failed} is reported"));
+        layer.status = LayerStatus::Failed;
+        assert_eq!(
+            execution_decision(&r),
+            ExecutionDecision::Blocked,
+            "{failed} Failed beside missing evidence: no retry can pass it"
+        );
+    }
+    for failed in [
+        "L3_SimulationVerification",
+        "L7_RiskVerification",
+        "L8_ExecutionVerification",
+    ] {
+        let mut r = base.clone();
+        r.approved = false;
+        r.risk_verdict.status = "Blocked".to_string();
+        r.risk_verdict.findings = vec![RiskFinding {
+            pattern: "VerificationIncomplete".to_string(),
+            reason: "test".to_string(),
+        }];
+        for l in r.layers.iter_mut().filter(|l| l.layer == failed) {
+            l.status = LayerStatus::Failed;
+        }
+        assert_eq!(
+            execution_decision(&r),
+            ExecutionDecision::Inconclusive,
+            "{failed} Failed by the missing evidence itself"
+        );
+    }
 }
 
 /// A verdict read back from JSON and edited to claim permission is not

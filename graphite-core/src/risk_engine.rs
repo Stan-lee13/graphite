@@ -1761,7 +1761,35 @@ fn detect_system_account_impersonation(
         .cloned()
 }
 
-/// The account a fund movement takes value FROM, when the list reaches it.
+/// Audit A039: Checks 10a and 10b on the OWNER of a token transfer's
+/// destination account. The checks above judge the account the instruction
+/// names, which for an SPL Token or Token-2022 transfer is a token account
+/// derived from its owner: it never carries the owner's vanity shape, and is
+/// never itself a native address. `owner` is read from state (the pipeline's
+/// own simulated diff); the same rules judge it.
+pub fn token_destination_owner_verdict(owner: &str) -> Option<RiskVerdict> {
+    if UNSPENDABLE_ADDRESSES.contains(&owner) {
+        return Some(RiskVerdict::Blocked {
+            pattern: RiskPattern::UnspendableDestination,
+            reason: format!(
+                "Unspendable destination: the destination token account is owned by {owner}, which no one can sign for — tokens sent there are locked permanently"
+            ),
+        });
+    }
+    if owner.len() >= 32
+        && (owner.ends_with(&"1".repeat(VANITY_TRAILING_ONES)) || owner.starts_with("Compu"))
+    {
+        return Some(RiskVerdict::Blocked {
+            pattern: RiskPattern::Impersonation,
+            reason: format!(
+                "System-account impersonation: fund movement to a token account owned by {owner}, whose address shape impersonates an official system account (vanity run of trailing 1s or Compu prefix)"
+            ),
+        });
+    }
+    None
+}
+
+/// The account a fund movement takes value FROM, when the list reaches it./// The account a fund movement takes value FROM, when the list reaches it.
 fn fund_movement_source<'a>(
     program_id: &str,
     discriminator: &str,
@@ -2308,6 +2336,27 @@ mod tests {
         );
     }
 
+    /// Audit A039: a token account's OWNER is judged by 10a/10b's rules.
+    #[test]
+    fn a_token_destinations_owner_is_judged_by_10a_and_10b() {
+        assert!(matches!(
+            token_destination_owner_verdict("iBGtY2LBEmTiVrmPCgHRGdCPZJcDEmmkDxbLhV11111"),
+            Some(RiskVerdict::Blocked {
+                pattern: RiskPattern::Impersonation,
+                ..
+            })
+        ));
+        assert!(matches!(
+            token_destination_owner_verdict(SYSTEM_PROGRAM_ID),
+            Some(RiskVerdict::Blocked {
+                pattern: RiskPattern::UnspendableDestination,
+                ..
+            })
+        ));
+        assert_eq!(token_destination_owner_verdict(WALLET_A), None);
+        assert_eq!(token_destination_owner_verdict(WALLET_B), None);
+    }
+
     /// ISA variant: a transfer to a "Compu..."-prefixed vanity address must
     /// also be blocked (mimics ComputeBudget1111...).
     #[test]
@@ -2316,12 +2365,21 @@ mod tests {
             verified_self_refund_close: false,
             writable_extra_accounts: None,
             program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
+            // Audit A039: the real TransferChecked layout [source, mint,
+            // destination, authority]. With two accounts the destination slot
+            // was missing and the rule passed only through its judge-every-
+            // account fallback.
             accounts: vec![
                 "DuFgLf6zzf2N9v3iT4NrkdTPDSD2xK52CCnx6Ag2ckTP".to_string(),
+                MINT.to_string(),
                 "CompuV3LmCTW7AGGnM6YBftCJkKP3ZKkK1fCAY8L7eM1".to_string(),
+                WALLET_A.to_string(),
             ],
             cpi_targets: vec![],
-            expected_state_changes: vec![],
+            expected_state_changes: vec![
+                "debits accounts.source by data.amount".to_string(),
+                "credits accounts.destination by data.amount".to_string(),
+            ],
             allowed_cpis: vec![],
             instruction_discriminator: "0c00000000000000".to_string(), // transferChecked
             expected_account_count: None,

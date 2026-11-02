@@ -153,6 +153,20 @@ test("refusals: inconclusive only when every finding is missing evidence", () =>
   assert.equal(refusal(["VerificationIncomplete", "DrainerPattern"]), "blocked");
   assert.equal(refusal(["SimulationFailed"]), "blocked");
   assert.equal(refusal([]), "blocked");
+  // Audit A086: a failed structural or policy layer beside missing evidence
+  // is blocked — no retry passes it. L3, L7 and L8 failing is the evidence.
+  const withFailed = (layer: string): ExecutionDecision =>
+    computeExecutionDecision({
+      ...base,
+      layers: base.layers!.map((l) => (l.layer.startsWith(layer) ? { ...l, status: "failed" as const } : l)),
+      risk_verdict: { status: "Blocked", findings: [{ pattern: "VerificationIncomplete", reason: "t" }] },
+    });
+  for (const layer of ["L1_", "L2_", "L4_", "L5_", "L6_"]) {
+    assert.equal(withFailed(layer), "blocked", layer);
+  }
+  for (const layer of ["L3_", "L7_", "L8_"]) {
+    assert.equal(withFailed(layer), "inconclusive", layer);
+  }
 });
 
 test("the validator refuses a decision that contradicts the verdict", () => {

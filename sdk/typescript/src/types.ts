@@ -91,9 +91,12 @@ export interface VerificationInput {
    *  it with `verifyTransactionDigest` before signing or submitting.
    *  Serialized as a JSON array of bytes, NOT base64 (serde Vec<u8>). */
   signed_transaction?: number[];
-  /** Phase 2: the COMPLETE list of instructions in the transaction, including
-   *  the primary instruction. When 2+, the multi-instruction pattern analysis
-   *  layer detects coordinated mass-drain patterns across them. */
+  /** Phase 2: every OTHER top-level instruction of the transaction — never
+   *  the primary, which the fields above describe. The Core matches each
+   *  entry to one of the artifact's non-primary instructions; a declaration
+   *  of the primary matches nothing and fails L2. Each entry is risk-assessed,
+   *  and the multi-instruction pattern analysis runs over the primary and
+   *  these. */
   transaction_instructions?: TransactionInstruction[];
   /** Phase 2: the hierarchical CPI trace tree of the primary instruction. */
   cpi_trace?: CpiTraceNode;
@@ -551,13 +554,23 @@ export type DecisionInputs = Pick<
  * digest and `simulated: true`; `unobserved_codes` present, naming every
  * `unobserved` entry, and all inherent; layers reported and none `failed`.
  * Otherwise an approval is `analysis_only`; a refusal whose risk findings
- * are all `VerificationIncomplete` is `inconclusive`; every other refusal is
- * `blocked`. Missing fields never make a verdict executable.
+ * are all `VerificationIncomplete`, with no layer but L3, L7 or L8 `failed`,
+ * is `inconclusive`; every other refusal is `blocked`. Missing fields never
+ * make a verdict executable.
  */
 export function computeExecutionDecision(result: DecisionInputs): ExecutionDecision {
   if (result.approved !== true) {
     const findings = result.risk_verdict?.findings ?? [];
-    return findings.length > 0 && findings.every((f) => f.pattern === "VerificationIncomplete")
+    // Audit A086: a failed L1/L2/L4/L5/L6 refuses on its own and no retry
+    // passes it; only L3, L7 and L8 may fail beside missing evidence.
+    const onlyEvidenceLayersFailed = (Array.isArray(result.layers) ? result.layers : []).every(
+      (l) =>
+        l.status !== "failed" ||
+        (typeof l.layer === "string" && ["L3_", "L7_", "L8_"].some((p) => l.layer.startsWith(p))),
+    );
+    return findings.length > 0 &&
+      onlyEvidenceLayersFailed &&
+      findings.every((f) => f.pattern === "VerificationIncomplete")
       ? "inconclusive"
       : "blocked";
   }

@@ -805,7 +805,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             label: "REAL-RECONSTRUCTED: AAT drainer TX 524t8LW (SlowMist, mainnet)",
             category: "malicious",
             expected_approved: false,
-            ground_truth: "documented AAT drainer (SlowMist): Approve x2 then System assign of the victim's account",
+            ground_truth: "documented AAT drainer (SlowMist): Approve x2 then System assign of the victim's wallet (the Approves' owner)",
             // SlowMist-documented AAT attack (slot 382532590, $3M+ stolen):
             // Approve (SPL Token) x2 then assign (System Program) on the
             // victim's token accounts — the attacker takes OWNERSHIP. Pinned
@@ -872,12 +872,16 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                         ],
                         cpi_targets: vec![],
                     },
-                    // assign: System Program hands over the first account's
-                    // ownership — the SlowMist flow, no Transfer at all.
+                    // assign: the System Program hands the victim's WALLET —
+                    // the Approves' owner — to the attacker's program. The
+                    // SlowMist flow, no Transfer at all. Audit A043: System
+                    // can reassign only a System-owned account that signs,
+                    // so the executable model assigns the owner, not a token
+                    // account (the new owner is in Assign's data).
                     TransactionInstruction {
                         program_id: SYSTEM.to_string(),
                         instruction_discriminator: "01".to_string(),
-                        account_addresses: vec![victim_acct_1.to_string(), attacker.to_string()],
+                        account_addresses: vec![victim_signer.to_string()],
                         cpi_targets: vec![],
                     },
                 ];

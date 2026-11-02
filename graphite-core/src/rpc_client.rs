@@ -894,6 +894,10 @@ pub struct ChainTransaction {
     /// Whether the response's `meta.err` is null: `Some(true)` succeeded,
     /// `Some(false)` failed, `None` when `meta` was absent.
     pub succeeded: Option<bool>,
+    /// The response's `blockTime` (Unix seconds), when stated: when the
+    /// transaction executed, which L8 holds the recorded verdicts to (audit
+    /// A082: a verdict recorded later cannot have governed it).
+    pub block_time: Option<i64>,
 }
 
 /// Simulation result
@@ -2477,10 +2481,12 @@ impl SolanaRpcClient {
             None | Some(serde_json::Value::Null) => None,
             Some(meta) => meta.get("err").map(|e| e.is_null()),
         };
+        let block_time = result.get("blockTime").and_then(|t| t.as_i64());
         Ok(Some(ChainTransaction {
             bytes,
             slot,
             succeeded,
+            block_time,
         }))
     }
 

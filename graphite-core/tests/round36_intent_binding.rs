@@ -421,6 +421,64 @@ fn a_described_wrong_amount_is_blocked_without_an_rpc() {
     );
 }
 
+/// Audit A011: `transaction_instructions` holds the OTHER top-level
+/// instructions, never the primary (L2's `sibling_coverage` skips the located
+/// primary, and the agent guard sends siblings only). The descriptive binding
+/// read it as the complete list and bound on the primary alone whenever it
+/// held at most one entry, so ONE declared sibling was bound as if it did not
+/// exist while TWO made the request unbound. Any declared sibling leaves a
+/// descriptive request unbound (`intent_parameters`): nothing carries its
+/// data.
+#[test]
+fn a_described_transaction_with_one_declared_sibling_is_unbound() {
+    use graphite_core::tx_pattern_analysis::TransactionInstruction;
+    let sibling = |to: &str| TransactionInstruction {
+        program_id: SYSTEM.to_string(),
+        instruction_discriminator: "02000000".to_string(),
+        account_addresses: vec![payer_b58(), to.to_string()],
+        cpi_targets: vec![],
+    };
+    use graphite_core::account_resolution::RealAccountMeta;
+    // The payer signs: the described transfer's signer is known.
+    let described = || {
+        let mut input = request(params("0.002", &recipient(), "SOL"), false);
+        input.real_account_metas = vec![
+            RealAccountMeta {
+                is_signer: true,
+                is_writable: true,
+            },
+            RealAccountMeta {
+                is_signer: false,
+                is_writable: true,
+            },
+        ];
+        input
+    };
+    let control = GraphiteCore::new().verify(&described()).unwrap();
+    assert!(
+        !control
+            .scope
+            .unobserved_codes()
+            .contains(&UnobservedCode::IntentParameters),
+        "control: the lone described transfer binds: {:?}",
+        control.scope.unobserved_codes()
+    );
+    for n in [1usize, 2] {
+        let mut input = described();
+        input.transaction_instructions = (0..n).map(|_| sibling(STRANGER)).collect();
+        let r = GraphiteCore::new().verify(&input).unwrap();
+        assert!(
+            r.scope
+                .unobserved_codes()
+                .contains(&UnobservedCode::IntentParameters),
+            "{n} declared sibling(s): bound on the primary alone: {:?} | {}",
+            r.scope.unobserved_codes(),
+            r.summary
+        );
+        assert_ne!(r.decision, ExecutionDecision::ExecutableApproved);
+    }
+}
+
 // ─── The binding, instruction by instruction ────────────────────────────────
 
 const TOKEN: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";

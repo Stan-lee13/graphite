@@ -441,25 +441,55 @@ pub fn analyze_multi_instruction(instructions: &[TransactionInstruction]) -> Vec
     // attacker delegate authority, and the assign hands over the account's
     // OWNER — full control without any Transfer instruction, which is why
     // Rule 1's Approve-then-Transfer cannot see it.
+    //
+    // Audit A043: the account a System `Assign` can reassign is a
+    // System-owned account that SIGNS — the Approve's OWNER wallet
+    // (accounts[2] of Approve, accounts[3] of ApproveChecked), never the
+    // token account (owned by the token program, and an ATA cannot sign).
+    // Comparing with the token account alone matched only bytes that cannot
+    // execute. Both are compared: the token account is kept, fail closed.
     for (i, approve) in instructions.iter().enumerate() {
         if !is_approve_instruction(approve) {
             continue;
         }
-        if let Some(approved_account) = primary_token_account(approve) {
-            let assigned = instructions[i + 1..].iter().any(|ix| {
-                ix.program_id == SYSTEM_PROGRAM
-                    && disc_matches(&ix.instruction_discriminator, DISC_SYSTEM_ASSIGN)
-                    && ix.account_addresses.first().map(|s| s.as_str()) == Some(approved_account)
-            });
-            if assigned {
-                findings.push(PatternFinding {
-                    pattern: "MultiInstructionDrain".to_string(),
-                    severity: PatternSeverity::Blocked,
-                    reason: format!(
+        let owner_index = if disc_matches(&approve.instruction_discriminator, DISC_APPROVE_CHECKED)
+        {
+            3
+        } else {
+            2
+        };
+        let candidates: Vec<&str> = [
+            primary_token_account(approve),
+            approve
+                .account_addresses
+                .get(owner_index)
+                .map(|s| s.as_str()),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        let assigned = instructions[i + 1..].iter().find_map(|ix| {
+            let target = ix.account_addresses.first().map(|s| s.as_str())?;
+            (ix.program_id == SYSTEM_PROGRAM
+                && disc_matches(&ix.instruction_discriminator, DISC_SYSTEM_ASSIGN)
+                && candidates.contains(&target))
+            .then_some(target)
+        });
+        if let (Some(assigned), Some(approved_account)) = (assigned, primary_token_account(approve))
+        {
+            findings.push(PatternFinding {
+                pattern: "MultiInstructionDrain".to_string(),
+                severity: PatternSeverity::Blocked,
+                reason: if assigned == approved_account {
+                    format!(
                         "AAT ownership-theft signature: Approve on token account {approved_account} paired with a System Program assign of the same account in one transaction"
-                    ),
-                });
-            }
+                    )
+                } else {
+                    format!(
+                        "AAT ownership-theft signature: Approve on token account {approved_account} paired with a System Program assign of its owner {assigned} in one transaction"
+                    )
+                },
+            });
         }
     }
 
@@ -1127,14 +1157,31 @@ mod tests {
     fn approve_then_system_assign_is_blocked() {
         // SlowMist AAT (tx 524t8LW): Approve x2 + System assign, NO Transfer
         // — the ownership-theft variant Rule 1 cannot see.
+        //
+        // Audit A043: with DISTINCT keys. This test reused one key as the
+        // token account and its owner, so it passed while the rule compared
+        // the assign with the token account — which System cannot reassign.
+        // The executable form assigns the owner WALLET (DEST3 here).
+        for approve in [
+            ix(TOKEN_PROGRAM, "04", &[SOURCE, DEST, DEST3]), // Approve [src, delegate, owner]
+            ix(TOKEN_PROGRAM, "0d", &[SOURCE, MINT, DEST, DEST3]), // ApproveChecked
+        ] {
+            let txs = vec![
+                approve,
+                ix(SYSTEM_PROGRAM, "01", &[DEST3]), // assign of the owner wallet
+            ];
+            let findings = analyze_multi_instruction(&txs);
+            assert_eq!(findings.len(), 1, "{findings:?}");
+            assert_eq!(findings[0].severity, PatternSeverity::Blocked);
+            assert!(findings[0].reason.contains("AAT ownership-theft"));
+        }
+        // The token account assigned is still refused (fail closed), though
+        // such bytes cannot execute.
         let txs = vec![
-            ix(TOKEN_PROGRAM, "04", &[SOURCE, DEST, SOURCE]), // Approve
-            ix(SYSTEM_PROGRAM, "01", &[SOURCE, DEST]),        // assign
+            ix(TOKEN_PROGRAM, "04", &[SOURCE, DEST, DEST3]),
+            ix(SYSTEM_PROGRAM, "01", &[SOURCE]),
         ];
-        let findings = analyze_multi_instruction(&txs);
-        assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].severity, PatternSeverity::Blocked);
-        assert!(findings[0].reason.contains("AAT ownership-theft"));
+        assert_eq!(analyze_multi_instruction(&txs).len(), 1);
     }
 
     #[test]
@@ -1143,8 +1190,14 @@ mod tests {
         // Approve; an assign on a disjoint account is not ownership theft
         // (and no transfer shares the approved account, so Rule 1 stays off).
         let txs = vec![
-            ix(TOKEN_PROGRAM, "04", &[SOURCE, DEST, SOURCE]), // Approve on SOURCE
-            ix(SYSTEM_PROGRAM, "01", &[DEST2, DEST]),         // assign on DEST2
+            ix(TOKEN_PROGRAM, "04", &[SOURCE, DEST, DEST3]), // Approve on SOURCE, owner DEST3
+            ix(SYSTEM_PROGRAM, "01", &[DEST2, DEST]),        // assign on DEST2
+        ];
+        assert!(analyze_multi_instruction(&txs).is_empty());
+        // The delegate is not the owner: assigning it is not this signature.
+        let txs = vec![
+            ix(TOKEN_PROGRAM, "04", &[SOURCE, DEST, DEST3]),
+            ix(SYSTEM_PROGRAM, "01", &[DEST]),
         ];
         assert!(analyze_multi_instruction(&txs).is_empty());
     }

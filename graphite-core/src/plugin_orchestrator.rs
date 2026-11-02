@@ -696,7 +696,10 @@ impl PluginOrchestrator {
     /// Returns whether the plugin is now registered. `false` means a plugin of
     /// that name was already there and this one will NOT run; that is a
     /// warning, because an operator's plugin that shares a built-in's name was
-    /// otherwise dropped without a word (W15, external review).
+    /// otherwise dropped without a word (W15, external review). `false` also
+    /// means the manifest names a layer where the plugin's family is never
+    /// dispatched (Risk: L7; Simulation: L3; Policy: L6; Verifier: L2, L4,
+    /// L5, L8), so it would never run (audit A042).
     pub fn register_plugin(&mut self, plugin: PluginKind) -> bool {
         let name = plugin.manifest().name.clone();
         match plugin {
@@ -711,6 +714,29 @@ impl PluginOrchestrator {
             }
             kind => {
                 let layer = kind.manifest().layer;
+                // Audit A042: each family is dispatched at fixed layers. A
+                // plugin filed anywhere else was stored, counted and listed,
+                // and never ran — its veto silently gone. Refused instead.
+                let runs_here = match kind.family() {
+                    PluginFamily::Risk => layer == LayerId::L7RiskVerification,
+                    PluginFamily::Simulation => layer == LayerId::L3SimulationVerification,
+                    PluginFamily::Policy => layer == LayerId::L6PolicyVerification,
+                    PluginFamily::Verifier => matches!(
+                        layer,
+                        LayerId::L2InstructionVerification
+                            | LayerId::L4StateVerification
+                            | LayerId::L5SemanticVerification
+                            | LayerId::L8ExecutionVerification
+                    ),
+                    PluginFamily::Protocol | PluginFamily::Analytics => true,
+                };
+                if !runs_here {
+                    tracing::error!(
+                        "plugin '{name}' declares layer {}, where its family never runs; refused (it would never execute)",
+                        layer.as_str()
+                    );
+                    return false;
+                }
                 let entry = self.plugins.entry(layer).or_default();
                 if !entry.iter().any(|k| k.manifest().name == name) {
                     entry.push(kind);
@@ -1298,8 +1324,9 @@ mod tests {
         // manifest declares L7 must NEVER become a risk finding; a RiskPlugin
         // declared at L2 must never fold into a verifier layer.
         let mut orch = PluginOrchestrator::new();
-        // A Block-ing VerifierPlugin misdeclared at L7:
-        orch.register_plugin(PluginKind::Verifier(Arc::new(TestVerifier {
+        // A Block-ing VerifierPlugin misdeclared at L7 (refused at
+        // registration since audit A042; it must not take effect either way):
+        let _ = orch.register_plugin(PluginKind::Verifier(Arc::new(TestVerifier {
             manifest: manifest("sneaky", LayerId::L7RiskVerification),
             verdict: PluginVerdict::Block {
                 pattern: "ShouldNeverBlock".into(),
@@ -1328,7 +1355,7 @@ mod tests {
                 }
             }
         }
-        orch.register_plugin(PluginKind::Risk(Arc::new(SneakyRisk {
+        let _ = orch.register_plugin(PluginKind::Risk(Arc::new(SneakyRisk {
             m: manifest("sneaky-risk", LayerId::L2InstructionVerification),
         })));
         let l2 = orch.fold_verifier(
@@ -1341,6 +1368,116 @@ mod tests {
             LayerStatus::Passed,
             "RiskPlugin must not fold into L2"
         );
+    }
+
+    /// Audit A042: each family runs at one layer only (Risk at L7,
+    /// Simulation at L3, Policy at L6, Verifier at L2/L4/L5/L8). A plugin
+    /// whose manifest names another layer was stored, counted, listed as
+    /// registered, and never run, so its veto silently disappeared. It is
+    /// refused at registration instead, and nothing of it is reported as
+    /// registered.
+    #[test]
+    fn a_plugin_filed_where_its_family_never_runs_is_refused() {
+        struct Blocker(PluginManifest);
+        impl RiskPlugin for Blocker {
+            fn manifest(&self) -> &PluginManifest {
+                &self.0
+            }
+            fn assess_risk(&self, _ctx: &PluginContext) -> PluginVerdict {
+                PluginVerdict::Block {
+                    pattern: "X".into(),
+                    reason: "y".into(),
+                }
+            }
+        }
+        impl SimulationPlugin for Blocker {
+            fn manifest(&self) -> &PluginManifest {
+                &self.0
+            }
+            fn observe_simulation(&self, _ctx: &PluginContext) -> PluginVerdict {
+                PluginVerdict::Block {
+                    pattern: "X".into(),
+                    reason: "y".into(),
+                }
+            }
+        }
+        impl PolicyPlugin for Blocker {
+            fn manifest(&self) -> &PluginManifest {
+                &self.0
+            }
+            fn evaluate(&self, _ctx: &PluginContext) -> PluginVerdict {
+                PluginVerdict::Block {
+                    pattern: "X".into(),
+                    reason: "y".into(),
+                }
+            }
+        }
+        impl VerifierPlugin for Blocker {
+            fn manifest(&self) -> &PluginManifest {
+                &self.0
+            }
+            fn verify(&self, _ctx: &PluginContext) -> PluginVerdict {
+                PluginVerdict::Block {
+                    pattern: "X".into(),
+                    reason: "y".into(),
+                }
+            }
+        }
+        let kind = |family: &str, layer: LayerId| -> PluginKind {
+            let b = Arc::new(Blocker(manifest(
+                &format!("{family}-{}", layer.as_str()),
+                layer,
+            )));
+            match family {
+                "risk" => PluginKind::Risk(b),
+                "simulation" => PluginKind::Simulation(b),
+                "policy" => PluginKind::Policy(b),
+                _ => PluginKind::Verifier(b),
+            }
+        };
+        let runs_at = |family: &str, layer: LayerId| match family {
+            "risk" => layer == LayerId::L7RiskVerification,
+            "simulation" => layer == LayerId::L3SimulationVerification,
+            "policy" => layer == LayerId::L6PolicyVerification,
+            _ => matches!(
+                layer,
+                LayerId::L2InstructionVerification
+                    | LayerId::L4StateVerification
+                    | LayerId::L5SemanticVerification
+                    | LayerId::L8ExecutionVerification
+            ),
+        };
+        for family in ["risk", "simulation", "policy", "verifier"] {
+            for layer in PIPELINE_ORDER {
+                let mut orch = PluginOrchestrator::new();
+                let registered = orch.register_plugin(kind(family, layer));
+                let reached = match family {
+                    "risk" => orch.risk_outcome(&ctx()).blocked,
+                    "simulation" => !orch.simulation_verdicts(&ctx()).is_empty(),
+                    "policy" => !orch.policy_verdicts(&ctx()).is_empty(),
+                    _ => PIPELINE_ORDER.iter().any(|l| {
+                        orch.fold_verifier(
+                            *l,
+                            PipelineLayerResult::new(l.as_str(), LayerStatus::Passed, "core ok"),
+                            &ctx(),
+                        )
+                        .status
+                            == LayerStatus::Failed
+                    }),
+                };
+                let tag = format!("{family} at {}", layer.as_str());
+                assert_eq!(
+                    registered,
+                    runs_at(family, layer),
+                    "{tag}: registration must say whether it will run"
+                );
+                assert_eq!(
+                    registered, reached,
+                    "{tag}: registered exactly when its block takes effect"
+                );
+                assert_eq!(orch.registered_count(), usize::from(registered), "{tag}");
+            }
+        }
     }
 
     /// Round 17 (F-16-07): a panicking BLOCKING plugin fails closed. The

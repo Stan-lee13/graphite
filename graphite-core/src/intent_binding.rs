@@ -220,7 +220,11 @@ pub fn parse_amount(text: &str, decimals: u8) -> Result<u64, String> {
             "the amount {text} has more decimal places than the asset's {decimals}"
         ));
     }
-    let scale = 10u128.pow(u32::from(decimals));
+    // Audit A040: `decimals` is any u8 (the bytes' decimals byte, or a
+    // mint's), and 10^39 already overflows a u128. No scale means a whole
+    // unit cannot be counted, let alone fit a u64; a pure fraction is still
+    // exactly its own digits.
+    let scale = 10u128.checked_pow(u32::from(decimals));
     let whole: u128 = whole
         .parse()
         .map_err(|_| format!("the amount {text} does not fit in a u64"))?;
@@ -232,13 +236,16 @@ pub fn parse_amount(text: &str, decimals: u8) -> Result<u64, String> {
         0
     } else {
         frac.parse()
-            .map_err(|_| format!("the amount {text} is not a plain decimal"))?
+            .map_err(|_| format!("the amount {text} does not fit in a u64"))?
     };
-    let units = whole
-        .checked_mul(scale)
-        .and_then(|w| w.checked_add(frac))
-        .filter(|u| *u <= u128::from(u64::MAX))
-        .ok_or_else(|| format!("the amount {text} does not fit in a u64"))?;
+    let units = match scale {
+        Some(scale) => whole.checked_mul(scale),
+        None if whole == 0 => Some(0),
+        None => None,
+    }
+    .and_then(|w| w.checked_add(frac))
+    .filter(|u| *u <= u128::from(u64::MAX))
+    .ok_or_else(|| format!("the amount {text} does not fit in a u64"))?;
     if units == 0 {
         return Err(format!("the amount {text} is zero"));
     }
@@ -891,6 +898,11 @@ pub struct DecodedSwap {
     pub name: &'static str,
     pub amount_in: u64,
     pub min_out: u64,
+    /// The manifest name of the account `amount_in` is spent FROM (audit
+    /// A026): the route's source token account, Orca's
+    /// `token_owner_account_a` or `_b` as `a_to_b` chooses, the input token
+    /// account of the others. `amount_in` is in that account's mint.
+    pub input_account: &'static str,
 }
 
 /// A strict Borsh reader: every read bounds-checked, `end` requires the data
@@ -1398,6 +1410,11 @@ fn jupiter_route_v2(data: &[u8], shared: bool, name: &'static str) -> Result<Dec
         name,
         amount_in,
         min_out,
+        input_account: if shared {
+            "source_token_account"
+        } else {
+            "user_source_token_account"
+        },
     })
 }
 
@@ -1460,6 +1477,11 @@ fn jupiter_route(data: &[u8], shared: bool, name: &'static str) -> Result<Decode
         name,
         amount_in,
         min_out,
+        input_account: if shared {
+            "source_token_account"
+        } else {
+            "user_source_token_account"
+        },
     })
 }
 
@@ -1482,9 +1504,17 @@ fn concentrated(
     } else {
         "is_base_input"
     })?;
-    if a_to_b {
-        r.bool("a_to_b")?;
-    }
+    // Audit A026: Orca's direction decides which owner account is spent
+    // from; its declaration debits both, each under a `when data.a_to_b`.
+    let input_account = if a_to_b {
+        if r.bool("a_to_b")? {
+            "token_owner_account_a"
+        } else {
+            "token_owner_account_b"
+        }
+    } else {
+        "input_token_account"
+    };
     if whirlpool_option && r.option("remaining_accounts_info")? {
         remaining_accounts_info(
             &mut r,
@@ -1503,6 +1533,7 @@ fn concentrated(
         name,
         amount_in: amount,
         min_out: threshold,
+        input_account,
     })
 }
 
@@ -1511,6 +1542,7 @@ fn in_min(
     at: usize,
     name: &'static str,
     dlmm_remaining: bool,
+    input_account: &'static str,
 ) -> Result<DecodedSwap, String> {
     let mut r = Reader {
         data,
@@ -1527,6 +1559,7 @@ fn in_min(
         name,
         amount_in,
         min_out,
+        input_account,
     })
 }
 
@@ -1552,10 +1585,10 @@ pub fn decode_swap(program_id: &str, data: &[u8]) -> Option<Result<DecodedSwap, 
         (ORCA_WHIRLPOOLS, "2b04ed0b1ac91e62") => concentrated(data, "Orca Whirlpools swapV2", true, true),
         (RAYDIUM_CLMM, "f8c69e91e17587c8") => concentrated(data, "Raydium CLMM swap", false, false),
         (RAYDIUM_CLMM, "2b04ed0b1ac91e62") => concentrated(data, "Raydium CLMM swap_v2", false, false),
-        (RAYDIUM_CPMM, "8fbe5adac41e33de") => in_min(data, 8, "Raydium CPMM swap_base_input", false),
-        (RAYDIUM_AMM_V4, "09") => in_min(data, 1, "Raydium AMM v4 SwapBaseIn", false),
-        (METEORA_DLMM, "f8c69e91e17587c8") => in_min(data, 8, "Meteora DLMM swap", false),
-        (METEORA_DLMM, "414b3f4ceb5b5b88") => in_min(data, 8, "Meteora DLMM swap2", true),
+        (RAYDIUM_CPMM, "8fbe5adac41e33de") => in_min(data, 8, "Raydium CPMM swap_base_input", false, "input_token_account"),
+        (RAYDIUM_AMM_V4, "09") => in_min(data, 1, "Raydium AMM v4 SwapBaseIn", false, "user_source_token_account"),
+        (METEORA_DLMM, "f8c69e91e17587c8") => in_min(data, 8, "Meteora DLMM swap", false, "user_token_in"),
+        (METEORA_DLMM, "414b3f4ceb5b5b88") => in_min(data, 8, "Meteora DLMM swap2", true, "user_token_in"),
         _ => Err(format!(
             "instruction {selector} on {program_id} is not an exact-in swap whose data the Core decodes"
         )),
@@ -2504,6 +2537,67 @@ mod tests {
         }
         assert!(parse_amount("1.0000000001", 9).is_err());
         assert!(parse_amount("18446744073709551616", 0).is_err());
+    }
+
+    /// Audit A026: a decoded swap names the account it spends from. Orca's
+    /// `a_to_b` chooses between its two owner accounts; the others have one
+    /// input slot.
+    #[test]
+    fn a_decoded_swap_names_the_account_it_spends_from() {
+        let orca = |a_to_b: u8| {
+            let mut d = hex::decode("f8c69e91e17587c8").unwrap();
+            d.extend(1_000u64.to_le_bytes());
+            d.extend(900u64.to_le_bytes());
+            d.extend([0u8; 16]);
+            d.push(1);
+            d.push(a_to_b);
+            d
+        };
+        let read = |program: &str, data: &[u8]| decode_swap(program, data).unwrap().unwrap();
+        assert_eq!(
+            read(ORCA_WHIRLPOOLS, &orca(1)).input_account,
+            "token_owner_account_a"
+        );
+        assert_eq!(
+            read(ORCA_WHIRLPOOLS, &orca(0)).input_account,
+            "token_owner_account_b"
+        );
+        let mut cpmm = hex::decode("8fbe5adac41e33de").unwrap();
+        cpmm.extend(1_000u64.to_le_bytes());
+        cpmm.extend(900u64.to_le_bytes());
+        assert_eq!(
+            read(RAYDIUM_CPMM, &cpmm).input_account,
+            "input_token_account"
+        );
+    }
+
+    /// Audit A040: the decimals come from the bytes (a
+    /// `TransferChecked`'s decimals byte) or from a mint, and any u8 is a
+    /// valid mint. `10^decimals` overflowed a u128 from 39 on: a panic in a
+    /// debug build, and in release a scale that wrapped (to 0 from 128 on),
+    /// so "1" of a 200-decimal mint read as some small number of base units
+    /// and was reported bound "exactly as requested". A whole unit of such
+    /// an asset cannot fit a u64; a fraction small enough still can.
+    #[test]
+    fn decimals_past_what_a_u128_scale_holds_are_refused_not_wrapped() {
+        for decimals in [39u8, 40, 64, 128, 200, 255] {
+            assert!(
+                parse_amount("1", decimals).is_err(),
+                "1 unit at {decimals} decimals"
+            );
+            assert!(
+                parse_amount("1.7", decimals).is_err(),
+                "1.7 units at {decimals} decimals"
+            );
+        }
+        // A pure fraction needs no scale: 38 places, the last one 1, at 39
+        // decimals is ten base units, exactly.
+        let ten_base_units = format!("0.{}1", "0".repeat(37));
+        assert_eq!(parse_amount(&ten_base_units, 39), Ok(10));
+        // The same text at 200 decimals is 10^162 base units: no u64 holds it.
+        assert!(parse_amount(&ten_base_units, 200).is_err());
+        // 38 decimals still has a u128 scale; a whole unit does not fit a u64.
+        assert!(parse_amount("1", 38).is_err());
     }
 
     /// A seed length near `usize::MAX` puts the lamports offset at the very

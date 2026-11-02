@@ -32,6 +32,14 @@ pub fn verify(input: &VerificationInput) -> VerificationResult {
 
 pub fn verify_with(core: &GraphiteCore, input: &VerificationInput) -> VerificationResult {
     match core.verify(input) {
+        // Audit A014 (P6): on every engine — seeded and earned evidence
+        // included — a program with no manifest stays under the
+        // unknown-protocol confidence ceiling. Checked on every verdict the
+        // harness hands back, not only where a case names the token.
+        Ok(r) if r.unknown_protocol && r.confidence > 0.55 => panic!(
+            "an unmanifested program reached confidence {} (tier {}), over the P6 ceiling: {}",
+            r.confidence, r.trust_tier, r.summary
+        ),
         Ok(r) => r,
         Err(e) => panic!(
             "verify() returned an error, not a verdict: {e}. An error is not a block; \

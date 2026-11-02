@@ -24,6 +24,8 @@ use std::net::TcpListener;
 #[derive(Clone)]
 enum Bytes {
     Signed(Vec<u8>),
+    /// The bytes, and the `blockTime` the response states (audit A082).
+    SignedAt(Vec<u8>, i64),
 }
 
 fn cluster(bytes: Bytes) -> String {
@@ -43,6 +45,10 @@ fn cluster(bytes: Bytes) -> String {
                     match &bytes {
                         Bytes::Signed(b) => format!(
                             r#"{{"jsonrpc":"2.0","id":1,"result":{{"slot":12345,"transaction":["{}","base64"],"meta":{{"err":null}}}}}}"#,
+                            base64::engine::general_purpose::STANDARD.encode(b)
+                        ),
+                        Bytes::SignedAt(b, t) => format!(
+                            r#"{{"jsonrpc":"2.0","id":1,"result":{{"slot":12345,"blockTime":{t},"transaction":["{}","base64"],"meta":{{"err":null}}}}}}"#,
                             base64::engine::general_purpose::STANDARD.encode(b)
                         ),
                     }
@@ -259,4 +265,93 @@ async fn an_executable_approval_and_a_pre_round_30_row_still_reconcile_as_before
             "{decision:?}: {got:?}"
         );
     }
+}
+
+/// Audit A082: with the chain's bytes, L8 attributed an execution to the
+/// LAST verification recorded under their digest. Anyone with verify access
+/// could take a landed transaction executed under an executable approval,
+/// zero its signature slots and re-verify it (a wrong amount, a stricter
+/// profile): the refusal was then the latest record, and every later L8
+/// call reported `BlockedButExecuted`, "the gate was bypassed". The verdict
+/// that governed an execution is the latest one recorded by the time it
+/// executed (`blockTime`); later verdicts are counted in `recorded_verdicts`
+/// and decide nothing. The same rule keeps a refusal that was bypassed an
+/// alarm when an approval of the same bytes is obtained afterwards.
+#[tokio::test]
+async fn a_verdict_recorded_after_the_execution_does_not_reattribute_it() {
+    use graphite_core::durable::rfc3339_utc;
+    let (tx, sig) = signed_transfer();
+    let digest = bound_artifact_sha256(&tx, &sig).expect("bound");
+    let block_time: i64 = 1_790_000_000;
+    let at = |offset: i64, r: AuditRecord| AuditRecord {
+        timestamp: rfc3339_utc((block_time + offset) as u64, 0),
+        transaction_sha256: Some(digest.clone()),
+        ..r
+    };
+    let approved = || {
+        with_decision(
+            record("gr-a082-approved", "5555555555555555", None, true),
+            Some("executable_approved"),
+            Some(true),
+        )
+    };
+    let refused = || {
+        with_decision(
+            record("gr-a082-refused", "5555555555555555", None, false),
+            Some("blocked"),
+            Some(false),
+        )
+    };
+    let run = |records: Vec<AuditRecord>| {
+        let tx = tx.clone();
+        let sig = sig.clone();
+        async move {
+            let (log, dir) = trail(&records);
+            let core = core_at(&cluster(Bytes::SignedAt(tx, block_time)));
+            let audit = core
+                .audit_execution(&sig, ExecutionKeys::default(), Some(&log))
+                .await;
+            let _ = std::fs::remove_dir_all(&dir);
+            audit
+        }
+    };
+
+    // Approved before it executed; refused by someone re-verifying it two
+    // minutes later.
+    let audit = run(vec![at(-5, approved()), at(120, refused())]).await;
+    assert_eq!(audit.attribution, ExecutionAttribution::Chain);
+    assert!(
+        matches!(
+            audit.reconciliation,
+            ExecutionReconciliation::ApprovedAndExecuted
+        ),
+        "a later re-verification paged the operator: {:?}",
+        audit.reconciliation
+    );
+    assert!(!audit.reconciliation.is_discrepancy());
+    let counts = audit.recorded_verdicts.expect("counted");
+    assert_eq!((counts.approved, counts.refused), (1, 1));
+
+    // Refused before it executed (the gate was bypassed), approved after:
+    // still the alarm.
+    let audit = run(vec![at(-5, refused()), at(120, approved())]).await;
+    assert!(
+        matches!(
+            audit.reconciliation,
+            ExecutionReconciliation::BlockedButExecuted
+        ),
+        "an approval obtained after the execution laundered a bypass: {:?}",
+        audit.reconciliation
+    );
+
+    // Nothing recorded by the time it executed: no verdict governed it.
+    let audit = run(vec![at(120, refused())]).await;
+    assert!(
+        matches!(
+            audit.reconciliation,
+            ExecutionReconciliation::NoVerificationOnRecord
+        ),
+        "{:?}",
+        audit.reconciliation
+    );
 }

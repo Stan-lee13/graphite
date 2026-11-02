@@ -192,6 +192,29 @@ func TestRefusalsAreInconclusiveOnlyOnMissingEvidence(t *testing.T) {
 	if refusal("SimulationFailed") != DecisionBlocked || refusal() != DecisionBlocked {
 		t.Error("a definite refusal is blocked")
 	}
+	// Audit A086: a failed structural or policy layer beside missing evidence
+	// is blocked (no retry passes it); L3, L7 and L8 failing is the evidence.
+	withFailed := func(prefix string) string {
+		r := *base
+		r.RiskVerdict = RiskVerdictSummary{Status: "Blocked", Findings: []RiskFinding{{Pattern: "VerificationIncomplete", Reason: "t"}}}
+		r.Layers = append([]PipelineLayerResult(nil), base.Layers...)
+		for i := range r.Layers {
+			if strings.HasPrefix(r.Layers[i].Layer, prefix) {
+				r.Layers[i].Status = "failed"
+			}
+		}
+		return r.ComputeExecutionDecision()
+	}
+	for _, p := range []string{"L1_", "L2_", "L4_", "L5_", "L6_"} {
+		if got := withFailed(p); got != DecisionBlocked {
+			t.Errorf("%s failed beside missing evidence: %q, want blocked", p, got)
+		}
+	}
+	for _, p := range []string{"L3_", "L7_", "L8_"} {
+		if got := withFailed(p); got != DecisionInconclusive {
+			t.Errorf("%s failed beside missing evidence: %q, want inconclusive", p, got)
+		}
+	}
 }
 
 func TestTheDecoderRefusesADecisionThatContradictsTheVerdict(t *testing.T) {

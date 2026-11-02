@@ -787,6 +787,24 @@ async fn verify(
 /// `verify`, the transaction a v0 one when `table` names a lookup table and
 /// the accounts it serves (Round 41, D-25).
 async fn verify_tx(
+    cluster: Cluster,
+    ixs: &[Ix],
+    primary: usize,
+    intent: &str,
+    extracted: Option<ExtractedParameters>,
+    waivers: Waivers,
+    table: Option<(&str, &[String])>,
+) -> VerificationResult {
+    verify_tx_ordered(
+        cluster, ixs, primary, intent, extracted, waivers, table, None,
+    )
+    .await
+}
+
+/// `verify_tx`, the siblings declared in `order` (indexes into `ixs`) when
+/// given, else in message order (audit A043).
+#[allow(clippy::too_many_arguments)]
+async fn verify_tx_ordered(
     mut cluster: Cluster,
     ixs: &[Ix],
     primary: usize,
@@ -794,6 +812,7 @@ async fn verify_tx(
     extracted: Option<ExtractedParameters>,
     waivers: Waivers,
     table: Option<(&str, &[String])>,
+    order: Option<&[usize]>,
 ) -> VerificationResult {
     let (keys, bytes) = match table {
         None => frame(OWNER, ixs),
@@ -823,6 +842,11 @@ async fn verify_tx(
                 .find(|d| p.data.starts_with(&hex_to_bytes(&d.discriminator)))
                 .map(|d| d.discriminator.clone())
         })
+        .or_else(|| {
+            // Audit A087: the ATA program's legacy `Create` carries no data,
+            // and an empty label is the only one that describes empty data.
+            (p.program == ATA_PROGRAM && p.data.is_empty()).then(String::new)
+        })
         .expect("the primary is a manifest instruction");
     let input = VerificationInput {
         proposed_intent: ProposedIntent {
@@ -843,12 +867,15 @@ async fn verify_tx(
         account_writes: 0,
         cpi_hops: 0,
         signed_transaction: Some(bytes),
-        transaction_instructions: ixs
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| *i != primary)
-            .map(|(_, i)| describe(i))
-            .collect(),
+        transaction_instructions: match order {
+            Some(order) => order.iter().map(|i| describe(&ixs[*i])).collect(),
+            None => ixs
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| *i != primary)
+                .map(|(_, i)| describe(i))
+                .collect(),
+        },
         cpi_trace: None,
         real_account_metas: vec![],
         uses_versioned_transaction: versioned,
@@ -3327,4 +3354,418 @@ async fn round41_empty_data_is_still_no_instruction_for_other_programs() {
         unnamed.is_empty(),
         "refused, but not as an empty declaration: {unnamed:#?}"
     );
+}
+
+// ─── Audit A087: the ATA program's empty-data `Create` as the primary ──────
+
+/// A wallet's Token-2022 ATA created by the ATA program as the PRIMARY of a
+/// `create`, with `data` its instruction data: `[]` (the original `Create`)
+/// or `[1]` (`CreateIdempotent`).
+fn ata_create_primary(data: Vec<u8>) -> (Cluster, Vec<Ix>) {
+    let mut c = Cluster::default();
+    base_programs(&mut c);
+    let account = ata_under(OWNER, MINT_T22, TOKEN_2022);
+    c.set(
+        MINT_T22,
+        acct(1_461_600, TOKEN_2022, mint(10u64.pow(12), 6)),
+    );
+    c.set(OWNER, acct(10 * SOL, SYSTEM, vec![]));
+    let mut create = create_idempotent(OWNER, &account, OWNER, MINT_T22, TOKEN_2022);
+    create.data = data;
+    c.after(
+        &account,
+        acct(RENT_T22, TOKEN_2022, token2022_ata_account(MINT_T22, OWNER)),
+    );
+    let mut init = vec![18u8];
+    init.extend_from_slice(pk(OWNER).as_bytes());
+    for (program, accounts, data) in [
+        (TOKEN_2022, vec![MINT_T22.to_string()], vec![21u8, 7, 0]),
+        (
+            SYSTEM,
+            vec![OWNER.to_string(), account.clone()],
+            system_create(RENT_T22, 170, TOKEN_2022),
+        ),
+        (TOKEN_2022, vec![account.clone()], vec![22u8]),
+        (
+            TOKEN_2022,
+            vec![account.clone(), MINT_T22.to_string()],
+            init,
+        ),
+    ] {
+        c.inner.push(Inner {
+            top: 0,
+            program: program.to_string(),
+            accounts,
+            data,
+        });
+    }
+    c.after(OWNER, acct(10 * SOL - FEE - RENT_T22, SYSTEM, vec![]));
+    (c, vec![create])
+}
+
+/// Audit A087: D-26 made the ATA program's empty data dispatch as `Create`
+/// ("00") for siblings, attribution, W14 and the observed tree, but the
+/// primary's manifest lookup still keyed on the raw (empty) bytes: the
+/// instruction was `unknown_instruction`, its tier Unknown, and an honest
+/// legacy create as the primary could never be approved. As the primary it
+/// is now the manifest's `CreateAssociatedTokenAccount`, judged exactly as
+/// `CreateIdempotent` is.
+#[tokio::test]
+async fn round41_the_ata_programs_empty_data_create_is_judged_as_create_as_the_primary() {
+    for w in CONFIGS {
+        let (c, ixs) = ata_create_primary(vec![]);
+        let legacy = verify(c, &ixs, 0, "create", None, w).await;
+        record(&format!("empty-data Create as the primary, {w:?}"), &legacy);
+        let (c, ixs) = ata_create_primary(vec![1u8]);
+        let idempotent = verify(c, &ixs, 0, "create", None, w).await;
+        record(
+            &format!("CreateIdempotent as the primary, {w:?}"),
+            &idempotent,
+        );
+        assert_eq!(
+            legacy.instruction_name,
+            "CreateAssociatedTokenAccount",
+            "{w:?}: the empty-data Create is not the manifest's Create as the primary: {} | {}",
+            statuses(&legacy),
+            risk(&legacy)
+        );
+        assert!(!legacy.unknown_protocol, "{w:?}");
+        assert_eq!(
+            legacy.trust_tier, idempotent.trust_tier,
+            "{w:?}: the same program, the same tier"
+        );
+        assert_eq!(
+            (legacy.decision, legacy.risk_verdict.status.as_str()),
+            (idempotent.decision, idempotent.risk_verdict.status.as_str()),
+            "{w:?}: the legacy Create is judged as CreateIdempotent is: {} | {} || {} | {}",
+            statuses(&legacy),
+            risk(&legacy),
+            statuses(&idempotent),
+            risk(&idempotent)
+        );
+    }
+}
+
+// ─── Audit A012: the compositional-drain rule on a sibling's execution ─────
+
+/// Audit A012: R-5's compositional-drain rule over executed CPIs (a
+/// security-relevant program invoked three or more times under an untrusted
+/// root) ran on the primary's tree only. W14 deduplicated a sibling's callees
+/// and never asked it, so the execution Blocked as the primary passed as a
+/// sibling. Beside an honest route (a trusted root), an ATA `CreateIdempotent`
+/// of the wallet's existing account under which the simulator executed a
+/// non-infrastructure program three times is refused, naming the sibling.
+#[tokio::test]
+async fn round41_a_siblings_executed_compositional_drain_is_refused() {
+    let mut out = Outcomes::default();
+    for w in ATTACK_CONFIGS {
+        for repeats in [3usize, 1] {
+            let (mut c, mut ixs, route) = wrap_swap(Wrap::HonestExisting);
+            let at = ixs.len();
+            let dst = ata(OWNER, MINT_X);
+            ixs.push(create_idempotent(OWNER, &dst, OWNER, MINT_X, TOKEN));
+            for _ in 0..repeats {
+                c.inner.push(Inner {
+                    top: at,
+                    program: JUPITER.to_string(),
+                    accounts: vec![dst.clone()],
+                    data: vec![0xe5, 0x17, 0xcb, 0x97, 0x7a, 0xe3, 0xad, 0x2a],
+                });
+            }
+            let r = verify(c, &ixs, route, "swap", wrap_request("0.605263158"), w).await;
+            let tag = format!("sibling executed {JUPITER} x{repeats}, {w:?}");
+            let named = r.risk_verdict.findings.iter().any(|f| {
+                f.pattern == "CompositionalDrainPattern"
+                    && f.reason.contains(&format!("top-level instruction #{at}"))
+            });
+            if repeats >= 3 {
+                out.refused(&tag, &r);
+                assert!(
+                    named,
+                    "{tag}: the sibling's compositional-drain execution was not judged: {}",
+                    risk(&r)
+                );
+                assert_eq!(r.risk_verdict.status, "Blocked", "{tag}");
+            } else {
+                record(&tag, &r);
+                assert!(!named, "{tag}: one call is not the signature: {}", risk(&r));
+            }
+        }
+    }
+    out.assert_none_executable();
+}
+
+// ─── Audit A013: the observed-CPI re-assessment keeps the bytes' facts ─────
+
+/// The wallet's MINT_X associated token account created as the PRIMARY by
+/// `CreateIdempotent`, carrying `extras` additional accounts after the
+/// manifest's six (`writable` or read-only), with the ATA program's own Token
+/// CPIs reported under it — undeclared, as the agent guard always sends
+/// `cpi_targets: []`.
+fn ata_create_with_extras(extras: usize, writable: bool) -> (Cluster, Vec<Ix>) {
+    let mut c = Cluster::default();
+    base_programs(&mut c);
+    let account = ata(OWNER, MINT_X);
+    c.set(MINT_X, acct(1_461_600, TOKEN, mint(10u64.pow(15), 6)));
+    c.set(OWNER, acct(10 * SOL, SYSTEM, vec![]));
+    let mut create = create_idempotent(OWNER, &account, OWNER, MINT_X, TOKEN);
+    for i in 0..extras {
+        let extra = key(140 + i as u8);
+        c.set(&extra, acct(SOL, SYSTEM, vec![]));
+        create.accounts.push((extra, false, writable));
+    }
+    c.after(&account, acct(RENT, TOKEN, token_account(MINT_X, OWNER, 0)));
+    let mut init = vec![18u8];
+    init.extend_from_slice(pk(OWNER).as_bytes());
+    for (program, accounts, data) in [
+        (TOKEN, vec![MINT_X.to_string()], vec![21u8]),
+        (
+            SYSTEM,
+            vec![OWNER.to_string(), account.clone()],
+            system_create(RENT, 165, TOKEN),
+        ),
+        (TOKEN, vec![account.clone()], vec![22u8]),
+        (TOKEN, vec![account.clone(), MINT_X.to_string()], init),
+    ] {
+        c.inner.push(Inner {
+            top: 0,
+            program: program.to_string(),
+            accounts,
+            data,
+        });
+    }
+    c.after(OWNER, acct(10 * SOL - FEE - RENT, SYSTEM, vec![]));
+    (c, vec![create])
+}
+
+/// Audit A013: when the simulator reports callees the request did not
+/// declare, the primary is assessed again with them — and that second
+/// assessment hard-coded `writable_extra_accounts: None`, so Checks 3/3b
+/// fell back to the whole account count and refused, as an STMT drainer, a
+/// primary whose extra accounts are read-only (Round 21's false refusal,
+/// back through one undeclared CPI). Read-only extras pass as they do on the
+/// first assessment; three WRITABLE extras are still refused.
+#[tokio::test]
+async fn round41_read_only_extras_are_not_a_drainer_on_an_undeclared_cpi() {
+    for w in CONFIGS {
+        // Four: the wallet is both the funding and the wallet account, so
+        // three extras leave the unique count at the manifest's 6 + 2.
+        let (c, ixs) = ata_create_with_extras(4, false);
+        let r = verify(c, &ixs, 0, "create", None, w).await;
+        record(&format!("CreateIdempotent + 4 read-only extras, {w:?}"), &r);
+        assert!(
+            !names(&r, "STMT drainer") && !names(&r, "Drainer"),
+            "{w:?}: read-only extras refused as a drainer on the observed CPI: {}",
+            risk(&r)
+        );
+        let (c, ixs) = ata_create_with_extras(0, false);
+        let plain = verify(c, &ixs, 0, "create", None, w).await;
+        assert_eq!(
+            (r.decision, r.risk_verdict.status.as_str()),
+            (plain.decision, plain.risk_verdict.status.as_str()),
+            "{w:?}: four read-only extras change the verdict: {} || {}",
+            risk(&r),
+            risk(&plain)
+        );
+    }
+    let mut out = Outcomes::default();
+    for w in ATTACK_CONFIGS {
+        let (c, ixs) = ata_create_with_extras(3, true);
+        let r = verify(c, &ixs, 0, "create", None, w).await;
+        out.refused(&format!("CreateIdempotent + 3 writable extras, {w:?}"), &r);
+        assert!(names(&r, "Drainer"), "{w:?}: {}", risk(&r));
+    }
+    out.assert_none_executable();
+}
+
+// ─── Audit A039: a token send judged by its destination's OWNER ────────────
+
+/// A wallet ground to look like a system account (four trailing '1's).
+const VANITY_WALLET: &str = "iBGtY2LBEmTiVrmPCgHRGdCPZJcDEmmkDxbLhV11111";
+
+/// 5 MINT_X sent by `TransferChecked` from the wallet's MINT_X associated
+/// token account to `to`'s, which exists.
+fn token_send_to(to: &str) -> (Cluster, Vec<Ix>) {
+    let mut c = Cluster::default();
+    base_programs(&mut c);
+    let (src, dst) = (ata(OWNER, MINT_X), ata(to, MINT_X));
+    c.set(MINT_X, acct(1_461_600, TOKEN, mint(10u64.pow(15), 6)));
+    c.set(OWNER, acct(10 * SOL, SYSTEM, vec![]));
+    c.set(
+        &src,
+        acct(RENT, TOKEN, token_account(MINT_X, OWNER, 9_000_000)),
+    );
+    c.set(&dst, acct(RENT, TOKEN, token_account(MINT_X, to, 0)));
+    c.after(
+        &src,
+        acct(RENT, TOKEN, token_account(MINT_X, OWNER, 4_000_000)),
+    );
+    c.after(
+        &dst,
+        acct(RENT, TOKEN, token_account(MINT_X, to, 5_000_000)),
+    );
+    c.after(OWNER, acct(10 * SOL - FEE, SYSTEM, vec![]));
+    let send = ix(
+        TOKEN,
+        &[
+            (&src, false, true),
+            (MINT_X, false, false),
+            (&dst, false, true),
+            (OWNER, true, false),
+        ],
+        transfer_checked(5_000_000, 6),
+    );
+    (c, vec![send])
+}
+
+fn token_send_request(to: &str) -> Option<ExtractedParameters> {
+    Some(ExtractedParameters {
+        amount: Some("5".to_string()),
+        destination: Some(to.to_string()),
+        input_token: Some(MINT_X.to_string()),
+        ..Default::default()
+    })
+}
+
+/// Audit A039: Checks 10a (impersonation) and 10b (unspendable destination)
+/// judged a token transfer's destination TOKEN ACCOUNT — an associated token
+/// account derived from the owner, which never carries the owner's vanity
+/// shape and is never itself a native address. The same send as a System
+/// transfer to the vanity wallet was refused as Impersonation; as a token
+/// send to its account it was not, and tokens sent to the System program's
+/// account are locked for good. The destination's owner, read from
+/// Graphite's own simulated state, is judged by the same rules.
+#[tokio::test]
+async fn round41_a_token_send_is_judged_by_its_destinations_owner() {
+    for w in CONFIGS {
+        let (c, ixs) = token_send_to(RECIPIENT);
+        let honest = verify(c, &ixs, 0, "transfer", token_send_request(RECIPIENT), w).await;
+        record(&format!("token send to an ordinary wallet, {w:?}"), &honest);
+        assert!(
+            !names(&honest, "Impersonation") && !names(&honest, "UnspendableDestination"),
+            "{w:?}: {}",
+            risk(&honest)
+        );
+    }
+    let mut out = Outcomes::default();
+    let mut unnamed = Vec::new();
+    for w in ATTACK_CONFIGS {
+        for (to, pattern) in [
+            (VANITY_WALLET, "Impersonation"),
+            (SYSTEM, "UnspendableDestination"),
+        ] {
+            let tag = format!("token send to the account of {to}, {w:?}");
+            let (c, ixs) = token_send_to(to);
+            let r = verify(c, &ixs, 0, "transfer", token_send_request(to), w).await;
+            out.refused(&tag, &r);
+            if !r.risk_verdict.findings.iter().any(|f| f.pattern == pattern) {
+                unnamed.push(format!("{tag}: {}", risk(&r)));
+            }
+        }
+    }
+    out.assert_none_executable();
+    assert!(
+        unnamed.is_empty(),
+        "not refused by the owner's shape: {unnamed:#?}"
+    );
+}
+
+// ─── Audit A043: the order-sensitive rules read the bytes' order ──────────
+
+/// A 1-lamport transfer (the primary) with, beside it, an SPL `Approve` of
+/// the wallet's MINT_X account to the attacker and then `then`.
+fn approve_then(then: Ix) -> (Cluster, Vec<Ix>) {
+    let mut c = Cluster::default();
+    base_programs(&mut c);
+    let t = ata(OWNER, MINT_X);
+    c.set(MINT_X, acct(1_461_600, TOKEN, mint(10u64.pow(15), 6)));
+    c.set(OWNER, acct(10 * SOL, SYSTEM, vec![]));
+    c.set(RECIPIENT, acct(SOL, SYSTEM, vec![]));
+    c.set(
+        &t,
+        acct(RENT, TOKEN, token_account(MINT_X, OWNER, 9_000_000)),
+    );
+    let mut approve = vec![4u8];
+    approve.extend(9_000_000u64.to_le_bytes());
+    let ixs = vec![
+        ix(
+            SYSTEM,
+            &[(OWNER, true, true), (RECIPIENT, false, true)],
+            system_transfer(1),
+        ),
+        ix(
+            TOKEN,
+            &[
+                (&t, false, true),
+                (ATTACKER, false, false),
+                (OWNER, true, false),
+            ],
+            approve,
+        ),
+        then,
+    ];
+    (c, ixs)
+}
+
+/// Audit A043: Rule 5 (AAT ownership theft) compared the System `Assign`
+/// with the Approve's TOKEN ACCOUNT, which System can never reassign; the
+/// executable form assigns the owner WALLET. And Rule 1 (Approve, then a
+/// Transfer spending the same account) read the siblings in the order the
+/// request DECLARED them, so the same bytes gave the finding or not as the
+/// declaration was ordered.
+#[tokio::test]
+async fn round41_the_aat_rules_read_the_bytes_not_the_declaration() {
+    let has = |r: &VerificationResult, what: &str| {
+        r.risk_verdict
+            .findings
+            .iter()
+            .any(|f| f.pattern == "MultiInstructionDrain" && f.reason.contains(what))
+    };
+    let mut out = Outcomes::default();
+    for w in ATTACK_CONFIGS {
+        // Rule 5: the wallet assigned to the attacker's program.
+        let mut assign = vec![1u8, 0, 0, 0];
+        assign.extend(pk(FOREIGN).as_bytes());
+        let (c, ixs) = approve_then(ix(SYSTEM, &[(OWNER, true, true)], assign));
+        let r = verify(c, &ixs, 0, "transfer", one_lamport(), w).await;
+        out.refused(&format!("Approve + Assign of the owner, {w:?}"), &r);
+        assert!(
+            has(&r, "AAT ownership-theft"),
+            "{w:?}: the executable ownership theft was not seen: {}",
+            risk(&r)
+        );
+        // Rule 1, both declaration orders.
+        let theirs = ata(ATTACKER, MINT_X);
+        for order in [[1usize, 2], [2, 1]] {
+            let (mut c, ixs) = approve_then(ix(
+                TOKEN,
+                &[
+                    (&ata(OWNER, MINT_X), false, true),
+                    (&theirs, false, true),
+                    (ATTACKER, true, false),
+                ],
+                {
+                    let mut d = vec![3u8];
+                    d.extend(9_000_000u64.to_le_bytes());
+                    d
+                },
+            ));
+            c.set(
+                &theirs,
+                acct(RENT, TOKEN, token_account(MINT_X, ATTACKER, 0)),
+            );
+            let r = verify_tx_ordered(c, &ixs, 0, "transfer", one_lamport(), w, None, Some(&order))
+                .await;
+            out.refused(
+                &format!("Approve then Transfer, declared {order:?}, {w:?}"),
+                &r,
+            );
+            assert!(
+                has(&r, "AAT drain signature"),
+                "{w:?}, declared {order:?}: the Approve-then-Transfer in the bytes was not seen: {}",
+                risk(&r)
+            );
+        }
+    }
+    out.assert_none_executable();
 }

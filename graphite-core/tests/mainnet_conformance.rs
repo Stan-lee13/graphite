@@ -888,8 +888,29 @@ const COMMITTED_BLOCKS: &str =
 //     the ATA program's `Create` (`00`) rather than refused as declarations
 //     with an empty discriminator, so the first risk finding is Drainer where
 //     it was UnexpectedCpi; MultiInstructionDrain refuses it before and after.
+//
+// Re-pinned for the open low findings (A029, A043), from `39a46047…` at
+// `8aa3637`. Diffed row by row (`GRAPHITE_MAINNET_VERDICTS_OUT` with the
+// fixes reverted in place, and with them; each row bisected by reverting one
+// fix alone): 2 of 2,277 rows changed, none from refused to approved,
+// approvals 0 before and after —
+//   verdict line 33, a PumpSwap AMM `sell` (`33e685a4017f83ad`, slot
+//     449808725) under the harness's name-based `transfer` intent, with a
+//     Meteora DAMM v2 `swap` (`f8c69e91…`) beside it: A029 reads a swap
+//     program's swap as unclassed whatever its manifest says, so the
+//     declared sibling must be described by the transaction's intent
+//     (W14) and a `transfer` intent does not describe a swap — the risk
+//     column is PermissionEscalation where it was Clear. L2 refuses it
+//     ("lookup tables unresolved") before and after.
+//   verdict line 1576, an SPL Token `CloseAccount` (`09`, slot 449808325)
+//     whose account is emptied by a Transfer BEFORE it in the message: A043
+//     gives the order-sensitive pattern rules the message's order, where the
+//     primary used to be forced first, so Rule 3 (close, THEN a transfer of
+//     the closed account) no longer reads a close-and-sweep that the bytes
+//     do not execute. The risk column is Drainer where it was
+//     Drainer+MultiInstructionDrain; refused before and after.
 const COMMITTED_VERDICTS_SHA256: &str =
-    "39a4604763c4ff5300e9d554d085988d094ef05c2408fbb92dea9988c1a8265e";
+    "f9aadb51b98c3244074ebd361f5377c621b27b252045a8b0a3823d20a9bfba13";
 
 #[test]
 fn the_committed_mainnet_blocks_give_the_recorded_verdicts_every_run() {

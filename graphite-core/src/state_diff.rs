@@ -1539,18 +1539,64 @@ struct SignerLoss {
     rent: i128,
 }
 
+/// Who funded each account the transaction's TOP-LEVEL instructions create
+/// (audit A027): a System `CreateAccount` / `CreateAccountWithSeed`'s
+/// funder, or an associated-token-account `Create` / `CreateIdempotent`'s
+/// funding account. `None` for an account two instructions create with
+/// different funders. An account created inside a CPI is absent: its funder
+/// is not read.
+fn creation_funders(
+    ixs: Option<&[TopLevelInstruction]>,
+) -> std::collections::BTreeMap<String, Option<String>> {
+    let mut out: std::collections::BTreeMap<String, Option<String>> =
+        std::collections::BTreeMap::new();
+    for ix in ixs.into_iter().flatten() {
+        let created = match system_creation(ix) {
+            Some(c) => Some((c.new.to_string(), c.funder.to_string())),
+            None if ix.program_id == crate::intent_binding::ATA_PROGRAM
+                && matches!(ix.data.as_slice(), [] | [0] | [1]) =>
+            {
+                match (ix.accounts.first(), ix.accounts.get(1)) {
+                    (Some(funder), Some(new)) => Some((new.clone(), funder.clone())),
+                    _ => None,
+                }
+            }
+            None => None,
+        };
+        if let Some((new, funder)) = created {
+            let entry = out.entry(new).or_insert_with(|| Some(funder.clone()));
+            if entry.as_deref() != Some(funder.as_str()) {
+                *entry = None;
+            }
+        }
+    }
+    out
+}
+
+/// Each signer's lamport loss, its own (Round 34, R33-6/7/10).
+///
+/// Audit A027: the rent of a declared creation is credited to the signer
+/// that FUNDED it, where a top-level instruction says who (`funders`), and
+/// only then when there is more than one signer. It was one
+/// transaction-wide pool netted fee payer first, so rent a co-signer paid —
+/// funded by the user's own transfer to that co-signer — offset the user's
+/// loss. In a single-signer transaction every creation is that signer's.
 fn signer_lamport_losses(
     changed: &[&AccountDelta],
     signers: &std::collections::HashSet<&str>,
     fee_payer: Option<&str>,
     fee: i128,
     declared_creation: &dyn Fn(&AccountDelta) -> bool,
+    funders: &std::collections::BTreeMap<String, Option<String>>,
 ) -> std::collections::BTreeMap<String, SignerLoss> {
     use std::collections::BTreeMap;
     let mut out: BTreeMap<String, i128> = BTreeMap::new();
     let mut kept_in: BTreeMap<String, i128> = BTreeMap::new();
     let mut left_strangers: i128 = 0;
-    let mut creation_rent: i128 = 0;
+    let single_signer = signers.len() <= 1;
+    // Rent of declared creations, by the signer it may be credited to.
+    let mut creation_rent: BTreeMap<String, i128> = BTreeMap::new();
+    let mut pooled_rent: i128 = 0;
     for d in changed {
         let lam = d.lamport_delta();
         let is_signer = signers.contains(d.pubkey.as_str());
@@ -1575,7 +1621,19 @@ fn signer_lamport_losses(
                 *kept_in.entry(h).or_default() += lam;
             } else if d.was_created() && (gained_data || left_system) && declared_creation(d) {
                 let rent = rent_exempt_minimum(d.after.as_ref().map_or(0, |s| s.data_len));
-                creation_rent += lam.min(rent);
+                let rent = lam.min(rent);
+                match funders.get(&d.pubkey) {
+                    Some(Some(funder)) if signers.contains(funder.as_str()) => {
+                        *creation_rent.entry(funder.clone()).or_default() += rent;
+                    }
+                    // Funded by no signer, or by two instructions that
+                    // disagree: no signer's loss is its rent.
+                    Some(_) => {}
+                    // Funder not read (created inside a CPI): the only
+                    // signer's, and nobody's when several sign.
+                    None if single_signer => pooled_rent += rent,
+                    None => {}
+                }
             }
         } else if lam < 0 && !is_signer {
             let kept_before = d.before.as_ref().and_then(|s| lamports_kept_by(s, signers));
@@ -1617,8 +1675,15 @@ fn signer_lamport_losses(
                 .min(kept_pool);
             kept_pool -= kept;
             lost -= kept;
-            rent = lost.min(creation_rent);
-            creation_rent -= rent;
+            let own = creation_rent.get(&s).copied().unwrap_or(0) + pooled_rent;
+            rent = lost.min(own);
+            // The signer's own attributed rent first, then the pool (which
+            // exists only in a single-signer transaction).
+            let from_own = rent.min(creation_rent.get(&s).copied().unwrap_or(0));
+            if let Some(r) = creation_rent.get_mut(&s) {
+                *r -= from_own;
+            }
+            pooled_rent -= rent - from_own;
             lost -= rent;
         }
         losses.insert(
@@ -1880,8 +1945,9 @@ fn wrapped_for_declared_debit(
 ) -> std::collections::BTreeMap<String, i128> {
     use std::collections::BTreeMap;
     let mut out: BTreeMap<String, i128> = BTreeMap::new();
-    let (Some(spend), Some(ixs)) = (
+    let (Some(spend), Some(spent_from), Some(ixs)) = (
         declared.declared_spend,
+        declared.declared_spend_from.as_deref(),
         diff.top_level_instructions.as_ref(),
     ) else {
         return out;
@@ -1920,7 +1986,14 @@ fn wrapped_for_declared_debit(
             continue;
         }
         let names = names_of.get(to).map(Vec::as_slice).unwrap_or(&[]);
-        if !declared.covers_by_name("debit", names) || !wsol_kept_by(diff, ixs, to, from, signers) {
+        // Audit A026: the account the swap's data spends FROM, by name. A
+        // debit declared on another account (Orca's other owner account,
+        // under the other `a_to_b`) is the swap's output, and the spend is
+        // in the input mint's units.
+        if !names.contains(&spent_from)
+            || !declared.covers_by_name("debit", names)
+            || !wsol_kept_by(diff, ixs, to, from, signers)
+        {
             continue;
         }
         let entry = wrapped.entry(to).or_insert((from, 0, 0));
@@ -2260,6 +2333,10 @@ pub struct DeclaredEffects {
     /// ([`swap_spend_line`], Round 41, D-20): a decoded swap's `in_amount`.
     /// `None` when no line stated it, or lines stated two different amounts.
     pub declared_spend: Option<u64>,
+    /// The manifest name of the account `declared_spend` is spent from
+    /// (audit A026). `None` when the line did not name one, or lines
+    /// disagreed: then no wrap is credited to the spend.
+    pub declared_spend_from: Option<String>,
 }
 
 /// The prefix of the line the pipeline adds naming the located
@@ -2291,9 +2368,11 @@ pub const SWAP_SPEND_LINE_PREFIX: &str = "graphite: the located instruction's da
 
 /// The line stating that the located instruction's data spends at most
 /// `amount` (base units of its input; lamports for wrapped SOL) from the
-/// account its declaration debits.
-pub fn swap_spend_line(amount: u64) -> String {
-    format!("{SWAP_SPEND_LINE_PREFIX}{amount} from the account it declares it debits")
+/// account the manifest names `input_account` (audit A026: WHICH account,
+/// not only how much — Orca's declaration debits both owner accounts, and
+/// `amount` is in the input mint's units).
+pub fn swap_spend_line(amount: u64, input_account: &str) -> String {
+    format!("{SWAP_SPEND_LINE_PREFIX}{amount} from accounts.{input_account}")
 }
 
 /// What a System instruction's data says it moves out of its first account,
@@ -2474,17 +2553,33 @@ impl DeclaredEffects {
             .collect();
         // Round 41 (D-20): one amount, or none. A line that does not parse,
         // or two that disagree, state nothing.
+        // Audit A026: and the account it is spent from, `from accounts.<x>`.
         let mut spends = pipeline_lines
             .iter()
             .filter_map(|l| l.strip_prefix(SWAP_SPEND_LINE_PREFIX))
             .map(|rest| {
-                rest.split_whitespace()
-                    .next()
-                    .and_then(|n| n.parse::<u64>().ok())
+                let mut words = rest.split_whitespace();
+                let amount = words.next().and_then(|n| n.parse::<u64>().ok());
+                let from = match (words.next(), words.next(), words.next()) {
+                    (Some("from"), Some(account), None) => account
+                        .strip_prefix("accounts.")
+                        .filter(|n| !n.is_empty())
+                        .map(str::to_string),
+                    _ => None,
+                };
+                (amount, from)
             });
-        let declared_spend = match spends.next().flatten() {
-            Some(n) if spends.all(|o| o == Some(n)) => Some(n),
-            _ => None,
+        let (declared_spend, declared_spend_from) = match spends.next() {
+            Some((Some(n), from)) => {
+                let rest: Vec<(Option<u64>, Option<String>)> = spends.collect();
+                if rest.iter().all(|(o, _)| *o == Some(n)) {
+                    let from = from.filter(|f| rest.iter().all(|(_, o)| o.as_ref() == Some(f)));
+                    (Some(n), from)
+                } else {
+                    (None, None)
+                }
+            }
+            _ => (None, None),
         };
         let mut classes = class_lines.iter().map(|l| {
             l[SECURITY_CLASS_LINE_PREFIX.len()..]
@@ -2503,6 +2598,7 @@ impl DeclaredEffects {
             instruction_program,
             lamport_amounts,
             declared_spend,
+            declared_spend_from,
             ..Self::default()
         };
         let expected_state_changes = prose;
@@ -5020,6 +5116,7 @@ pub fn check_state_diff_with(input: &StateDiffCheck<'_>, relax: L4Relaxations) -
             declared.covers_by_name("create", names)
                 && d.after.as_ref().is_some_and(|a| reviewed_creator(&a.owner))
         },
+        &creation_funders(input.diff.top_level_instructions.as_deref()),
     );
     // Round 41 (D-20): what a wallet wrapped into its own wSOL account for
     // the located swap to spend is that account's declared debit, not the
@@ -7292,7 +7389,7 @@ mod tests {
     ) -> std::collections::BTreeMap<String, i128> {
         let declared = DeclaredEffects::parse(&[
             "debits accounts.userSourceTokenAccount".to_string(),
-            swap_spend_line(spend),
+            swap_spend_line(spend, "userSourceTokenAccount"),
         ]);
         let diff = StateDiff {
             deltas,
@@ -7312,11 +7409,80 @@ mod tests {
         pairs.iter().map(|(k, v)| (k.to_string(), *v)).collect()
     }
 
+    /// Audit A026: the wrap credit was capped by the swap's input amount but
+    /// never asked whether the wSOL account IS the swap's input. Orca's
+    /// declaration debits both owner accounts (each under a `when
+    /// data.a_to_b`, which the parse does not read), so a token -> SOL swap's
+    /// OUTPUT wSOL account was "debited by name" and lamports wrapped into it
+    /// were credited up to `amount` input-token units. Only a wrap into the
+    /// account the swap's data spends from is credited.
+    #[test]
+    fn a026_a_wrap_into_the_swaps_output_account_is_not_its_spend() {
+        let s = r41_wrap(1_000, 1_000);
+        let (w, wsol) = (s.w.as_str(), s.wsol.as_str());
+        let orca = |spent_from: &str| {
+            DeclaredEffects::parse(&[
+                "when data.a_to_b is true, debits accounts.token_owner_account_a by the input tokens"
+                    .to_string(),
+                "when data.a_to_b is false, debits accounts.token_owner_account_b by the input tokens"
+                    .to_string(),
+                swap_spend_line(100_000_000_000, spent_from),
+            ])
+        };
+        let diff = StateDiff {
+            deltas: s.deltas.clone(),
+            top_level_instructions: Some(s.ixs.clone()),
+            ..Default::default()
+        };
+        let signers: HashSet<&str> = [w].into();
+        let wallets: std::collections::BTreeSet<&str> = [w].into();
+        // The wallet's wSOL account is the swap's `token_owner_account_b`.
+        let names_of: HashMap<&str, Vec<&str>> = [(wsol, vec!["token_owner_account_b"])].into();
+        assert!(
+            wrapped_for_declared_debit(
+                &diff,
+                &orca("token_owner_account_a"),
+                &signers,
+                &wallets,
+                &names_of
+            )
+            .is_empty(),
+            "a_to_b: the wSOL account is the OUTPUT, and its wrap was credited as the spend"
+        );
+        // Control: the same account as the input is credited, exactly.
+        assert_eq!(
+            wrapped_for_declared_debit(
+                &diff,
+                &orca("token_owner_account_b"),
+                &signers,
+                &wallets,
+                &names_of
+            ),
+            r41_credited(&[(w, 1_000)])
+        );
+        // A spend line naming no account credits nothing.
+        let unnamed = DeclaredEffects::parse(&[
+            "debits accounts.token_owner_account_b".to_string(),
+            format!("{SWAP_SPEND_LINE_PREFIX}1000 from the account it declares it debits"),
+        ]);
+        assert_eq!(unnamed.declared_spend, Some(1_000));
+        assert_eq!(unnamed.declared_spend_from, None);
+        assert!(
+            wrapped_for_declared_debit(&diff, &unnamed, &signers, &wallets, &names_of).is_empty()
+        );
+        // Two lines naming different accounts state no account.
+        let two = DeclaredEffects::parse(&[
+            swap_spend_line(1_000, "token_owner_account_a"),
+            swap_spend_line(1_000, "token_owner_account_b"),
+        ]);
+        assert_eq!(two.declared_spend_from, None);
+    }
+
     #[test]
     fn r41_the_declaration_reads_the_debit_and_the_spend() {
         let declared = DeclaredEffects::parse(&[
             "debits accounts.userSourceTokenAccount".to_string(),
-            swap_spend_line(1_000),
+            swap_spend_line(1_000, "userSourceTokenAccount"),
         ]);
         assert!(declared.covers_by_name("debit", &["userSourceTokenAccount"]));
         assert!(!declared.covers_by_name("debit", &["somethingElse"]));
@@ -7361,7 +7527,7 @@ mod tests {
         };
         let declared = DeclaredEffects::parse(&[
             "debits accounts.userSourceTokenAccount".to_string(),
-            swap_spend_line(1_000),
+            swap_spend_line(1_000, "userSourceTokenAccount"),
         ]);
         assert!(
             wrapped_for_declared_debit(&diff, &declared, &signers, &wallets, &names_of).is_empty()
@@ -7682,6 +7848,88 @@ mod tests {
         })));
     }
 
+    /// Audit A027 (R33-7 through rent): one transaction-wide creation-rent
+    /// credit, netted fee payer first, never asked who paid the rent. A
+    /// co-signer A funds a declared creation X with exactly its rent R; a
+    /// sibling sends R from the user U to A. A nets 0, and U's R loss was
+    /// fully excused as "rent". The rent is A's: U's loss stands. A creation
+    /// whose funder is not read is credited to nobody when several sign, and
+    /// to the only signer otherwise.
+    #[test]
+    fn a027_rent_a_co_signer_paid_does_not_excuse_the_users_loss() {
+        let (u, a, x, prog) = (r41_key(41), r41_key(42), r41_key(43), r41_key(44));
+        let r = rent_exempt_minimum(165);
+        let lam = |v: i128| u64::try_from(v).expect("fits");
+        let deltas = [
+            // U pays the fee and sends R to A.
+            r41_delta(
+                &u,
+                Some(lamport_snapshot(&u, 10_000_000)),
+                Some(lamport_snapshot(&u, 10_000_000 - 5_000 - lam(r))),
+            ),
+            // X: created, R, owned by the instruction's program.
+            r41_delta(
+                &x,
+                None,
+                Some(AccountSnapshot {
+                    owner: prog.clone(),
+                    data_len: 165,
+                    ..lamport_snapshot(&x, lam(r))
+                }),
+            ),
+        ];
+        let changed: Vec<&AccountDelta> = deltas.iter().collect();
+        let declared = |d: &AccountDelta| d.pubkey == x;
+        let losses = |signers: &[&str], funder: Option<&str>| {
+            let signers: HashSet<&str> = signers.iter().copied().collect();
+            let funders: std::collections::BTreeMap<String, Option<String>> = funder
+                .map(|f| [(x.clone(), Some(f.to_string()))].into())
+                .unwrap_or_default();
+            signer_lamport_losses(&changed, &signers, Some(&u), 5_000, &declared, &funders)[&u]
+                .unexplained
+        };
+        assert_eq!(
+            losses(&[&u, &a], Some(&a)),
+            r,
+            "A funded X: its rent excused U's loss"
+        );
+        assert_eq!(
+            losses(&[&u, &a], None),
+            r,
+            "two signers, the funder not read: the rent is nobody's"
+        );
+        // Controls: U funded it; or U is the only signer.
+        assert_eq!(losses(&[&u, &a], Some(&u)), 0);
+        assert_eq!(losses(&[&u], None), 0);
+        assert_eq!(losses(&[&u], Some(&u)), 0);
+        // The funders are read from the top-level instructions.
+        let create = TopLevelInstruction {
+            program_id: SYSTEM_PROGRAM.to_string(),
+            accounts: vec![a.clone(), x.clone()],
+            data: {
+                let mut d = 0u32.to_le_bytes().to_vec();
+                d.extend(lam(r).to_le_bytes());
+                d.extend(165u64.to_le_bytes());
+                d.extend([7u8; 32]);
+                d
+            },
+        };
+        assert_eq!(
+            creation_funders(Some(std::slice::from_ref(&create))).get(&x),
+            Some(&Some(a.clone()))
+        );
+        let ata_create = TopLevelInstruction {
+            program_id: crate::intent_binding::ATA_PROGRAM.to_string(),
+            accounts: vec![u.clone(), x.clone()],
+            data: vec![1],
+        };
+        assert_eq!(
+            creation_funders(Some(&[create, ata_create][..])).get(&x),
+            Some(&None),
+            "two funders: none"
+        );
+    }
+
     #[test]
     fn r41_each_signers_loss_is_netted_exactly() {
         let (p, q, x, prog) = (r41_key(1), r41_key(2), r41_key(3), r41_key(20));
@@ -7747,7 +7995,14 @@ mod tests {
         let changed: Vec<&AccountDelta> = deltas.iter().collect();
         let signers: HashSet<&str> = [p.as_str(), q.as_str()].into();
         let declared = |d: &AccountDelta| [&c, &c2, &c3].contains(&&d.pubkey);
-        let losses = signer_lamport_losses(&changed, &signers, Some(&p), 5_000, &declared);
+        // P's top-level instructions created the three (audit A027: the
+        // rent is credited to whoever funded it).
+        let funders: std::collections::BTreeMap<String, Option<String>> = [&c, &c2, &c3]
+            .iter()
+            .map(|k| (k.to_string(), Some(p.clone())))
+            .collect();
+        let losses =
+            signer_lamport_losses(&changed, &signers, Some(&p), 5_000, &declared, &funders);
         let got: Vec<(String, i128, i128)> = losses
             .iter()
             .map(|(s, l)| (s.clone(), l.unexplained, l.rent))
@@ -7755,13 +8010,12 @@ mod tests {
         // Kept pool: 1,500,000 kept in, less 200,000 a stranger's = 1,300,000.
         // P (fee payer first): 3,000,000 lost, 1,000,000 kept, then the
         // creations' rent (r0 + r100 = 2,477,760) covers the 2,000,000 left.
-        // Q: 1,000,000 lost, 300,000 of the pool left, then the 477,760 of
-        // rent left: 222,240 unexplained.
+        // Q: 1,000,000 lost, 300,000 of the pool left: 700,000 unexplained.
+        // Audit A027: this used to give Q the 477,760 of P's rent P did not
+        // need (222,240 unexplained) — rent another signer paid offset Q's
+        // loss. It is P's, and offsets nothing of Q's.
         assert_eq!(r0 + r100, 2_477_760);
-        let mut want = vec![
-            (p.clone(), 0, 2_000_000),
-            (q.clone(), 222_240, r0 + r100 - 2_000_000),
-        ];
+        let mut want = vec![(p.clone(), 0, 2_000_000), (q.clone(), 700_000, 0)];
         want.sort();
         assert_eq!(got, want);
     }
@@ -7797,7 +8051,15 @@ mod tests {
         let none = |_: &AccountDelta| false;
         let loss = |deltas: Vec<AccountDelta>| {
             let changed: Vec<&AccountDelta> = deltas.iter().collect();
-            signer_lamport_losses(&changed, &signers, Some(&u), 5_000, &none)[&u].unexplained
+            signer_lamport_losses(
+                &changed,
+                &signers,
+                Some(&u),
+                5_000,
+                &none,
+                &Default::default(),
+            )[&u]
+                .unexplained
         };
         // (a) 50 SOL out of U's stake account to a stranger, U pays the fee.
         let drained = loss(vec![

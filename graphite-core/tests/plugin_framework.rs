@@ -681,6 +681,12 @@ fn test_event_logger_records_each_verification() {
     assert!(events[0].approved);
     assert!(!events[1].approved);
     assert!(events[1].risk_status.contains("Blocked"));
+    // Audit A044: an approval nothing simulated is not a signable one, and
+    // the event says so.
+    assert_eq!(events[0].decision, "analysis_only");
+    assert!(!events[0].executable);
+    assert_eq!(events[1].decision, "blocked");
+    assert!(!events[1].executable);
 }
 
 #[test]
@@ -706,6 +712,12 @@ fn test_event_file_sink_appends_jsonl_end_to_end() {
     let v: serde_json::Value = serde_json::from_str(content.lines().next().unwrap()).unwrap();
     assert_eq!(v["approved"], serde_json::Value::Bool(true));
     assert_eq!(v["program_id"], SYSTEM_PROGRAM);
+    // Audit A044: `approved` alone is true for an analysis_only verdict
+    // (no RPC here: nothing was simulated). The stream the operator's
+    // tooling reads says whether the verdict permits signing, as the
+    // verdict does.
+    assert_eq!(v["decision"], "analysis_only", "{v}");
+    assert_eq!(v["executable"], serde_json::Value::Bool(false), "{v}");
     let _ = std::fs::remove_dir_all(&dir);
 }
 

@@ -246,6 +246,36 @@ fn the_server_and_cli_json_of_every_corpus_verdict_reads_back_to_the_same_decisi
     assert!(checked >= 70, "{checked} readable vectors");
 }
 
+/// Audit A044: the verification event stream (`GRAPHITE_PLUGIN_EVENTS_FILE`,
+/// the built-in analytics plugin's `VerificationEvent`) is a surface too.
+/// It carried `approved` and nothing else, and `approved` is true for every
+/// analysis_only verdict. Each corpus verdict's event carries the decision
+/// the verdict carries, and `executable` exactly where the Core's rule says
+/// the verdict permits signing.
+#[test]
+fn the_event_stream_line_of_every_corpus_verdict_carries_its_decision() {
+    use graphite_core::plugins::event_logger::VerificationEvent;
+    let c = corpus();
+    let mut checked = 0;
+    for v in c["verdicts"].as_array().unwrap() {
+        let Some(r) = read(v) else { continue };
+        let want = v["expect"]["rust"].as_str().unwrap();
+        let line = serde_json::to_string(&VerificationEvent::from_result(&r)).unwrap();
+        assert!(!line.contains('\n'), "{}: one JSONL line", v["name"]);
+        let wire: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(wire["decision"], r.decision.as_str(), "{}", v["name"]);
+        assert_eq!(wire["approved"], r.approved, "{}", v["name"]);
+        assert_eq!(
+            wire["executable"],
+            want == "executable",
+            "{}: the event's `executable` is the Core's rule",
+            v["name"]
+        );
+        checked += 1;
+    }
+    assert!(checked >= 70, "{checked} readable vectors");
+}
+
 /// The corpus's four bases, produced again through the real binary.
 #[cfg(feature = "server")]
 mod real_binary {

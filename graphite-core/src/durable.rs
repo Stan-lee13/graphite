@@ -3345,6 +3345,62 @@ impl AuditLog {
         None
     }
 
+    /// Audit A082: the LAST verification recorded under `key` whose
+    /// timestamp is at or before `cutoff` (the trail's own format, see
+    /// [`rfc3339_utc`]) — the verdict that could have governed something
+    /// that happened at `cutoff`. Verdicts recorded later are not it.
+    /// Searches the active file, then the archives newest-first, by scan.
+    pub fn find_verification_recorded_by(
+        &self,
+        key: VerificationKey<'_>,
+        cutoff: &str,
+    ) -> Option<AuditRecord> {
+        let wanted = key.value().trim();
+        if wanted.is_empty() {
+            return None;
+        }
+        let find_in = |file: &mut dyn std::io::Read,
+                       chain_began: &chain::GateContext|
+         -> Option<AuditRecord> {
+            let mut last = None;
+            for_each_record(file, chain_began, Some(wanted), |line| {
+                if let Ok(r) = serde_json::from_str::<AuditRecord>(line) {
+                    if key.matches(&r) && r.timestamp.as_str() <= cutoff {
+                        last = Some(r);
+                    }
+                }
+            });
+            last
+        };
+        let listed = self.archives();
+        let active_began = self.chain_began_before(&listed, None);
+        let archives = {
+            let _guard = match self.file.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            let found = File::open(self.path.as_ref()).ok().and_then(|f| {
+                use std::io::Read;
+                let len = self.acknowledged_len(f.metadata().ok()?.len());
+                find_in(&mut f.take(len), &active_began)
+            });
+            if found.is_some() {
+                return found;
+            }
+            self.archives()
+        };
+        let began_before = |archive: &Path| self.chain_began_before(&archives, Some(archive));
+        for archive in archives.iter().rev() {
+            self.archive_scans.fetch_add(1, Ordering::Relaxed);
+            if let Ok(mut file) = File::open(archive) {
+                if let Some(r) = find_in(&mut file, &began_before(archive)) {
+                    return Some(r);
+                }
+            }
+        }
+        None
+    }
+
     /// Per-program observation counts over the whole trail — used by
     /// `/api/protocols/top`, which shows the five largest.
     ///
@@ -4071,6 +4127,13 @@ pub fn now_utc_rfc3339() -> String {
         .duration_since(UNIX_EPOCH)
         .map(|d| (d.as_secs(), d.subsec_millis()))
         .unwrap_or((0, 0));
+    rfc3339_utc(secs, millis)
+}
+
+/// `secs` (Unix seconds) and `millis`, in the trail's timestamp format
+/// (`YYYY-MM-DDTHH:MM:SS.mmmZ`, fixed width, so two timestamps compare as
+/// strings in time order).
+pub fn rfc3339_utc(secs: u64, millis: u32) -> String {
     // Days since Unix epoch → civil date (Howard Hinnant's algorithm).
     let days = (secs / 86_400) as i64;
     let rem = secs % 86_400;
