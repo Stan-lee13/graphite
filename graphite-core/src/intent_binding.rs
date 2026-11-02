@@ -598,8 +598,72 @@ pub fn bind(input: &BindingInput<'_>) -> Binding {
         // judged where the grant is known; a native stake withdrawal states
         // its lamports instead.
         "withdraw" => bind_stake_withdraw(input),
+        "close" => bind_close(input),
         _ => Binding::NotApplicable,
     }
+}
+
+/// A token-account close is held to its owner (Round 41 full-codebase
+/// audit).
+///
+/// `close` bound nothing. The owner closing their own wSOL account — 10 SOL
+/// wrapped — to their wallet, with a System transfer beside it forwarding
+/// the 10 SOL to an attacker, netted to the rent at L4 and was
+/// `executable_approved`; so was a close sending the lamports to the attacker
+/// directly. Now every top-level SPL Token / Token-2022 `CloseAccount` sends
+/// what it frees to an account its owner keeps, and nothing beside the
+/// closes moves a signer's value to anyone else ([`keeps_value`], with the
+/// closing owners as keepers). A `close` with no token `CloseAccount` — a
+/// program's own close — is judged by its grant, as before.
+fn bind_close(input: &BindingInput<'_>) -> Binding {
+    let Ok(ixs) = input.instructions else {
+        return Binding::NotApplicable;
+    };
+    let closes: Vec<&Ix> = ixs
+        .iter()
+        .filter(|ix| {
+            (ix.program_id == SPL_TOKEN_PROGRAM || ix.program_id == SPL_TOKEN_2022_PROGRAM)
+                && ix.data.first() == Some(&9)
+        })
+        .collect();
+    if closes.is_empty() {
+        return Binding::NotApplicable;
+    }
+    let Some(diff) = input.diff else {
+        return Binding::unbound(
+            "no simulated state diff: where the closed accounts' lamports went was not measured",
+        );
+    };
+    // CloseAccount { }: [account, destination, owner].
+    let mut keepers: Vec<String> = Vec::new();
+    for (i, ix) in closes.iter().enumerate() {
+        let (Some(dest), Some(owner)) = (account(ix, 1), account(ix, 2)) else {
+            return Binding::unbound(format!(
+                "close: CloseAccount {i} names no destination or owner"
+            ));
+        };
+        if !input.signers.contains(&owner) {
+            return Binding::unbound(format!(
+                "close: CloseAccount {i}'s owner {owner} does not sign this transaction"
+            ));
+        }
+        if !keepers.contains(&owner) {
+            keepers.push(owner);
+        }
+        if !kept_by(&dest, &keepers, diff, ixs) {
+            return Binding::mismatch(format!(
+                "close: CloseAccount {i} sends what it frees to {dest}, which is not an account the owner keeps"
+            ));
+        }
+    }
+    if let Err(b) = keeps_value("close", ixs, &closes, &keepers, input.signers, diff, &[]) {
+        return b;
+    }
+    Binding::Bound(format!(
+        "{} token account(s) closed to {}, and nothing beside them moves a signer's value elsewhere",
+        closes.len(),
+        keepers.join(", ")
+    ))
 }
 
 fn need<'p>(value: Option<&'p String>, name: &str, intent: &str) -> Result<&'p str, String> {

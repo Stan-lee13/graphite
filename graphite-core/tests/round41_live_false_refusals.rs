@@ -1498,6 +1498,8 @@ async fn round41_an_intent_smaller_than_the_wrap_is_never_executable() {
 /// What runs beside the 1-lamport transfer.
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Beside {
+    /// Nothing beside the transfer (Round 41 audit: a base to add to).
+    Nothing,
     /// The live shape: the sender's Token-2022 ATA created idempotently,
     /// paid by the sender; the ATA program CPIs System and Token-2022.
     AtaCreate,
@@ -1613,6 +1615,7 @@ fn transfer_beside(beside: Beside) -> (Cluster, Vec<Ix>) {
             };
             ixs.push(ix(program, &accounts, vec![]));
         }
+        Beside::Nothing => {}
         Beside::AtaRecoverNested => {
             // `RecoverNested`: [nested, nested mint, destination, owner ATA,
             // owner mint, wallet (signer), token program].
@@ -1648,6 +1651,128 @@ fn one_lamport() -> Option<ExtractedParameters> {
 async fn transfer_verdict(beside: Beside, w: Waivers) -> VerificationResult {
     let (c, ixs) = transfer_beside(beside);
     verify(c, &ixs, 0, "transfer", one_lamport(), w).await
+}
+
+/// Round 41 full-codebase audit (critical): a System `Allocate` of the
+/// signer's own funded wallet, declared beside an honest transfer. Nothing
+/// it does moves value now, and every layer passed it — but a System-owned
+/// account holding 80 zero bytes is an uninitialised nonce account, and
+/// `InitializeNonceAccount` needs no signature from it: anyone can then make
+/// themselves its authority and `WithdrawNonceAccount` the whole balance.
+/// The same `Allocate` as the primary of a `create` is refused too.
+#[tokio::test]
+async fn round41_an_allocate_of_the_signers_funded_wallet_is_never_executable() {
+    for w in CONFIGS {
+        let (mut c, mut ixs) = transfer_beside(Beside::Nothing);
+        let mut allocate = 8u32.to_le_bytes().to_vec();
+        allocate.extend_from_slice(&80u64.to_le_bytes());
+        ixs.push(ix(SYSTEM, &[(OWNER, true, true)], allocate.clone()));
+        let after = c.post_of(OWNER).expect("the owner's wallet");
+        c.after(OWNER, acct(after.lamports, SYSTEM, vec![0u8; 80]));
+        let r = verify(c, &ixs, 0, "transfer", one_lamport(), w).await;
+        record(&format!("transfer + Allocate(owner, 80) {w:?}"), &r);
+        assert_ne!(
+            r.decision,
+            ExecutionDecision::ExecutableApproved,
+            "{w:?}: a funded wallet left holding data was approved: {}",
+            l4(&r)
+        );
+        assert!(
+            names(&r, "FundedSystemAccountGainedData"),
+            "{w:?}: L4 does not name it: {} | {}",
+            l4(&r),
+            risk(&r)
+        );
+
+        // As the primary of a `create`.
+        let mut c = Cluster::default();
+        base_programs(&mut c);
+        c.set(OWNER, acct(10 * SOL, SYSTEM, vec![]));
+        c.after(OWNER, acct(10 * SOL - FEE, SYSTEM, vec![0u8; 80]));
+        let ixs = vec![ix(SYSTEM, &[(OWNER, true, true)], allocate)];
+        let r = verify(c, &ixs, 0, "create", None, w).await;
+        record(&format!("create = Allocate(owner, 80) {w:?}"), &r);
+        assert_ne!(
+            r.decision,
+            ExecutionDecision::ExecutableApproved,
+            "{w:?}: {}",
+            l4(&r)
+        );
+    }
+}
+
+/// Round 41 full-codebase audit (high): under the `close` intent nothing
+/// held what rode beside a `CloseAccount`. The owner closes their own wSOL
+/// account (10 SOL wrapped) to their wallet, and a System transfer beside it
+/// forwards those 10 SOL to an attacker: the wallet nets only the rent, L4
+/// sees no loss, and the verdict was `executable_approved`. A close sending
+/// the account's lamports to the attacker directly is refused too; the
+/// honest close alone stays executable.
+#[tokio::test]
+async fn round41_what_rides_beside_a_close_is_held_to_the_owner() {
+    let setup = |forward: bool, to_attacker: bool| {
+        let mut c = Cluster::default();
+        base_programs(&mut c);
+        let wsol = ata(OWNER, NATIVE_MINT);
+        c.set(
+            &wsol,
+            acct(
+                RENT + 10 * SOL,
+                TOKEN,
+                token_account(NATIVE_MINT, OWNER, 10 * SOL),
+            ),
+        );
+        c.closed(&wsol);
+        let dest = if to_attacker { ATTACKER } else { OWNER };
+        let mut ixs = vec![close_account(&wsol, dest, OWNER)];
+        c.set(OWNER, acct(SOL, SYSTEM, vec![]));
+        c.set(ATTACKER, acct(SOL, SYSTEM, vec![]));
+        let mut owner_after = SOL - FEE;
+        let mut attacker_after = SOL;
+        if to_attacker {
+            attacker_after += RENT + 10 * SOL;
+        } else {
+            owner_after += RENT + 10 * SOL;
+        }
+        if forward {
+            ixs.push(ix(
+                SYSTEM,
+                &[(OWNER, true, true), (ATTACKER, false, true)],
+                system_transfer(10 * SOL),
+            ));
+            owner_after -= 10 * SOL;
+            attacker_after += 10 * SOL;
+        }
+        c.after(OWNER, acct(owner_after, SYSTEM, vec![]));
+        if attacker_after != SOL {
+            c.after(ATTACKER, acct(attacker_after, SYSTEM, vec![]));
+        }
+        (c, ixs)
+    };
+    for w in CONFIGS {
+        let (c, ixs) = setup(false, false);
+        let r = verify(c, &ixs, 0, "close", None, w).await;
+        record(&format!("close own wSOL {w:?}"), &r);
+        assert_executable(&format!("an honest close of the owner's wSOL, {w:?}"), &r);
+        for (forward, to_attacker, what) in [
+            (true, false, "the unwrapped SOL forwarded beside the close"),
+            (
+                false,
+                true,
+                "the close sending the lamports to the attacker",
+            ),
+        ] {
+            let (c, ixs) = setup(forward, to_attacker);
+            let r = verify(c, &ixs, 0, "close", None, w).await;
+            record(&format!("close: {what} {w:?}"), &r);
+            assert_ne!(
+                r.decision,
+                ExecutionDecision::ExecutableApproved,
+                "{w:?}: {what} was approved: {}",
+                risk(&r)
+            );
+        }
+    }
 }
 
 /// D-21 reproduction: the ATA program's own Token-2022 and System CPIs under

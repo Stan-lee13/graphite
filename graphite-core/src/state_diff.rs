@@ -4600,6 +4600,44 @@ pub fn check_state_diff_with(input: &StateDiffCheck<'_>, relax: L4Relaxations) -
             ));
         }
 
+        // Round 41 full-codebase audit (critical): a System-owned account
+        // that held lamports and no data, and ends System-owned holding data,
+        // was allocated in place. Agave lets anyone run
+        // `InitializeNonceAccount` on a System-owned account of the nonce size
+        // without that account's signature, then `WithdrawNonceAccount` its
+        // whole balance; and since nothing moved yet, every other rule passed
+        // it (a funded wallet `Allocate`d beside a bound transfer was
+        // `executable_approved`). A creation never looks like this: a created
+        // account held no lamports. Critical whatever the declaration says,
+        // unless the account ends an initialised nonce whose authority a
+        // signer holds.
+        let funded_wallet_before = d
+            .before
+            .as_ref()
+            .is_some_and(|s| s.lamports > 0 && s.data_len == 0 && s.owner == SYSTEM_PROGRAM);
+        let system_data_after = d
+            .after
+            .as_ref()
+            .is_some_and(|s| s.owner == SYSTEM_PROGRAM && s.data_len > 0);
+        if funded_wallet_before && system_data_after {
+            let own_nonce = d
+                .after
+                .as_ref()
+                .and_then(|s| native_authority(s, "nonce authority"))
+                .is_some_and(|a| signers.contains(a));
+            if !own_nonce {
+                findings.push(StateDiffFinding::critical(
+                    "FundedSystemAccountGainedData",
+                    acct,
+                    format!(
+                        "an account holding {} lamports, owned by the System program with no data, ends owned by it holding {} bytes: allocated in place, it can be initialised as a nonce account by anyone and its lamports withdrawn",
+                        d.lamports_before(),
+                        d.after.as_ref().map_or(0, |s| s.data_len)
+                    ),
+                ));
+            }
+        }
+
         if let Some((from, to)) = d.owner_change() {
             // A pre-funded, zero-data System account being handed to a program
             // is how `allocate`+`assign` builds an account — but it is also
