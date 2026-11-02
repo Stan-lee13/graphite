@@ -47,6 +47,11 @@ tool, and a per-tool entry decides that tool — so switching approval off for t
 takes an explicit entry naming them. Keep `experimental_toolApprovalSecret` set whenever
 approvals round-trip through a client.
 
+A cancelled call is not signed (Audit A004). Each fund-moving tool passes the call's
+`abortSignal` to the guard: aborted before the signed bytes leave, nothing is sent and the
+result is `refusedBy: "error"` naming the cancellation. Once the bytes have left, the
+execution runs to its end; they cannot be recalled.
+
 The SDK's approval is asked BEFORE the tool runs, so what the person approves is the
 model's request, not the transaction (Round 30, audit finding K-01). `graphiteTools`
 therefore requires a `confirm` hook — the guard's own confirmation, asked after grounding,
@@ -64,11 +69,15 @@ the two, `graphiteTools` refuses.
 
 Every tool returns a structured result (`GraphiteToolResult`): `executed`, and when it did
 not, `refusedBy` — `spend-policy`, `request-grounding`, `swap-route`, `residual-policy`, `person`,
-`graphite`, `submission-unknown` (signed and handed to the RPC with an unknown outcome:
+`confirmation-unavailable` (the `confirm` hook threw or did not answer in time: nobody
+refused, and nothing was signed), `stale-verdict` (the verdict aged past the guard's bound
+before it could be signed or sent; nothing was sent), `graphite`, `submission-unknown` (signed and handed to the RPC with an unknown outcome:
 `signature` is set, and must be checked before any retry; also a repeat refused because an
 earlier submission of the same request may still land), `duplicate-request` (the same
 request is already running), `unsupported` (a capability the guard does not have, named in
-`unsupported`, e.g. `wrap_sol`) or `error` — with the reason.
+`unsupported`, e.g. `wrap_sol`) or `error` — with the reason. When it executed, `decision`
+names what the guard acted on (`executable_approved`, or `analysis_only` under residuals the
+operator accepted by name).
 Reasons are bounded and have URLs, bearer tokens and key-like values redacted before the
 model sees them. When the Core was asked, the result carries its verdict: what the approval
 covers (`scope`: the exact bytes, or only a description), the transaction's SHA-256, the
@@ -94,8 +103,8 @@ bounds hold whatever it writes:
   of the accepted forms ("swap <amount> <token> for <token>", optionally "for at least
   <amount> <token>" and "with <n>% slippage"); a question or a condition is refused.
 - **The route must be worth what was asked** (Round 29, H2/H4). Only exact-in
-  instructions the guard decodes are built (Jupiter v6 `route`/`shared_accounts_route`,
-  Orca Whirlpools, Raydium CPMM/CLMM/AMM v4, Meteora DLMM); the route's own minimum
+  instructions the guard decodes are built (Jupiter v6 `route`/`shared_accounts_route` and
+  their `_v2` forms, Orca Whirlpools, Raydium CPMM/CLMM/AMM v4, Meteora DLMM); the route's own minimum
   output must be within the allowed slippage of the simulated output and meet a price
   floor — the request's stated minimum and the operator's `GRAPHITE_SWAP_MIN_RATES`, each that is set (the request can raise the operator's floor, never lower it).
   With neither, the swap is refused unless `GRAPHITE_SWAP_ALLOW_UNPRICED=1`.

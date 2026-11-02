@@ -61,6 +61,9 @@ cd integrations/agent-guard
 npm ci --ignore-scripts
 ```
 
+The package (`@graphite/agent-guard`) is `"private": true` and is not published to npm
+(Audit A092); integrations in this repository import it by path.
+
 ## What the guard guarantees
 
 The guard is the reference execution boundary for Graphite. Its invariant, attacked in
@@ -90,9 +93,12 @@ submitted — and nothing is signed under a residual the operator has not accept
   `execution-lifecycle.ts` is the only path from verdict to network: policy →
   `signApproved` → `POST /audit/event` `signing` → submit → `POST /audit/event`
   `submission` → confirm → `POST /verify/execution` (L8). Every call carries
-  `audit_trail_id` and `transaction_sha256` with the `content_hash`. A signing that
-  cannot be recorded, whose `verdict_on_record` is not `approved`, or that the server
-  resolved by any key other than `audit_trail_id`, aborts *before* submission; after
+  `audit_trail_id` and `transaction_sha256` with the `content_hash`; a signing under
+  residuals the operator accepted names them (`accepted_unobserved`, Audit A010). A signing
+  that cannot be recorded, whose `verdict_on_record` is not `approved` (or, for an
+  `analysis_only` verdict signed under accepted residuals, `not_executable`, which a Round 41
+  Core answers for it), or that the server resolved by any key other than
+  `audit_trail_id`, aborts *before* submission; after
   submission every failure is reported on `outcome.lifecycle` and none is hidden. L8's
   `reconciliation` comes with `attribution` (`chain` when Graphite joined on the bytes
   behind the signature itself, checked to be that signature's) and
@@ -182,9 +188,11 @@ submitted — and nothing is signed under a residual the operator has not accept
   creation of the wallet's own associated account for the output mint
   (`GRAPHITE_SWAP_CREATE_OUTPUT_ATA=1`, only when the route writes to it). Built from
   configuration and the wallet's key, never from the payload, and declared to the Core as
-  siblings. Wrapping and unwrapping SOL is not built: the Core's risk engine refuses SPL
-  Token CloseAccount outright, so an unwrap would block every SOL-output swap
-  (`swap-envelope.ts`).
+  siblings. Wrapping and unwrapping SOL is not built (`swap-envelope.ts`,
+  `GUARD_CAPABILITIES`). The reason `swap-envelope.ts` gives, that the Core refuses every SPL
+  Token CloseAccount, no longer holds: since Round 21 the risk engine exempts a CloseAccount
+  whose destination is its own authority, read from the bytes, and since Round 41 (D-22) L4
+  accepts the wallet's own wrapped-SOL unwrap. The guard has not been changed to build one.
 - Durable-nonce shapes are refused at build: `lastValidBlockHeight` does not bound them.
 - **The operator's spend limits (`spend-policy.ts`, Round 24).** Graphite cannot know
   whether a person wanted a request; the amount bounds the damage when a model was talked
@@ -227,6 +235,12 @@ submitted — and nothing is signed under a residual the operator has not accept
   under residuals accepted by name); `verdict.approved` is the Core's flag, which an
   `analysis_only` verdict carries too, so a hook that tells a person "approved" reads
   `decision`.
+- **A cancelled request is not signed (Audit A004).** `executeTransfer` and `executeSwap`
+  take the caller's `AbortSignal` as `{ signal }`. Aborted before signing (after the
+  confirmation, which can take minutes, included) or after the signing is recorded and
+  before the bytes leave, the call throws `RequestCancelled` and nothing is sent. Once the
+  bytes have left, the execution runs to its end: they cannot be recalled. The MCP server
+  passes the request's `extra.signal`, the Vercel AI tools their `abortSignal`.
 - **Only the Core's executable decision is signed, recomputed (Round 30, G-01; Round 34,
   G-5).** `approved` alone never was the gate. The Core must report `decision` and
   `executable`, and the guard recomputes the whole of the Core's rule with the SDK's
@@ -492,6 +506,7 @@ const guard = await GraphiteGuard.create({
 // artifact_bound approval whose digest matches — and, here, a person's yes.
 const outcome = await guard.executeTransfer("Transfer 0.05 SOL to <address>", {
   confirm: async (summary) => askAPerson(summary), // destination, lamports, effect, verdict
+  signal: controller.signal, // optional (an AbortController's): aborted, nothing is sent
 });
 
 if (!outcome.verifiedExecution) {

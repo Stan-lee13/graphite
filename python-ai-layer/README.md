@@ -20,8 +20,10 @@ full advisory labeler:
 
 - **Full Core vocabulary.** Emits exactly the intents the Core's semantic layer
   (L5) understands: `swap|trade|exchange`, `transfer|send`, `stake|delegate`,
-  `close|close_account`, `create|create_account`, `approve|revoke`, plus
-  `unknown` as the honest fallback. `mint`/`bridge`/`lend` are detected and
+  `close|close_account`, `create|create_account`, `approve|revoke`, since
+  Round 30 `withdraw`, `claim`, `burn` and `configure` (each with a
+  `GRANT_SCOPED_INTENT` warning: the Core declares them only for the
+  instructions a grounded grant names), plus `unknown` as the honest fallback. `mint`/`bridge`/`lend` are detected and
   surfaced as **advisory warnings** but labeled `unknown` (fail-closed), because
   the Core has no semantic class for them.
 - **Manifest-grounded suggestions.** At load time the labeler reads the verified
@@ -54,13 +56,16 @@ full advisory labeler:
 - **"delegate" as a noun.** "Revoke the delegate authority" is `revoke`; it
   used to be `stake`.
 - **Not every withdrawal is a stake withdrawal.** "claim rewards", "withdraw
-  liquidity from Orca", withdrawing fees or collateral: `unknown` with
-  `WITHDRAWAL_UNMODELED`. "Unstake 3 SOL" and "Withdraw 1 jitoSOL" stay
-  `stake`.
+  liquidity from Orca", withdrawing fees or collateral were `unknown` with
+  `WITHDRAWAL_UNMODELED`. Since Round 30 they are `withdraw` or `claim`
+  (`GRANT_SCOPED_INTENT`), and since Round 34 (R33-1) "Unstake 3 SOL" and
+  "Withdraw 1 jitoSOL" are `withdraw` too, no longer `stake`.
 - **Stop words are not tokens.** "stake my SOL" extracts `SOL` (it extracted
   `my`); "Approve the transaction" extracts no token (it extracted `the`);
   "Approve spending of 500 USDC" extracts amount `500` and token `USDC` (it
   extracted the token `500`).
+- **"my" is not "all"** (Audit A074): "send my 5 SOL to X" is 5 SOL, and
+  "send my USDC to X" states no amount; "my" used to read as everything.
 
 ## Round 30 — the label never says more than the text does
 
@@ -116,13 +121,18 @@ python3 intent_parser.py --bench 20000
   "suggested_program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
   "suggested_discriminator": "bb64facc31c4af14",
   "protocol_candidates": [
-    {"manifest": "jupiter-v6.json", "program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", "name": "Jupiter V6 Aggregator", "instruction": "route"}
+    …,
+    {"manifest": "jupiter-v6.json", "program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", "name": "Jupiter V6 Aggregator", "instruction": "route"},
+    …
   ],
   "advisory_warnings": [],
   "matched_kind": "swap",
   "parse_version": "2"
 }
 ```
+
+`protocol_candidates` is shortened here: it lists one instruction from every
+registry manifest that has one matching the intent, in manifest-file order.
 
 The `confidence_of_parse` field measures how confident the labeler is that it
 understood the user — this is NOT the same as Graphite Core's verification

@@ -61,8 +61,9 @@ rule reads an absent decision and as the agent guard has refused one since Round
 was judged by the recomputation alone, which was looser than the Core: such a server
 predates every rule added since). Its verdict is still readable. `verify` refuses a
 response whose `executable: true` its own fields contradict, and an integer field spelled
-as a float (`215.0`, `2.15e2`) or past its type (a u32 limit over 4,294,967,295), as the
-Core's types and the Go SDK do (R39-CLIENTS-3). `examples/decisions/conformance.json` holds
+as anything but a plain non-negative integer (`215.0`, `2.15e2`, `-0`; R39-CLIENTS-3, Audit
+A059) or past its type (a u32 limit over 4,294,967,295), as the Core's types and the Go SDK
+do. `examples/decisions/conformance.json` holds
 this SDK, the Go SDK, the Core's rule and the agent guard to one outcome per vector
 (`src/conformance.test.ts`). An operator who has deliberately accepted a
 residual (the agent guard's `ResidualPolicy`) makes that decision in their own code, by
@@ -78,7 +79,10 @@ an object that names the same key twice, at any depth (`{"approved": false, …,
 "approved": true}`, or the same key spelled with an escape), throws `DuplicateKeyError`.
 `JSON.parse` keeps the last of the two silently, while the Go SDK refuses them; two readers
 of one response must not see two verdicts in it. Keys are compared as `JSON.parse` sees
-them, so case matters here (Go also folds case, because its decoder does).
+them, so case matters here (Go also folds case, because its decoder does). Since Audit A059
+a body that starts with a byte-order mark is refused, as serde and Go refuse it, and
+`parseJsonStrict` reads nothing on a runtime whose `JSON.parse` gives the reviver no source
+text (Node 22 or later has it): without it a number's spelling cannot be checked.
 
 ## Send the bytes, require `artifact_bound`
 
@@ -137,10 +141,17 @@ requests; `content_hash` is the same key under its deprecated name, and when bot
 sent they must be equal. The client sends whichever you give under both names, which
 every Core accepts. Record `signing` before you submit and refuse to submit if it is not
 recorded, if the verdict on record is not `approved`, or if it was not resolved by
-`audit_trail_id`. `verifyExecution({ signature, instruction_bind_key, transaction_sha256,
+`audit_trail_id`. Since Round 41 (Audit A010) `verdict_on_record` can also be
+`not_executable`: the verification was approved for analysis only, which never permitted
+signing. An operator who signs such a verdict under residuals it accepted by name sends
+them as `accepted_unobserved` on the `signing` event, so the signing is attributable (a
+Core before Round 41 ignores the field and answers `approved`). `verifyExecution({ signature, instruction_bind_key, transaction_sha256,
 audit_trail_id })` runs L8 after submission and returns the reconciliation with
 `attribution` (`chain` when L8 joined on the bytes behind the signature) and
-`caller_keys_disagree`; `discrepancy: true` is `BlockedButExecuted`;
+`caller_keys_disagree`; `discrepancy: true` is `BlockedButExecuted`, or
+`NotExecutableButExecuted { decision, accepted_unobserved }` (an `analysis_only` or
+`inconclusive` verdict that executed) unless a signing event for that verification named
+the residuals its operator accepted;
 `chain_bytes_rejected` (Round 11) is set when the RPC returned bytes for the
 signature that are not bound to it — nothing was attributed and your keys were
 not consulted in their place, so treat it as "the RPC is wrong", not as a

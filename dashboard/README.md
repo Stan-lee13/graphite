@@ -61,7 +61,8 @@ npm ci
 npm run dev        # dev server on :5173, proxies the Core's routes to :7331
 npm run build      # typecheck + production build → dist/ (no source maps)
 npm run typecheck  # tsc --noEmit only
-npm test           # tsx --test (Node 22+): transport, router, connection storage, figures, status, shapes, modal stack, CSP
+npm test           # tsx --test (Node 22+): transport, router, connection storage, figures, status, shapes, modal stack, CSP,
+                   # polling state, unknown-not-zero, and the decision conformance corpus (examples/decisions)
 ```
 
 - The dev proxy target is `http://localhost:7331` by default; override with
@@ -110,7 +111,7 @@ did not report as `executable_approved`:
 ```bash
 npm run build && npm run preview -- --port 4173 &   # serves dist/ with the security headers
 # a Core on loopback with GRAPHITE_CORS_ORIGINS=http://127.0.0.1:4173
-node e2e/smoke.mjs http://127.0.0.1:4173/ http://127.0.0.1:7331 "$GRAPHITE_API_KEY"
+node e2e/smoke.mjs http://127.0.0.1:4173/ http://127.0.0.1:7331 "$GRAPHITE_READ_API_KEY"
 ```
 
 `e2e/states.mjs` (Round 36, extended in Round 39) puts a fault proxy in
@@ -120,7 +121,8 @@ sign-in page, a `/health` missing fields, a Core that stops mid-session,
 hostile strings, a malformed manifest, a change of Core, deep links before
 the graph has answered, the palette over a detail pane, a refused copy and
 the connection test. `.github/scripts/dashboard-e2e.sh` runs both against a
-seeded throwaway Core.
+seeded throwaway Core, with the console on the read-only key (Audit A061);
+only the seeding uses the verify key.
 
 Playwright is not a dependency of the console; the script finds it in this
 package or under `PLAYWRIGHT_NODE_PATH`. Breaking the colour rule (drawing an
@@ -145,8 +147,15 @@ System shows **Simulation RPC** from `/health`'s `rpc_attached` — "None"
 means no approval from that Core is executable — and "Not reported" when
 the Core does not say. The audit trail and graph snapshots are "Not
 reported" too when `/health` omits them (Round 39: they were drawn "Off"),
-and a trail whose appends fail is "Failing", not "Writing". A `/metrics`
-that cannot be read faults the counters only; what `/health` said stays. It also surfaces frozen baselines and detected
+and a trail whose appends fail is "Failing", not "Writing". Since Audit A018
+`/health` carries only whether the trail and snapshots are on, the trail's
+integrity and `degraded_reasons`; the counts, sizes, chain head and
+checkpoint failures come from `/metrics`, and "Failing" is drawn from either
+source. A `/metrics` that cannot be read faults the counters only; what
+`/health` said stays. While `/health` is not answering, its last good figures
+stay on screen but are never green ("as of the last answer"), and while
+`/metrics` is not answering, all-zero bypass counters read "stale", never
+clear; a non-zero one is still an alarm (Audit A062). It also surfaces frozen baselines and detected
 program upgrades from `/health`.
 
 Every response is checked for the fields the views read (`src/shape.ts`).
@@ -167,14 +176,15 @@ is no sign-up and no key service:
    (`openssl rand -hex 32`).
 2. The Core starts with it. It refuses to start without one unless
    `GRAPHITE_DEV_MODE=1` is set, and then only on a loopback address.
-3. Every caller — this console, the agent kit, the CLI — sends the same key
-   as `Authorization: Bearer`. Every route except `/health` requires it.
+3. The agent kit and the CLI send that key as `Authorization: Bearer`. Every
+   route except `/health` requires a key.
 
 Since Round 30 a Core can also take a read-only key, `GRAPHITE_READ_API_KEY`:
 it opens only the `GET` routes this console reads (`/metrics`, `/manifests`,
-`/api/*`) and cannot submit a verification or record a lifecycle event. Give
-the console that key rather than the verify key; the Connection screen tests
-it the same way.
+`/api/*`) and cannot submit a verification or record a lifecycle event. It
+is the key the console asks for (Audit A061: the Connection screen asked
+for the verify key); give it the verify key only for a Core started without
+a read key. The Connection screen tests either the same way.
 
 The console receives its copy on the Connection screen, which tests it in
 two steps: `/health` proves the address is a Core that this origin may talk
