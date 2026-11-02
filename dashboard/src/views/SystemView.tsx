@@ -5,7 +5,7 @@
 
 import { api, type Health, type Metrics } from "../api";
 import { readBypassNow } from "../figures";
-import { auditReading, persistenceReading, whileSilent } from "../status";
+import { anchorsFailing, auditReading, chainHead, persistenceReading, whileSilent } from "../status";
 import { usePolling } from "../usePolling";
 import { Empty, Fault, FaultNote, Figure, Freshness, PageHead, Section, Skeleton, State, fmt, pollFault, relTime } from "../ui";
 
@@ -75,8 +75,11 @@ export function SystemView() {
   const metricsFault = pollFault(metrics);
   const loading = !h;
   const countersLoading = !m && !metricsFault;
-  const audit = h ? auditReading(h) : null;
-  const persistence = h ? persistenceReading(h) : null;
+  // Audit A018: the counts and sizes come from /metrics, not /health.
+  const audit = h ? auditReading(h, m) : null;
+  const persistence = h ? persistenceReading(h, m) : null;
+  const anchors = h ? anchorsFailing(h, m) : null;
+  const head = chainHead(m);
 
   // Round 36: the last good /health stays on screen when the Core stops
   // answering (under <Freshness>'s banner), but the Status figure is about
@@ -161,16 +164,18 @@ export function SystemView() {
                   ? "Tamper-evident"
                   : "Corruption-evident"
           }
-          tone={loading ? undefined : h.audit?.integrity === "tamper_evident" && !(h.audit.anchors_failed ?? 0) ? "pass" : "warn"}
+          tone={loading ? undefined : h.audit?.integrity === "tamper_evident" && anchors === null ? "pass" : "warn"}
           sub={
             loading
               ? undefined
-              : (h.audit?.anchors_failed ?? 0) > 0
-                ? `${fmt.int(h.audit?.anchors_failed ?? 0)} checkpoint write(s) failed`
+              : anchors !== null
+                ? anchors === true
+                  ? "checkpoint writes are failing"
+                  : `${fmt.int(anchors)} checkpoint write(s) failed`
                 : h.audit?.integrity === "corruption_evident"
                   ? "no MAC key: a coherent rewrite is not detectable"
-                  : h.audit?.chain_head_seq != null
-                    ? `chain head at record ${fmt.int(h.audit.chain_head_seq)}`
+                  : head !== null
+                    ? `chain head at record ${fmt.int(head)}`
                     : undefined
           }
         />

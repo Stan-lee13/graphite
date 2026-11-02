@@ -539,7 +539,7 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
             checkpoint,
             json,
         } => {
-            let dir = data_dir_path(data_dir);
+            let dir = data_dir_path(data_dir)?;
             // Round 38 (T-14): an input that cannot be read is exit 3 (the
             // check could not be made), never 1, which a monitor reads as a
             // break.
@@ -705,7 +705,7 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
             key_file,
             out,
         } => {
-            let dir = data_dir_path(data_dir);
+            let dir = data_dir_path(data_dir)?;
             let keys = match audit_keys(key_file.as_slice(), &dir) {
                 Ok(k) => k,
                 Err(e) => return Ok(unreadable(&e)),
@@ -723,7 +723,9 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
             if let Some(b) = &report.first_break {
                 eprintln!(
                     "the trail is broken at {} line {}: {} — no checkpoint of a broken trail",
-                    b.file, b.line, b.reason
+                    terminal_safe(&b.file),
+                    b.line,
+                    terminal_safe(&b.reason)
                 );
                 return Ok(1);
             }
@@ -801,7 +803,7 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
             key_file,
             previous_key_file,
         } => {
-            let dir = data_dir_path(data_dir);
+            let dir = data_dir_path(data_dir)?;
             let key = match crate::durable::AuditKey::load(&key_file, Some(&dir)) {
                 Ok(k) => k,
                 Err(e) => return Ok(unreadable(&e)),
@@ -895,7 +897,7 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
             offset,
             key_file,
         } => {
-            let dir = data_dir_path(data_dir);
+            let dir = data_dir_path(data_dir)?;
             let keys = match audit_keys(key_file.as_slice(), &dir) {
                 Ok(k) => k,
                 Err(e) => return Ok(unreadable(&e)),
@@ -917,7 +919,9 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
             {
                 eprintln!(
                     "the trail is broken at {} line {} by more than a torn write: {} — nothing written",
-                    b.file, b.line, b.reason
+                    terminal_safe(&b.file),
+                    b.line,
+                    terminal_safe(&b.reason)
                 );
                 return Ok(1);
             }
@@ -979,7 +983,7 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
             Ok(0)
         }
         AuditAction::AcknowledgePrune { data_dir, key_file } => {
-            let dir = data_dir_path(data_dir);
+            let dir = data_dir_path(data_dir)?;
             let keys = match audit_keys(key_file.as_slice(), &dir) {
                 Ok(k) => k,
                 Err(e) => return Ok(unreadable(&e)),
@@ -1006,7 +1010,9 @@ fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
             if let Some(b) = &report.other_break {
                 eprintln!(
                     "the trail is broken at {} line {} by more than a missing prune record: {} — nothing written",
-                    b.file, b.line, b.reason
+                    terminal_safe(&b.file),
+                    b.line,
+                    terminal_safe(&b.reason)
                 );
                 return Ok(1);
             }
@@ -1089,15 +1095,17 @@ fn read_checkpoint(path: &Path) -> Result<crate::durable::Checkpoint, String> {
 /// The server's durable state directory: `--data-dir`, else
 /// `GRAPHITE_DATA_DIR`, else `./graphite-data` — the same resolution order
 /// `serve` uses, so the CLI and the server agree on which graph they mean.
-fn data_dir_path(explicit: Option<PathBuf>) -> PathBuf {
-    explicit
-        .or_else(|| {
-            std::env::var("GRAPHITE_DATA_DIR")
-                .ok()
-                .filter(|s| !s.trim().is_empty())
-                .map(PathBuf::from)
-        })
-        .unwrap_or_else(|| PathBuf::from("graphite-data"))
+///
+/// Audit A035: an empty or blank `GRAPHITE_DATA_DIR` fell back to
+/// `./graphite-data` here while the server used it as given (the current
+/// directory, or a directory named " "), so an operator's quarantine landed
+/// in a graph the server never loads. Both now resolve it through
+/// `operator_boundary::data_dir_from_env`, which refuses it.
+fn data_dir_path(explicit: Option<PathBuf>) -> Result<PathBuf, String> {
+    match explicit {
+        Some(dir) => Ok(dir),
+        None => crate::operator_boundary::data_dir_from_env(),
+    }
 }
 
 /// Where `graphite benchmark --json` finds the committed inputs when no
@@ -1110,14 +1118,42 @@ fn release_eval_root() -> Option<PathBuf> {
         .find(|dir| dir.join(crate::release_eval::CORPUS_DIR).is_dir())
 }
 
+/// The exit status a command uses for "the check could not be made", for
+/// the commands whose 1 is a finding a monitor acts on (audit A034).
+/// `None`: the command's 1 already fails closed (`verify` rejects).
+fn could_not_run_exit_code(command: &CliCommand) -> Option<i32> {
+    match command {
+        #[cfg(feature = "rpc")]
+        CliCommand::Execution { .. } => Some(EXIT_EXECUTION_UNAVAILABLE),
+        CliCommand::Audit { .. } => Some(3),
+        CliCommand::Registry {
+            action: RegistryAction::VerifyRecords { .. },
+        } => Some(EXIT_RECORDS_UNREADABLE),
+        _ => None,
+    }
+}
+
+/// `registry verify-records`: the state could not be read (or the
+/// environment was refused), so no record was checked. Never 1, which
+/// says a record failed (audit A034).
+pub const EXIT_RECORDS_UNREADABLE: i32 = 3;
+
 pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
     // Round 38 (Round 37, V-2): the CLI reads the same variables the server
     // does (`GRAPHITE_DATA_DIR`, `GRAPHITE_AUDIT_KEY_FILE`, the L4 opt-outs),
     // and a misspelled one is a decision it never sees either.
-    let env_names: Vec<String> = std::env::vars_os()
-        .filter_map(|(k, _)| k.into_string().ok())
-        .collect();
-    crate::operator_boundary::check_env_names(env_names.iter().map(String::as_str))?;
+    if let Err(e) = crate::operator_boundary::check_process_env() {
+        // Audit A034: the refusal left `main` as an error, which exits 1 —
+        // to `graphite execution` "DISCREPANCY: blocked yet executed", to
+        // `audit verify` a broken trail, to `registry verify-records` a
+        // record that failed. A misnamed variable is a check that could not
+        // run, and each says so with its own code for that.
+        if let Some(code) = could_not_run_exit_code(&command) {
+            eprintln!("Error: {}", terminal_safe(&e));
+            std::process::exit(code);
+        }
+        return Err(e.into());
+    }
     match command {
         CliCommand::Verify { input, profile } => {
             // The SERVER'S durable semantic graph, registry and boundary
@@ -1234,7 +1270,7 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
                     Ok(())
                 }
                 crate::regression_engine::PromotionDecision::Block { reason } => {
-                    println!("P10 gate: BLOCK — {}", reason);
+                    println!("P10 gate: BLOCK — {}", terminal_safe(&reason));
                     std::process::exit(1);
                 }
             }
@@ -1271,7 +1307,9 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
         CliCommand::Registry { action } => run_registry(action),
         CliCommand::Quarantine { action } => run_quarantine(action),
         CliCommand::Audit { action } => {
-            let code = run_audit(action)?;
+            // An error is a check that could not be made: 3, never the
+            // break's 1 (audit A034, as Round 38 T-14 for unreadable inputs).
+            let code = run_audit(action).unwrap_or_else(|e| unreadable(&e.to_string()));
             if code != 0 {
                 std::process::exit(code);
             }
@@ -1515,6 +1553,22 @@ fn load_registry(
     }
 }
 
+/// The registry the server would load at startup, for a command that
+/// reproduces what the server enforces: a missing file is a fresh engine,
+/// an unreadable or corrupt one an error, as the server refuses it (audit
+/// A037: `protocol status` and `protocol diff` skipped it silently).
+fn registry_in_force(
+    path: &Path,
+) -> Result<crate::manifest_registry::ManifestRegistryEngine, String> {
+    load_registry(path).map_err(|e| {
+        format!(
+            "registry state {} is unreadable: {} — the server refuses to start on it, so there is no decision to reproduce",
+            path.display(),
+            terminal_safe(&e.to_string())
+        )
+    })
+}
+
 /// Written to a temporary file and renamed into place (W12, external review):
 /// a plain write torn by a crash left a registry that does not parse, which
 /// the server reads as empty.
@@ -1606,7 +1660,7 @@ fn load_corpus_for_seed(
 /// startup error there.
 fn operator_core() -> Result<(GraphiteCore, boundary::OperatorPolicy), String> {
     let policy = boundary::OperatorPolicy::from_env()?;
-    let data_dir = data_dir_path(None);
+    let data_dir = data_dir_path(None)?;
     let mut core = GraphiteCore::open_data_dir_read_only(&data_dir)?;
     let quarantined = core.quarantined_programs().len();
     if quarantined > 0 {
@@ -1616,12 +1670,7 @@ fn operator_core() -> Result<(GraphiteCore, boundary::OperatorPolicy), String> {
         );
     }
     let registry_path = registry_state_path(None);
-    let engine = load_registry(&registry_path).map_err(|e| {
-        format!(
-            "registry state {} is unreadable: {e} — the server refuses to start on it, so there is no decision to reproduce",
-            registry_path.display()
-        )
-    })?;
+    let engine = registry_in_force(&registry_path)?;
     let merged = core.merge_community_manifests(&engine);
     if merged > 0 {
         eprintln!(
@@ -1914,12 +1963,13 @@ fn run_protocol(action: ProtocolAction) -> Result<(), Box<dyn std::error::Error>
             data_dir,
             program_id,
         } => {
-            let dir = data_dir_path(data_dir);
+            let dir = data_dir_path(data_dir)?;
             let mut core = GraphiteCore::open_data_dir_read_only(&dir)?;
             let registry_path = registry_state_path(None);
-            if let Ok(engine) = load_registry(&registry_path) {
-                core.merge_community_manifests(&engine);
-            }
+            // Refused, not skipped (audit A037): a registry this command
+            // cannot read is one the server refuses to start on, and without
+            // it a community-onboarded program reads as having no manifest.
+            core.merge_community_manifests(&registry_in_force(&registry_path)?);
 
             let snapshot = core.graph_snapshot();
             let node = snapshot.nodes.iter().find(|n| n.program_id == program_id);
@@ -2053,11 +2103,14 @@ fn run_protocol(action: ProtocolAction) -> Result<(), Box<dyn std::error::Error>
                 )
                 .map_err(|e| format!("parsing {}: {e}", path.display()))?,
                 None => {
-                    let dir = data_dir_path(data_dir);
+                    let dir = data_dir_path(data_dir)?;
                     let mut core = GraphiteCore::open_data_dir_read_only(&dir)?;
-                    if let Ok(engine) = load_registry(&registry_state_path(None)) {
-                        core.merge_community_manifests(&engine);
-                    }
+                    // Refused, not skipped (audit A037): without the
+                    // registry, a program with accepted community versions
+                    // read "this candidate would be its first", exit 0.
+                    let registry_path = registry_state_path(None);
+                    core.merge_community_manifests(&registry_in_force(&registry_path)?);
+                    eprintln!("registry: {}", registry_path.display());
                     match core.registry().get(&candidate_manifest.protocol.program_id) {
                         Some(m) => m.clone(),
                         None => {
@@ -2326,18 +2379,23 @@ fn run_manifest_verify(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     // second copy of the schema check would eventually accept something the
     // loader rejects, and this command exists to predict the loader.
     let mut registry = crate::manifest::ManifestRegistry::new();
+    // Audit A033 (R39-CB-15 left this out): a submitter's manifest names,
+    // labels and the loader's error quoting them reach the reviewer's
+    // terminal escaped. An instruction named `x ESC[1A ESC[2K \r VALID ...`
+    // turned "INVALID" into "VALID" on screen.
+    let t = terminal_safe;
     match registry.load_from_json(&json) {
         Ok(_) => {
-            println!("VALID  {}", path.display());
-            println!("  protocol      {}", manifest.protocol.name);
-            println!("  program       {}", manifest.protocol.program_id);
-            println!("  version       v{}", manifest.version.label);
+            println!("VALID  {}", t(&path.display().to_string()));
+            println!("  protocol      {}", t(&manifest.protocol.name));
+            println!("  program       {}", t(&manifest.protocol.program_id));
+            println!("  version       v{}", t(&manifest.version.label));
             println!("  instructions  {}", manifest.instructions.len());
             for ix in &manifest.instructions {
                 println!(
                     "    {:<28} {:<20} {} account(s)",
-                    ix.name,
-                    ix.discriminator,
+                    t(&ix.name),
+                    t(&ix.discriminator),
                     ix.accounts.len()
                 );
             }
@@ -2350,8 +2408,8 @@ fn run_manifest_verify(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         Err(e) => {
-            println!("INVALID  {}", path.display());
-            println!("  {e}");
+            println!("INVALID  {}", t(&path.display().to_string()));
+            println!("  {}", t(&e.to_string()));
             std::process::exit(1);
         }
     }
@@ -2382,7 +2440,7 @@ fn run_execution(
         .ok_or("no RPC endpoint: pass --rpc-url or set GRAPHITE_RPC_URL")?;
     crate::rpc_client::validate_endpoint(&endpoint).map_err(|e| format!("{source}: {e}"))?;
 
-    let dir = data_dir_path(data_dir);
+    let dir = data_dir_path(data_dir)?;
     let mut core = GraphiteCore::open_data_dir_read_only(&dir)?;
     core.attach_rpc_client(crate::rpc_client::SolanaRpcClient::new(
         crate::rpc_client::RpcConfig {
@@ -2811,7 +2869,7 @@ fn run_import_census(
         .iter()
         .map(|p| program_id_arg(p))
         .collect::<Result<Vec<_>, _>>()?;
-    let dir = data_dir_path(data_dir);
+    let dir = data_dir_path(data_dir)?;
 
     let print_plan = |plan: &ci::ImportPlan| {
         println!(
@@ -2832,7 +2890,11 @@ fn run_import_census(
         );
         println!();
         for i in &plan.imports {
-            println!("IMPORT  {}  ({})", i.program_id, i.name);
+            println!(
+                "IMPORT  {}  ({})",
+                terminal_safe(&i.program_id),
+                terminal_safe(&i.name)
+            );
             println!(
                 "  census       {} successful transactions over {}s, slots {}..{}, measured_at {}",
                 i.census_transactions,
@@ -2861,7 +2923,12 @@ fn run_import_census(
             );
         }
         for s in &plan.skipped {
-            println!("SKIP    {}  ({}): {}", s.program_id, s.name, s.reason);
+            println!(
+                "SKIP    {}  ({}): {}",
+                terminal_safe(&s.program_id),
+                terminal_safe(&s.name),
+                terminal_safe(&s.reason)
+            );
         }
         println!();
     };
@@ -2973,7 +3040,7 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
                 // for, arriving through a command named "seed".
                 return Err("nothing to seed - supply at least one evidence flag".into());
             }
-            let dir = data_dir_path(data_dir);
+            let dir = data_dir_path(data_dir)?;
             let mut core = GraphiteCore::open_data_dir(dir.clone())?;
             let trail = OperatorTrail::open(&dir)?;
             let evidence = BehaviorEvidence {
@@ -3087,7 +3154,7 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
             // the store refused the rest only after the lock was taken).
             crate::semantic_graph_store::validate_baseline(&baseline)
                 .map_err(|e| format!("invalid baseline: {e}"))?;
-            let dir = data_dir_path(data_dir);
+            let dir = data_dir_path(data_dir)?;
             let core = GraphiteCore::open_data_dir(dir.clone())?;
             let trail = OperatorTrail::open(&dir)?;
             core.seed_simulation_baseline(&program_id, baseline)?;
@@ -3124,7 +3191,7 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
             data_dir,
             program_id,
         } => {
-            let dir = data_dir_path(data_dir);
+            let dir = data_dir_path(data_dir)?;
             let core = GraphiteCore::open_data_dir_read_only(&dir)?;
             match core.program_behavior(&program_id) {
                 Some(b) => {
@@ -3143,9 +3210,11 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
                     if b.quarantined {
                         println!(
                             "  QUARANTINED  {}",
-                            b.quarantine_reason
-                                .as_deref()
-                                .unwrap_or("no reason recorded")
+                            terminal_safe(
+                                b.quarantine_reason
+                                    .as_deref()
+                                    .unwrap_or("no reason recorded")
+                            )
                         );
                     }
                 }
@@ -3159,7 +3228,7 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
             program_id,
         } => {
             let program_id = program_id_arg(&program_id)?;
-            let dir = data_dir_path(data_dir);
+            let dir = data_dir_path(data_dir)?;
             let core = GraphiteCore::open_data_dir(dir.clone())?;
             let trail = OperatorTrail::open(&dir)?;
             let promoted = core.promote_shadow_baseline(&program_id)?;
@@ -3204,7 +3273,7 @@ fn run_quarantine(action: QuarantineAction) -> Result<(), Box<dyn std::error::Er
             reason,
         } => {
             let program_id = program_id_arg(&program_id)?;
-            let dir = data_dir_path(data_dir);
+            let dir = data_dir_path(data_dir)?;
             // Takes the data directory's lock (Round 19, F-19-12): beside a
             // running server this refuses, rather than writing a snapshot the
             // server's next one would overwrite. Use POST /admin/quarantine
@@ -3225,7 +3294,10 @@ fn run_quarantine(action: QuarantineAction) -> Result<(), Box<dyn std::error::Er
                 )
                 .into());
             }
-            println!("QUARANTINED {program_id} — {}", reason.trim());
+            println!(
+                "QUARANTINED {program_id} — {}",
+                terminal_safe(reason.trim())
+            );
             println!(
                 "trust tier forced to Unknown until lifted; graph: {}",
                 dir.display()
@@ -3238,40 +3310,36 @@ fn run_quarantine(action: QuarantineAction) -> Result<(), Box<dyn std::error::Er
             program_id,
         } => {
             let program_id = program_id_arg(&program_id)?;
-            let dir = data_dir_path(data_dir);
+            let dir = data_dir_path(data_dir)?;
             let core = GraphiteCore::open_data_dir(dir.clone())?;
             let trail = OperatorTrail::open(&dir)?;
-            let reason_before_lift = core
-                .quarantined_programs()
-                .into_iter()
-                .find(|(p, _)| p == &program_id)
-                .map(|(_, reason)| reason);
-            core.lift_program_quarantine_durably(&program_id)?
-                .map_err(|e| format!("the lift was not written to disk: {e}"))?;
+            // Recorded first, applied after (audit A017, as at
+            // `/admin/quarantine`): the lift used to reach the snapshot
+            // before its record, and a crash between the two restarted the
+            // program lifted with no lift on the trail. A lift the graph
+            // would refuse is refused before anything is written.
+            core.check_quarantine_liftable(&program_id)?;
             if !trail.record(&program_id, format!("quarantine lifted for {program_id}")) {
                 // The server's rule (W21): restoring trust with no record of
-                // who restored it is the failing-open direction, so a lift the
-                // trail cannot take is undone.
-                let restored = core.quarantine_program_durably(
-                    &program_id,
-                    reason_before_lift
-                        .as_deref()
-                        .filter(|r| !r.trim().is_empty())
-                        .unwrap_or("quarantine restored"),
+                // who restored it is the failing-open direction.
+                return Err(
+                    "the audit trail could not record the lift, so it was not applied; the quarantine stays in force"
+                        .into(),
                 );
-                return Err(format!(
-                    "the audit trail could not record the lift, so it was not applied (quarantine restored: {})",
-                    if matches!(restored, Ok(Ok(()))) { "yes" } else { "NO" }
-                )
-                .into());
             }
+            core.lift_program_quarantine_durably(&program_id)?
+                .map_err(|e| {
+                    format!(
+                        "the lift is on the audit trail but was not written to disk, so the quarantine stays in force: {e}"
+                    )
+                })?;
             println!("LIFTED {program_id} — tier recomputed from evidence (P7)");
             println!("graph: {}", dir.display());
             println!("{NO_SERVER_HOLDS_THIS_DIRECTORY}");
             Ok(())
         }
         QuarantineAction::List { data_dir } => {
-            let dir = data_dir_path(data_dir);
+            let dir = data_dir_path(data_dir)?;
             let core = GraphiteCore::open_data_dir_read_only(&dir)?;
             let active = core.quarantined_programs();
             if active.is_empty() {
@@ -3288,7 +3356,7 @@ fn run_quarantine(action: QuarantineAction) -> Result<(), Box<dyn std::error::Er
                     } else {
                         reason
                     };
-                    println!("  {program}  {reason}");
+                    println!("  {}  {}", terminal_safe(&program), terminal_safe(&reason));
                 }
             }
             Ok(())
@@ -3314,7 +3382,11 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
                 println!("  (no reviewers registered)");
             }
             for r in reviewers.values() {
-                println!("  {} — reputation {}", r.pubkey, r.reputation_score);
+                println!(
+                    "  {} — reputation {}",
+                    terminal_safe(&r.pubkey),
+                    r.reputation_score
+                );
             }
             let records = engine.records();
             println!(
@@ -3322,16 +3394,31 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
                 records.len()
             );
             for rec in records {
+                // Audit A033: a community record's label and source are the
+                // submitter's text.
                 println!(
                     "  {} v{} — {:?} — source {}",
-                    rec.program_id, rec.version_label, rec.trust_tier, rec.source
+                    terminal_safe(&rec.program_id),
+                    terminal_safe(&rec.version_label),
+                    rec.trust_tier,
+                    terminal_safe(&rec.source)
                 );
             }
             Ok(())
         }
         RegistryAction::VerifyRecords { state } => {
             let path = registry_state_path(state);
-            let engine = load_registry(&path)?;
+            let engine = match load_registry(&path) {
+                Ok(engine) => engine,
+                Err(e) => {
+                    eprintln!(
+                        "registry state {} could not be read: {} — no record was checked",
+                        path.display(),
+                        terminal_safe(&e.to_string())
+                    );
+                    std::process::exit(EXIT_RECORDS_UNREADABLE);
+                }
+            };
             let (mut failed, mut unproven) = (0usize, 0usize);
             for rec in engine.records() {
                 let outcome = rec.verify_offline();
@@ -3346,7 +3433,12 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
                         format!("FAILED: {e}")
                     }
                 };
-                println!("  {} v{}: {label}", rec.program_id, rec.version_label);
+                println!(
+                    "  {} v{}: {}",
+                    terminal_safe(&rec.program_id),
+                    terminal_safe(&rec.version_label),
+                    terminal_safe(&label)
+                );
             }
             println!(
                 "{} record(s): {failed} failed, {unproven} unproven",
@@ -3460,7 +3552,10 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
                     trust_tier,
                     version_label,
                 } => {
-                    println!("ACCEPTED — {version_label} at trust tier {trust_tier:?}");
+                    println!(
+                        "ACCEPTED — {} at trust tier {trust_tier:?}",
+                        terminal_safe(&version_label)
+                    );
                     save_registry(&engine, &state_path)?;
                     save_graph(&store, &graph_path)?;
                     println!("engine state: {}", state_path.display());
@@ -3468,7 +3563,7 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
                     Ok(())
                 }
                 RegistryDecision::Rejected { reason } => {
-                    println!("REJECTED — {reason}");
+                    println!("REJECTED — {}", terminal_safe(&reason));
                     // A refusal by the replay gate is recorded by the engine
                     // (audit 2026-10-20, MR-2: a refused version is never
                     // retaken), and it only holds if it is saved.
@@ -3569,7 +3664,9 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
                 },
                 result.confidence,
                 result.trust_tier,
-                result.summary
+                // Audit A033: the summary echoes the request's text, which
+                // `explain` escapes too.
+                terminal_safe(&result.summary)
             );
             if corpus.len() == before {
                 println!("fixture already present (deduped by content hash) — corpus unchanged");

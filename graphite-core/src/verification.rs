@@ -4943,6 +4943,14 @@ impl GraphiteCore {
         self.lift_program_quarantine_durably(program_id).map(|_| ())
     }
 
+    /// Whether [`Self::lift_program_quarantine_durably`] would lift
+    /// `program_id` (it is known and quarantined), with nothing changed.
+    pub fn check_quarantine_liftable(&self, program_id: &str) -> Result<(), VerificationError> {
+        self.graph()
+            .check_liftable(program_id)
+            .map_err(VerificationError::SemanticGraph)
+    }
+
     /// `lift_program_quarantine`, reporting whether the lift reached disk.
     pub fn lift_program_quarantine_durably(
         &self,

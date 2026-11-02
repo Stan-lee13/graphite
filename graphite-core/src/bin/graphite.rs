@@ -506,7 +506,8 @@ enum RegistryAction {
         state: Option<PathBuf>,
     },
     /// Check every acceptance record from its own contents: exit 0 all
-    /// verified, 1 one failed, 2 one predates retained signatures
+    /// verified, 1 one failed, 2 one predates retained signatures, 3 the
+    /// state could not be read or the environment was refused
     VerifyRecords {
         /// Registry state file (default: registry_state.json)
         #[arg(long)]

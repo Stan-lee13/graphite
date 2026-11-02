@@ -249,6 +249,87 @@ pub fn check_env_names<'a>(names: impl IntoIterator<Item = &'a str>) -> Result<(
     ))
 }
 
+/// Refuse to start over the process environment: every check
+/// [`check_env`] makes, on `std::env::vars_os()`. The server and the CLI
+/// call this before they read anything else.
+pub fn check_process_env() -> Result<(), String> {
+    check_env(std::env::vars_os())
+}
+
+/// [`check_env_names`] over `(name, value)` pairs as the OS holds them,
+/// and (audit A036) a refusal of what is not UTF-8: a value of a variable
+/// the Core reads, and a name that begins `GRAPHITE_` or is a near-miss of
+/// one the Core reads. Every switch is read through `std::env::var`, which
+/// cannot tell such a value from an unset one — a Latin-1 env file's
+/// `GRAPHITE_WALLET_PROFILE=treasury` + NBSP dropped the pin without a line
+/// — and [`check_env_names`] never saw such a name. Only names are quoted:
+/// a value may be a key.
+pub fn check_env(
+    vars: impl IntoIterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
+) -> Result<(), String> {
+    let mut names: Vec<String> = Vec::new();
+    let mut unreadable: Vec<String> = Vec::new();
+    for (name, value) in vars {
+        match name.into_string() {
+            Ok(name) => {
+                if value.to_str().is_none() && CORE_ENV_NAMES.contains(&name.as_str()) {
+                    unreadable.push(format!("the value of {name}"));
+                }
+                names.push(name);
+            }
+            Err(raw) => {
+                let lossy = raw.to_string_lossy().to_ascii_uppercase();
+                let ours = lossy.starts_with("GRAPHITE_")
+                    || CORE_ENV_NAMES
+                        .iter()
+                        .any(|core| edit_distance(&lossy, core, 2) <= 2);
+                if ours {
+                    unreadable.push(format!("the name {:?}", raw.to_string_lossy()));
+                }
+            }
+        }
+    }
+    check_env_names(names.iter().map(String::as_str))?;
+    if unreadable.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "{} not valid UTF-8, and the Core would have read {} as unset. Re-save the environment file as UTF-8 (a non-breaking space pasted from a document is a common cause). REFUSING TO START.",
+        unreadable.join(" and "),
+        if unreadable.len() == 1 { "it" } else { "them" },
+    ))
+}
+
+/// The data directory when none is configured, relative to the working
+/// directory.
+pub const DEFAULT_DATA_DIR: &str = "graphite-data";
+
+/// The data directory `GRAPHITE_DATA_DIR` names (audit A035), for the
+/// server and every CLI command alike: unset is [`DEFAULT_DATA_DIR`]; set
+/// but empty or blank is refused. The CLI read an empty value as unset and
+/// the server used it as given — the working directory, or a directory
+/// named " " — so a quarantine written by the CLI landed in a graph the
+/// running server never loads.
+pub fn data_dir_from(value: Option<&std::ffi::OsStr>) -> Result<PathBuf, String> {
+    match value {
+        None => Ok(PathBuf::from(DEFAULT_DATA_DIR)),
+        Some(v) => match v.to_str() {
+            None => Err(
+                "the value of GRAPHITE_DATA_DIR is not valid UTF-8. REFUSING TO START.".to_string(),
+            ),
+            Some(s) if s.trim().is_empty() => Err(format!(
+                "GRAPHITE_DATA_DIR is set but empty. Unset it to use ./{DEFAULT_DATA_DIR}, or set it to the data directory the server uses. REFUSING TO START."
+            )),
+            Some(s) => Ok(PathBuf::from(s)),
+        },
+    }
+}
+
+/// [`data_dir_from`] on the process environment.
+pub fn data_dir_from_env() -> Result<PathBuf, String> {
+    data_dir_from(std::env::var_os("GRAPHITE_DATA_DIR").as_deref())
+}
+
 /// Parse `GRAPHITE_WALLET_PROFILE`. Accepts the four built-in names, or
 /// `custom:<min_confidence>:<TrustTier>`. An unparseable value is a
 /// configuration error the operator must see, so it is reported rather
@@ -442,8 +523,25 @@ pub struct OperatorPolicy {
 
 impl OperatorPolicy {
     /// Read from the process environment.
+    ///
+    /// A value that is present and not UTF-8 is an error, never "unset"
+    /// (audit A036; [`check_env`] refuses it first at both entry points).
     pub fn from_env() -> Result<Self, String> {
-        Self::from_lookup(|k| std::env::var(k).ok())
+        let unreadable = std::cell::RefCell::new(None::<String>);
+        let policy = Self::from_lookup(|k| match std::env::var(k) {
+            Ok(v) => Some(v),
+            Err(std::env::VarError::NotPresent) => None,
+            Err(std::env::VarError::NotUnicode(_)) => {
+                unreadable.borrow_mut().get_or_insert_with(|| k.to_string());
+                None
+            }
+        });
+        if let Some(name) = unreadable.into_inner() {
+            return Err(format!(
+                "the value of {name} is not valid UTF-8, and would have been read as unset. REFUSING TO START."
+            ));
+        }
+        policy
     }
 
     /// Read through `get` (the environment, or a test's map). Every
@@ -512,5 +610,72 @@ impl OperatorPolicy {
             }),
             None => Ok(None),
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    fn os(s: &str) -> OsString {
+        OsString::from(s)
+    }
+
+    /// Audit A036: every switch was read through `std::env::var(k).ok()`,
+    /// which turns a value that is not UTF-8 into "unset": a Latin-1 env
+    /// file's `GRAPHITE_WALLET_PROFILE=treasury` + NBSP (0xA0) dropped the
+    /// pin without a line, and `GRAPHITE_QUARANTINE_ON_UPGRADE`,
+    /// `GRAPHITE_L8_HIGH_ASSURANCE` and `GRAPHITE_AUDIT_KEY_FILE` turned off
+    /// the same way. A Core variable whose value is not UTF-8 refuses to
+    /// start, and so does a name that is not UTF-8 but begins `GRAPHITE_`
+    /// (`check_env_names` never saw it).
+    #[test]
+    fn a_value_or_name_that_is_not_utf8_refuses_to_start() {
+        let bad = OsString::from_vec(b"treasury\xa0".to_vec());
+        let e = check_env([(os("GRAPHITE_WALLET_PROFILE"), bad)])
+            .expect_err("a pin that is not UTF-8 was read as unset");
+        assert!(e.contains("GRAPHITE_WALLET_PROFILE"), "{e}");
+        assert!(e.contains("UTF-8"), "{e}");
+        assert!(e.contains("REFUSING TO START"), "{e}");
+
+        let e = check_env([(
+            os("GRAPHITE_AUDIT_KEY_FILE"),
+            OsString::from_vec(b"/etc/graphite/\xffkey".to_vec()),
+        )])
+        .expect_err("a key file path that is not UTF-8 was read as unset");
+        assert!(e.contains("GRAPHITE_AUDIT_KEY_FILE"), "{e}");
+
+        let name = OsString::from_vec([b"GRAPHITE_".as_slice(), b"WALLET_PROFIL\xc9"].concat());
+        assert!(
+            check_env([(name, os("treasury"))]).is_err(),
+            "a GRAPHITE_ name that is not UTF-8 is never reported"
+        );
+
+        // Controls: the same value in UTF-8 starts; a variable of nobody's
+        // that is not UTF-8 is not the Core's business.
+        assert!(check_env([(os("GRAPHITE_WALLET_PROFILE"), os("treasury\u{a0}"))]).is_ok());
+        assert!(check_env([(os("LC_SOMETHING"), OsString::from_vec(vec![0xff]))]).is_ok());
+        assert!(check_env([(OsString::from_vec(vec![b'X', 0xff]), os("1"))]).is_ok());
+    }
+
+    /// Audit A035: one resolution of `GRAPHITE_DATA_DIR` for the server and
+    /// the CLI, and an empty or blank one refuses rather than meaning the
+    /// working directory to one and `./graphite-data` to the other.
+    #[test]
+    fn an_empty_data_dir_is_refused_not_resolved() {
+        assert_eq!(data_dir_from(None), Ok(PathBuf::from(DEFAULT_DATA_DIR)));
+        assert_eq!(
+            data_dir_from(Some(std::ffi::OsStr::new("/srv/graphite"))),
+            Ok(PathBuf::from("/srv/graphite"))
+        );
+        for blank in ["", " ", "\t\n"] {
+            let e = data_dir_from(Some(std::ffi::OsStr::new(blank))).unwrap_err();
+            assert!(e.contains("GRAPHITE_DATA_DIR is set but empty"), "{e}");
+            assert!(e.contains("REFUSING TO START"), "{e}");
+        }
+        let bad = OsString::from_vec(b"/srv/\xffg".to_vec());
+        assert!(data_dir_from(Some(&bad)).is_err());
     }
 }

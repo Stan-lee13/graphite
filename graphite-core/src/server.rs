@@ -1328,6 +1328,14 @@ struct Limits {
     connection_lifetime: Duration,
 }
 
+/// The largest `GRAPHITE_MAX_CONCURRENT` and `GRAPHITE_MAX_CONNECTIONS` a
+/// start accepts (audit A088). Each sizes a tokio semaphore, which panics
+/// above `usize::MAX >> 3` — the connection cap's only after "listening" was
+/// logged — so a value checked only as `> 0` panicked instead of refusing.
+/// A million is far beyond what one process serves, and far below the panic.
+const MAX_CONFIGURED_POOL: usize = 1_000_000;
+const _: () = assert!(MAX_CONFIGURED_POOL <= usize::MAX >> 3);
+
 impl Limits {
     fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
         let var = |name: &str| get(name);
@@ -1359,15 +1367,15 @@ impl Limits {
                 "GRAPHITE_MAX_CONCURRENT",
                 var("GRAPHITE_MAX_CONCURRENT").as_deref(),
                 DEFAULT_MAX_CONCURRENT_VERIFICATIONS,
-                "a whole number of verifications greater than 0",
-                |n| n > 0,
+                "a whole number of verifications from 1 to 1000000",
+                |n| (1..=MAX_CONFIGURED_POOL).contains(&n),
             )?,
             max_connections: env_number(
                 "GRAPHITE_MAX_CONNECTIONS",
                 var("GRAPHITE_MAX_CONNECTIONS").as_deref(),
                 DEFAULT_MAX_CONNECTIONS,
-                "a whole number of connections greater than 0",
-                |n| n > 0,
+                "a whole number of connections from 1 to 1000000",
+                |n| (1..=MAX_CONFIGURED_POOL).contains(&n),
             )?,
             // Round 40 (R39-CB-8): the default cap applies to every peer
             // but a listed proxy, through which every client's connection
@@ -1393,10 +1401,7 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
     // Round 36 (F-020), Round 38 (R37-15): a misspelled variable is a
     // decision the Core never sees. Any name no Graphite component reads
     // refuses to start.
-    let env_names: Vec<String> = std::env::vars_os()
-        .filter_map(|(k, _)| k.into_string().ok())
-        .collect();
-    crate::operator_boundary::check_env_names(env_names.iter().map(String::as_str))?;
+    crate::operator_boundary::check_process_env()?;
 
     // Decided first, before the data directory is touched or anything binds,
     // so a misconfigured deployment fails at the first line of output rather
@@ -1408,9 +1413,10 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
     )?;
 
     // ---- configuration from environment ----
-    let data_dir = std::env::var("GRAPHITE_DATA_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("graphite-data"));
+    // The CLI's resolution, not a copy of it (audit A035): an empty or
+    // blank value refuses to start rather than meaning the working
+    // directory here and `./graphite-data` to the CLI.
+    let data_dir = crate::operator_boundary::data_dir_from_env()?;
     std::fs::create_dir_all(&data_dir)?;
     // Creating the directory is not the same as being able to WRITE in it:
     // the common container failure is a volume mounted root-owned while the
@@ -2233,21 +2239,7 @@ async fn serve_hardened(
 }
 
 fn build_app(state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
-    let metrics = state.metrics.clone();
-    let panics = state.metrics.handler_panics.clone();
-    let cors = if cors_origins.is_empty() {
-        // Default: no CORS headers — browsers cannot call cross-origin.
-        // Server-to-server clients are unaffected.
-        tower_http::cors::CorsLayer::new()
-    } else {
-        tower_http::cors::CorsLayer::new()
-            .allow_origin(cors_origins)
-            .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-            .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
-            .max_age(Duration::from_secs(3600))
-    };
-
-    Router::new()
+    let routes = Router::new()
         .route("/verify", post(verify_handler))
         .route("/health", get(health_handler))
         .route("/metrics", get(metrics_handler))
@@ -2275,7 +2267,32 @@ fn build_app(state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
         // The programs whose simulation baseline is frozen, by id. On
         // `/health` until the 2026-10-20 audit, which answers without a key;
         // it now carries only the count there.
-        .route("/api/frozen-baselines", get(frozen_baselines_handler))
+        .route("/api/frozen-baselines", get(frozen_baselines_handler));
+    harden(routes, state, cors_origins)
+}
+
+/// Every layer the production router runs its routes under: the middleware
+/// (Host check, rate limit, auth, concurrency permit), CORS, tracing, the
+/// panic catcher and its counter, the body limit, the request timeout and
+/// the 413/408 counters. Separate from the route table so a test can put a
+/// route of its own under exactly this stack (audit A020: the panic test
+/// built a copy of the catcher without its counter, and removing the real
+/// one failed nothing).
+fn harden(routes: Router<AppState>, state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
+    let metrics = state.metrics.clone();
+    let panics = state.metrics.handler_panics.clone();
+    let cors = if cors_origins.is_empty() {
+        // Default: no CORS headers — browsers cannot call cross-origin.
+        // Server-to-server clients are unaffected.
+        tower_http::cors::CorsLayer::new()
+    } else {
+        tower_http::cors::CorsLayer::new()
+            .allow_origin(cors_origins)
+            .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+            .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
+            .max_age(Duration::from_secs(3600))
+    };
+    routes
         // Order (Round 19, F-19-14). Each `route_layer` wraps the ones added
         // before it, so the LAST one here runs FIRST: the dev-mode Host
         // check, then rate limit, then auth, then the concurrency permit.
@@ -2302,7 +2319,15 @@ fn build_app(state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
             dev_mode_host_middleware,
         ))
         .layer(cors)
-        .layer(TraceLayer::new_for_http())
+        // WARN, not tower-http's default ERROR (audit A016): it classifies
+        // every 5xx as a failure, and a load-shed 503 is one any caller can
+        // produce on demand. The server's own lines decide what pages
+        // (`tracing_server_error`); this one must not undo L4's rule that
+        // what a caller can manufacture never reaches the ERROR stream.
+        .layer(
+            TraceLayer::new_for_http()
+                .on_failure(tower_http::trace::DefaultOnFailure::new().level(tracing::Level::WARN)),
+        )
         // Certification item: a panicking handler must not drop the connection
         // or destabilize the server — convert the panic to a clean 500 with a
         // generic message (no internal details leaked to the client). Logging
@@ -3136,9 +3161,13 @@ async fn verify_handler(
             let status = http_error.status_code();
             let error_type = format!("{:?}", e);
 
+            // Audit A015: the caller's program_id is bounded here as on the
+            // audit row. `verify_async` refuses an id over 44 characters so
+            // that it never reaches the log line, and this line printed the
+            // raw value anyway — up to the 1 MiB body, escaped to ~4 MB.
             let line = format!(
                 "verify: {} | ERROR [{}] | {} | {:?}",
-                input.program_id,
+                log_field(&input.program_id),
                 if status.is_client_error() {
                     "CLIENT"
                 } else {
@@ -3284,23 +3313,25 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
             "analysis_only"
         },
         "rpc_attached": state.core.has_rpc_client(),
+        // Audit A018: no counter and no size. `/health` answers anyone,
+        // unthrottled, and `writes_ok`, `chain_head_seq` and the snapshot
+        // count stepped with every verdict, while the active file's size
+        // delta between two polls was the byte length of the record just
+        // written — approved and refused records differ. The counts, sizes
+        // and the chain head are at the keyed `/metrics`; a failure shows
+        // here as its `degraded_reasons` entry.
         "audit": match audit {
             Some(h) => serde_json::json!({
                 "enabled": true,
-                "writes_ok": h.writes_ok,
-                "writes_failed": h.writes_failed,
-                "active_bytes": h.active_bytes,
-                "rotations_ok": h.rotations_ok,
-                "rotations_failed": h.rotations_failed,
-                "archive_count": h.archive_count,
                 // Round 30 (G-07): what the trail's integrity rests on.
                 "integrity": if h.tamper_evident { "tamper_evident" } else { "corruption_evident" },
-                "chain_head_seq": h.chain_head_seq,
-                "anchors_failed": h.anchors_failed,
             }),
             None => serde_json::json!({ "enabled": false }),
         },
-        "graph_persistence": persistence,
+        "graph_persistence": {
+            "enabled": persistence.enabled,
+            "last_error": persistence.last_error,
+        },
         // How many programs' trusted baseline has refused at least
         // MIN_SAMPLES clean executions (Round 17, F-16-02). Which ones, at
         // the authenticated /api/frozen-baselines.
@@ -3559,6 +3590,15 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
         "counter",
         audit.map(|h| h.anchors_failed).unwrap_or(0),
     );
+    // On `/health` until audit A018; absent before the first chained record.
+    if let Some(head) = audit.and_then(|h| h.chain_head_seq) {
+        push(
+            "graphite_audit_chain_head_seq",
+            "The newest audit record's position in the hash chain.",
+            "gauge",
+            head,
+        );
+    }
     let persistence = state.core.persistence_health();
     push(
         "graphite_graph_snapshots_ok_total",
@@ -4260,26 +4300,20 @@ async fn quarantine(
         tokio::time::sleep(Duration::from_millis(40)).await;
     }
 
-    // Kept so a lift that cannot be recorded can be undone (W21, below).
-    let reason_before_lift = state
-        .core
-        .quarantined_programs()
-        .into_iter()
-        .find(|(p, _)| p == &program_id)
-        .map(|(_, reason)| reason);
-    let outcome = if body.lift {
-        state.core.lift_program_quarantine_durably(&program_id)
-    } else {
-        let reason = body.reason.clone().unwrap_or_default();
-        state.core.quarantine_program_durably(&program_id, &reason)
-    };
-
-    let persisted = match outcome {
-        Ok(persisted) => persisted,
-        Err(e) => {
-            // These are caller-fixable (unknown program, not quarantined,
-            // missing reason), so the detail is genuinely useful — unlike an
-            // internal error, whose detail is never disclosed.
+    // A QUARANTINE is applied first and recorded after; a LIFT is recorded
+    // first and applied only once its record is on the trail (audit A017).
+    // The lift used to be applied — in the graph every `/verify` reads at
+    // its quarantine gate, and in the snapshot — and reverted if its append
+    // failed: for as long as the append waited, the program verified as
+    // lifted with no lift on record, and a crash in that window restarted
+    // it lifted with none ever recorded. Recorded first, a crash between
+    // the two leaves the trail saying "lifted" and the gate quarantined,
+    // which fails closed. A lift the graph would refuse (unknown program,
+    // not quarantined) is refused here, before anything is written; the
+    // operator lock held by `quarantine_handler` keeps that answer true
+    // until the lift applies.
+    let quarantine_persisted = if body.lift {
+        if let Err(e) = state.core.check_quarantine_liftable(&program_id) {
             return Err((
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({
@@ -4288,29 +4322,39 @@ async fn quarantine(
                 })),
             ));
         }
+        None
+    } else {
+        let reason = body.reason.clone().unwrap_or_default();
+        match state.core.quarantine_program_durably(&program_id, &reason) {
+            Ok(persisted) => Some(persisted),
+            // These are caller-fixable (missing reason), so the detail is
+            // genuinely useful — unlike an internal error, whose detail is
+            // never disclosed.
+            Err(e) => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({
+                        "error": e.to_string(),
+                        "error_type": "QuarantineRejected",
+                    })),
+                ));
+            }
+        }
     };
-    if let Err(e) = &persisted {
-        tracing_server_error(&format!(
-            "operator action on {program_id} is in force but NOT persisted; it ends at the next restart: {e}"
-        ));
-    }
 
     // P9: withdrawing or restoring trust is a lifecycle-grade fact about the
     // gate itself. Recording it on the same append-only trail is what makes
     // "why was this blocked in production last Tuesday" answerable.
-    // The action has already taken effect and is not reverted if the trail
+    // A quarantine has already taken effect and is not reverted if the trail
     // cannot take the record: un-quarantining a program because the audit
     // disk is full would be failing open on the gate to protect the log.
     // The response says whether the record landed, and the log's own counters
     // mark the node degraded.
     //
-    // Round 39 (R39-CB-7): the append and, for a lift it could not record,
-    // the quarantine's return run as ONE blocking task. They were an await
-    // and a step after it, so a request cut off while its append waited
-    // (the request timeout, under a stalled audit disk) dropped the step:
-    // the lift stayed in force with no record, the failing-open direction
-    // W21 refuses. A blocking task runs to completion whatever happens to
-    // the request that started it.
+    // Round 39 (R39-CB-7): the append and, for a lift, the lift itself run
+    // as ONE blocking task, which runs to completion whatever happens to the
+    // request that started it — a request cut off while its append waited
+    // (the request timeout, under a stalled audit disk) cannot separate them.
     let record = state.audit.as_ref().map(|_| {
         LifecycleEventRecord {
             event_type: LifecycleEvent::OperatorAction,
@@ -4344,7 +4388,7 @@ async fn quarantine(
             accepted_unobserved: Vec::new(),
         }
     });
-    let (audit_recorded, restored) = {
+    let (audit_recorded, lifted) = {
         let log = state.audit.clone();
         let core = Arc::clone(&state.core);
         let lift = body.lift;
@@ -4358,25 +4402,16 @@ async fn quarantine(
             // above keeps a QUARANTINE in force when the trail cannot record
             // it, because undoing it would fail open. The same reasoning
             // refuses a LIFT that cannot be recorded: restoring trust with no
-            // record of who restored it is the failing-open direction. The
-            // quarantine is put back.
-            let restored = (!recorded && lift).then(|| {
-                core.quarantine_program_durably(
-                    &program,
-                    reason_before_lift
-                        .as_deref()
-                        .unwrap_or("quarantine restored"),
-                )
-                .is_ok()
-            });
-            (recorded, restored)
+            // record of who restored it is the failing-open direction. It is
+            // applied only once recorded.
+            let lifted = (recorded && lift).then(|| core.lift_program_quarantine_durably(&program));
+            (recorded, lifted)
         })
         .await
     };
-    if let Some(restored) = restored {
+    if body.lift && !audit_recorded {
         tracing_server_error(&format!(
-            "audit: the quarantine lift on {program_id} could not be recorded, so it was not applied (quarantine restored: {})",
-            if restored { "yes" } else { "NO" }
+            "audit: the quarantine lift on {program_id} could not be recorded, so it was not applied; the quarantine stays in force"
         ));
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
@@ -4384,8 +4419,37 @@ async fn quarantine(
                 "error": "the audit trail could not record the lift, so the quarantine stays in force",
                 "error_type": "AuditUnavailable",
                 "program_id": program_id,
-                "quarantined": restored,
+                "quarantined": true,
             })),
+        ));
+    }
+    let persisted = match (quarantine_persisted, lifted) {
+        (Some(persisted), _) | (None, Some(Ok(persisted))) => persisted,
+        // Checked above under the operator lock, so not expected; if it
+        // happens the trail says "lifted" and the gate is still quarantined,
+        // the direction that fails closed.
+        (None, failed) => {
+            let why = match failed {
+                Some(Err(e)) => e.to_string(),
+                _ => "the lift did not run".to_string(),
+            };
+            tracing_server_error(&format!(
+                "audit: the quarantine lift on {program_id} was recorded but could not be applied; the quarantine stays in force: {why}"
+            ));
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": "the lift was recorded but could not be applied; the quarantine stays in force",
+                    "error_type": "QuarantineRejected",
+                    "program_id": program_id,
+                    "quarantined": true,
+                })),
+            ));
+        }
+    };
+    if let Err(e) = &persisted {
+        tracing_server_error(&format!(
+            "operator action on {program_id} is in force but NOT persisted; it ends at the next restart: {e}"
         ));
     }
     if !audit_recorded {
@@ -5040,13 +5104,22 @@ async fn append_lifecycle_off_runtime(log: &AuditLog, record: LifecycleEventReco
     off_runtime(move || log.append_lifecycle(&record)).await
 }
 
-#[cfg(test)]
 /// The most dashboard scans that run at once: they share
 /// `verification::MAX_CONCURRENT_ARCHIVE_SCANS` with the lookups. Each
 /// parses the audit file on the blocking pool, which the audit appends of
 /// `/verify` also use; unbounded, a burst of dashboard polls queued every
 /// verdict's write behind them (review of the 2026-09-29 audit's fix, F9).
-const MAX_CONCURRENT_DASHBOARD_SCANS: usize = crate::verification::MAX_CONCURRENT_ARCHIVE_SCANS;
+///
+/// One fewer than the shared pool (audit A021): with all of it, a read-key
+/// holder keeping the dashboard routes busy put L8's and `/audit/event`'s
+/// verdict lookups — the `BlockedButExecuted` alarm among them — behind
+/// every queued poll, with no budget, until the request timed out. A lookup
+/// always has a slot the dashboard cannot take.
+const MAX_CONCURRENT_DASHBOARD_SCANS: usize = crate::verification::MAX_CONCURRENT_ARCHIVE_SCANS - 1;
+const _: () = assert!(
+    MAX_CONCURRENT_DASHBOARD_SCANS >= 1,
+    "the dashboard needs a scan slot, and the lookups one it cannot take"
+);
 
 /// [`off_runtime`] for a dashboard scan, at most
 /// [`MAX_CONCURRENT_DASHBOARD_SCANS`] at a time, the slot held until the scan
@@ -5056,6 +5129,21 @@ where
     T: Send + 'static,
     F: FnOnce() -> T + Send + 'static,
 {
+    static DASHBOARD_SCANS: std::sync::LazyLock<Arc<tokio::sync::Semaphore>> =
+        std::sync::LazyLock::new(|| {
+            Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_DASHBOARD_SCANS))
+        });
+    let slot = DASHBOARD_SCANS
+        .clone()
+        .acquire_owned()
+        .await
+        .expect("the dashboard scan semaphore is never closed");
+    // Moved into the scan, so it is held until the scan ends (W21), and
+    // released at once if the request is abandoned before the scan starts.
+    let scan = move || {
+        let _held_until_the_scan_ends = slot;
+        scan()
+    };
     match crate::verification::bounded_archive_scan(scan).await {
         Ok(v) => v,
         Err(join) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
@@ -5238,50 +5326,97 @@ async fn top_protocols_handler(
     // One graph lock per request: the snapshot is owned data, so the guard
     // drops before the audit-log reads below (no nested locking).
     let snapshot = state.core.graph_snapshot();
-    let mut rows: Vec<serde_json::Value> = snapshot
-        .nodes
+    let (rows, total) = top_protocol_rows(&snapshot.nodes, &observed, limit);
+    Ok(Json(
+        serde_json::json!({ "top": rows, "program_count": total }),
+    ))
+}
+
+/// The rows of `/api/protocols/top`: the graph's nodes and the programs the
+/// trail observed, by volume, the first `limit` of them, and how many there
+/// are in all.
+///
+/// Audit A084: this built a JSON row for every distinct id the active file
+/// holds — caller-chosen, one per descriptive `/verify` — matched each
+/// against every node with a linear scan, and sorted them all with map
+/// lookups in the comparator, to return five. The top `limit` are chosen on
+/// plain tuples first, a node is found by hash, and JSON is built for the
+/// survivors only.
+fn top_protocol_rows(
+    nodes: &[crate::verification::GraphNode],
+    observed: &std::collections::HashMap<String, usize>,
+    limit: usize,
+) -> (Vec<serde_json::Value>, usize) {
+    // (total volume, program id, the node if there is one, observed count,
+    // position): descending by volume (earned battle-tested tx + observed
+    // verifications), ties by program id for determinism (P2), then by
+    // position so even duplicate ids order the same way every time.
+    type Entry<'a> = (
+        u64,
+        &'a str,
+        Option<&'a crate::verification::GraphNode>,
+        u64,
+        usize,
+    );
+    let node_ids: std::collections::HashSet<&str> =
+        nodes.iter().map(|n| n.program_id.as_str()).collect();
+    let mut entries: Vec<Entry<'_>> = nodes
         .iter()
         .map(|n| {
-            serde_json::json!({
+            let seen = observed.get(&n.program_id).copied().unwrap_or(0) as u64;
+            (
+                n.battle_tested_tx_count.saturating_add(seen),
+                n.program_id.as_str(),
+                Some(n),
+                seen,
+                0,
+            )
+        })
+        .collect();
+    // Programs observed via the audit log that have no graph node (e.g.
+    // unknown programs that were verified and rejected).
+    entries.extend(
+        observed
+            .iter()
+            .filter(|(id, _)| !node_ids.contains(id.as_str()))
+            .map(|(id, &count)| (count as u64, id.as_str(), None, count as u64, 0)),
+    );
+    for (i, e) in entries.iter_mut().enumerate() {
+        e.4 = i;
+    }
+    let total = entries.len();
+    let order = |a: &Entry<'_>, b: &Entry<'_>| {
+        b.0.cmp(&a.0)
+            .then_with(|| a.1.cmp(b.1))
+            .then_with(|| a.4.cmp(&b.4))
+    };
+    if limit < entries.len() {
+        entries.select_nth_unstable_by(limit, order);
+        entries.truncate(limit);
+    }
+    entries.sort_unstable_by(order);
+    let rows = entries
+        .into_iter()
+        .map(|(_, program_id, node, seen, _)| match node {
+            Some(n) => serde_json::json!({
                 "program_id": n.program_id,
                 "name": n.name,
                 "trust_tier": n.trust_tier,
                 "battle_tested_tx_count": n.battle_tested_tx_count,
-                "observed_verifications": observed.get(&n.program_id).copied().unwrap_or(0),
+                "observed_verifications": seen,
                 "quarantined": n.quarantined,
-            })
-        })
-        .collect();
-    // Include programs observed via the audit log that have no graph node
-    // (e.g. unknown programs that were verified and rejected).
-    for (program_id, count) in &observed {
-        if !snapshot.nodes.iter().any(|n| &n.program_id == program_id) {
-            rows.push(serde_json::json!({
+            }),
+            None => serde_json::json!({
                 "program_id": program_id,
                 "name": program_id,
                 "trust_tier": "Unknown",
                 "battle_tested_tx_count": 0,
-                "observed_verifications": count,
+                "observed_verifications": seen,
                 "quarantined": false,
-            }));
-        }
-    }
-    // Descending by total volume (earned battle-tested tx + observed
-    // verifications); ties broken by program id for determinism (P2).
-    rows.sort_by(|a, b| {
-        let total = |v: &serde_json::Value| -> u64 {
-            v["battle_tested_tx_count"].as_u64().unwrap_or(0)
-                + v["observed_verifications"].as_u64().unwrap_or(0)
-        };
-        total(b)
-            .cmp(&total(a))
-            .then_with(|| a["program_id"].as_str().cmp(&b["program_id"].as_str()))
-    });
-    let total = rows.len();
-    rows.truncate(limit);
-    Ok(Json(
-        serde_json::json!({ "top": rows, "program_count": total }),
-    ))
+            }),
+        })
+        .collect();
+    (rows, total)
 }
 
 /// Dashboard: Manifest Registry state — accepted submissions with version
@@ -5335,17 +5470,61 @@ fn tracing_log(msg: &str) {
     tracing::info!(target: "graphite", "{}", log_safe(msg));
 }
 
+/// The longest line `log_safe` emits, in bytes, before its note that it
+/// cut the line (audit A015).
+const MAX_LOG_LINE_BYTES: usize = 8192;
+
 /// A log line with every control character escaped (A4-12, 2026-09-29
 /// audit). Server log lines interpolate caller-supplied fields — a program
 /// id, a discriminator, an error message quoting them — and in the text log
 /// format a newline in one of them wrote a second, forged log line. JSON
 /// output escapes them itself; the text format did not. Escaped at the one
 /// place every server line passes through, whatever the field.
+///
+/// Bounded too (audit A015): a line longer than `MAX_LOG_LINE_BYTES` after
+/// escaping is cut there, at a character boundary, and says so. A field a
+/// caller chose is bounded where it is interpolated (`log_field`); this is
+/// the backstop for every line, whatever it quotes.
 fn log_safe(msg: &str) -> std::borrow::Cow<'_, str> {
-    if msg.chars().any(char::is_control) {
-        std::borrow::Cow::Owned(msg.chars().flat_map(char::escape_default).collect())
-    } else {
-        std::borrow::Cow::Borrowed(msg)
+    let escape = msg.chars().any(char::is_control);
+    if !escape && msg.len() <= MAX_LOG_LINE_BYTES {
+        return std::borrow::Cow::Borrowed(msg);
+    }
+    let mut out = String::with_capacity(msg.len().min(MAX_LOG_LINE_BYTES) + 64);
+    let mut cut = false;
+    for c in msg.chars() {
+        let before = out.len();
+        if escape {
+            out.extend(c.escape_default());
+        } else {
+            out.push(c);
+        }
+        if out.len() > MAX_LOG_LINE_BYTES {
+            out.truncate(before);
+            cut = true;
+            break;
+        }
+    }
+    if cut {
+        out.push_str(&format!(
+            "… [log line cut at {MAX_LOG_LINE_BYTES} bytes; {} bytes in all]",
+            msg.len()
+        ));
+    }
+    std::borrow::Cow::Owned(out)
+}
+
+/// A caller-chosen field for a log line: as given when it is the length of
+/// an identifier, else its first 44 characters and its length (audit A015).
+fn log_field(value: &str) -> std::borrow::Cow<'_, str> {
+    const KEPT: usize = 44;
+    match value.char_indices().nth(KEPT) {
+        None => std::borrow::Cow::Borrowed(value),
+        Some((end, _)) => std::borrow::Cow::Owned(format!(
+            "{}… ({} characters)",
+            &value[..end],
+            value.chars().count()
+        )),
     }
 }
 
@@ -5547,6 +5726,107 @@ mod tests {
             log_safe("plain"),
             std::borrow::Cow::Borrowed("plain")
         ));
+    }
+
+    /// Every line a test's handler logs, captured on this thread. The tests
+    /// that use it are `#[tokio::test]` (a current-thread runtime), so the
+    /// handler runs on the thread the scoped subscriber is installed on.
+    #[derive(Clone, Default)]
+    pub(super) struct CapturedLog(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for CapturedLog {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for CapturedLog {
+        type Writer = CapturedLog;
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    impl CapturedLog {
+        /// A JSON-format subscriber (the production compose's format) writing
+        /// here, installed for this thread until the guard drops.
+        pub(super) fn install(&self) -> tracing::subscriber::DefaultGuard {
+            let subscriber = tracing_subscriber::fmt()
+                .json()
+                .with_ansi(false)
+                .with_max_level(tracing::Level::TRACE)
+                .with_writer(self.clone())
+                .finish();
+            tracing::subscriber::set_default(subscriber)
+        }
+        pub(super) fn text(&self) -> String {
+            String::from_utf8_lossy(&self.0.lock().unwrap()).into_owned()
+        }
+    }
+
+    /// Audit A015/A083: the `/verify` error branch formatted the caller's raw
+    /// `program_id` into its log line. `verify_async` refuses an id over 44
+    /// characters precisely so it never reaches "the log line", and the
+    /// response and the audit row are bounded — but one request whose
+    /// program_id was a control character and ~100k two-byte characters wrote
+    /// a WARN line of ~800 KB (`log_safe` escapes each to `\u{7ff}`). The line
+    /// must stay a few KB whatever the caller sends.
+    #[tokio::test]
+    async fn a_refused_oversized_program_id_does_not_flood_the_log() {
+        let (state, _dir) = test_state();
+        let app = build_app(state, vec![]);
+        let mut input: serde_json::Value =
+            serde_json::from_str(include_str!("../../examples/verify-input.json"))
+                .expect("the committed example parses");
+        let hostile = format!("\n{}", "\u{7ff}".repeat(100_000));
+        input["program_id"] = serde_json::Value::String(hostile);
+
+        let log = CapturedLog::default();
+        let (status, body) = {
+            let _guard = log.install();
+            post_json(&app, "/verify", None, input).await
+        };
+        assert_eq!(status, axum::http::StatusCode::BAD_REQUEST, "{body}");
+
+        let text = log.text();
+        assert!(
+            text.contains("verify: ") && text.contains("ERROR [CLIENT]"),
+            "the refusal must still be logged (probing leaves a trail): {}",
+            &text[..text.len().min(2000)]
+        );
+        let longest = text.lines().map(str::len).max().unwrap_or(0);
+        assert!(
+            longest <= 16 * 1024,
+            "one refused request wrote a {longest}-byte log line; the caller's program_id reached the log unbounded"
+        );
+        assert!(
+            !text.contains(&"\\u{7ff}".repeat(64)),
+            "the caller's padding is in the log"
+        );
+    }
+
+    /// Defence in depth behind the bounded fields (A015): whatever a line
+    /// interpolates, `log_safe` never emits more than `MAX_LOG_LINE_BYTES`
+    /// plus a short note saying it cut the line, and never splits a char.
+    #[test]
+    fn log_lines_are_bounded_in_length() {
+        let plain = "x".repeat(MAX_LOG_LINE_BYTES * 4);
+        let out = log_safe(&plain);
+        assert!(out.len() <= MAX_LOG_LINE_BYTES + 128, "{}", out.len());
+        assert!(out.contains("log line cut"), "a cut line must say so");
+
+        let escaped = format!("\u{1}{}", "€".repeat(MAX_LOG_LINE_BYTES));
+        let out = log_safe(&escaped);
+        assert!(out.len() <= MAX_LOG_LINE_BYTES + 128, "{}", out.len());
+        assert!(!out.contains('\u{1}'));
+        assert!(out.contains("log line cut"));
+
+        let short = "verify: 1111 | APPROVED";
+        assert!(matches!(log_safe(short), std::borrow::Cow::Borrowed(s) if s == short));
     }
 
     /// With no trusted proxy configured, the header must be ignored entirely —
@@ -5944,6 +6224,47 @@ mod tests {
             resp.status(),
             StatusCode::UNPROCESSABLE_ENTITY,
             "the limit must be released when the request completes (the body `{{}}` reaches the handler and is refused there)"
+        );
+    }
+
+    /// Audit A016: the server logs its own load shedding at WARN, throttled
+    /// (L4: what a caller can manufacture must not page anyone), but
+    /// `TraceLayer::new_for_http()` classifies every 5xx as a failure and its
+    /// default `on_failure` logged each shed 503 at ERROR, unthrottled. No
+    /// response a caller can produce on demand may reach the ERROR stream.
+    #[tokio::test]
+    async fn a_shed_request_logs_nothing_at_error() {
+        use axum::body::Body;
+        use tower::ServiceExt;
+
+        let (mut state, _dir) = test_state();
+        state.inflight = Arc::new(tokio::sync::Semaphore::new(1));
+        state.inflight_limit = 1;
+        let _held = Arc::clone(&state.inflight).try_acquire_owned().unwrap();
+        let app = build_app(state, vec![]);
+        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+
+        let log = CapturedLog::default();
+        let status = {
+            let _guard = log.install();
+            let mut req = axum::http::Request::builder()
+                .method("POST")
+                .uri("/verify")
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap();
+            req.extensions_mut().insert(ConnectInfo(addr));
+            app.oneshot(req).await.unwrap().status()
+        };
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        let text = log.text();
+        let errors: Vec<&str> = text
+            .lines()
+            .filter(|l| l.contains("\"level\":\"ERROR\""))
+            .collect();
+        assert!(
+            errors.is_empty(),
+            "a caller-made 503 reached the ERROR stream: {errors:?}"
         );
     }
 
@@ -6502,6 +6823,80 @@ mod tests {
             core.quarantined_programs(),
             vec![(SYSTEM.to_string(), "GHSA-2026-0003".to_string())],
             "a lift the trail never recorded is in force"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Audit A017: R39-CB-7 closed the cancellation window, not the lift's
+    /// own. The lift was applied — in the graph every `/verify` reads at its
+    /// quarantine gate, and in the on-disk snapshot — BEFORE its record was
+    /// appended, and reverted if the append failed. For as long as the append
+    /// waited (the file lock behind concurrent verify appends, the write, the
+    /// fsync), the program verified as lifted with no lift on the trail, and
+    /// a crash in that window restarted it lifted with none ever recorded.
+    /// The record comes first now: while it waits, the quarantine holds in
+    /// memory and on disk; once it lands, the lift applies.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_lift_is_not_in_force_while_its_record_waits() {
+        let (state, dir, key) = keyed_state();
+        let core = state.core.clone();
+        let log = state.audit.clone().unwrap();
+        let app = build_app(state, vec![]);
+        let (status, json) = post_json(
+            &app,
+            "/admin/quarantine",
+            Some(&key),
+            serde_json::json!({"program_id": SYSTEM, "reason": "GHSA-2026-0004"}),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::OK, "{json}");
+
+        // The trail is healthy but its append lock is held: the record waits.
+        let held = log.file.clone();
+        let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        let stall = std::thread::spawn(move || {
+            let _g = held.lock().unwrap();
+            locked_tx.send(()).unwrap();
+            let _ = release_rx.recv_timeout(Duration::from_secs(5));
+        });
+        locked_rx.recv().unwrap();
+        let lift = {
+            let app = app.clone();
+            let key = key.clone();
+            tokio::spawn(async move {
+                post_json(
+                    &app,
+                    "/admin/quarantine",
+                    Some(&key),
+                    serde_json::json!({"program_id": SYSTEM, "lift": true}),
+                )
+                .await
+            })
+        };
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(
+            core.quarantined_programs(),
+            vec![(SYSTEM.to_string(), "GHSA-2026-0004".to_string())],
+            "the lift is in force in the graph /verify reads before its record is on the trail"
+        );
+        let on_disk =
+            crate::verification::GraphiteCore::try_with_data_dir(dir.clone()).expect("data dir");
+        assert_eq!(
+            on_disk.quarantined_programs().len(),
+            1,
+            "the lift reached the snapshot before its record: a crash now restarts the program lifted with no lift on record"
+        );
+        drop(on_disk);
+
+        release_tx.send(()).unwrap();
+        stall.join().unwrap();
+        let (status, json) = lift.await.unwrap();
+        assert_eq!(status, axum::http::StatusCode::OK, "{json}");
+        assert_eq!(json["audit_recorded"], true);
+        assert!(
+            core.quarantined_programs().is_empty(),
+            "recorded, then lifted"
         );
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -8058,12 +8453,16 @@ mod tests {
         // `operator_action` too (R-P14, Round 28): the list is written out
         // here rather than read from `LifecycleEvent::emission`, so a change
         // to that table that makes a self-observed event reportable fails
-        // here instead of passing with it.
+        // here instead of passing with it. `execution_check` too (audit
+        // A089): L8's own row (audit 2026-10-20, M4) was missing, so making
+        // it caller-reported failed nothing. The refusal must be THIS one,
+        // not a later shape check another body would pass.
         for ev in [
             "verification",
             "construction",
             "simulation",
             "operator_action",
+            "execution_check",
         ] {
             let resp = app
                 .clone()
@@ -8077,6 +8476,14 @@ mod tests {
                 resp.status(),
                 axum::http::StatusCode::BAD_REQUEST,
                 "a caller must not be able to write a {ev} record"
+            );
+            let bytes = axum::body::to_bytes(resp.into_body(), 1 << 20)
+                .await
+                .unwrap();
+            let body = String::from_utf8_lossy(&bytes);
+            assert!(
+                body.contains("emitted by Graphite itself"),
+                "{ev} was refused for another reason, not as self-observed: {body}"
             );
         }
         let _ = std::fs::remove_dir_all(&dir);
@@ -8613,41 +9020,42 @@ mod tests {
         assert_eq!(status, axum::http::StatusCode::OK);
     }
 
+    /// Certification item: a handler that panics must produce a clean 500
+    /// (no connection drop, no internal details leaked), the server must
+    /// keep serving, and the panic is counted at /metrics.
+    ///
+    /// Audit A020: this built its own `Router` with a copy of the catcher
+    /// that had neither the counter nor the log line, and R39-CB-4 pinned
+    /// `graphite_handler_panics_total` at 0 — what a removed increment also
+    /// gives. Deleting the production `CatchPanicLayer`, or its increment,
+    /// failed nothing. The route now runs under `harden`, the production
+    /// stack itself.
     #[tokio::test]
     async fn panicking_handler_returns_500_and_server_survives() {
-        // Certification item: a handler that panics must produce a clean 500
-        // (no connection drop, no internal details leaked) and the server must
-        // continue serving subsequent requests.
         use tower::ServiceExt;
 
-        // A dedicated panicking route wrapped in the SAME catch-panic layer
-        // the production router uses.
         async fn boom() -> Response {
             panic!("deliberate test panic — must be caught");
         }
-        let app = Router::new()
+        let (state, dir, _operator) = keyed_state();
+        let routes = Router::new()
             .route("/boom", get(boom))
-            .route("/alive", get(|| async { "ok" }))
-            .layer(CatchPanicLayer::custom(
-                |_panic: Box<dyn std::any::Any + Send + 'static>| {
-                    axum::http::Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .header(header::CONTENT_TYPE, "application/json")
-                        .body(axum::body::Body::from(axum::body::Bytes::from_static(
-                            b"{\"error\":\"internal server error\"}",
-                        )))
-                        .unwrap()
-                },
-            ));
+            .route("/health", get(health_handler))
+            .route("/metrics", get(metrics_handler));
+        let app = harden(routes, state, vec![]);
+        let request = |path: &str| {
+            let mut req = axum::http::Request::builder()
+                .uri(path)
+                .header("host", "127.0.0.1")
+                .header("authorization", format!("Bearer {VERIFY_TEST_KEY}"))
+                .body(axum::body::Body::empty())
+                .unwrap();
+            let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+            req.extensions_mut().insert(ConnectInfo(addr));
+            req
+        };
 
-        let mut req = axum::http::Request::builder()
-            .uri("/boom")
-            .body(axum::body::Body::empty())
-            .unwrap();
-        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
-        req.extensions_mut().insert(ConnectInfo(addr));
-
-        let resp = app.clone().oneshot(req).await.unwrap();
+        let resp = app.clone().oneshot(request("/boom")).await.unwrap();
         assert_eq!(
             resp.status(),
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -8663,18 +9071,25 @@ mod tests {
         );
 
         // The router is still alive after the panic.
-        let mut alive = axum::http::Request::builder()
-            .uri("/alive")
-            .body(axum::body::Body::empty())
-            .unwrap();
-        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
-        alive.extensions_mut().insert(ConnectInfo(addr));
-        let resp = app.clone().oneshot(alive).await.unwrap();
+        let resp = app.clone().oneshot(request("/health")).await.unwrap();
         assert_eq!(
             resp.status(),
             axum::http::StatusCode::OK,
             "server must continue serving after a handler panic"
         );
+
+        // And the panic is counted.
+        let resp = app.clone().oneshot(request("/metrics")).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        let metrics = String::from_utf8_lossy(&bytes);
+        assert!(
+            metrics.contains("\ngraphite_handler_panics_total 1\n"),
+            "the caught panic is not counted: {metrics}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     /// Round 12: a second process on the same data directory is refused
@@ -9168,6 +9583,155 @@ Connection: close
             peak <= MAX_CONCURRENT_DASHBOARD_SCANS,
             "{peak} abandoned scans ran at once (cap {MAX_CONCURRENT_DASHBOARD_SCANS})"
         );
+    }
+
+    /// Audit A021: the dashboard's scans and L8's and `/audit/event`'s
+    /// verdict lookups shared one FIFO pool of `MAX_CONCURRENT_ARCHIVE_SCANS`
+    /// slots, so a read-key holder keeping it full of `/api/*` polls put
+    /// every lookup — an L8 reconciliation, the `BlockedButExecuted` alarm —
+    /// behind them, unbudgeted, until the request timed out. Dashboard scans
+    /// never hold every slot now: a lookup starts while they are all busy.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_lookup_is_not_queued_behind_dashboard_scans() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let running = Arc::new(AtomicUsize::new(0));
+        let release = Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
+        let polls: Vec<_> = (0..2 * crate::verification::MAX_CONCURRENT_ARCHIVE_SCANS)
+            .map(|_| {
+                let running = Arc::clone(&running);
+                let release = Arc::clone(&release);
+                tokio::spawn(dashboard_scan(move || {
+                    running.fetch_add(1, Ordering::SeqCst);
+                    let (lock, cv) = &*release;
+                    let mut go = lock.lock().unwrap();
+                    while !*go {
+                        let (g, _) = cv.wait_timeout(go, Duration::from_secs(10)).unwrap();
+                        go = g;
+                        if !*go {
+                            break;
+                        }
+                    }
+                }))
+            })
+            .collect();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while running.load(Ordering::SeqCst) == 0 && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        // Every dashboard scan that can start has started.
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        let lookup = tokio::time::timeout(
+            Duration::from_secs(2),
+            crate::verification::bounded_archive_scan(|| 42),
+        )
+        .await;
+        let started = running.load(Ordering::SeqCst);
+        {
+            let (lock, cv) = &*release;
+            *lock.lock().unwrap() = true;
+            cv.notify_all();
+        }
+        for p in polls {
+            p.await.unwrap();
+        }
+        assert!(
+            started < crate::verification::MAX_CONCURRENT_ARCHIVE_SCANS,
+            "{started} dashboard scans held every scan slot"
+        );
+        assert_eq!(
+            lookup
+                .expect("a lookup waited behind dashboard scans")
+                .unwrap(),
+            42
+        );
+    }
+
+    /// Audit A084: `/api/protocols/top` built a JSON row for every distinct
+    /// program id in the active file — caller-chosen, one per descriptive
+    /// `/verify` — matched each against every graph node with a linear scan,
+    /// and sorted them all with map lookups in the comparator, on an async
+    /// worker, to return five. The top `limit` are chosen before any row is
+    /// built, and a node is found by hash.
+    #[test]
+    fn top_protocols_do_not_scale_with_every_observed_id() {
+        let node = |i: usize, battle: u64| crate::verification::GraphNode {
+            program_id: format!("node{i:040}"),
+            name: format!("Node {i}"),
+            trust_tier: "OfficialManifest".to_string(),
+            battle_tested_tx_count: battle,
+            ..Default::default()
+        };
+        // Correctness first: nodes and observed-only ids, by total volume,
+        // ties by program id, the count of all of them.
+        let nodes = vec![node(1, 10), node(2, 0), node(3, 5)];
+        let mut observed = std::collections::HashMap::new();
+        observed.insert(nodes[1].program_id.clone(), 12usize);
+        observed.insert("unknownB".to_string(), 7usize);
+        observed.insert("unknownA".to_string(), 7usize);
+        observed.insert("unknownC".to_string(), 1usize);
+        let (rows, total) = top_protocol_rows(&nodes, &observed, 4);
+        assert_eq!(total, 6);
+        let ids: Vec<&str> = rows
+            .iter()
+            .map(|r| r["program_id"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            ids,
+            vec![
+                nodes[1].program_id.as_str(),
+                nodes[0].program_id.as_str(),
+                "unknownA",
+                "unknownB"
+            ]
+        );
+        assert_eq!(rows[0]["observed_verifications"], 12);
+        assert_eq!(rows[0]["name"], "Node 2");
+        assert_eq!(rows[2]["trust_tier"], "Unknown");
+        assert_eq!(rows[2]["name"], "unknownA");
+        let (none, total) = top_protocol_rows(&nodes, &observed, 0);
+        assert!(none.is_empty());
+        assert_eq!(total, 6);
+
+        // Scale: 4,000 nodes and 200,000 caller-chosen ids, for five rows.
+        let nodes: Vec<_> = (0..4_000).map(|i| node(i, i as u64)).collect();
+        let observed: std::collections::HashMap<String, usize> = (0..200_000)
+            .map(|i| (format!("observed{i:036}"), 1 + i % 3))
+            .collect();
+        let t = std::time::Instant::now();
+        let (rows, total) = top_protocol_rows(&nodes, &observed, 5);
+        let took = t.elapsed();
+        assert_eq!(total, 204_000);
+        assert_eq!(rows.len(), 5);
+        assert_eq!(rows[0]["battle_tested_tx_count"], 3_999);
+        assert!(
+            took < Duration::from_millis(1500),
+            "five rows took {took:?}: the work grows with every id a caller can write"
+        );
+    }
+
+    /// Audit A088: `GRAPHITE_MAX_CONCURRENT` and `GRAPHITE_MAX_CONNECTIONS`
+    /// were checked only as `> 0`, and each sizes a tokio semaphore, which
+    /// panics above `usize::MAX >> 3` — the second after "listening" was
+    /// logged. Each refuses to start above its bound now, and says what is
+    /// accepted.
+    #[test]
+    fn a_limit_too_large_to_honour_refuses_to_start() {
+        for name in ["GRAPHITE_MAX_CONCURRENT", "GRAPHITE_MAX_CONNECTIONS"] {
+            for bad in ["18446744073709551615", "1000001"] {
+                let e = Limits::from_lookup(|k: &str| (k == name).then(|| bad.to_string()))
+                    .err()
+                    .unwrap_or_else(|| panic!("{name}={bad} was accepted"));
+                assert!(e.contains(name), "{e}");
+                assert!(
+                    e.contains("1 to 1000000"),
+                    "the refusal must say what is accepted: {e}"
+                );
+                assert!(e.contains("REFUSING TO START"), "{e}");
+            }
+            let ok =
+                Limits::from_lookup(|k: &str| (k == name).then(|| "1000000".to_string())).unwrap();
+            assert!(ok.inflight_limit == 1_000_000 || ok.max_connections == 1_000_000);
+        }
     }
 
     /// From submission onward the signature is required, and a signature
@@ -10408,6 +10972,68 @@ mod route_surface {
         let v: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(v["l8_assurance"]["high_assurance"], false);
         assert!(v["l8_assurance"]["witness_independent"].is_null());
+        // Audit A018: no per-record counter or byte size. Each of these
+        // stepped with every verdict, and the active file's size delta
+        // between two polls was the byte length of the record just written.
+        for field in [
+            "writes_ok",
+            "writes_failed",
+            "active_bytes",
+            "rotations_ok",
+            "rotations_failed",
+            "archive_count",
+            "chain_head_seq",
+            "anchors_failed",
+        ] {
+            assert!(
+                v["audit"].get(field).is_none(),
+                "/health carries audit.{field}: {body}"
+            );
+        }
+        for field in ["snapshots_ok", "snapshots_failed"] {
+            assert!(
+                v["graph_persistence"].get(field).is_none(),
+                "/health carries graph_persistence.{field}: {body}"
+            );
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Audit A018: `/health` answers anyone, unthrottled. Two polls around a
+    /// verification and a lifecycle report must read the same: nothing on it
+    /// moves with traffic. The figures it carried are at the keyed /metrics,
+    /// the chain head included.
+    #[tokio::test]
+    async fn health_does_not_move_with_traffic() {
+        let (state, dir) = keyed(1000.0);
+        let log = state.audit.clone().unwrap();
+        let app = build_app(state, vec![]);
+        let (_, before) = call(&app, "GET", "/health", &[], vec![]).await;
+        let input = include_str!("../../examples/verify-input.json");
+        let (status, body) = call(&app, "POST", "/verify", &[VERIFY], input.into()).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let (status, body) = call(
+            &app,
+            "POST",
+            "/verify",
+            &[VERIFY],
+            br#"{"program_id":"x"}"#.to_vec(),
+        )
+        .await;
+        assert!(status.is_client_error(), "{status} {body}");
+        assert!(log.health().writes_ok >= 1, "the verdict is on the trail");
+        let (_, after) = call(&app, "GET", "/health", &[], vec![]).await;
+        assert_eq!(
+            before, after,
+            "/health changed with traffic: an anonymous poller learns each verdict"
+        );
+        let (status, metrics) = call(&app, "GET", "/metrics", &[VERIFY], vec![]).await;
+        assert_eq!(status, StatusCode::OK);
+        let head = log.health().chain_head_seq.expect("a chained record");
+        assert!(
+            metrics.contains(&format!("\ngraphite_audit_chain_head_seq {head}\n")),
+            "the chain head is at the keyed /metrics: {metrics}"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 

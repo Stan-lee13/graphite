@@ -171,6 +171,23 @@ fn configuration_the_server_cannot_honour_refuses_to_start() {
             vec![("GRAPHITE_MAX_CONNECTIONS", s("lots"))],
             "GRAPHITE_MAX_CONNECTIONS",
         ),
+        // Audit A088: each sizes a tokio semaphore, which panics above
+        // `usize::MAX >> 3` — the connection cap's only after "listening".
+        // Refused, saying what is accepted.
+        (
+            vec![("GRAPHITE_MAX_CONCURRENT", s("18446744073709551615"))],
+            "GRAPHITE_MAX_CONCURRENT \"18446744073709551615\": must be a whole number of verifications from 1 to 1000000",
+        ),
+        (
+            vec![("GRAPHITE_MAX_CONNECTIONS", s("18446744073709551615"))],
+            "GRAPHITE_MAX_CONNECTIONS \"18446744073709551615\": must be a whole number of connections from 1 to 1000000",
+        ),
+        // Audit A035: a blank data directory meant a directory named " "
+        // here and ./graphite-data to the CLI.
+        (
+            vec![("GRAPHITE_DATA_DIR", s(" "))],
+            "GRAPHITE_DATA_DIR is set but empty",
+        ),
         (
             vec![("GRAPHITE_MAX_CONNECTIONS_PER_IP", s("-1"))],
             "GRAPHITE_MAX_CONNECTIONS_PER_IP",

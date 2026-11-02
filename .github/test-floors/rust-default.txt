@@ -111,6 +111,7 @@
 1 tests/audit_a4_slow_headers_hold_connections.rs
 1 tests/audit_a4_xff_multiple_header_lines.rs
 4 tests/audit_flooding.rs
+6 tests/audit_operator_cli_boundary.rs
 1 tests/audit_review_f10_l8_bytes_keep_their_budget.rs
 5 tests/audit_review_r1_l8_needs_chain_bytes.rs
 19 tests/audit_review_r2_r3_intent_cannot_clear_danger.rs

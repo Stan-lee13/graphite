@@ -15,7 +15,7 @@
 //     advice that cannot help a Core that did answer;
 //   - the sidebar called a Core whose /health answered 500 "unreachable".
 
-import type { Health } from "./api";
+import type { Health, Metrics } from "./api";
 
 export type Tone = "pass" | "block" | "warn" | "idle";
 
@@ -41,19 +41,37 @@ export function whileSilent(r: Reading, silent: boolean): Reading {
   return { ...r, tone: "warn", sub: r.sub ? `${r.sub} (as of the last answer)` : "as of the last answer" };
 }
 
-/** The audit trail figure. Unread is "Not reported", never "Off". */
-export function auditReading(h: Pick<Health, "audit">): Reading {
+/** A /metrics figure, or null when /metrics has not given it. */
+const metric = (m: Metrics | null | undefined, name: string): number | null => (m ? wholeOrNull(m.get(name)) : null);
+
+/**
+ * The audit trail figure. Unread is "Not reported", never "Off".
+ *
+ * Audit A018: /health no longer carries the trail's counters or size (they
+ * stepped with every verdict, and /health answers anyone), so they come from
+ * the keyed /metrics. A failure is drawn from either source: /health's
+ * degraded reason, or the /metrics counter.
+ */
+export function auditReading(h: Pick<Health, "audit" | "degraded_reasons">, m: Metrics | null | undefined): Reading {
   const a = h.audit;
   if (a === undefined || a === null || typeof a !== "object" || typeof a.enabled !== "boolean") {
     return { value: "Not reported", tone: "warn", sub: "this Core's /health does not say" };
   }
   if (!a.enabled) return { value: "Off", tone: "warn", sub: "verdicts are not being recorded" };
-  const failed = wholeOrNull(a.writes_failed);
-  if (failed !== null && failed > 0) {
-    return { value: "Failing", tone: "block", sub: `${failed.toLocaleString()} append(s) failed; the Core refuses verdicts it cannot record` };
+  const failed = metric(m, "graphite_audit_writes_failed_total");
+  const failing = (h.degraded_reasons ?? []).includes("audit_writes_failed");
+  if (failing || (failed !== null && failed > 0)) {
+    return {
+      value: "Failing",
+      tone: "block",
+      sub:
+        failed !== null && failed > 0
+          ? `${failed.toLocaleString()} append(s) failed; the Core refuses verdicts it cannot record`
+          : "appends are failing; the Core refuses verdicts it cannot record",
+    };
   }
-  const active = wholeOrNull(a.active_bytes);
-  const archived = wholeOrNull(a.archive_count);
+  const active = metric(m, "graphite_audit_active_bytes");
+  const archived = metric(m, "graphite_audit_archive_count");
   return {
     value: "Writing",
     tone: "pass",
@@ -64,19 +82,39 @@ export function auditReading(h: Pick<Health, "audit">): Reading {
   };
 }
 
-/** The graph-snapshot figure. Unread is "Not reported", never "Off". */
-export function persistenceReading(h: Pick<Health, "graph_persistence">): Reading {
+/** The graph-snapshot figure. Unread is "Not reported", never "Off". Counts
+ *  from /metrics (audit A018), as for the trail. */
+export function persistenceReading(h: Pick<Health, "graph_persistence" | "degraded_reasons">, m: Metrics | null | undefined): Reading {
   const g = h.graph_persistence;
   if (g === undefined || g === null || typeof g !== "object" || typeof g.enabled !== "boolean") {
     return { value: "Not reported", tone: "warn", sub: "this Core's /health does not say" };
   }
   if (!g.enabled) return { value: "Off", tone: "warn", sub: "earned evidence is lost on restart" };
-  const ok = wholeOrNull(g.snapshots_ok);
-  const failed = wholeOrNull(g.snapshots_failed);
-  if (failed !== null && failed > 0) {
-    return { value: "Failing", tone: "block", sub: g.last_error ?? `${failed.toLocaleString()} snapshot(s) failed` };
+  const ok = metric(m, "graphite_graph_snapshots_ok_total");
+  const failed = metric(m, "graphite_graph_snapshots_failed_total");
+  const failing = (h.degraded_reasons ?? []).includes("graph_snapshot_failed");
+  if (failing || (failed !== null && failed > 0)) {
+    return {
+      value: "Failing",
+      tone: "block",
+      sub: g.last_error ?? (failed !== null && failed > 0 ? `${failed.toLocaleString()} snapshot(s) failed` : "snapshots are failing"),
+    };
   }
   return { value: ok === null ? "On" : ok.toLocaleString(), tone: "pass", sub: ok === null ? "count not reported" : "snapshots written" };
+}
+
+/**
+ * The audit-integrity figure's note (audit A018: the anchor failures and the
+ * chain head come from /metrics, a failure also from /health's reason).
+ */
+export function anchorsFailing(h: Pick<Health, "degraded_reasons">, m: Metrics | null | undefined): number | true | null {
+  const n = metric(m, "graphite_audit_anchor_writes_failed_total");
+  if (n !== null && n > 0) return n;
+  return (h.degraded_reasons ?? []).includes("audit_anchor_failed") ? true : null;
+}
+
+export function chainHead(m: Metrics | null | undefined): number | null {
+  return metric(m, "graphite_audit_chain_head_seq");
 }
 
 /** The kinds of failure `ApiError` carries (api.ts), without importing it. */

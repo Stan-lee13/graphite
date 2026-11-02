@@ -94,6 +94,7 @@
 3 tests/audit_a3_registry_replay_rollback.rs
 4 tests/audit_a3_unknown_instruction_confidence.rs
 4 tests/audit_flooding.rs
+6 tests/audit_operator_cli_boundary.rs
 19 tests/audit_review_r2_r3_intent_cannot_clear_danger.rs
 6 tests/audit_w22_grant_route.rs
 52 tests/extreme_adversarial.rs

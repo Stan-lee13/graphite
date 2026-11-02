@@ -39,7 +39,8 @@ and baselines earned since the last good snapshot exist only in memory.
 
    Indexes under `audit.jsonl-index/` are rebuilt when needed.
 4. The failure counters do not reset while the process runs. Once writes
-   succeed again, confirm new records land (`writes_ok` rising on `/health`),
+   succeed again, confirm new records land (`graphite_audit_writes_ok_total` rising at the keyed
+   `/metrics`; `/health` carries no counters since audit A018),
    then restart during a quiet moment to clear `degraded`.
 5. Record the window in which verdicts were refused.
 
