@@ -317,51 +317,54 @@ fn short_reason(why: &str) -> String {
 #[allow(deprecated)]
 fn always_reserved() -> std::collections::BTreeSet<solana_message::Address> {
     use solana_sdk_ids::*;
+    // Audit A091 (2026-11): agave-reserved-account-keys 4.3.2 and 4.4.0 list
+    // every key it once reserved behind `add_new_reserved_account_keys` or
+    // `enable_secp256r1_precompile` as `ReservedAccount::new_active`, so they
+    // are here now, in agave's order (Graphite's `ALWAYS_DEMOTED_KEYS`).
     [
+        address_lookup_table::id(),
         bpf_loader::id(),
         bpf_loader_deprecated::id(),
         bpf_loader_upgradeable::id(),
+        compute_budget::id(),
         config::id(),
+        ed25519_program::id(),
         feature::id(),
-        native_loader::id(),
+        loader_v4::id(),
+        secp256k1_program::id(),
+        secp256r1_program::id(),
         stake::config::id(),
         stake::id(),
         system_program::id(),
         vote::id(),
+        zk_elgamal_proof_program::id(),
+        zk_token_proof_program::id(),
         sysvar::clock::id(),
+        sysvar::epoch_rewards::id(),
         sysvar::epoch_schedule::id(),
         sysvar::fees::id(),
         sysvar::instructions::id(),
+        sysvar::last_restart_slot::id(),
         sysvar::recent_blockhashes::id(),
         sysvar::rent::id(),
         sysvar::rewards::id(),
         sysvar::slot_hashes::id(),
         sysvar::slot_history::id(),
         sysvar::stake_history::id(),
+        native_loader::id(),
+        sysvar::id(),
     ]
     .into_iter()
     .collect()
 }
 
-/// Every other program and sysvar id the SDK id crate exports: reserved by
-/// agave only behind a feature gate (`ReservedAccount::new_pending`), or not
-/// reserved at all (the incinerator). Graphite must leave each writable.
+/// Every other program and sysvar id the SDK id crate exports: not reserved
+/// at all (the incinerator). Graphite must leave each writable. A key agave
+/// reserves behind a feature (`ReservedAccount::new_pending`) belongs here
+/// until the feature is active and agave lists it with `new_active`.
 fn not_always_reserved() -> std::collections::BTreeSet<solana_message::Address> {
     use solana_sdk_ids::*;
     [
-        // Behind `add_new_reserved_account_keys`.
-        address_lookup_table::id(),
-        compute_budget::id(),
-        ed25519_program::id(),
-        loader_v4::id(),
-        secp256k1_program::id(),
-        zk_elgamal_proof_program::id(),
-        zk_token_proof_program::id(),
-        sysvar::id(),
-        sysvar::epoch_rewards::id(),
-        sysvar::last_restart_slot::id(),
-        // Behind `enable_secp256r1_precompile`.
-        secp256r1_program::id(),
         // Not reserved.
         incinerator::id(),
     ]
@@ -445,19 +448,15 @@ fn check_reserved_classification() -> Result<usize, String> {
 /// Round 22: frames whose header marks every reserved key writable. Random
 /// frames almost never name a reserved id, so without this pass a wrong
 /// demotion list would pass the oracle. Each frame names the fee payer, the
-/// unconditionally reserved keys, two keys agave reserves only behind a
-/// feature gate (the EpochRewards and LastRestartSlot sysvars, which Graphite
-/// must leave writable), and a program the message invokes. Legacy and v0,
+/// unconditionally reserved keys (since audit A091 the EpochRewards and
+/// LastRestartSlot sysvars among them: agave no longer gates them behind a
+/// feature), and a program the message invokes. Legacy and v0,
 /// with and without the upgradeable loader among the static keys, and v0
 /// with a lookup table (the loader may then be loaded, so Graphite keeps the
 /// invoked id writable).
 fn run_reserved_keys(tally: &mut Tally) -> usize {
     use solana_message::compiled_instruction::CompiledInstruction;
     use solana_message::{v0, Hash, MessageHeader};
-    let gated = [
-        solana_sdk_ids::sysvar::epoch_rewards::id(),
-        solana_sdk_ids::sysvar::last_restart_slot::id(),
-    ];
     let invoked = solana_message::Address::new_from_array([7u8; 32]);
     let payer = solana_message::Address::new_from_array([1u8; 32]);
     let mut n = 0;
@@ -521,7 +520,6 @@ fn run_reserved_keys(tally: &mut Tally) -> usize {
                 .into_iter()
                 .filter(|k| with_loader || *k != solana_sdk_ids::bpf_loader_upgradeable::id()),
         );
-        keys.extend(gated);
         keys.push(invoked);
         let header = MessageHeader {
             num_required_signatures: 1,
@@ -583,19 +581,12 @@ fn run_reserved_keys(tally: &mut Tally) -> usize {
                     "reserved keys, {label}, loader present {with_loader}: not accepted by both"
                 ));
             }
-            // The two feature-gated sysvars stay writable to Graphite, and so
-            // does the invoked program when the loader may be present.
+            // The invoked program stays writable to Graphite when the loader
+            // may be present.
             let frame_label = format!("reserved keys, {label}, loader present: {with_loader}");
             if let Ok(Ok(parsed)) = tally.panics.guard("parse_transaction", &frame_label, || {
                 parse_transaction(&bytes)
             }) {
-                for k in gated {
-                    if !parsed.writable.contains(&k.to_string()) {
-                        tally.disagreements.push(format!(
-                            "reserved keys, {label}: feature-gated {k} demoted by Graphite"
-                        ));
-                    }
-                }
                 let keeps_invoked = parsed.writable.contains(&invoked.to_string());
                 if keeps_invoked != (with_loader || lookups) {
                     tally.disagreements.push(format!(

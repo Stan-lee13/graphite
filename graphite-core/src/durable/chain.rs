@@ -797,6 +797,57 @@ pub struct TornLine {
     pub after_seq: Option<u64>,
 }
 
+/// Torn lines one directly after another in a file being verified, judged
+/// together by the record after the last (A025, audit 2026-11): two crashes
+/// in a row, the second during the append that would have named the first,
+/// leave the first terminated and part of the naming record after it. The
+/// next writer names both, as one span from the first (`torn_tail_of`).
+struct TornRun {
+    tears: Vec<(ChainBreak, TornLine)>,
+    /// SHA-256 of the bytes from the first torn line to the end of the last
+    /// (the newlines between them included).
+    span: Sha256,
+    /// Where the last one ends (its newline not included).
+    end: u64,
+}
+
+impl TornRun {
+    fn new(tear: (ChainBreak, TornLine), at: u64, line: &[u8]) -> Self {
+        let mut span = Sha256::new();
+        span.update(line);
+        Self {
+            tears: vec![tear],
+            span,
+            end: at + line.len() as u64,
+        }
+    }
+
+    /// Only for a line directly after the last (`end + 1 == at`).
+    fn push(&mut self, tear: (ChainBreak, TornLine), at: u64, line: &[u8]) {
+        self.span.update(b"\n");
+        self.span.update(line);
+        self.end = at + line.len() as u64;
+        self.tears.push(tear);
+    }
+
+    /// `named` is the last of them.
+    fn names_last(&self, named: &TornTail) -> bool {
+        self.tears.last().is_some_and(|(_, t)| {
+            named.offset == t.offset && named.length == t.length && named.sha256 == t.sha256
+        })
+    }
+
+    /// `named` is all of them, as one span from the first.
+    fn spanned_by(&self, named: &TornTail) -> bool {
+        let Some((_, first)) = self.tears.first() else {
+            return false;
+        };
+        named.offset == first.offset
+            && named.length == self.end - first.offset
+            && named.sha256 == hex::encode(self.span.clone().finalize())
+    }
+}
+
 /// `CONTROL_FIELD` of a prune record.
 pub const PRUNE: &str = "prune";
 
@@ -1268,7 +1319,7 @@ impl TrailFacts {
     fn adoptions(&self, ctx: &GateContext) -> &AdoptionFacts {
         self.adoptions.get_or_init(|| {
             let files = ctx.files();
-            let adoptions = checked_adoptions(&files, &ctx.keys);
+            let adoptions = checked_adoptions(&files, &ctx.keys, ctx.pin);
             let vouched = adoptions
                 .iter()
                 .filter_map(|a| a.previous_key_id.clone())
@@ -1347,8 +1398,16 @@ impl TrailFacts {
 }
 
 /// The key-adoption records of `files` whose MAC verifies under one of
-/// `keys`.
-fn checked_adoptions(files: &[PathBuf], keys: &[AuditKey]) -> Vec<KeyAdoption> {
+/// `keys`, and that are this trail's: a version-2 adoption under a trail id
+/// other than `pin` (the readers' own) is another trail's, wherever it was
+/// copied to (A024, audit 2026-11: it made the legacy lines it lists
+/// readable here, though `verify`, which takes adoptions only from its
+/// walk, refuses it).
+fn checked_adoptions(
+    files: &[PathBuf],
+    keys: &[AuditKey],
+    pin: Option<[u8; TRAIL_ID_BYTES]>,
+) -> Vec<KeyAdoption> {
     let mut found = Vec::new();
     if keys.is_empty() {
         return found;
@@ -1373,6 +1432,9 @@ fn checked_adoptions(files: &[PathBuf], keys: &[AuditKey]) -> Vec<KeyAdoption> {
             let LineClass::Chained(c) = classify_line(record) else {
                 continue;
             };
+            if pin.is_some() && c.trail.is_some() && c.trail != pin {
+                continue;
+            }
             let Some(Ok(a)) = c.adoption() else {
                 continue;
             };
@@ -1886,6 +1948,18 @@ pub(crate) fn resume_head(
     // trail's" and itself the whole walk, which it then continued.
     if walked.other_trail {
         return Err(other_trail_refusal());
+    }
+    // A023 (audit 2026-11): rotation is one-way for the writer's own key
+    // too. Adopting a key the trail retired writes an adoption record the
+    // readers' gate and `verify` refuse, and every record after it with it.
+    if let Some(k) = key {
+        if walked.retired.iter().any(|r| r == k.id()) {
+            return Err(format!(
+                "the configured audit key {} is one this trail retired when it rotated to key {}: a key rotation is one-way, and records under a retired key are never read after it. Configure a fresh key ({AUDIT_KEY_ENV}) and set {AUDIT_PREVIOUS_KEY_ENV} to the key in force (docs/ops/keys.md)",
+                k.id(),
+                walked.chain_key.as_deref().unwrap_or("?")
+            ));
+        }
     }
     let files = std::iter::once(active.to_path_buf()).chain(archives_newest_first.iter().cloned());
     for file in files {
@@ -2424,8 +2498,9 @@ pub(crate) fn verify_trail_with(
         let mut offset: u64 = 0;
         let mut line_no: u64 = 0;
         let mut buf: Vec<u8> = Vec::new();
-        // A torn write, judged by the record after it.
-        let mut pending: Option<(ChainBreak, TornLine)> = None;
+        // Torn writes, one after another, judged by the record after the
+        // last (A025: a record names the last, or all of them as one span).
+        let mut pending: Option<TornRun> = None;
         let mut legacy_digest = LegacyDigest::default();
         loop {
             let (n, end) = read_line_bounded(&mut reader, &mut buf, MAX_LINE_BYTES)?;
@@ -2465,8 +2540,12 @@ pub(crate) fn verify_trail_with(
                 }
                 if is_active {
                     // In flight, or torn at the very end: not judged, and
-                    // never read. The writer names it in its next record.
+                    // never read. The writer names it in its next record —
+                    // with the torn lines directly before it (A025).
                     report.unparseable_lines += 1;
+                    if let Some(run) = pending.take_if(|r| r.end + 1 == at) {
+                        report.unparseable_lines += run.tears.len() as u64;
+                    }
                     break;
                 }
                 stop!(
@@ -2482,19 +2561,24 @@ pub(crate) fn verify_trail_with(
                 LineClass::Chained(c) => c.torn_tail.clone(),
                 _ => None,
             };
-            match (pending.take(), names) {
-                (Some((_, torn)), Some(named))
-                    if named.offset == torn.offset
-                        && named.length == torn.length
-                        && named.sha256 == torn.sha256 =>
-                {
+            // Another torn line directly after the last one: judged with
+            // it, by the record after both.
+            let continues_run = matches!(&class, LineClass::Invalid { json: false, .. })
+                && pending.as_ref().is_some_and(|r| r.end + 1 == at);
+            match (if continues_run { None } else { pending.take() }, names) {
+                (Some(mut run), Some(named)) if run.names_last(&named) => {
+                    run.tears.pop();
+                    tears.append(&mut run.tears);
                     report.unparseable_lines += 1
+                }
+                (Some(run), Some(named)) if run.spanned_by(&named) => {
+                    report.unparseable_lines += run.tears.len() as u64
                 }
                 // Not named by the record after it: a break unless a tear
                 // acknowledgement names it. The walk goes on — the record
                 // after an honest tear continues the chain from the one
                 // before it.
-                (Some(tear), _) => tears.push(tear),
+                (Some(mut run), _) => tears.append(&mut run.tears),
                 (None, Some(named)) => stop!(
                     match &class {
                         LineClass::Chained(c) => Some(c.link.seq),
@@ -2518,7 +2602,7 @@ pub(crate) fn verify_trail_with(
                     // Not JSON at all: a torn write is exactly this. It is
                     // a break unless the next record names it.
                     let t = TornTail::of(at, line);
-                    pending = Some((
+                    let tear = (
                         fail(
                             seq,
                             format!("{reason}; no record after it names it as a torn write the writer resumed past, and no tear acknowledgement does (`graphite audit acknowledge-tear`)"),
@@ -2531,7 +2615,11 @@ pub(crate) fn verify_trail_with(
                             sha256: t.sha256,
                             after_seq: report.head_seq,
                         },
-                    ));
+                    );
+                    match pending.as_mut() {
+                        Some(run) => run.push(tear, at, line),
+                        None => pending = Some(TornRun::new(tear, at, line)),
+                    }
                     continue;
                 }
                 LineClass::Legacy => {
@@ -2805,8 +2893,8 @@ pub(crate) fn verify_trail_with(
             report.head_seq = Some(link.seq);
             report.head_hash = Some(link.hash.clone());
         }
-        if let Some(tear) = pending.take() {
-            tears.push(tear);
+        if let Some(mut run) = pending.take() {
+            tears.append(&mut run.tears);
         }
         let here = legacy_digest.finish();
         if here.records > 0 {

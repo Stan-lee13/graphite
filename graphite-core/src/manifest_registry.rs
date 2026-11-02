@@ -230,6 +230,29 @@ pub fn canonical_manifest_json(manifest: &ProtocolManifest) -> String {
     out
 }
 
+/// The canonical JSON of `manifest`'s instructions alone — what an upgrade
+/// changes when it changes what the runtime judges an instruction by
+/// (A028): not its version label, lineage or protocol metadata.
+fn instructions_canonical_json(manifest: &ProtocolManifest) -> String {
+    use crate::manifest::{ManifestVersion, ProtocolInfo};
+    let mut bare = manifest.clone();
+    bare.protocol = ProtocolInfo {
+        name: String::new(),
+        program_id: String::new(),
+        website: String::new(),
+        github: String::new(),
+        category: String::new(),
+    };
+    bare.version = ManifestVersion {
+        label: String::new(),
+        effective_from_slot: 0,
+        previous_version_ref: None,
+    };
+    bare.trust_tier = String::new();
+    bare.graphite_manifest_version = String::new();
+    canonical_manifest_json(&bare)
+}
+
 /// The exact bytes a registry signature or attestation signs (Round 29, audit
 /// 2026-10-20, MR-3):
 ///
@@ -271,6 +294,21 @@ impl ManifestSubmission {
         hex::encode(Sha256::digest(canonical_manifest_json(manifest).as_bytes()))
     }
 }
+
+/// Why [`RegistryRecord::verify_offline_classified`] did not verify a
+/// record (audit A090).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OfflineCheckFailure {
+    /// The record cannot be checked — it retains no manifest, or predates
+    /// retained signatures — as opposed to a check that ran and failed.
+    pub unprovable: bool,
+    pub reason: String,
+}
+
+/// The one failure of a record that retains its manifest which is not a
+/// check failing: it was written before signatures were retained.
+const PREDATES_RETAINED_SIGNATURES: &str =
+    "the record predates retained signatures (Round 36): nothing in it can be checked offline";
 
 /// One accepted submission in the append-only acceptance log (P4).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -331,10 +369,32 @@ impl RegistryRecord {
     /// before Round 36 retains no signatures and is reported as such, never
     /// as verified.
     pub fn verify_offline(&self) -> Result<(), String> {
-        let manifest = self
-            .manifest
-            .as_ref()
-            .ok_or("the record retains no manifest, so its content cannot be rehashed")?;
+        self.verify_offline_classified().map_err(|e| e.reason)
+    }
+
+    /// [`Self::verify_offline`], saying whether a failure is the record
+    /// being unprovable — it retains no manifest, or predates retained
+    /// signatures — or a check that ran and failed (audit A090:
+    /// `graphite registry verify-records` classified by which fields were
+    /// present, so a manifest that does not hash to its own record, or names
+    /// another program, read as UNPROVEN when only the domain was missing).
+    pub fn verify_offline_classified(&self) -> Result<(), OfflineCheckFailure> {
+        let unprovable = |reason: &str| OfflineCheckFailure {
+            unprovable: true,
+            reason: reason.to_string(),
+        };
+        let manifest = self.manifest.as_ref().ok_or_else(|| {
+            unprovable("the record retains no manifest, so its content cannot be rehashed")
+        })?;
+        self.verify_retained(manifest)
+            .map_err(|reason| OfflineCheckFailure {
+                unprovable: reason == PREDATES_RETAINED_SIGNATURES,
+                reason,
+            })
+    }
+
+    /// Every check of [`Self::verify_offline`] after the manifest is found.
+    fn verify_retained(&self, manifest: &ProtocolManifest) -> Result<(), String> {
         let rehashed = ManifestSubmission::content_hash_of(manifest);
         if rehashed != self.content_hash {
             return Err(format!(
@@ -350,13 +410,12 @@ impl RegistryRecord {
                 .into_owned();
         match &self.signing_domain {
             Some(d) if *d == domain => {}
-            Some(d) => return Err(format!("the record was signed under domain {d:?}, not {domain:?}")),
-            None => {
-                return Err(
-                    "the record predates retained signatures (Round 36): nothing in it can be checked offline"
-                        .to_string(),
-                )
+            Some(d) => {
+                return Err(format!(
+                    "the record was signed under domain {d:?}, not {domain:?}"
+                ))
             }
+            None => return Err(PREDATES_RETAINED_SIGNATURES.to_string()),
         }
         if self.signer.is_none() && self.attesters.is_empty() {
             return Err("the record names no signer and no attester".to_string());
@@ -405,6 +464,31 @@ impl RegistryRecord {
                 ))
             }
             _ => {}
+        }
+        // A030 (audit 2026-11): and no tier above what its signatures earn,
+        // computed as the registry computed it — a signer and its distinct
+        // attesters are all the evidence a submission carries, so no
+        // record reaches SimulationValidated, and OfficialManifest takes a
+        // signer.
+        let earned = crate::semantic_graph_store::compute_trust_tier_for(
+            &crate::semantic_graph_store::BehaviorEvidence {
+                has_signed_manifest: self.signer.is_some(),
+                community_verified_count: u32::try_from(distinct.len()).unwrap_or(u32::MAX),
+                ..Default::default()
+            },
+            self.first_manifest_unvalidated,
+        );
+        if self.trust_tier > earned {
+            return Err(format!(
+                "the record claims {:?}; {} and {} attester(s) earn {earned:?} at most",
+                self.trust_tier,
+                if self.signer.is_some() {
+                    "a signer"
+                } else {
+                    "no signer"
+                },
+                distinct.len()
+            ));
         }
         if let Some(signer) = &self.signer {
             let sig = self
@@ -849,12 +933,26 @@ impl ManifestRegistryEngine {
                 .flat_map(|r| r.signer.iter().chain(r.attesters.iter()))
                 .any(|k| ours.contains(k.as_str()))
         };
+        // A028 (audit 2026-11): an upgrade whose instructions are the head's
+        // is a relabel. Replayed against the head's fixtures it agrees with
+        // them by construction — what D-9 caps a first manifest for — so it
+        // inherits the head's flag, as the head handed in again does. A head
+        // that retains no manifest cannot be compared: the flag is kept.
+        let same_instructions = || {
+            head.as_ref()
+                .and_then(|h| h.manifest.as_ref())
+                .is_none_or(|m| {
+                    instructions_canonical_json(m)
+                        == instructions_canonical_json(&submission.manifest)
+                })
+        };
         let unvalidated = match &head {
             None => true,
             Some(h) if head_tier.is_some() => h.first_manifest_unvalidated,
             Some(h) => {
                 independent_fixtures == 0
-                    || (h.first_manifest_unvalidated && written_by_these_keys())
+                    || (h.first_manifest_unvalidated
+                        && (written_by_these_keys() || same_instructions()))
             }
         };
         let tier = compute_trust_tier_for(&evidence, unvalidated);
@@ -1091,6 +1189,27 @@ impl ManifestRegistryEngine {
                 manifest.instructions.len()
             )));
         }
+        // A031 (audit 2026-11): the manifest's own strings.
+        const MAX_URL_CHARS: usize = 512;
+        const MAX_DISCRIMINATOR_HEX: usize = 2 * crate::manifest::MAX_DISCRIMINATOR_BYTES;
+        let p = &manifest.protocol;
+        let v = &manifest.version;
+        let over = |s: &str, cap: usize| s.chars().count() > cap;
+        if over(&p.name, MAX_FIELD_CHARS)
+            || over(&p.category, MAX_FIELD_CHARS)
+            || over(&p.website, MAX_URL_CHARS)
+            || over(&p.github, MAX_URL_CHARS)
+            || over(&v.label, MAX_FIELD_CHARS)
+            || v.previous_version_ref
+                .as_deref()
+                .is_some_and(|r| over(r, MAX_FIELD_CHARS))
+            || over(&manifest.graphite_manifest_version, MAX_FIELD_CHARS)
+            || over(&manifest.trust_tier, MAX_FIELD_CHARS)
+        {
+            return Err(RegistryError::InvalidManifest(format!(
+                "the manifest's protocol or version strings exceed {MAX_FIELD_CHARS} chars ({MAX_URL_CHARS} for website and github) — resource-exhaustion guard"
+            )));
+        }
         for ix in &manifest.instructions {
             if ix.account_layouts.len() > 4 {
                 return Err(RegistryError::InvalidManifest(format!(
@@ -1132,6 +1251,38 @@ impl ManifestRegistryEngine {
                 if list.iter().any(|s| s.chars().count() > MAX_FIELD_CHARS) {
                     return Err(RegistryError::InvalidManifest(format!(
                         "instruction '{}' has a list entry exceeding {MAX_FIELD_CHARS} chars — resource-exhaustion guard",
+                        ix.name
+                    )));
+                }
+            }
+            // A031 (audit 2026-11): the rest of what an instruction carries.
+            // The discriminator first: the loader's prefix-ambiguity check
+            // lower-cases every pair of them, and one longer than the 8
+            // bytes the Core reads a selector from never matches a call.
+            if ix.discriminator.len() > MAX_DISCRIMINATOR_HEX {
+                return Err(RegistryError::InvalidManifest(format!(
+                    "instruction '{}' has a discriminator of {} hex characters; a selector is at most 8 bytes ({MAX_DISCRIMINATOR_HEX} hex) — resource-exhaustion guard",
+                    ix.name,
+                    ix.discriminator.len()
+                )));
+            }
+            if ix.risk_class.chars().count() > MAX_FIELD_CHARS {
+                return Err(RegistryError::InvalidManifest(format!(
+                    "instruction '{}' has a risk_class exceeding {MAX_FIELD_CHARS} chars — resource-exhaustion guard",
+                    ix.name
+                )));
+            }
+            for slot in ix.all_layouts().flatten() {
+                let too_long = |v: &str| v.chars().count() > MAX_FIELD_CHARS;
+                if too_long(&slot.name)
+                    || too_long(&slot.role)
+                    || slot.expected_address.len() > MAX_LIST_ITEMS
+                    || slot.pda_seeds.len() > MAX_LIST_ITEMS
+                    || slot.expected_address.iter().any(|a| too_long(a))
+                    || slot.pda_seeds.iter().any(|seed| too_long(seed))
+                {
+                    return Err(RegistryError::InvalidManifest(format!(
+                        "instruction '{}' has an account slot whose name, role, seeds or expected addresses exceed {MAX_FIELD_CHARS} chars or {MAX_LIST_ITEMS} entries — resource-exhaustion guard",
                         ix.name
                     )));
                 }
@@ -1359,7 +1510,29 @@ mod tests {
     }
 
     /// A signed upgrade naming `previous` as the version it builds on (MR-2).
+    ///
+    /// A028: it changes what the program's instructions are — it describes
+    /// one more (`SecondOp`, "02") — as an upgrade does. One that changes
+    /// only its label is a relabel (`signed_relabel`), and a relabel of a
+    /// capped first manifest stays capped whoever signs it.
     fn signed_upgrade(
+        program: &str,
+        version: &str,
+        previous: &str,
+        signer: &SigningKey,
+    ) -> ManifestSubmission {
+        let mut m = manifest(program, "Test Protocol", version);
+        m.version.previous_version_ref = Some(previous.to_string());
+        let mut second = m.instructions[0].clone();
+        second.name = "SecondOp".to_string();
+        second.discriminator = "02".to_string();
+        m.instructions.push(second);
+        sign_manifest(m, signer)
+    }
+
+    /// A signed upgrade whose instructions are the first version's: only
+    /// the label and lineage change (A028).
+    fn signed_relabel(
         program: &str,
         version: &str,
         previous: &str,
@@ -1608,6 +1781,176 @@ mod tests {
         assert!(old.verify_offline().unwrap_err().contains("predates"));
     }
 
+    /// A030 (audit 2026-11): a record's tier is held to what its retained
+    /// signatures earn, not only to the three over-claims V-5 named. A
+    /// community record with one attester and no signer earns
+    /// HeuristicInferred; no registry submission earns SimulationValidated.
+    ///
+    /// Deliberate break: without the recomputed ceiling both tampered
+    /// records verify.
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
+    #[test]
+    fn a_record_claiming_a_tier_its_signatures_do_not_earn_does_not_verify() {
+        let mut engine = ManifestRegistryEngine::new();
+        let mut store = SemanticGraphStore::new();
+        let (signer, attester) = (key(131), key(132));
+        for k in [&signer, &attester] {
+            engine.register_reviewer(&pubkey_b58(k), 1000).unwrap();
+        }
+        let core = GraphiteCore::new();
+        let signed = signed_submission(NON_SEED, "v1.0", &signer);
+        let corpus = onboarding_corpus(&core, &signed);
+        engine
+            .submit(&mut store, signed, Some((&corpus, &core)))
+            .unwrap();
+        let signed_record = engine.records().last().unwrap().clone();
+        assert_eq!(signed_record.verify_offline(), Ok(()));
+        let mut simulated = signed_record.clone();
+        simulated.first_manifest_unvalidated = false;
+        simulated.trust_tier = TrustTier::SimulationValidated;
+        let err = simulated.verify_offline().unwrap_err();
+        assert!(err.contains("SimulationValidated"), "{err}");
+        let mut official = signed_record.clone();
+        official.first_manifest_unvalidated = false;
+        official.trust_tier = TrustTier::OfficialManifest;
+        assert_eq!(official.verify_offline(), Ok(()), "what a signer earns");
+
+        let program = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
+        let mut community = ManifestSubmission {
+            manifest: manifest(program, "Community", "v1.0"),
+            signer_pubkey: None,
+            signature_hex: None,
+            attestations: vec![],
+        };
+        let message = community.signing_message();
+        community.attestations = vec![ReviewerAttestation {
+            reviewer_pubkey: pubkey_b58(&attester),
+            signature_hex: sign(&attester, &message),
+        }];
+        let corpus = onboarding_corpus(&core, &community);
+        engine
+            .submit(&mut store, community, Some((&corpus, &core)))
+            .unwrap();
+        let record = engine.records().last().unwrap().clone();
+        assert_eq!(
+            (record.source.as_str(), record.signer.as_ref()),
+            ("community", None)
+        );
+        assert_eq!(record.verify_offline(), Ok(()));
+        let mut claimed = record.clone();
+        claimed.first_manifest_unvalidated = false;
+        claimed.trust_tier = TrustTier::OfficialManifest;
+        let err = claimed.verify_offline().unwrap_err();
+        assert!(err.contains("OfficialManifest"), "{err}");
+    }
+
+    /// A031 (audit 2026-11): every string and list a submission carries is
+    /// bounded, not only the instruction lists: the discriminator (at most
+    /// the 8 bytes the Core reads a selector from — a longer one never
+    /// matches a call), account names, roles, seeds and `expected_address`
+    /// lists, the protocol's strings and the version's.
+    ///
+    /// Deliberate break: without the caps each of these is accepted.
+    #[test]
+    fn registry_bounds_every_string_and_list_a_submission_carries() {
+        let long = "x".repeat(129);
+        let slot = AccountRoleDef {
+            name: "user".to_string(),
+            role: "signer".to_string(),
+            is_writable: false,
+            is_signer: true,
+            pda_seeds: vec![],
+            expected_address: vec![],
+            optional: false,
+        };
+        let with = |f: &dyn Fn(&mut ProtocolManifest)| {
+            let mut m = manifest(NON_SEED, "Bounded", "v1.0");
+            m.instructions[0].accounts = vec![slot.clone()];
+            f(&mut m);
+            ManifestRegistryEngine::validate_manifest(&m)
+        };
+        assert_eq!(with(&|_| {}), Ok(()), "the baseline is valid");
+        type Edit<'a> = Box<dyn Fn(&mut ProtocolManifest) + 'a>;
+        let cases: Vec<(&str, Edit)> = vec![
+            (
+                "a discriminator over 8 bytes",
+                Box::new(|m| m.instructions[0].discriminator = "01".repeat(9)),
+            ),
+            (
+                "a multi-megabyte discriminator",
+                Box::new(|m| m.instructions[0].discriminator = "ab".repeat(1 << 20)),
+            ),
+            (
+                "an account name",
+                Box::new(|m| m.instructions[0].accounts[0].name = long.clone()),
+            ),
+            (
+                "an account role",
+                Box::new(|m| m.instructions[0].accounts[0].role = long.clone()),
+            ),
+            (
+                "an expected_address list",
+                Box::new(|m| {
+                    m.instructions[0].accounts[0].expected_address = vec![NON_SEED.to_string(); 65]
+                }),
+            ),
+            (
+                "an alternate layout's account name",
+                Box::new(|m| {
+                    let mut alt = m.instructions[0].accounts.clone();
+                    alt[0].name = long.clone();
+                    m.instructions[0].account_layouts = vec![alt];
+                }),
+            ),
+            (
+                "a seed list",
+                Box::new(|m| {
+                    m.instructions[0].accounts[0].pda_seeds = vec!["seed".to_string(); 65]
+                }),
+            ),
+            (
+                "the protocol name",
+                Box::new(|m| m.protocol.name = long.clone()),
+            ),
+            (
+                "the protocol website",
+                Box::new(|m| m.protocol.website = "h".repeat(513)),
+            ),
+            (
+                "the protocol github",
+                Box::new(|m| m.protocol.github = "h".repeat(513)),
+            ),
+            (
+                "the protocol category",
+                Box::new(|m| m.protocol.category = long.clone()),
+            ),
+            (
+                "the version label",
+                Box::new(|m| m.version.label = long.clone()),
+            ),
+            (
+                "the previous version ref",
+                Box::new(|m| m.version.previous_version_ref = Some(long.clone())),
+            ),
+            (
+                "the risk class",
+                Box::new(|m| m.instructions[0].risk_class = long.clone()),
+            ),
+        ];
+        for (what, change) in cases {
+            assert!(
+                matches!(with(&*change), Err(RegistryError::InvalidManifest(_))),
+                "{what}: an unbounded field was accepted"
+            );
+        }
+        // The runtime loader refuses a discriminator it could never match too.
+        let mut m = manifest(NON_SEED, "Bounded", "v1.0");
+        m.instructions[0].discriminator = "01".repeat(9);
+        assert!(crate::manifest::validate_manifest(&m).is_err());
+        m.instructions[0].discriminator = "01".repeat(8);
+        assert!(crate::manifest::validate_manifest(&m).is_ok());
+    }
+
     #[test]
     fn registry_rejects_resource_exhaustion_manifest() {
         // 1000 instructions (cap 512) must be rejected BEFORE any hashing or
@@ -1783,6 +2126,12 @@ mod tests {
             "v2.0",
         );
         m.version.previous_version_ref = Some("v1.0".to_string());
+        // A028: an upgrade that changes an instruction (a relabel of the
+        // capped v1.0 would stay capped whoever attests it).
+        let mut second = m.instructions[0].clone();
+        second.name = "SecondOp".to_string();
+        second.discriminator = "02".to_string();
+        m.instructions.push(second);
         let mut submission = ManifestSubmission {
             manifest: m,
             signer_pubkey: None,
@@ -3381,5 +3730,88 @@ mod tests {
         let graph = store.get(NON_SEED).unwrap();
         assert!(!graph.first_manifest_unvalidated);
         assert_eq!(graph.trust_tier, TrustTier::CommunityVerified);
+    }
+
+    /// A028 (audit 2026-11): an upgrade whose instructions are the capped
+    /// first manifest's — a relabel — replays the first version's fixtures
+    /// against the same surface, which it agrees with by construction (D-9).
+    /// It stays capped even from reviewers disjoint from v1.0's, as the
+    /// first manifest handed in again with new attesters does; an upgrade
+    /// that changes an instruction, from the same reviewers, lifts it.
+    ///
+    /// Deliberate break: without `same_instructions` the relabel is
+    /// accepted at CommunityVerified with the flag cleared.
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
+    #[test]
+    fn a_relabel_of_a_capped_first_manifest_stays_capped() {
+        let mut engine = ManifestRegistryEngine::new();
+        let mut store = SemanticGraphStore::new();
+        let (a, b, c, d) = (key(121), key(122), key(123), key(124));
+        for k in [&a, &b, &c, &d] {
+            engine.register_reviewer(&pubkey_b58(k), 1000).unwrap();
+        }
+        let core = GraphiteCore::new();
+        accept_first_version(&mut engine, &mut store, NON_SEED, "v1.0", &a);
+        assert!(engine.records().last().unwrap().first_manifest_unvalidated);
+        let attested = |mut sub: ManifestSubmission| {
+            let message = sub.signing_message();
+            sub.attestations = [&c, &d]
+                .into_iter()
+                .map(|k| ReviewerAttestation {
+                    reviewer_pubkey: pubkey_b58(k),
+                    signature_hex: sign(k, &message),
+                })
+                .collect();
+            sub
+        };
+        let relabel = attested(signed_relabel(NON_SEED, "v1.1", "v1.0", &b));
+        let corpus = onboarding_corpus(&core, &relabel);
+        assert_eq!(
+            engine
+                .clone()
+                .submit(&mut store.clone(), relabel, Some((&corpus, &core)))
+                .unwrap(),
+            RegistryDecision::Accepted {
+                trust_tier: TrustTier::HeuristicInferred,
+                version_label: "v1.1".to_string(),
+            },
+            "a relabel validated nothing"
+        );
+        let mut relabelled = engine.clone();
+        let mut relabelled_store = store.clone();
+        let relabel = attested(signed_relabel(NON_SEED, "v1.1", "v1.0", &b));
+        relabelled
+            .submit(&mut relabelled_store, relabel, Some((&corpus, &core)))
+            .unwrap();
+        assert!(
+            relabelled
+                .records()
+                .last()
+                .unwrap()
+                .first_manifest_unvalidated
+        );
+        assert_eq!(
+            relabelled.manifests_in_force()[0].trust_tier,
+            "HeuristicInferred"
+        );
+        assert!(
+            relabelled_store
+                .get(NON_SEED)
+                .unwrap()
+                .first_manifest_unvalidated
+        );
+
+        let upgrade = attested(signed_upgrade(NON_SEED, "v1.1", "v1.0", &b));
+        let corpus = onboarding_corpus(&core, &upgrade);
+        assert_eq!(
+            engine
+                .submit(&mut store, upgrade, Some((&corpus, &core)))
+                .unwrap(),
+            RegistryDecision::Accepted {
+                trust_tier: TrustTier::CommunityVerified,
+                version_label: "v1.1".to_string(),
+            }
+        );
+        assert!(!engine.records().last().unwrap().first_manifest_unvalidated);
     }
 }

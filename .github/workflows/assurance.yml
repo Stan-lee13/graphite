@@ -58,6 +58,9 @@ jobs:
           - { target: token_extensions, max_len: 4096 }
           - { target: state_diff, max_len: 4096 }
           - { target: rpc_json, max_len: 4096 }
+          # Audit A045: a route of many steps is longer than any committed
+          # mainnet one (118 bytes with its program byte).
+          - { target: swap_decoder, max_len: 1024 }
     defaults:
       run:
         working-directory: graphite-core/fuzz

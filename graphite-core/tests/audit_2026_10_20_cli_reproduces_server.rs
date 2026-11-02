@@ -249,10 +249,19 @@ fn registry_records_are_checked_from_their_own_contents() {
     assert!(text.contains("UNPROVEN"), "{text}");
     // A record whose manifest does not hash to what it names.
     let (code, text) = run(vec![record(
-        Some(manifest),
+        Some(manifest.clone()),
         Some("graphite-manifest-registry-v1"),
     )]);
     assert_eq!(code, Some(1), "{text}");
     assert!(text.contains("FAILED"), "{text}");
+    // Audit A090: the same record without its signing domain. Its manifest
+    // still does not hash to what it names, whatever its age: a definite
+    // mismatch, FAILED (exit 1), not UNPROVEN (exit 2).
+    let (code, text) = run(vec![record(Some(manifest.clone()), None)]);
+    assert_eq!(code, Some(1), "{text}");
+    assert!(
+        text.contains("FAILED") && !text.contains("UNPROVEN"),
+        "{text}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }

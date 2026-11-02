@@ -1027,53 +1027,62 @@ pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseE
 /// Keys the runtime never lets a transaction write, whatever its header says:
 /// the entries of agave's reserved-account-key set that are active with no
 /// feature gate (`ReservedAccount::new_active` in agave's
-/// `reserved-account-keys`).
+/// `reserved-account-keys`), in the order agave lists them.
 ///
-/// FEATURE-GATED KEYS ARE LEFT WRITABLE, on purpose. agave reserves these
-/// only behind a feature (`ReservedAccount::new_pending`):
-///
-/// - behind `add_new_reserved_account_keys`: the AddressLookupTable,
-///   ComputeBudget, Ed25519, LoaderV4, Secp256k1, ZkElGamalProof and
-///   ZkTokenProof programs, the EpochRewards and LastRestartSlot sysvars, and
-///   the Sysvar owner id (`Sysvar1111111111111111111111111111111111111`);
-/// - behind `enable_secp256r1_precompile`: the Secp256r1 program.
-///
-/// Whether a cluster demotes them depends on a feature the bytes do not show.
-/// Left out, such a key reads as writable when its header says so — the
-/// stricter reading: Graphite may call a key writable that the runtime
-/// demotes, never the reverse. What changes when a feature activates on
-/// mainnet: nothing becomes unsafe (the runtime only gets stricter than this
-/// list), but `writable` then over-reports those keys, and a key reported
-/// writable that a manifest declares read-only is refused as a privilege
-/// mismatch. On activation, move the ids here (in the same order agave
-/// lists them) and rerun the runtime oracle, whose `always_reserved` set
-/// must move with them.
+/// Audit A091 (2026-11): agave-reserved-account-keys 4.3.2 and 4.4.0 (4.4.0
+/// is the version `tools/inner-instruction-oracle/Cargo.lock` pins) list
+/// every key that used to be reserved only behind a feature —
+/// `add_new_reserved_account_keys` (the AddressLookupTable, ComputeBudget,
+/// Ed25519, LoaderV4, Secp256k1, ZkElGamalProof and ZkTokenProof programs,
+/// the EpochRewards and LastRestartSlot sysvars, and the Sysvar owner id)
+/// and `enable_secp256r1_precompile` (the Secp256r1 program) — as
+/// `new_active`: the features were activated and their gates removed, so the
+/// runtime demotes them unconditionally. They were left writable here while
+/// gated, the stricter reading; once active that over-reported them, and a
+/// manifest declaring one read-only was refused as a privilege mismatch the
+/// runtime never exhibits. A key agave adds behind a new feature
+/// (`new_pending`) stays out of this list, writable, until that feature is
+/// active and agave lists it with `new_active`.
 ///
 /// The runtime oracle (`tools/runtime-oracle`) checks this list and the
 /// demotion against the crates' own `is_maybe_writable`, and checks that
 /// every program and sysvar id the id crate defines is classified as either
-/// always reserved or not.
+/// always reserved or not; its `always_reserved` set moves with this list.
 const ALWAYS_DEMOTED_KEYS: &[&str] = &[
-    "Config1111111111111111111111111111111111111",
-    "Feature111111111111111111111111111111111111",
-    "NativeLoader1111111111111111111111111111111",
-    "Stake11111111111111111111111111111111111111",
-    "StakeConfig11111111111111111111111111111111",
-    "Vote111111111111111111111111111111111111111",
-    "11111111111111111111111111111111",
+    // builtin programs
+    "AddressLookupTab1e1111111111111111111111111",
     "BPFLoader2111111111111111111111111111111111",
     "BPFLoader1111111111111111111111111111111111",
     UPGRADEABLE_LOADER,
+    "ComputeBudget111111111111111111111111111111",
+    "Config1111111111111111111111111111111111111",
+    "Ed25519SigVerify111111111111111111111111111",
+    "Feature111111111111111111111111111111111111",
+    "LoaderV411111111111111111111111111111111111",
+    "KeccakSecp256k11111111111111111111111111111",
+    "Secp256r1SigVerify1111111111111111111111111",
+    "StakeConfig11111111111111111111111111111111",
+    "Stake11111111111111111111111111111111111111",
+    "11111111111111111111111111111111",
+    "Vote111111111111111111111111111111111111111",
+    "ZkE1Gama1Proof11111111111111111111111111111",
+    "ZkTokenProof1111111111111111111111111111111",
+    // sysvars
     "SysvarC1ock11111111111111111111111111111111",
+    "SysvarEpochRewards1111111111111111111111111",
     "SysvarEpochSchedu1e111111111111111111111111",
     "SysvarFees111111111111111111111111111111111",
     "Sysvar1nstructions1111111111111111111111111",
+    "SysvarLastRestartS1ot1111111111111111111111",
     "SysvarRecentB1ockHashes11111111111111111111",
     "SysvarRent111111111111111111111111111111111",
     "SysvarRewards111111111111111111111111111111",
     "SysvarS1otHashes111111111111111111111111111",
     "SysvarS1otHistory11111111111111111111111111",
     "SysvarStakeHistory1111111111111111111111111",
+    // other
+    "NativeLoader1111111111111111111111111111111",
+    "Sysvar1111111111111111111111111111111111111",
 ];
 
 const UPGRADEABLE_LOADER: &str = "BPFLoaderUpgradeab1e11111111111111111111111";

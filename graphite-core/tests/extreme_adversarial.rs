@@ -210,8 +210,13 @@ fn t02_orca_wrong_discriminator() {
         0.9,
         None,
     );
-    let r = run(input);
-    attack_harness::assert_blocked_by(&r, &["evidence_ceiling"]);
+    let r = run(input.clone());
+    // Audit A075: refused because the program's manifest does not describe
+    // this instruction (the Unknown tier, A3-04), with or without earned
+    // evidence — not for want of evidence (this asserted `evidence_ceiling`
+    // alone, which held with the rule deleted).
+    attack_harness::assert_blocked_by(&r, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     assert!(!r.approved, "Orca with unknown discriminator");
 }
 
@@ -292,15 +297,18 @@ fn t05_system_transfer_to_unknown() {
         0.95,
         None,
     );
-    let r = run(input);
+    let r = run(input.clone());
     // The System program sits in a slot past the transfer's two accounts,
     // not at its destination; since the audit of 2026-10-20 (R-4) only the
     // destination (and, at five '1's, the source) of a fund movement is held
     // to the unspendable and impersonation rules, so nothing here is an
     // attack the Risk Engine names. A one-byte label is not System's
-    // four-byte Transfer selector, so the instruction is undescribed and the
-    // request is refused for want of evidence alone.
-    attack_harness::assert_blocked_by(&r, &["evidence_ceiling"]);
+    // four-byte Transfer selector, so the instruction is undescribed: it
+    // takes the Unknown tier (A3-04), with or without earned evidence.
+    // Audit A075: this asserted `evidence_ceiling` alone ("refused for want
+    // of evidence"), which held with the rule deleted.
+    attack_harness::assert_blocked_by(&r, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     assert!(
         r.confidence < 1.0,
         "System transfer to unknown should not be 100%"

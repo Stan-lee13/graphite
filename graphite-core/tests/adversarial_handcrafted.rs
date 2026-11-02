@@ -483,14 +483,20 @@ fn test_adv_legit_look_021() {
 
 #[test]
 fn test_adv_legit_look_022() {
-    let result = run(make(
+    let input = make(
         JUPITER_V6,
         "03",
         &[A1, A2, A3],
         &[A1],
         WalletProfile::TradingBot,
-    ));
-    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    );
+    let result = run(input.clone());
+    // Audit A075: refused because the program's manifest does not describe
+    // this instruction (the Unknown tier, A3-04), with or without earned
+    // evidence — not for want of evidence (this asserted `evidence_ceiling`
+    // alone, which held with the rule deleted).
+    attack_harness::assert_blocked_by(&result, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     println!(
         "Legit-look 022 (JUPITER_V6) — approved: {}",
         result.approved
@@ -523,28 +529,34 @@ fn test_adv_legit_look_023() {
 
 #[test]
 fn test_adv_legit_look_024() {
-    let result = run(make(
-        ORCA,
-        "03",
-        &[A1, A2, A3],
-        &[A1],
-        WalletProfile::TradingBot,
-    ));
-    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    let input = make(ORCA, "03", &[A1, A2, A3], &[A1], WalletProfile::TradingBot);
+    let result = run(input.clone());
+    // Audit A075: refused because the program's manifest does not describe
+    // this instruction (the Unknown tier, A3-04), with or without earned
+    // evidence — not for want of evidence (this asserted `evidence_ceiling`
+    // alone, which held with the rule deleted).
+    attack_harness::assert_blocked_by(&result, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     println!("Legit-look 024 (ORCA) — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_adv_legit_look_025() {
-    let result = run(make(
+    let input = make(
         METEORA,
         "03",
         &[A1, A2, A3],
         &[A1],
         WalletProfile::TradingBot,
-    ));
-    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    );
+    let result = run(input.clone());
+    // Audit A075: refused because the program's manifest does not describe
+    // this instruction (the Unknown tier, A3-04), with or without earned
+    // evidence — not for want of evidence (this asserted `evidence_ceiling`
+    // alone, which held with the rule deleted).
+    attack_harness::assert_blocked_by(&result, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     println!("Legit-look 025 (METEORA) — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -565,14 +577,20 @@ fn test_adv_legit_look_026() {
 
 #[test]
 fn test_adv_legit_look_027() {
-    let result = run(make(
+    let input = make(
         JUPITER_V6,
         "03",
         &[A1, A2, A3],
         &[A1],
         WalletProfile::TradingBot,
-    ));
-    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    );
+    let result = run(input.clone());
+    // Audit A075: refused because the program's manifest does not describe
+    // this instruction (the Unknown tier, A3-04), with or without earned
+    // evidence — not for want of evidence (this asserted `evidence_ceiling`
+    // alone, which held with the rule deleted).
+    attack_harness::assert_blocked_by(&result, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     println!(
         "Legit-look 027 (JUPITER_V6) — approved: {}",
         result.approved
@@ -605,28 +623,34 @@ fn test_adv_legit_look_028() {
 
 #[test]
 fn test_adv_legit_look_029() {
-    let result = run(make(
-        ORCA,
-        "03",
-        &[A1, A2, A3],
-        &[A1],
-        WalletProfile::TradingBot,
-    ));
-    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    let input = make(ORCA, "03", &[A1, A2, A3], &[A1], WalletProfile::TradingBot);
+    let result = run(input.clone());
+    // Audit A075: refused because the program's manifest does not describe
+    // this instruction (the Unknown tier, A3-04), with or without earned
+    // evidence — not for want of evidence (this asserted `evidence_ceiling`
+    // alone, which held with the rule deleted).
+    attack_harness::assert_blocked_by(&result, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     println!("Legit-look 029 (ORCA) — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_adv_legit_look_030() {
-    let result = run(make(
+    let input = make(
         METEORA,
         "03",
         &[A1, A2, A3],
         &[A1],
         WalletProfile::TradingBot,
-    ));
-    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    );
+    let result = run(input.clone());
+    // Audit A075: refused because the program's manifest does not describe
+    // this instruction (the Unknown tier, A3-04), with or without earned
+    // evidence — not for want of evidence (this asserted `evidence_ceiling`
+    // alone, which held with the rule deleted).
+    attack_harness::assert_blocked_by(&result, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     println!("Legit-look 030 (METEORA) — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -841,14 +865,20 @@ fn test_adv_cpi_obfuscation_041() {
 
 #[test]
 fn test_adv_cpi_obfuscation_042() {
-    let result = run(make(
+    let input = make(
         JUPITER_V6,
         "03",
         &[A1, A2, A3],
         &[A1, A2],
         WalletProfile::TradingBot,
-    ));
-    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    );
+    let result = run(input.clone());
+    // Audit A075: refused because the program's manifest does not describe
+    // this instruction (the Unknown tier, A3-04), with or without earned
+    // evidence — not for want of evidence (this asserted `evidence_ceiling`
+    // alone, which held with the rule deleted).
+    attack_harness::assert_blocked_by(&result, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     println!("CPI obfuscation 042 — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -892,14 +922,20 @@ fn test_adv_cpi_obfuscation_044() {
 
 #[test]
 fn test_adv_cpi_obfuscation_045() {
-    let result = run(make(
+    let input = make(
         SQUADS,
         "03",
         &[A1, A2, A3],
         &[A1, A2, A3, A4, A5],
         WalletProfile::TradingBot,
-    ));
-    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    );
+    let result = run(input.clone());
+    // Audit A075: refused because the program's manifest does not describe
+    // this instruction (the Unknown tier, A3-04), with or without earned
+    // evidence — not for want of evidence (this asserted `evidence_ceiling`
+    // alone, which held with the rule deleted).
+    attack_harness::assert_blocked_by(&result, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     println!("CPI obfuscation 045 — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -920,14 +956,20 @@ fn test_adv_cpi_obfuscation_046() {
 
 #[test]
 fn test_adv_cpi_obfuscation_047() {
-    let result = run(make(
+    let input = make(
         JUPITER_V6,
         "03",
         &[A1, A2, A3],
         &[A1, A2],
         WalletProfile::TradingBot,
-    ));
-    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    );
+    let result = run(input.clone());
+    // Audit A075: refused because the program's manifest does not describe
+    // this instruction (the Unknown tier, A3-04), with or without earned
+    // evidence — not for want of evidence (this asserted `evidence_ceiling`
+    // alone, which held with the rule deleted).
+    attack_harness::assert_blocked_by(&result, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     println!("CPI obfuscation 047 — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -971,14 +1013,20 @@ fn test_adv_cpi_obfuscation_049() {
 
 #[test]
 fn test_adv_cpi_obfuscation_050() {
-    let result = run(make(
+    let input = make(
         SQUADS,
         "03",
         &[A1, A2, A3],
         &[A1, A2, A3, A4, A5],
         WalletProfile::TradingBot,
-    ));
-    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    );
+    let result = run(input.clone());
+    // Audit A075: refused because the program's manifest does not describe
+    // this instruction (the Unknown tier, A3-04), with or without earned
+    // evidence — not for want of evidence (this asserted `evidence_ceiling`
+    // alone, which held with the rule deleted).
+    attack_harness::assert_blocked_by(&result, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     println!("CPI obfuscation 050 — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -1781,14 +1829,20 @@ fn test_adv_full_evasion_091() {
 
 #[test]
 fn test_adv_full_evasion_092() {
-    let result = run(make(
+    let input = make(
         JUPITER_V6,
         "03",
         &[A1, A2, A3],
         &[A1],
         WalletProfile::Gaming,
-    ));
-    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    );
+    let result = run(input.clone());
+    // Audit A075: refused because the program's manifest does not describe
+    // this instruction (the Unknown tier, A3-04), with or without earned
+    // evidence — not for want of evidence (this asserted `evidence_ceiling`
+    // alone, which held with the rule deleted).
+    attack_harness::assert_blocked_by(&result, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     println!(
         "Full evasion 092 (JUPITER_V6, Gaming) — approved: {}",
         result.approved
@@ -1841,14 +1895,14 @@ fn test_adv_full_evasion_094() {
 
 #[test]
 fn test_adv_full_evasion_095() {
-    let result = run(make(
-        ORCA,
-        "03",
-        &[A1, A2, A3],
-        &[A1],
-        WalletProfile::Treasury,
-    ));
-    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    let input = make(ORCA, "03", &[A1, A2, A3], &[A1], WalletProfile::Treasury);
+    let result = run(input.clone());
+    // Audit A075: refused because the program's manifest does not describe
+    // this instruction (the Unknown tier, A3-04), with or without earned
+    // evidence — not for want of evidence (this asserted `evidence_ceiling`
+    // alone, which held with the rule deleted).
+    attack_harness::assert_blocked_by(&result, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     println!(
         "Full evasion 095 (ORCA, Treasury) — approved: {}",
         result.approved
@@ -1875,14 +1929,20 @@ fn test_adv_full_evasion_096() {
 
 #[test]
 fn test_adv_full_evasion_097() {
-    let result = run(make(
+    let input = make(
         JUPITER_V6,
         "03",
         &[A1, A2, A3],
         &[A1],
         WalletProfile::Gaming,
-    ));
-    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    );
+    let result = run(input.clone());
+    // Audit A075: refused because the program's manifest does not describe
+    // this instruction (the Unknown tier, A3-04), with or without earned
+    // evidence — not for want of evidence (this asserted `evidence_ceiling`
+    // alone, which held with the rule deleted).
+    attack_harness::assert_blocked_by(&result, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     println!(
         "Full evasion 097 (JUPITER_V6, Gaming) — approved: {}",
         result.approved
@@ -1935,14 +1995,14 @@ fn test_adv_full_evasion_099() {
 
 #[test]
 fn test_adv_full_evasion_100() {
-    let result = run(make(
-        ORCA,
-        "03",
-        &[A1, A2, A3],
-        &[A1],
-        WalletProfile::Treasury,
-    ));
-    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    let input = make(ORCA, "03", &[A1, A2, A3], &[A1], WalletProfile::Treasury);
+    let result = run(input.clone());
+    // Audit A075: refused because the program's manifest does not describe
+    // this instruction (the Unknown tier, A3-04), with or without earned
+    // evidence — not for want of evidence (this asserted `evidence_ceiling`
+    // alone, which held with the rule deleted).
+    attack_harness::assert_blocked_by(&result, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     println!(
         "Full evasion 100 (ORCA, Treasury) — approved: {}",
         result.approved

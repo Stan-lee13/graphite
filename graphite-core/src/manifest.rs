@@ -995,6 +995,10 @@ impl ManifestRegistry {
     }
 }
 
+/// The longest discriminator a manifest may declare, in bytes: the selector
+/// width the Core reads from an instruction's data (A031).
+pub const MAX_DISCRIMINATOR_BYTES: usize = 8;
+
 /// The runtime's manifest validation — every rule a manifest must satisfy to
 /// be loaded, seed or not. The one validator: the community registry runs it
 /// on every submission too (Round 29, audit 2026-10-20, MR-5), so a reviewer
@@ -1079,6 +1083,17 @@ pub fn validate_manifest(manifest: &ProtocolManifest) -> Result<(), ManifestErro
                 return Err(ManifestError::Invalid(format!(
                     "instruction '{}' has no discriminator, and only a program with a single instruction can be described that way",
                     ix.name
+                )));
+            }
+            // A031 (audit 2026-11): the Core reads a selector from at most
+            // the first 8 bytes of the data (`dispatch_selector`), so a
+            // longer discriminator never matches a call; it is refused
+            // before the prefix-ambiguity check below compares every pair.
+            if ix.discriminator.len() > 2 * MAX_DISCRIMINATOR_BYTES {
+                return Err(ManifestError::Invalid(format!(
+                    "instruction '{}' has a discriminator of {} hex characters; a selector is at most {MAX_DISCRIMINATOR_BYTES} bytes",
+                    ix.name,
+                    ix.discriminator.len()
                 )));
             }
             if !ix.discriminator.is_empty() {

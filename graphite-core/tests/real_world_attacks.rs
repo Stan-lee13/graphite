@@ -926,8 +926,13 @@ fn test_real_fake_swap_041() {
         &[A1, A2],
         WalletProfile::TradingBot,
     );
-    let result = run(input);
-    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    let result = run(input.clone());
+    // Audit A075: refused because the program's manifest does not describe
+    // this instruction (the Unknown tier, A3-04), with or without earned
+    // evidence — not for want of evidence (this asserted `evidence_ceiling`
+    // alone, which held with the rule deleted).
+    attack_harness::assert_blocked_by(&result, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     println!(
         "Fake swap 041 (JUPITER_V6) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1003,8 +1008,13 @@ fn test_real_fake_swap_044() {
         &[A1, A2],
         WalletProfile::TradingBot,
     );
-    let result = run(input);
-    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    let result = run(input.clone());
+    // Audit A075: refused because the program's manifest does not describe
+    // this instruction (the Unknown tier, A3-04), with or without earned
+    // evidence — not for want of evidence (this asserted `evidence_ceiling`
+    // alone, which held with the rule deleted).
+    attack_harness::assert_blocked_by(&result, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     println!(
         "Fake swap 044 (JUPITER_V6) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1081,8 +1091,13 @@ fn test_real_fake_swap_047() {
         &[A1, A2],
         WalletProfile::TradingBot,
     );
-    let result = run(input);
-    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    let result = run(input.clone());
+    // Audit A075: refused because the program's manifest does not describe
+    // this instruction (the Unknown tier, A3-04), with or without earned
+    // evidence — not for want of evidence (this asserted `evidence_ceiling`
+    // alone, which held with the rule deleted).
+    attack_harness::assert_blocked_by(&result, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     println!(
         "Fake swap 047 (JUPITER_V6) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -1158,8 +1173,13 @@ fn test_real_fake_swap_050() {
         &[A1, A2],
         WalletProfile::TradingBot,
     );
-    let result = run(input);
-    attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    let result = run(input.clone());
+    // Audit A075: refused because the program's manifest does not describe
+    // this instruction (the Unknown tier, A3-04), with or without earned
+    // evidence — not for want of evidence (this asserted `evidence_ceiling`
+    // alone, which held with the rule deleted).
+    attack_harness::assert_blocked_by(&result, &["undescribed_instruction"]);
+    attack_harness::assert_undescribed_even_with_earned_evidence(&input);
     println!(
         "Fake swap 050 (JUPITER_V6) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status

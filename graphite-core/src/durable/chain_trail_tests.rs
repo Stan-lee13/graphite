@@ -440,6 +440,58 @@ fn a_torn_line_from_a_crash_is_reported_and_the_chain_resumes_past_it() {
     assert_eq!((after.chained_records, after.unparseable_lines), (5, 1));
 }
 
+/// A025 (audit 2026-11): two crashes in a row, the second during the
+/// append that names the first torn line. The file then ends in that torn
+/// line, terminated, and part of the naming record; the next writer names
+/// both (one span from the first), so `verify` reports neither as a break
+/// and backups and checkpoints do not stop on an honest crash.
+///
+/// Deliberate break: with `torn_tail_of` naming only the fragment after the
+/// last newline, `verify` reports the first torn line as a TEAR.
+#[test]
+fn two_crashes_in_a_row_leave_no_unnamed_tear() {
+    let dir = temp_dir("a025");
+    let path = audit_path(&dir);
+    let (_, key) = key_file("a025", 94);
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 0, 3);
+    close(log);
+    // Crash 1: half a record, no newline.
+    let mut text = std::fs::read_to_string(&path).unwrap();
+    let half = lines_of(&path)[1].clone();
+    text.push_str(&half[..half.len() / 2]);
+    std::fs::write(&path, &text).unwrap();
+    let first_tear_end = text.len();
+    // Restart; crash 2 lands during the first append: its newline and part
+    // of the record naming the first torn line reach the disk.
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 3, 1);
+    close(log);
+    let full = std::fs::read(&path).unwrap();
+    let naming = &full[first_tear_end + 1..];
+    assert!(
+        std::str::from_utf8(naming).unwrap().contains("torn_tail"),
+        "the append after crash 1 names it"
+    );
+    let cut = first_tear_end + 1 + naming.len() / 2;
+    std::fs::write(&path, &full[..cut]).unwrap();
+    let before = verify(&path, std::slice::from_ref(&key));
+    assert!(before.intact(), "{before:?}");
+    // Restart again, and append normally.
+    let log = keyed(&path, &key, 0);
+    write_n(&log, 4, 2);
+    close(log);
+    let after = verify(&path, std::slice::from_ref(&key));
+    assert!(after.intact(), "{after:?}");
+    assert!(after.unacknowledged_tears.is_empty(), "{after:?}");
+    assert_eq!((after.chained_records, after.unparseable_lines), (5, 2));
+    // A junk line that is not directly before a torn tail is still a break.
+    let mut lines = lines_of(&path);
+    lines.insert(1, "not a record".to_string());
+    write_lines(&path, &lines);
+    assert!(!verify(&path, std::slice::from_ref(&key)).intact());
+}
+
 #[test]
 fn a_rotated_key_verifies_with_both_keys_and_a_lost_key_cannot_continue_the_trail() {
     let dir = temp_dir("rotate-key");
@@ -2187,6 +2239,75 @@ fn a_forged_legacy_line_in_a_keyed_trail_is_neither_read_nor_verified() {
     close(server);
 }
 
+/// A024 (audit 2026-11): a genuine key-adoption record of another trail
+/// under the same key, copied into this one where it does not continue the
+/// chain, does not make the legacy lines it lists readable here. Trail B
+/// is a pre-Round-30 trail adopted under K, its legacy lines including an
+/// approval of `VICTIM_TX`; trail A is born keyed under K. B's legacy lines
+/// go to the top of A, and B's adoption after A's first record. `verify`
+/// refuses that trail; the keyed readers used to read B's approval as A's.
+///
+/// Deliberate break: without the trail-id check in `checked_adoptions` the
+/// server finds the approval.
+#[test]
+fn another_trails_adoption_does_not_vouch_for_legacy_lines_here() {
+    let (_, key) = key_file("a024", 93);
+    let dir_b = temp_dir("a024-b");
+    let path_b = audit_path(&dir_b);
+    let legacy: Vec<String> = std::iter::once(victim_approval("gr-legacy-b"))
+        .chain((0..2).map(|i| rec(&format!("gr-old-{i}"), true)))
+        .map(|r| serde_json::to_string(&r).unwrap())
+        .collect();
+    write_lines(&path_b, &legacy);
+    let log = AuditLog::open_with_options(
+        &path_b,
+        AuditOptions {
+            rotate_bytes: 0,
+            key: Some(key.clone()),
+            adopt_key: true,
+            ..AuditOptions::default()
+        },
+    )
+    .unwrap();
+    write_n(&log, 0, 2);
+    close(log);
+    assert_eq!(verify(&path_b, std::slice::from_ref(&key)).exit_code(), 0);
+    let marker = format!("\"{}\":\"{}\"", chain::CONTROL_FIELD, chain::KEY_ADOPTION);
+    let adoption_b = lines_of(&path_b)
+        .into_iter()
+        .find(|l| l.contains(&marker))
+        .expect("B's adoption record");
+
+    let dir_a = temp_dir("a024-a");
+    let path_a = audit_path(&dir_a);
+    let log = keyed(&path_a, &key, 0);
+    write_n(&log, 10, 3);
+    close(log);
+    let own = lines_of(&path_a);
+    let mut spliced = legacy.clone();
+    spliced.push(own[0].clone());
+    spliced.push(adoption_b);
+    spliced.extend(own[1..].iter().cloned());
+    write_lines(&path_a, &spliced);
+    assert_ne!(verify(&path_a, std::slice::from_ref(&key)).exit_code(), 0);
+
+    let tx = VerificationKey::TransactionSha256(VICTIM_TX);
+    if let Ok(server) = keyed_with_previous(&path_a, &key, None) {
+        let seen = server.find_verification(tx);
+        let counted = server.count_verifications(tx);
+        close(server);
+        assert!(
+            seen.is_none(),
+            "the keyed reader returned trail B's legacy approval as trail A's: {seen:?}"
+        );
+        assert_eq!(counted, (0, 0));
+    }
+    let reader = AuditLog::open_read_only_keyed(&path_a, vec![key.clone()]);
+    if let Ok(reader) = reader {
+        assert!(reader.find_verification(tx).is_none());
+    }
+}
+
 /// R37-3: an unkeyed record with a recomputed hash at the start of a file
 /// of a keyed trail is never read by a reader holding the key — whether the
 /// trail was keyed from genesis, or an unterminated forgery at the end of
@@ -2323,6 +2444,60 @@ fn a_retired_key_cannot_extend_the_trail_after_rotation() {
         }
         Err(e) => assert!(e.to_string().contains("retired"), "{e}"),
     }
+}
+
+/// A023 (audit 2026-11): a key the trail retired is never adopted again as
+/// the writer's own. Rotating K1 → K2 and then back to K1 (an old key file
+/// reused, or the two settings swapped) used to write an adoption of K1
+/// that the readers' gate and `verify` refuse, and serve a session whose
+/// verdicts no reader could find after a rotation. Neither a server start
+/// nor `adopt-key` (the same open, with `adopt_key`) writes it.
+///
+/// Deliberate break: without the retired-key check in `resume_head` both
+/// opens succeed and the trail no longer verifies.
+#[test]
+fn a_retired_key_is_never_adopted_again() {
+    let dir = temp_dir("a023");
+    let path = audit_path(&dir);
+    let (_, k1) = key_file("a023-old", 91);
+    let (_, k2) = key_file("a023-new", 92);
+    let log = keyed(&path, &k1, 0);
+    write_n(&log, 0, 3);
+    close(log);
+    let log = keyed_with_previous(&path, &k2, Some(&k1)).unwrap();
+    write_n(&log, 3, 2);
+    close(log);
+    assert_eq!(verify(&path, &[k1.clone(), k2.clone()]).exit_code(), 0);
+    let before = std::fs::read(&path).unwrap();
+    for adopt_key in [false, true] {
+        let opened = AuditLog::open_with_options(
+            &path,
+            AuditOptions {
+                rotate_bytes: 0,
+                key: Some(k1.clone()),
+                previous_key: Some(k2.clone()),
+                adopt_key,
+                ..AuditOptions::default()
+            },
+        );
+        match opened {
+            Ok(log) => {
+                close(log);
+                panic!(
+                    "adopt_key={adopt_key}: the writer adopted the retired key K1; verify now exits {}",
+                    verify(&path, &[k1.clone(), k2.clone()]).exit_code()
+                );
+            }
+            Err(e) => {
+                let e = e.to_string();
+                assert!(e.contains("retired") && e.contains(k1.id()), "{e}");
+            }
+        }
+        assert_eq!(std::fs::read(&path).unwrap(), before, "nothing written");
+    }
+    assert_eq!(verify(&path, &[k1.clone(), k2.clone()]).exit_code(), 0);
+    // The key in force still resumes.
+    close(keyed_with_previous(&path, &k2, None).unwrap());
 }
 
 /// R37-5: a genuine record copied to a new position — later in its own

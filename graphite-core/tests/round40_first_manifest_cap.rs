@@ -204,7 +204,27 @@ fn a_first_manifest_reaches_the_verdict_capped_and_its_validated_upgrade_does_no
             1_000,
         )
         .unwrap();
-    let v2 = signed(manifest(PROGRAM, "1.1.0", Some("1.0.0")), &second);
+    // A028 (audit 2026-11): a relabel — v1's instructions under a new
+    // label — replays v1's fixture against the same surface and validates
+    // nothing, whoever signs it: still capped.
+    let relabel = signed(manifest(PROGRAM, "1.1.0", Some("1.0.0")), &second);
+    let corpus = corpus_for(&gate, &relabel, &ping);
+    let mut relabelled = engine.clone();
+    let mut relabelled_store = store.clone();
+    relabelled
+        .submit(&mut relabelled_store, relabel, Some((&corpus, &gate)))
+        .unwrap();
+    assert_eq!(
+        verdict_tier(&relabelled, Some(&relabelled_store), &ping),
+        "HeuristicInferred"
+    );
+    // The upgrade proper describes one more instruction.
+    let mut upgraded = manifest(PROGRAM, "1.1.0", Some("1.0.0"));
+    let mut pong = upgraded.instructions[0].clone();
+    pong.name = "pong".to_string();
+    pong.discriminator = "02".to_string();
+    upgraded.instructions.push(pong);
+    let v2 = signed(upgraded, &second);
     let corpus = corpus_for(&gate, &v2, &ping);
     engine
         .submit(&mut store, v2, Some((&corpus, &gate)))

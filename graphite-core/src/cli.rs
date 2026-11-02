@@ -2274,6 +2274,27 @@ pub fn manifest_diff(before: &ProtocolManifest, after: &ProtocolManifest) -> Vec
             before.protocol.name, after.protocol.name
         ));
     }
+    // A032 (audit 2026-11): the category decides which intents the program
+    // is judged to serve (L5, Risk Check 9, the fake-swap check read
+    // `category == "swap"`); the console renders website and github as links.
+    if before.protocol.category != after.protocol.category {
+        out.push(format!(
+            "  !! category    {:?} -> {:?} (changes which intents the program is judged to serve)",
+            before.protocol.category, after.protocol.category
+        ));
+    }
+    if before.protocol.website != after.protocol.website {
+        out.push(format!(
+            "  website        {:?} -> {:?}",
+            before.protocol.website, after.protocol.website
+        ));
+    }
+    if before.protocol.github != after.protocol.github {
+        out.push(format!(
+            "  github         {:?} -> {:?}",
+            before.protocol.github, after.protocol.github
+        ));
+    }
 
     // Round 41 full-codebase audit: instructions are paired by name, so a
     // name used twice would hide one of them ("no instruction-level changes"
@@ -3421,16 +3442,19 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
             };
             let (mut failed, mut unproven) = (0usize, 0usize);
             for rec in engine.records() {
-                let outcome = rec.verify_offline();
+                // Audit A090: classified by the check that failed, not by
+                // which fields are present: a retained manifest that does
+                // not hash to its record is a FAILED record at any age.
+                let outcome = rec.verify_offline_classified();
                 let label = match &outcome {
                     Ok(()) => "verified".to_string(),
-                    Err(e) if rec.signing_domain.is_none() || rec.manifest.is_none() => {
+                    Err(e) if e.unprovable => {
                         unproven += 1;
-                        format!("UNPROVEN: {e}")
+                        format!("UNPROVEN: {}", e.reason)
                     }
                     Err(e) => {
                         failed += 1;
-                        format!("FAILED: {e}")
+                        format!("FAILED: {}", e.reason)
                     }
                 };
                 println!(
@@ -4084,6 +4108,46 @@ mod tests {
         let a = diff_manifest(DIFF_PROGRAM, "1.0");
         let out = manifest_diff(&a, &a.clone()).join("\n");
         assert!(out.contains("no instruction-level changes"), "{out}");
+    }
+
+    /// A032 (audit 2026-11): `protocol.category` decides whether L5 and
+    /// Risk Check 9 treat the program as serving swap intents, and the
+    /// console renders `website` and `github` as links; the diff compared
+    /// none of them, so adding `"category": "swap"` read as no change.
+    ///
+    /// Deliberate break: without the protocol-level lines each edit is
+    /// missing from the diff.
+    #[test]
+    fn the_diff_surfaces_the_protocol_fields_the_runtime_and_console_read() {
+        type Edit = fn(&mut ProtocolManifest);
+        let edits: [(&str, Edit); 3] = [
+            ("!! category", |m| m.protocol.category = "swap".to_string()),
+            ("website", |m| {
+                m.protocol.website = "https://example.invalid".to_string()
+            }),
+            ("github", |m| {
+                m.protocol.github = "https://github.com/example/x".to_string()
+            }),
+        ];
+        for (what, edit) in edits {
+            let before = diff_manifest(DIFF_PROGRAM, "1.0");
+            let mut after = diff_manifest(DIFF_PROGRAM, "1.1");
+            edit(&mut after);
+            let out = manifest_diff(&before, &after).join("\n");
+            assert!(
+                out.contains(what),
+                "a change of {what} read as no change: {out}"
+            );
+            let back = manifest_diff(&after, &before).join("\n");
+            assert!(back.contains(what), "{what} removal not named: {back}");
+        }
+        let out = manifest_diff(&diff_manifest(DIFF_PROGRAM, "1.0"), &{
+            let mut m = diff_manifest(DIFF_PROGRAM, "1.1");
+            m.protocol.category = "swap".to_string();
+            m
+        })
+        .join("\n");
+        assert!(out.contains("intents"), "says why it matters: {out}");
     }
 
     #[test]

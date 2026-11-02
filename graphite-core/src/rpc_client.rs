@@ -1201,10 +1201,22 @@ const MAX_RPC_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
 /// real response is a few thousand values at most (100 accounts, a
 /// simulation's balance arrays and inner instructions), almost all of its
 /// bytes inside long base64 strings, which are one value each.
+///
+/// A038 (audit 2026-11): an object is not 32 bytes. serde_json without
+/// `preserve_order` stores it as a `BTreeMap`, whose first insert allocates
+/// a ~632-byte leaf, so `[{"a":0},…]` parsed to ~664 bytes per three counted
+/// values — 2.7 MB of body to ~240 MB. An object now counts as
+/// `OBJECT_VALUE_WEIGHT` values, what it costs in 32-byte units; the cap
+/// still bounds the parsed tree to tens of megabytes.
 const MAX_RPC_RESPONSE_VALUES: usize = 1_000_000;
 
+/// What one JSON object counts for against `MAX_RPC_RESPONSE_VALUES`: a
+/// `BTreeMap` leaf (~632 bytes) in 32-byte `Value`s (A038).
+const OBJECT_VALUE_WEIGHT: usize = 20;
+
 /// How many JSON values `body` holds, counted in one pass without building
-/// them, or `None` once there are more than `limit`. Strings (with their
+/// them (an object as `OBJECT_VALUE_WEIGHT`), or `None` once there are more
+/// than `limit`. Strings (with their
 /// escapes) are skipped as single values; every other value begins at a
 /// byte outside a string that is not whitespace, a separator or a closer.
 fn json_value_count_within(body: &[u8], limit: usize) -> Option<usize> {
@@ -1229,7 +1241,11 @@ fn json_value_count_within(body: &[u8], limit: usize) -> Option<usize> {
                 in_scalar = false;
                 count += 1;
             }
-            b'{' | b'[' => {
+            b'{' => {
+                in_scalar = false;
+                count += OBJECT_VALUE_WEIGHT;
+            }
+            b'[' => {
                 in_scalar = false;
                 count += 1;
             }
@@ -1864,10 +1880,13 @@ impl SolanaRpcClient {
         // `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` set, reqwest connected to
         // the proxy and handed it the RPC host name: the connect-time guard
         // (`GuardedResolver`) then judged only the proxy's address, and the
-        // proxy resolved the provider's name itself — a name pointing at a
-        // private, loopback or metadata address reached it unjudged. RPC
-        // egress is direct (docs/ops/install.md), so the guard always judges
-        // the endpoint the request actually goes to.
+        // proxy resolved the provider's name itself — a name pointing at an
+        // address `forbidden_range` refuses (unspecified, link-local,
+        // multicast, broadcast, or a named instance-metadata address)
+        // reached it unjudged. Private-network and loopback addresses are
+        // allowed: operators run nodes there. RPC egress is direct
+        // (docs/ops/install.md), so the guard always judges the endpoint the
+        // request actually goes to.
         let http_client = HttpClient::builder()
             .timeout(config.timeout)
             .redirect(reqwest::redirect::Policy::none())
@@ -2770,7 +2789,9 @@ mod tests {
         let real = br#"{"jsonrpc":"2.0","result":{"value":[{"data":["AAAA\"\\[1,2]","base64"],"lamports":5,"owner":"11111111111111111111111111111111","executable":false}]},"id":1}"#;
         assert_eq!(
             json_value_count_within(real, MAX_RPC_RESPONSE_VALUES),
-            Some(20)
+            // 17 values and 3 objects, each object counting what it costs
+            // (A038).
+            Some(17 + 3 * OBJECT_VALUE_WEIGHT)
         );
         let mut zeros = b"{\"result\":[".to_vec();
         for i in 0..1_500_000u32 {
@@ -2785,6 +2806,44 @@ mod tests {
             json_value_count_within(&zeros, MAX_RPC_RESPONSE_VALUES),
             None
         );
+    }
+
+    /// A038 (audit 2026-11): an object costs far more than the 32 bytes the
+    /// count was sized against — each non-empty one is a `BTreeMap` whose
+    /// first leaf is ~632 bytes, plus its keys. 300,000 `{"a":0}` (2.4 MB of
+    /// body, ~200 MB parsed) counted as 900,002 values and passed; objects
+    /// now count for what they cost, so it is refused before parsing.
+    ///
+    /// Deliberate break: with `{` counted as one value it is admitted.
+    #[test]
+    fn an_object_dense_response_is_bounded_by_what_its_objects_cost() {
+        let mut body = b"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":[".to_vec();
+        for i in 0..300_000u32 {
+            if i > 0 {
+                body.push(b',');
+            }
+            body.extend_from_slice(b"{\"a\":0}");
+        }
+        body.extend_from_slice(b"]}");
+        assert!(body.len() < 3 * 1024 * 1024);
+        assert_eq!(
+            json_value_count_within(&body, MAX_RPC_RESPONSE_VALUES),
+            None,
+            "an object-dense body was admitted to parsing"
+        );
+        // A real response with a few thousand objects stays far inside.
+        let mut accounts = b"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"value\":[".to_vec();
+        for i in 0..2_000u32 {
+            if i > 0 {
+                accounts.push(b',');
+            }
+            accounts.extend_from_slice(
+                br#"{"data":["AAAA","base64"],"lamports":5,"owner":"11111111111111111111111111111111","executable":false,"rentEpoch":0,"space":4}"#,
+            );
+        }
+        accounts.extend_from_slice(b"]}}");
+        assert!(json_value_count_within(&accounts, MAX_RPC_RESPONSE_VALUES)
+            .is_some_and(|n| n < MAX_RPC_RESPONSE_VALUES / 10));
     }
 
     #[tokio::test]

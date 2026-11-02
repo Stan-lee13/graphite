@@ -209,6 +209,20 @@ pub struct AuditLog {
     /// index then no longer described it. While this is set, appends are
     /// refused; each one first retries opening a fresh active file.
     detached_into: Arc<Mutex<Option<PathBuf>>>,
+    /// How long the active file is by this writer's own account: its length
+    /// when the handle was opened, plus every byte an acknowledged append
+    /// wrote (a failed one is cut back to it). Read and written only under
+    /// the append handle's lock; never replaced by a reader's recount.
+    ///
+    /// A022 (audit 2026-11): nothing checked that the file at `path` was
+    /// still the one the handle writes into, or that it still ended where
+    /// this writer left it. After a truncation (`copytruncate`), a rename
+    /// or an unlink (logrotate `create`), every later record continued a
+    /// head the file no longer held, so the readers' gate refused it, yet
+    /// the append reported it recorded. Appends are now refused when the
+    /// handle is not the file at `path` or the file is not this length
+    /// (`AuditLog::still_the_active_file`).
+    written_len: Arc<AtomicU64>,
     /// Where the next record joins the hash chain (Round 30, G-07): read
     /// from the trail at open, advanced only by an append that was
     /// acknowledged — a failed write that was cut back leaves it where it
@@ -1666,6 +1680,9 @@ impl AuditLog {
                 path.display()
             );
         }
+        // The length the handle starts from (`written_len`): the writer lock
+        // is held, so nothing else appends to it.
+        let file_len = file.metadata()?.len();
         let log = Self {
             torn_tail: Arc::new(std::sync::atomic::AtomicBool::new(torn)),
             file: std::sync::Arc::new(Mutex::new(file)),
@@ -1701,6 +1718,7 @@ impl AuditLog {
             last_rotation: Arc::new(Mutex::new(Some(std::time::Instant::now()))),
             unacknowledged_from: Arc::new(AtomicU64::new(NO_UNACKNOWLEDGED_BYTES)),
             detached_into: Arc::new(Mutex::new(None)),
+            written_len: Arc::new(AtomicU64::new(file_len)),
             cursors,
             reader_keys,
             facts: Arc::new(Mutex::new(facts)),
@@ -1950,6 +1968,8 @@ impl AuditLog {
             ));
         }
         let torn = ends_without_newline(&path);
+        // Never appended through (`read_only`).
+        let file_len = file.metadata().map(|m| m.len()).unwrap_or(0);
         Ok(Self {
             torn_tail: Arc::new(std::sync::atomic::AtomicBool::new(torn)),
             file: std::sync::Arc::new(Mutex::new(file)),
@@ -1982,6 +2002,7 @@ impl AuditLog {
             last_rotation: Arc::new(Mutex::new(Some(std::time::Instant::now()))),
             unacknowledged_from: Arc::new(AtomicU64::new(NO_UNACKNOWLEDGED_BYTES)),
             detached_into: Arc::new(Mutex::new(None)),
+            written_len: Arc::new(AtomicU64::new(file_len)),
             cursors,
             reader_keys,
             facts: Arc::new(Mutex::new(facts)),
@@ -2821,6 +2842,7 @@ impl AuditLog {
         match self.open_active() {
             Ok(fresh) => {
                 *file = fresh;
+                self.adopt_fresh_handle(file);
                 self.retire_active_indexes(&archive);
                 // The rename and the new file are directory entries; make
                 // them durable so a crash right after rotation cannot lose
@@ -2884,6 +2906,7 @@ impl AuditLog {
         match self.open_active() {
             Ok(fresh) => {
                 *file = fresh;
+                self.adopt_fresh_handle(file);
                 *detached = None;
                 drop(detached);
                 sync_dir(self.path.as_ref());
@@ -2922,6 +2945,43 @@ impl AuditLog {
                 Err(())
             }
         }
+    }
+
+    /// A fresh append handle (`open_active`) starts from the length of the
+    /// file it opened (`written_len`).
+    fn adopt_fresh_handle(&self, file: &File) {
+        let len = file.metadata().map(|m| m.len()).unwrap_or(u64::MAX);
+        self.written_len.store(len, Ordering::SeqCst);
+    }
+
+    /// Whether the append handle `file` still writes into the file at
+    /// `path`, and that file still ends where this writer left it
+    /// (`written_len`, A022). `Err` names what changed.
+    fn still_the_active_file(&self, file: &File) -> Result<(), String> {
+        let expected = self.written_len.load(Ordering::SeqCst);
+        let handle = file
+            .metadata()
+            .map_err(|e| format!("the append handle's file cannot be examined ({e})"))?;
+        let at_path = std::fs::metadata(self.path.as_ref()).map_err(|e| {
+            format!("the active file cannot be examined ({e}): it was renamed or removed")
+        })?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            if (handle.dev(), handle.ino()) != (at_path.dev(), at_path.ino()) {
+                return Err(
+                    "the active file is no longer the file the append handle writes into: it was renamed or removed, and another put in its place"
+                        .to_string(),
+                );
+            }
+        }
+        if handle.len() != expected || at_path.len() != expected {
+            return Err(format!(
+                "the active file holds {} bytes where this writer left {expected}: it was truncated, or appended to by something else",
+                at_path.len()
+            ));
+        }
+        Ok(())
     }
 
     /// Cut the active file back to `len` bytes and sync it: the bytes after
@@ -3745,6 +3805,20 @@ impl AuditLog {
                 self.path.display()
             );
         }
+        // A022 (audit 2026-11): never append to a file that is not the one
+        // this writer left. The record would continue a head the file no
+        // longer holds — readers would refuse it, and so would `verify` —
+        // or land in an inode no reader can open. Refused (the verdict is
+        // not reported as recorded) until the server is restarted, which
+        // resumes the chain from what the trail on disk actually holds.
+        if let Err(why) = self.still_the_active_file(file) {
+            self.writes_failed.fetch_add(1, Ordering::Relaxed);
+            tracing::error!(
+                "audit append refused: {why}. Something other than this writer changed {}; no record is appended to it until the server is restarted (do not rotate the audit trail externally: Graphite rotates it itself)",
+                self.path.display()
+            );
+            return false;
+        }
         // A file that ends in a partial line (a crash mid-write): the record
         // starts on a new line, and — when the fragment is a torn write, not
         // JSON — names it (Round 34, `chain::TORN_TAIL_FIELD`), so the walk
@@ -3828,6 +3902,8 @@ impl AuditLog {
         }
         let offset =
             (!index_keys.is_empty() || !lifecycle_keys.is_empty()).then_some(start + prefix);
+        self.written_len
+            .fetch_add(bytes.len() as u64, Ordering::SeqCst);
         self.torn_tail.store(false, Ordering::SeqCst);
         self.writes_ok.fetch_add(1, Ordering::Relaxed);
         match self.chain_head.lock() {
@@ -3985,13 +4061,79 @@ fn torn_tail_of(path: &Path) -> Option<chain::TornTail> {
         });
     }
     let mut tail = Vec::new();
-    file.take(len - start_of_tail).read_to_end(&mut tail).ok()?;
+    (&mut file)
+        .take(len - start_of_tail)
+        .read_to_end(&mut tail)
+        .ok()?;
     if tail.iter().all(u8::is_ascii_whitespace)
         || serde_json::from_slice::<serde_json::Value>(&tail).is_ok()
     {
         return None;
     }
-    Some(chain::TornTail::of(start_of_tail, &tail))
+    // A025 (audit 2026-11): a crash during the append that names a torn
+    // line leaves that line terminated, with part of the naming record
+    // after it. The torn lines directly before the fragment are named with
+    // it, as one span from the first (`chain::verify` matches the span).
+    let mut span_start = start_of_tail;
+    for _ in 0..MAX_TORN_LINES_NAMED_TOGETHER {
+        match torn_line_before(&mut file, span_start) {
+            Some(start) => span_start = start,
+            None => break,
+        }
+    }
+    if span_start == start_of_tail {
+        return Some(chain::TornTail::of(start_of_tail, &tail));
+    }
+    let mut span = vec![0u8; (start_of_tail - span_start) as usize];
+    file.seek(SeekFrom::Start(span_start)).ok()?;
+    file.read_exact(&mut span).ok()?;
+    span.extend_from_slice(&tail);
+    Some(chain::TornTail::of(span_start, &span))
+}
+
+/// How many torn lines before the active file's partial final line one
+/// record names with it (`torn_tail_of`): one per crash during the append
+/// that would have named the one before. More than this is not crashes,
+/// and stays a break.
+const MAX_TORN_LINES_NAMED_TOGETHER: usize = 8;
+
+/// The start of the line that ends with the newline just before `at`, when
+/// it is a torn line: terminated, not blank, not JSON, within the line
+/// bound. `None` otherwise (and at the start of the file).
+fn torn_line_before(file: &mut File, at: u64) -> Option<u64> {
+    use std::io::{Read, Seek, SeekFrom};
+    // `at - 1` is the newline that ends it; its start is after the newline
+    // before that, searched for backwards in windows.
+    let end = at.checked_sub(1)?;
+    let mut start = 0u64;
+    let mut to = end;
+    let mut window = vec![0u8; 64 * 1024];
+    while to > 0 {
+        if end - to > chain::MAX_LINE_BYTES as u64 {
+            return None;
+        }
+        let from = to.saturating_sub(window.len() as u64);
+        let n = (to - from) as usize;
+        file.seek(SeekFrom::Start(from)).ok()?;
+        file.read_exact(&mut window[..n]).ok()?;
+        if let Some(i) = window[..n].iter().rposition(|b| *b == b'\n') {
+            start = from + i as u64 + 1;
+            break;
+        }
+        to = from;
+    }
+    if end - start > chain::MAX_LINE_BYTES as u64 {
+        return None;
+    }
+    let mut line = vec![0u8; (end - start) as usize];
+    file.seek(SeekFrom::Start(start)).ok()?;
+    file.read_exact(&mut line).ok()?;
+    if line.iter().all(u8::is_ascii_whitespace)
+        || serde_json::from_slice::<serde_json::Value>(&line).is_ok()
+    {
+        return None;
+    }
+    Some(start)
 }
 
 /// Whether an archive index's entry for `key` agrees with the archive on
@@ -5398,10 +5540,64 @@ mod tests {
             "the contradiction is resolved from the file"
         );
         assert_eq!(log.count_verifications(key), (1, 1));
-        assert!(log.append(&counted("gr-1", true)));
-        assert_eq!(log.count_verifications(key), (2, 1));
+        // A022: the file is no longer the one this writer left, so it
+        // appends nothing more to it (this test used to append `gr-1` here,
+        // as the next record after `gr-0` — a fork of the chain at
+        // `gr-foreign`'s place that the readers' gate refuses).
+        assert!(!log.append(&counted("gr-1", true)));
+        assert_eq!(log.count_verifications(key), (1, 1));
         assert_eq!(count_scans(&log), 1, "recounted once, indexed again after");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A022 (audit 2026-11): an active file truncated, renamed or removed
+    /// under a running writer, or appended to by something else, is never
+    /// appended to again: the record would continue a head the file no
+    /// longer holds (readers and `verify` refuse it), or land in an inode
+    /// no reader can open, while the append reported it recorded. Each case
+    /// starts after a recount has replaced the counts, as an L8 lookup does.
+    ///
+    /// Deliberate break: without `still_the_active_file` each refused
+    /// append is reported recorded.
+    #[test]
+    fn an_active_file_changed_under_the_writer_is_not_appended_to() {
+        type Change = fn(&Path);
+        let cases: [(&str, Change); 4] = [
+            ("truncated", |p| {
+                OpenOptions::new()
+                    .write(true)
+                    .open(p)
+                    .unwrap()
+                    .set_len(0)
+                    .unwrap()
+            }),
+            ("removed", |p| std::fs::remove_file(p).unwrap()),
+            ("replaced", |p| {
+                std::fs::rename(p, p.with_extension("moved")).unwrap();
+                std::fs::write(p, b"").unwrap();
+            }),
+            ("appended", |p| {
+                let mut f = OpenOptions::new().append(true).open(p).unwrap();
+                writeln!(f, "not a record").unwrap();
+            }),
+        ];
+        for (tag, change) in cases {
+            let dir = counts_dir(&format!("changed-{tag}"));
+            let path = audit_path(&dir);
+            let key = VerificationKey::TransactionSha256(COUNTED_TX);
+            let log = AuditLog::open_with_rotation(&path, 0, 0).unwrap();
+            assert!(log.append(&counted("gr-0", true)), "{tag}");
+            change(&path);
+            let _ = log.count_verifications(key);
+            let failed = log.health().writes_failed;
+            assert!(
+                !log.append(&counted("gr-1", false)),
+                "{tag}: a record appended to a changed active file was reported recorded"
+            );
+            assert!(!log.append(&counted("gr-2", false)), "{tag}: still refused");
+            assert_eq!(log.health().writes_failed, failed + 2, "{tag}");
+            std::fs::remove_dir_all(&dir).ok();
+        }
     }
 
     /// A file that ends in a partial line gets a newline before the next

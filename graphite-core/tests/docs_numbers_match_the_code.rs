@@ -44,6 +44,10 @@ const OPS_KEYS: &str = include_str!("../../docs/ops/keys.md");
 const OPS_INSTALL: &str = include_str!("../../docs/ops/install.md");
 const HANDOFF: &str = include_str!("../../docs/audit-handoff/README.md");
 const GRANT: &str = include_str!("../../docs/solana-foundation-grant-proposal.md");
+/// The Round 41 verdict. Not a live document for every count (it states
+/// test counts and history), but it states the intent-grant count as a
+/// current fact, and said 27 after there were 26 (audit A077).
+const FINAL: &str = include_str!("../../AUDIT/FINAL.md");
 
 const LIVE_DOCS: &[(&str, &str)] = &[
     ("README.md", README),
@@ -113,9 +117,21 @@ fn assert_every_statement(
     between: &[&str],
     context: &[&str],
 ) {
+    assert_every_statement_in(LIVE_DOCS, what, truth, words, between, context)
+}
+
+/// `assert_every_statement` over `docs`.
+fn assert_every_statement_in(
+    docs: &[(&str, &str)],
+    what: &str,
+    truth: u64,
+    words: &[&str],
+    between: &[&str],
+    context: &[&str],
+) {
     let mut found = 0;
     let mut wrong = Vec::new();
-    for (name, doc) in LIVE_DOCS {
+    for (name, doc) in docs {
         let lines: Vec<String> = doc.lines().map(str::to_lowercase).collect();
         for (line, v) in numbers_before(doc, words, between) {
             if !context.is_empty() && !context.iter().any(|c| lines[line - 1].contains(c)) {
@@ -141,14 +157,34 @@ fn assert_every_statement(
 /// The intent grants (`intent_grants::GRANTS`). Round 41 (external review
 /// D-11): CURRENT and the handoff said 27 after D-2 had removed `update_offer`
 /// and left 26; nothing held the number.
+///
+/// Audit A077: only "intent" could stand between the number and "grants",
+/// and only a line that also named `intent_grants` was read, so CURRENT's
+/// "27 grounded grants" and "the 27 withdrawal grants", and FINAL's "none of
+/// the 27 withdrawal grants", were never compared. A count qualified as the
+/// grants ("grounded", "withdrawal", "intent") is a statement of the total
+/// wherever it stands; a bare "N grants" is one on a line that names them.
+/// AUDIT/FINAL.md is read too.
 #[test]
 fn the_intent_grant_count_is_the_table() {
-    assert_every_statement(
+    let mut docs = LIVE_DOCS.to_vec();
+    docs.push(("AUDIT/FINAL.md", FINAL));
+    let truth = graphite_core::intent_grants::GRANTS.len() as u64;
+    assert_every_statement_in(
+        &docs,
         "number of intent grants",
-        graphite_core::intent_grants::GRANTS.len() as u64,
+        truth,
         &["grants"],
-        &["intent"],
+        &["intent", "grounded", "withdrawal"],
         &["intent_grants", "intent grant"],
+    );
+    assert_every_statement_in(
+        &docs,
+        "number of intent grants (as grounded, withdrawal or intent grants)",
+        truth,
+        &["grounded grants", "withdrawal grants", "intent grants"],
+        &[],
+        &[],
     );
 }
 

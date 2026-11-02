@@ -8,7 +8,7 @@
 # lower one only in a reviewed change that says why. The suites listed are the
 # security-critical ones (ci-scripts.test.sh names the patterns and fails when one
 # is neither floored here nor named below as not in this leg).
-813 unittests src/lib.rs
+822 unittests src/lib.rs
 2 tests/ai_layer_isolation.rs
 20 tests/cert_revalidation_attacks.rs
 2 tests/docs_match_the_registry.rs
@@ -121,6 +121,7 @@
 7 tests/evading_the_fixes.rs
 52 tests/extreme_adversarial.rs
 3 tests/fuzz_seeds_reach_their_targets.rs
+3 tests/fuzz_seeds_swap_decoder.rs
 9 tests/l2_l4_l5_hard_gate.rs
 15 tests/l4_state_diff_gate.rs
 9 tests/l8_execution_reconciliation.rs
@@ -146,7 +147,7 @@
 9 tests/round19_what_one_observation_is.rs
 22 tests/round20_transfer_fee.rs
 55 tests/round21_open_list.rs
-31 tests/round22_remaining.rs
+32 tests/round22_remaining.rs
 12 tests/round29_rpc_client.rs
 18 tests/round29_state_diff.rs
 4 tests/rpc_budget.rs
