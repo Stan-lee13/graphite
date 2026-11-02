@@ -21,11 +21,11 @@ gh attestation verify graphite-0.3.0-beta-x86_64-unknown-linux-gnu.tar.gz --repo
 The tag is built by `.github/workflows/release.yml` (two independent builds,
 compared byte for byte; SLSA provenance and SBOMs attested), so the binary and
 image you can verify are the ones built from the source you read. Until the tag
-exists, the base to review is `main`: `3d5cab7` (Round 40, PR #60) at the time
-of writing, with Round 41 (live swap measurement, D-19 to D-30, the external
-reviews of 2026-10-31) on the branch `claude/admiring-archimedes-lfhr7n`
-(PR #61) until it is merged. `main` moves, so agree the exact SHA with the
-maintainer before starting and record it in your report.
+exists, the base to review is `main`: `9e60f59` at the time of writing, the
+merge of PR #61 on 2026-11-02, which carries Round 41 (live swap measurement,
+the external reviews of 2026-10-31 and the full-codebase audit, decisions D-19
+to D-54). `main` moves, so agree the exact SHA with the maintainer before
+starting and record it in your report.
 [`docs/CURRENT.md`](../CURRENT.md) says which round the code is at; `git log -1 --
 docs/CURRENT.md` says when it last changed.
 
@@ -140,13 +140,13 @@ reports). Paths are under `graphite-core/tests/` unless stated.
 |---|---|---|
 | I-1 | `approved`/`executable` is about exact bytes: an approval for bytes nothing simulated, or for no bytes, is never executable | `round30_execution_decision.rs`, `round30_decision_fixtures.rs`, `artifact_binding.rs`; `sdk/typescript/src/execution-decision.test.ts`, `sdk/go/decision_test.go` (the same fixtures in each language) |
 | I-2 | A caller cannot raise the confidence of a program the built-in floor does not already admit, for other callers. Above the floor (for example after `graphite evidence import-census`, 0.59) a verify-key holder's clean, simulated requests DO train it, up to the OfficialManifest ceiling of 0.75 (Audit A079; the residual in SECURITY.md, Round 40, and RESIDUAL_RISK §3) | `round30_trust_learning.rs` |
-| I-3 | A signer's lamports or tokens move only under a manifest that declares the movement | `r30_declared_effects.rs`, `r30_declared_effects_census.rs`, `round30_fuzz_findings.rs` |
+| I-3 | A signer's lamports or tokens move only under a manifest that declares the movement; what rides beside a granted operation is judged against the located instruction alone (D-39) | `r30_declared_effects.rs`, `r30_declared_effects_census.rs`, `round30_fuzz_findings.rs`, `audit_w22_grant_route.rs` |
 | I-4 | An L2, L4 or L5 failure refuses, whatever the confidence or the profile | `l2_l4_l5_hard_gate.rs`, `l4_state_diff_gate.rs` |
 | I-5 | The AI layer cannot approve; intent text cannot clear danger | `ai_cannot_approve.rs`, `ai_layer_isolation.rs`, `audit_review_r2_r3_intent_cannot_clear_danger.rs`, `round30_grounded_intents.rs` |
 | I-6 | Every audit record is chained; keyed, any edit, drop or reorder is detected; a checkpoint detects a dropped tail and a stale restore | `round30_audit_chain.rs`; `deploy/tests/run.sh` (tamper and stale-restore refusals) |
 | I-7 | A verdict that cannot be recorded is not returned (503 `AuditWriteFailed`) and is not counted; an error record cannot be made arbitrarily large | `server::tests::a_verdict_that_could_not_be_recorded_is_not_counted` (`graphite-core/src/server.rs`), `audit_flooding.rs` |
 | I-8 | The RPC is bounded: its answers are size-, time- and shape-checked, never leak its URL, cannot change what the bytes bind, and an effect-free simulation is never evidence (D-29). It IS the trust root for simulated effects: a coherent fabricated post-state can pass L4 (RESIDUAL_RISK §3, Round 41) | `rpc_trust_boundary.rs`, `rpc_influence_bounds.rs`, `rpc_budget.rs`, `rpc_secret_redaction.rs`, `round29_rpc_client.rs` |
-| I-9 | L8 reports inclusion only on chain bytes bound to the signature, and says what it rests on; a blocked transaction seen by either endpoint raises the alarm | `round30_l8_assurance.rs`, `l8_execution_reconciliation.rs`, `round12_rpc_equivocation.rs`, `audit_review_r1_l8_needs_chain_bytes.rs` |
+| I-9 | L8 reports inclusion only on chain bytes bound to the signature, and says what it rests on; a blocked transaction seen by either endpoint raises the alarm, and an approval that was not executable (`analysis_only`) seen executed is a discrepancy unless the signer named the residuals its operator accepted (D-45) | `round30_l8_assurance.rs`, `l8_execution_reconciliation.rs`, `round12_rpc_equivocation.rs`, `audit_review_r1_l8_needs_chain_bytes.rs`, `audit_w23_not_executable_executed.rs` |
 | I-10 | Unsafe configuration refuses to start (no key, short or equal keys, empty audit variables, key inside the data dir, retired options) | `audit_2026_10_20_startup_refusals.rs` |
 | I-11 | Requests are bounded: body 1 MiB, identifiers, header and body timeouts, connection caps | `wire_format_bounds.rs`, `audit_a4_slow_headers_hold_connections.rs`, `audit_w21_connection_lifetime.rs` |
 | I-12 | The guard is the only signing path; the SAK wallet refuses every signing method; a forged verdict cannot get bytes sent | `integrations/agent-guard/guard-round30.test.ts`, `toctou-signing-boundary.test.ts`, `execution-lifecycle.test.ts`; `integrations/solana-agent-kit/gated-wallet.test.ts` |
@@ -166,6 +166,9 @@ so the two cannot drift. Where each residual came from, newest first:
 
 | Round | Where its residuals are recorded |
 |---|---|
+| 41 (live mainnet measurement, four external reviews, the full-codebase audit) | [`RESIDUAL_RISK_AND_OWNER_GATES.md`](../audit/RESIDUAL_RISK_AND_OWNER_GATES.md) §3, its Round 41 rows; the decisions D-19..D-54 in [`TECHNICAL_LEAD_DECISIONS.md`](../audit/TECHNICAL_LEAD_DECISIONS.md); the reviews' claims in [`ROUND41_EXTERNAL_REVIEW_TRIAGE.md`](../audit/ROUND41_EXTERNAL_REVIEW_TRIAGE.md) |
+| 40 (the Round 39 decisions taken) | [`TECHNICAL_LEAD_DECISIONS.md`](../audit/TECHNICAL_LEAD_DECISIONS.md) D-1..D-18 and [`parts-r40/`](../audit/parts-r40/) |
+| 39 (the exhaustive production-readiness audit of `c087bfb`) | [`RESIDUAL_RISK_AND_OWNER_GATES.md`](../audit/RESIDUAL_RISK_AND_OWNER_GATES.md) and [`PRODUCTION_READINESS_FINDINGS.md`](../audit/PRODUCTION_READINESS_FINDINGS.md) |
 | 38 (the Round 37 re-audit answered, in part) | [`round38-…-2026-10-24.md`](../round38-the-round-37-re-audit-answered-2026-10-24.md) §E and §F. The Round 37 findings past its first seven P1s were open when that report was written; later commits on the branch answer more of them by finding id (`git log --oneline 8b3d8a4..`) |
 | 37 (internal re-audit of `8b3d8a4`) | The owner's re-audit report. It is not in the repository; Round 38 and the commits after it cite its findings by id (R37-n) |
 | 36 (the owner's forensic brief, F-001..F-022) | [`round36-…-2026-10-24.md`](../round36-the-request-is-bound-to-the-bytes-2026-10-24.md) §E and §F |
@@ -175,11 +178,13 @@ so the two cannot drift. Where each residual came from, newest first:
 | 30 (forensic audit of `29e4356`) | [`round30-…-2026-10-22.md`](../round30-forensic-audit-and-remediation-2026-10-22.md) §H and [`docs/audit-r30/findings-registry.md`](../audit-r30/findings-registry.md) |
 
 A residual recorded in an older report may since have been fixed or changed;
-CURRENT says which. The owner and external gates (the rulesets, the `release`
-environment, private vulnerability reporting, the dependency pull requests, the
-sign-off of the nine medium-confidence declaration rewrites, deployment, WORM
-anchoring, RPC independence, a live-mainnet replay, a larger holdout and this
-audit) are items in [`docs/ops/production-checklist.md`](../ops/production-checklist.md).
+CURRENT says which. The owner and external gates (the admin read of the
+rulesets' bypass lists and the `release` environment, the release signing key,
+the sign-off of the two declaration rewrites still medium-confidence,
+measured mutation-score floors, deployment, WORM anchoring, RPC independence,
+a larger holdout and this audit) are items in
+[`docs/ops/production-checklist.md`](../ops/production-checklist.md); the
+rulesets and private vulnerability reporting are on since 2026-10-30.
 
 ## 7. What we want you to answer
 

@@ -14,7 +14,10 @@ and the `release` environment await the admin read). **As of Round 41 (2026-10-3
 work is done and evidenced (`../../AUDIT/FINAL.md`, "Verdict (Round 41)"): what remains is G-4 (the
 independent audit), G-5 (a hosted deployment with its own RPC), and two owner actions — G-2's
 signing key and G-1's admin read. The owner reports the `release` environment created (2026-10-30);
-only the admin read can confirm its settings.
+only the admin read can confirm its settings. **Since 2026-11-02** Round 41 (PR #61), including its
+full-codebase audit (decisions D-31 to D-54), is merged into `main`; that audit changed none of the
+gates above, and the residuals it leaves are §3's Round 41 rows. Item 7 (measured mutation-score
+floors) is still open: see §4.
 
 ## 1. Release gates (owner or external)
 
@@ -27,9 +30,9 @@ only the admin read can confirm its settings.
 | **G-5** Deployment | not deployed anywhere; Caddy, promtool and Docker checks ran only in PR CI | operator | checklist item 9 (`deploy/tests/run.sh` on the configuration to ship; verify the release by digest, checklist 10e) | `deploy/tests/run.sh` green on that host; `graphite healthcheck --strict` |
 
 Also on the checklist, not release-blocking by itself but owed before a public claim: item 7 (measured
-mutation-score floors — F-015, still no complete module score), item 8 (benchmark wording), item 10b
-(release rehearsal), item 10c (`publish = false` or not in `graphite-core/Cargo.toml`), the
-Dependabot holds of item 6, and K-14 stale branches.
+mutation-score floors — F-015; §4) and K-14 stale branches (item 1). Items 6 (the Dependabot holds
+stand), 8 (benchmark reviewed 2026-10-31), 10b (release rehearsed, run 41190904785; to be re-run on
+`main` before tagging) and 10c (`publish = false`) are closed with their records in the checklist.
 
 ## 2. Owner decisions — decided in Round 40
 
@@ -88,8 +91,8 @@ with its options, reason and Constitution principles, in
 
 | Claim | Why not shown | How to obtain |
 |---|---|---|
-| Real-traffic approval and false-refusal rates | **measured for simple transfers in Round 40**: run 40839253280 (PR #55, census imported) built 28 honest 1-lamport / 1-base-unit transfers from real senders and gave 27 `executable_approved`; the one `blocked` was a transfer the simulator showed would fail on chain. The replay of 200 other transactions in the same run had 0 server errors, p50/p99 208/430 ms. **Round 41**: run 41155961160 (PR #61, after D-19 to D-26 and the swap venues' census re-measure): 36 of 36 honest transfers and 2 of 2 re-quoted honest Jupiter v6 swaps `executable_approved`. Still open: two swaps is a small sample; run 41154452231 refused four honest SOL → Token-2022 Jupiter routes through Pump AMM with the route unbound; a small SOL-out unwrap whose fee exceeds the slippage margin is `SwapUnderbounded`; other protocol calls are not measured | `.github/workflows/live-mainnet.yml`; [`../evidence/live-mainnet/run-40839253280.md`](../evidence/live-mainnet/run-40839253280.md); [`../evidence/live-mainnet/run-41155961160.md`](../evidence/live-mainnet/run-41155961160.md) |
-| Mutation scores (F-015) | shards re-sized in Round 40 to fit the step (≤ 20 mutants each); not yet dispatched (~210–290 runner-hours) | Actions → Assurance → Run workflow; then checklist item 7 |
+| Real-traffic approval and false-refusal rates | **measured for simple transfers in Round 40**: run 40839253280 (PR #55, census imported) built 28 honest 1-lamport / 1-base-unit transfers from real senders and gave 27 `executable_approved`; the one `blocked` was a transfer the simulator showed would fail on chain. The replay of 200 other transactions in the same run had 0 server errors, p50/p99 208/430 ms. **Round 41**: five runs on 2026-10-31 (41155961160, 41158600693, 41183860317, 41190882806, 41194274191; never signed or sent) approved 147 of 148 constructed honest transfers and 12 of 13 constructed honest swaps (Jupiter v6, including two routes through Pump AMM after D-27, and Orca Whirlpools); the two refusals are the L3 new-shape fallback and the Raydium CPMM census-freshness rows of §3. Still open: thirteen swaps is a small sample; no Raydium CPMM swap has been re-measured live since its census was; a small SOL-out unwrap whose fee exceeds the slippage margin is `SwapUnderbounded` (D-22); other protocol calls are not measured | `.github/workflows/live-mainnet.yml`; [`../evidence/live-mainnet/run-40839253280.md`](../evidence/live-mainnet/run-40839253280.md); [`../evidence/live-mainnet/`](../evidence/live-mainnet/) (one report per run) |
+| Mutation scores (F-015) | shards re-sized in Round 40 to fit the step (≤ 20 mutants each). Dispatched in Round 41: Assurance run 41450528699 on `ecd1e15` found surviving mutants in `state_diff` and `simulation_integrity` shards, and 37 shards were cancelled mid-run for a reason not yet known, so no module has a complete score; the floors are still the provisional ones (`assurance.yml`) | find why the shards were cancelled, re-run Actions → Assurance, triage the surviving mutants; then checklist item 7 |
 | Execution-level differential against a bank (R39-CORE-IDENTITY-6) | not built; the runtime oracle covers the decoder and sanitizer only | a harness replaying artifacts through a bank |
 | Coverage-guided runtime side of the oracle | the generator is not coverage-guided there | cargo-fuzz harness linking the oracle |
 | Windows behaviour of the guard (locks, file permissions, R39-CLIENTS-6) | **closed in Round 40**: the `agent-guard-windows` CI job runs the guard's suite on a pinned Windows image (green) | — |

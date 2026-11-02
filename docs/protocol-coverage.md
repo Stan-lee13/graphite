@@ -41,9 +41,9 @@ Transaction versions across the 80-block census above (77,589 successful transac
 | Gmsol Store (Gmso1uvJ) | `Gmso1uvJnLbawvw7yezdfCDcPydwW2s2iqG3w6MDucLo` | 130 | BattleTested | 1,000 | 7,416s | 79 | 100% |
 | Sage (SAGE2HAw) | `SAGE2HAwep459SNq61LHvjxPk4pLPEJLoMETef7f7EE` | 106 | BattleTested | 1,000 | 112s | 125 | 100% |
 | Mango V4 (4MangoMj) | `4MangoMjqJ2firMokCjjGgoK8d4MXcrgL7XJaL3w6fVg` | 103 | BattleTested | 1,982 | 5,920,115s | 253 | 100% |
-| Meteora DLMM | `LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo` | 76 | BattleTested | 1,191 | 5s | 306 | 100% |
+| Meteora DLMM | `LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo` | 76 | BattleTested | 1,570 | 27s | 187 | 100% |
 | Kamino Lending | `KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD` | 66 | BattleTested | 1,512 | 5,317s | 213 | 100% |
-| Orca Whirlpools | `whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc` | 66 | BattleTested | 1,061 | 15s | 201 | 100% |
+| Orca Whirlpools | `whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc` | 66 | BattleTested | 1,109 | 25s | 305 | 100% |
 | Tuna (tuna4uSQ) | `tuna4uSQZncNeeiAMKbstuxA9CUkHH6HmC64wgmnogD` | 66 | BattleTested | 1,960 | 23,196s | 40 | 100% |
 | Token-2022 Program | `TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb` | 63 | BattleTested | 1,239 | 2s | 10,307 | 100% |
 | Arcium (Arcj82pX) | `Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ` | 59 | BattleTested | 1,202 | 14,867s | 42 | 100% |
@@ -52,7 +52,7 @@ Transaction versions across the 80-block census above (77,589 successful transac
 | Pump.fun | `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P` | 47 | BattleTested | 1,220 | 21s | 808 | 100% |
 | Tensorswap (TSWAPaqy) | `TSWAPaqyCSx2KABk68Shruf4rp7CxcNi8hAsbdwmHbN` | 46 | BattleTested | 1,810 | 183,448s | 66 | 91% |
 | Cp AMM (cpamdpZC) | `cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG` | 38 | BattleTested | 1,707 | 30s | 252 | 100% |
-| Raydium CLMM | `CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK` | 38 | BattleTested | 1,568 | 27s | 262 | 100% |
+| Raydium CLMM | `CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK` | 38 | BattleTested | 1,256 | 52s | 163 | 100% |
 | DEX (jupZ4m2G) | `jupZ4m2GqUCJ5iueMfzQf8khFfH31d4XAQt3RzCT9Vd` | 37 | BattleTested | 1,122 | 2,938s | 47 | 100% |
 | Squads Smart Account Program (SMRTzfY6) | `SMRTzfY6DfH5ik3TKiyLFfXexV8uSG3d2UksSCYdunG` | 37 | BattleTested | 1,998 | 5,865s | 168 | 96% |
 | Squads V4 Multisig | `SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf` | 36 | BattleTested | 1,955 | 39,261s | 127 | 100% |
@@ -90,7 +90,7 @@ Transaction versions across the 80-block census above (77,589 successful transac
 | Order Book (MzLoYnJ6) | `MzLoYnJ6sF6eeejs4vV95TNmXqS3W4cAtLGKkjT4ZrK` | 18 | BattleTested | 1,994 | 4,696,034s | 54 | 100% |
 | Swap Orchestrator (DF1ow4ts) | `DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH` | 18 | BattleTested | 1,733 | 83s | 270 | 100% |
 | Cargo (Cargo2VN) | `Cargo2VNTPPTi9c1vq1Jw5d3BWUNr18MjRtSupAghKEk` | 17 | BattleTested | 1,000 | 199s | 73 | 100% |
-| Jupiter V6 Aggregator | `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4` | 17 | BattleTested | 1,375 | 38s | 385 | 100% |
+| Jupiter V6 Aggregator | `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4` | 17 | BattleTested | 1,058 | 35s | 351 | 93% |
 | Mintfx (EmiytJ3z) | `EmiytJ3zWX9koH3emPsWDEs9RqNm6NNFp4CkMLoiA1KC` | 17 | BattleTested | 1,000 | 502,582s | 38 | 100% |
 | Score (FLEET1qq) | `FLEET1qqzpexyaDpqb2DGsSzE2sDCizewCg9WjrA6DBW` | 17 | BattleTested | 1,997 | 204,939s | 160 | 100% |
 | Marketplace (traderDn) | `traderDnaR5w6Tcoi3NFm53i48FTDNbGjBSZwWXDRrg` | 16 | BattleTested | 1,997 | 101,601s | 61 | 100% |
@@ -101,7 +101,7 @@ Transaction versions across the 80-block census above (77,589 successful transac
 | Limo (LiMoM9rM) | `LiMoM9rMhrdYrfzUCxQppvxCSG1FcrUK9G8uLq4A1GF` | 15 | BattleTested | 1,938 | 122,287s | 80 | 100% |
 | Scope (HFn8GnPA) | `HFn8GnPADiny6XqUoWE8uRPPxb29ikn4yTuPa9MF2fWJ` | 15 | BattleTested | 1,000 | 288s | 31 | 100% |
 | Points (Point2iB) | `Point2iBvz7j5TMVef8nEgpmz4pDr7tU7v3RjAfkQbM` | 14 | BattleTested | 1,000 | 268s | 72 | 100% |
-| Raydium CPMM | `CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C` | 14 | BattleTested | 1,717 | 111s | 176 | 100% |
+| Raydium CPMM | `CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C` | 14 | BattleTested | 1,238 | 591s | 93 | 100% |
 | Vault (24Uqj9JC) | `24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi` | 14 | BattleTested | 1,371 | 1,210s | 100 | 100% |
 | Donau (FknMf1SR) | `FknMf1SRUnujeyezuvKBQ7T57L2iSGbNd6D3iSrdDUHQ` | 13 | BattleTested | 1,000 | 9,957s | 53 | 100% |
 | Pyth Solana Receiver (rec2HHDD) | `rec2HHDDnjLfj4kE7VyEtFA1HPGQLK33259532cRyHp` | 13 | BattleTested | 1,999 | 1,354s | 31 | 100% |
@@ -123,7 +123,7 @@ Transaction versions across the 80-block census above (77,589 successful transac
 | Wormhole Core Bridge Solana (HDwcJBJX) | `HDwcJBJXjL9FpJ7UBsYBtaDjsBUhuLCUYoz3zr8SWWaQ` | 10 | BattleTested | 1,000 | 462s | 69 | 100% |
 | Data Credits (credMBJh) | `credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT` | 9 | BattleTested | 1,982 | 129,660s | 41 | 100% |
 | Jupiter Limit Order | `jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu` | 9 | BattleTested | 1,758 | 31,416,786s | 55 | 100% |
-| Raydium AMM V4 | `675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8` | 9 | BattleTested | 1,675 | 34s | 102 | 100% |
+| Raydium AMM V4 | `675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8` | 9 | BattleTested | 1,503 | 125s | 26 | 100% |
 | BPF Loader Upgradeable | `BPFLoaderUpgradeab1e11111111111111111111111` | 8 | BattleTested | 1,000 | 748s | 35 | 100% |
 | Bridge (FCW1uBM3) | `FCW1uBM3pZ7fQWvEL9sxTe4fNiH41bu9DWX4ErTZ6aMq` | 8 | BattleTested | 1,000 | 72,877s | 41 | 100% |
 | Bridge Cards (cardWArq) | `cardWArqhdV5jeRXXjUti7cHAa4mj41Nj3Apc6RPZH2` | 8 | BattleTested | 1,000 | 36,040s | 40 | 100% |

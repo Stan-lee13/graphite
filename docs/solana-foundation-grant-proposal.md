@@ -6,7 +6,7 @@
 > project's longer narrative; its budget below is the earlier $120,000 request, which the Foundation
 > declined as above its budget.
 
-> **Revised 2026-10-25, after Round 38** (§4; the rest as revised after Round 34). Every figure about Graphite below is measured in this
+> **Revised 2026-11-02, after Round 41** (§1 and §4; the rest as revised after Round 34). Every figure about Graphite below is measured in this
 > repository and named with where it comes from. [`CURRENT.md`](CURRENT.md) is authoritative
 > for anything that has moved since. Refresh this page again before any submission.
 
@@ -39,15 +39,16 @@ What exists today, all in the repository:
   Vercel AI SDK, and a Model Context Protocol server. All three sign only through
   `integrations/agent-guard`. The guard binds the approved bytes to the signed bytes, refuses
   residual risks the operator has not accepted, records each lifecycle step on the audit trail,
-  and enforces the operator's spend cap. For a swap, the cap is checked against the wallet
-  outflow measured by simulating the exact transaction.
+  and enforces the operator's spend cap. For a swap, the cap is checked against the larger of
+  the route's own input amount plus the fee and the wallet outflow measured by simulating the
+  exact transaction.
 - **SDKs** for TypeScript and Go, a Python advisory layer that cannot override the core, and
   a React dashboard.
 - **Tests:** Rust, TypeScript, Go and Python suites, each held by CI to a floor of passing
   tests (the counts are kept in one place, [`CURRENT.md`](CURRENT.md#numbers-as-of-this-pages-commit)).
   A runtime oracle compares Graphite's parser with the validator's own decoder on about
-  628,500 generated frames per CI seed; six parsers are fuzzed for 30 minutes each on a
-  schedule.
+  628,500 generated frames per CI seed; seven fuzz targets (the parsers and the swap decoder)
+  run for 30 minutes each, daily.
 - **Since this proposal was first written (Rounds 25–34):** every verdict states whether it
   permits signing (`executable_approved` only); the audit trail is hash-chained and, keyed,
   tamper-evident; L8 states what its inclusion answer rests on; a release workflow with
@@ -55,7 +56,7 @@ What exists today, all in the repository:
   replay live mainnet traffic and run the whole signing path on a validator. A deep internal
   audit (Round 33) found one critical issue and nine high ones; Round 34 fixed them
   ([`round34-the-deep-audit-remediated-2026-10-23.md`](round34-the-deep-audit-remediated-2026-10-23.md)).
-  Rounds 35–38 are summarised in §4.
+  Rounds 35–41 are summarised in §4.
 
 ## 2. The problem
 
@@ -91,12 +92,13 @@ observe, and the guard refuses to sign over any such gap the operator has not ac
 
 ## 4. Evidence, and how it was produced
 
-- **Adversarial rounds.** The repository records 38 rounds of internal review and repair,
-  including two internal deep audits (Rounds 33 and 37), each answered in the round after.
+- **Adversarial rounds.** The repository records 41 rounds of internal review and repair,
+  including internal audits in Rounds 33, 37, 39 and 41, each answered in the round after or
+  in the same round.
   Each finding has a class, a root cause, a fix, and a test that fails before the fix
   ([`AUDIT/01-findings.md`](../AUDIT/01-findings.md)). Fixes are also reverted one at a time to
-  show their tests catch the reversal: B01–B168 in that file's break log, misses included (Round
-  29's record is partial, and its report says which fixes were reverted). The last four rounds:
+  show their tests catch the reversal: B01–B244 in that file's break log, misses included (Round
+  29's record is partial, and its report says which fixes were reverted). Since Round 35:
   - **Round 35** ran Round 34 on live mainnet traffic and found that no transaction making a CPI
     could be approved on a real RPC (inner instructions arrive parsed); it now rebuilds them,
     checked against the validator's own parser in CI
@@ -110,6 +112,13 @@ observe, and the guard refuses to sign over any such gap the operator has not ac
     rent); **Round 38** fixed both and closed four audit-trail reader gaps
     ([`round38-…-2026-10-24.md`](round38-the-round-37-re-audit-answered-2026-10-24.md)). That a
     re-audit still finds such paths is the strongest argument for Milestone 1.
+  - **Round 39**, an exhaustive internal audit, found two more binding gaps behind the confidence
+    floor and a trail takeover, all fixed; **Round 40** took its open decisions and added the
+    census import ([`audit/TECHNICAL_LEAD_DECISIONS.md`](audit/TECHNICAL_LEAD_DECISIONS.md)).
+  - **Round 41** measured honest swaps on live mainnet, fixed the false refusals that showed,
+    checked four external AI reviews claim by claim, and answered an internal full-codebase audit
+    (96 findings, one high: a same-program sibling could skim a granted claim or withdrawal;
+    decisions D-31 to D-54).
 - **Real traffic.** Whole finalized mainnet blocks from four days, 48,855 executed transactions,
   are pushed through the full pipeline bound to their real bytes. Graphite records 0 parse
   failures and 0 verify errors, and every verdict that changes between rounds is attributed to
@@ -121,9 +130,10 @@ observe, and the guard refuses to sign over any such gap the operator has not ac
   approved for signing (21/21 System, 6/7 SPL Token; the refusal would have failed on chain)
   ([report](evidence/live-mainnet/run-40839253280.md)). Replays of other people's transactions
   mostly fail simulation against later state, so they do not measure the approval path.
-  Round 41 (2026-10-31): 36 of 36 honest transfers and 2 of 2 re-quoted honest Jupiter v6
-  swaps were approved for signing ([report](evidence/live-mainnet/run-41155961160.md); a small
-  swap sample).
+  Round 41 (2026-10-31), five runs, never signing or sending: 147 of 148 constructed honest
+  transfers and 12 of 13 constructed honest swaps (Jupiter v6, including routes through Pump AMM,
+  and Orca Whirlpools) were approved for signing; the two refusals are recorded with their causes
+  ([reports](evidence/live-mainnet/); thirteen swaps is a small sample).
 - **Real exploits.** 35 mainnet exploit transactions from the public SolPhishHunter dataset
   (arXiv:2505.04094), labelled outside Graphite, are all refused.
 
@@ -131,7 +141,9 @@ What this evidence is not:
 
 - **It is not an independent audit.** Every review in the repository is internal engineering
   work, done by the maintainer with AI engineering agents, apart from two external reviews and
-  one full-repository audit whose items are verified and answered in `AUDIT/01-findings.md`. No
+  one full-repository audit whose items are verified and answered in `AUDIT/01-findings.md`, and
+  four external AI reviews checked claim by claim in Round 41
+  (`docs/audit/ROUND41_EXTERNAL_REVIEW_TRIAGE.md`). No
   third party has audited or certified Graphite. The code is conditionally ready for an
   independent audit, with the owner gates open (`docs/ops/production-checklist.md`).
   Milestone 1 pays for the audit.
@@ -140,7 +152,8 @@ What this evidence is not:
   least one program with no manifest. There, Graphite falls back to its drainer heuristics,
   and it refuses rather than approves what it cannot describe.
 - **Approval is earned.** A fresh deployment approves nothing until it has simulation evidence
-  from an RPC, by design. The known limitations are listed in
+  from an RPC, by design, or an operator imports the measured mainnet census
+  (`graphite evidence import-census`), which admits the least strict profile only. The known limitations are listed in
   [`../SECURITY.md`](../SECURITY.md#known-limitations).
 
 ## 5. Milestones and budget

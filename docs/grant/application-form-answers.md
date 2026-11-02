@@ -1,6 +1,7 @@
 # Solana Foundation funding application — form answers
 
-Updated 2026-10-31 to the form and application guide as published, in the form's order. Each
+Updated 2026-10-31 to the form and application guide as published, in the form's order; figures
+re-checked against the code on 2026-11-02. Each
 answer is plain text, ready to paste.
 
 - **[OWNER]** marks the details only you can give.
@@ -124,6 +125,10 @@ to unlock each portion of that funding.**
 > - `decode_swap` in `graphite-core/src/intent_binding.rs` reads Jupiter v6, Orca Whirlpools,
 >   Raydium CLMM, CPMM and AMM v4, and Meteora DLMM. It does not read Pump AMM or Meteora DAMM v2
 >   called directly.
+> - `@graphite/agent-guard`, `@graphite/mcp-server` and the other adapters are all
+>   `"private": true` today (the guard and the SAK adapter since Round 41, D-54), so nothing is
+>   published by accident; Milestone 3 removes that flag in a
+>   reviewed change for the packages it publishes.
 > - Adjust the targets to what you can commit to. Keep the total at $18,000.
 
 ---
