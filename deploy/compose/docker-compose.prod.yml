@@ -46,7 +46,7 @@ name: graphite
 
 services:
   caddy:
-    image: caddy:2.11.7@sha256:3095ad245c353e3bdb27a38f22a095c1cfa9e295ab21c0214c3e72b0e2960525
+    image: caddy:2.11.7@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
     restart: unless-stopped
     # Audit A067: the one process that parses internet traffic runs
     # unprivileged. It listens on 8080/8443 inside the container (no
