@@ -10,8 +10,9 @@
 # 9.1.1 (W23, external review): 8.3.4 carries PYSEC-2026-1845, fixed in
 # 9.0.3; pip-audit now gates this file in CI. pytest has required pygments
 # since 8.4.
-pytest==9.1.1 \
-    --hash=sha256:37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c
+pytest==9.2.0 \
+    --hash=sha256:07acdcf88ec174f907dc01af70bf52d49b014bbab03faeeade31c96b18c2e588 \
+    --hash=sha256:97c4f3b1f3c7414aa36465e09b8220f1d03627993bd51b1282e193753c80557b
 pygments==2.21.0 \
     --hash=sha256:2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9
 iniconfig==2.3.1 \
