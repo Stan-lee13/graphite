@@ -535,7 +535,7 @@ jobs:
       # The Go SDK's real-server tests sit behind `//go:build liveserver`, so
       # the Go job (no server, no tag) never compiles them (A6-02). Same
       # container, same throwaway key, same toolchain pin as the Go job.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.27.3"
           # sdk/go has no dependencies and no go.sum to key a cache on.
@@ -888,7 +888,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           # Exact patch releases, not floating minors (Round 10).
           go-version: ${{ matrix.go }}
@@ -1141,7 +1141,7 @@ jobs:
       - name: Build the Core
         # The features and flags of the shipped binary (Dockerfile).
         run: cargo build --manifest-path graphite-core/Cargo.toml --locked --release --features server,cli --bin graphite
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.27.3"
           cache: false

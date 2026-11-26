@@ -404,7 +404,7 @@ jobs:
           echo "image: $got; build a: $WANT"
           [ "$got" = "$WANT" ] || { echo "::error::the image's binary is not the reproducible build's"; exit 1; }
       - name: Image SBOM (SPDX)
-        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        uses: anchore/sbom-action@dfcb83b97731532d72be422cbc51ee64adb6fd56 # v0.24.4
         with:
           image: oci-archive:${{ runner.temp }}/image.tar
           format: spdx-json
